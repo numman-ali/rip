@@ -9,8 +9,9 @@ Interactive mode (draft)
 - streams events, diffs, and approvals
 
 Headless mode (draft)
-- rip run <task> --headless --json
+- rip run <task> --headless --view raw
 - emits newline-delimited JSON event frames
+- `--view output` prints text deltas extracted from provider events
 
 Notes
 - CLI is a thin UI over ripd.

@@ -1,9 +1,11 @@
 use std::io::{self, Write};
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use futures_util::StreamExt;
 use reqwest::Client;
 use reqwest_eventsource::{Error as EventSourceError, Event, RequestBuilderExt};
+use rip_kernel::Event as FrameEvent;
+use rip_provider_openresponses::extract_text_deltas;
 use serde::Deserialize;
 
 #[derive(Parser)]
@@ -27,7 +29,15 @@ enum Commands {
             action = clap::ArgAction::Set
         )]
         headless: bool,
+        #[arg(long, value_enum, default_value_t = OutputView::Raw)]
+        view: OutputView,
     },
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum, PartialEq, Eq)]
+enum OutputView {
+    Raw,
+    Output,
 }
 
 #[derive(Deserialize)]
@@ -46,22 +56,23 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             prompt,
             server,
             headless,
+            view,
         } => {
             if !headless {
                 eprintln!("interactive mode not implemented; falling back to headless");
             }
-            run_headless(prompt, server).await?;
+            run_headless(prompt, server, view).await?;
         }
     }
 
     Ok(())
 }
 
-async fn run_headless(prompt: String, server: String) -> anyhow::Result<()> {
+async fn run_headless(prompt: String, server: String, view: OutputView) -> anyhow::Result<()> {
     let client = Client::new();
     let session_id = create_session(&client, &server).await?;
     send_input(&client, &server, &session_id, &prompt).await?;
-    stream_events(&client, &server, &session_id).await?;
+    stream_events(&client, &server, &session_id, view).await?;
     Ok(())
 }
 
@@ -95,7 +106,12 @@ async fn send_input(
     Ok(())
 }
 
-async fn stream_events(client: &Client, server: &str, session_id: &str) -> anyhow::Result<()> {
+async fn stream_events(
+    client: &Client,
+    server: &str,
+    session_id: &str,
+    view: OutputView,
+) -> anyhow::Result<()> {
     let url = format!("{server}/sessions/{session_id}/events");
     let mut stream = client.get(url).eventsource()?;
     let stdout = io::stdout();
@@ -105,14 +121,30 @@ async fn stream_events(client: &Client, server: &str, session_id: &str) -> anyho
         match next {
             Ok(Event::Open) => {}
             Ok(Event::Message(msg)) => {
-                writeln!(handle, "{}", msg.data)?;
-                handle.flush()?;
+                render_message(view, &msg.data, &mut handle)?;
             }
             Err(EventSourceError::StreamEnded) => break,
             Err(err) => return Err(err.into()),
         }
     }
 
+    Ok(())
+}
+
+fn render_message(view: OutputView, payload: &str, out: &mut dyn Write) -> anyhow::Result<()> {
+    match view {
+        OutputView::Raw => {
+            writeln!(out, "{payload}")?;
+            out.flush()?;
+        }
+        OutputView::Output => {
+            let frame: FrameEvent = serde_json::from_str(payload)?;
+            for delta in extract_text_deltas(std::slice::from_ref(&frame)) {
+                writeln!(out, "{delta}")?;
+            }
+            out.flush()?;
+        }
+    }
     Ok(())
 }
 
@@ -178,7 +210,7 @@ mod tests {
                 .body("data: {\"type\":\"session_started\"}\n\n");
         });
         let client = Client::new();
-        let result = stream_events(&client, &server.base_url(), "s1").await;
+        let result = stream_events(&client, &server.base_url(), "s1", OutputView::Raw).await;
         assert!(result.is_ok());
     }
 
@@ -207,6 +239,7 @@ mod tests {
                 prompt: "hello".to_string(),
                 server: server.base_url(),
                 headless: false,
+                view: OutputView::Raw,
             },
         };
         let result = run(cli).await;
@@ -225,7 +258,10 @@ mod tests {
     fn cli_defaults_headless() {
         let cli = Cli::parse_from(["rip", "run", "hello"]);
         match cli.command {
-            Commands::Run { headless, .. } => assert!(headless),
+            Commands::Run { headless, view, .. } => {
+                assert!(headless);
+                assert_eq!(view, OutputView::Raw);
+            }
         }
     }
 
@@ -235,6 +271,38 @@ mod tests {
         match cli.command {
             Commands::Run { server, .. } => assert_eq!(server, "http://local"),
         }
+    }
+
+    #[test]
+    fn renders_raw_payload() {
+        let mut buffer = Vec::new();
+        let payload = "{\"type\":\"session_started\"}";
+        render_message(OutputView::Raw, payload, &mut buffer).expect("render");
+        let rendered = String::from_utf8(buffer).expect("utf8");
+        assert_eq!(rendered.trim_end(), payload);
+    }
+
+    #[test]
+    fn renders_output_deltas() {
+        let mut buffer = Vec::new();
+        let payload = serde_json::json!({
+            "id": "e1",
+            "session_id": "s1",
+            "timestamp_ms": 0,
+            "seq": 0,
+            "type": "provider_event",
+            "provider": "openresponses",
+            "status": "event",
+            "event_name": "response.output_text.delta",
+            "data": {"type": "response.output_text.delta", "delta": "hi"},
+            "raw": null,
+            "errors": [],
+            "response_errors": []
+        })
+        .to_string();
+        render_message(OutputView::Output, &payload, &mut buffer).expect("render");
+        let rendered = String::from_utf8(buffer).expect("utf8");
+        assert_eq!(rendered.trim_end(), "hi");
     }
 
     #[test]

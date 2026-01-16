@@ -1855,6 +1855,8 @@ dependencies = [
  "httpmock",
  "reqwest",
  "reqwest-eventsource",
+ "rip-kernel",
+ "rip-provider-openresponses",
  "serde",
  "serde_json",
  "tokio",
