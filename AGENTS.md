@@ -34,7 +34,7 @@ Working style
 - Use `scripts/check` before reporting a task as complete.
 - Use `scripts/install-hooks` once to enable repo hooks.
 - Sync the canonical Open Responses OpenAPI spec via `scripts/update-openresponses-types` when schemas change.
-- Pre-commit runs `scripts/check` (fmt/check/clippy/tests/doctests/udeps/coverage); ensure required cargo subcommands are installed.
+- Pre-commit runs `scripts/check-fast` (core checks + udeps); ensure required cargo subcommands are installed.
 
 Communication expectations
 - Confirm understanding when requirements shift.

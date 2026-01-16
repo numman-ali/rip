@@ -1,4 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-exec "$(dirname "$0")/check"
+require_nightly_subcmd() {
+  local name="$1"
+  local install_hint="$2"
+  if ! cargo +nightly "$name" --version >/dev/null 2>&1; then
+    echo "missing nightly cargo subcommand: $name"
+    echo "install: $install_hint"
+    exit 1
+  fi
+}
+
+"$(dirname "$0")/check"
+
+require_nightly_subcmd udeps "rustup toolchain install nightly && cargo install cargo-udeps"
+cargo +nightly udeps --workspace --all-targets --all-features
