@@ -25,7 +25,7 @@ System map
 
 Responsibilities
 - ripd: agent loop, routing, scheduling, tool dispatch, logging, replay.
-- rip-cli: interactive UI for streaming, diffs, approvals.
+- rip-cli: interactive streaming renderer (no diffs/approvals in Phase 1).
 - rip-cli --headless: machine-friendly JSON output.
 - ripd server API: session HTTP/SSE + OpenAPI spec.
 - rip-tui: rich terminal UI rendering (Phase 2).

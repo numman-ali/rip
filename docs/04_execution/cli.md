@@ -7,7 +7,7 @@ Summary
 
 Interactive mode (draft)
 - rip run <task>
-- streams events, diffs, and approvals
+- streams event frames (no diffs/approvals in Phase 1)
 
 Headless mode (draft)
 - rip run <task> --headless --view raw

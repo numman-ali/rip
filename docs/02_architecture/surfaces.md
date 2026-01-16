@@ -6,12 +6,12 @@ Summary
 - Server API is the canonical control plane for capability access.
 
 Surfaces (Phase 1)
-- Interactive CLI: `rip-cli` (streaming, diffs, approvals)
+- Interactive CLI: `rip-cli` (lightweight streaming renderer)
 - Headless CLI: `rip-cli --headless` (automation JSON)
 - Server: `ripd` (session HTTP/SSE + OpenAPI spec)
-- SDKs: `rip-sdk-*` (TypeScript first; optional Python later)
 
 Surfaces (Phase 2 / planned)
+- SDKs: `rip-sdk-*` (TypeScript first; optional Python later)
 - Terminal UI (TUI): `rip-tui` (rich rendering only)
 - MCP server: `rip-mcp` (capability exposure via MCP)
 

@@ -1,7 +1,7 @@
 # Contract: CLI (interactive + headless)
 
 Summary
-- Interactive: rich streaming UI with approvals/diffs.
+- Interactive: lightweight streaming UI (no diffs/approvals in Phase 1).
 - Headless: JSON events for automation.
 - Full-screen TUI is a separate surface (`rip-tui`) with the same capability ids (Phase 2).
 
@@ -11,12 +11,12 @@ Inputs
 
 Outputs
 - Rendered UI (interactive) or JSON stream of event frames (headless).
-- Control commands to ripd (cancel, approve, resume).
+- Control commands to ripd (cancel).
 
 Config
 - Mode: interactive or headless.
 - Output format and verbosity.
-- View mode: raw frames or derived output (text/reasoning/tool deltas).
+- View mode (headless): raw frames or derived output (text/reasoning/tool deltas).
 
 Invariants
 - No business logic; UI only.

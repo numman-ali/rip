@@ -4,6 +4,7 @@ Purpose
 - This repo is operated by autonomous coding agents.
 - The human operator is C-suite level and will not read code or docs.
 - All coordination happens through chat; be concise, decision‑focused, and ask for validation before moving on.
+- `docs/` is the source of truth for scope, architecture, contracts, and tasks.
 
 Core directive: Open Responses coverage
 - Implement full, first-class support for the entire Open Responses spec (no minimal/partial mappings).
@@ -16,27 +17,38 @@ Operator intent (non‑negotiables)
 - Designed for autonomous agent development, not human collaboration.
 - Server exposes the coding agent itself (session API), not an Open Responses API.
 - Open Responses is used only at the provider boundary.
+- Programmatic SDK (TypeScript first) is a required surface, not an optional add-on.
 
 Success metrics
 - TTFT overhead, parse overhead per event, tool dispatch latency, patch throughput, end‑to‑end loop latency.
 - CI gates must fail on regressions.
 
 Scope boundaries
-- Phase 1: core runtime, provider adapters, tool runtime, workspace engine, event log, CLI (interactive + headless), agent server, benchmarks/fixtures.
-- Phase 2: search/index, memory, context compiler, policy/steering, background workers, sync, DSPy sidecar.
+- Phase 1: core runtime, provider adapters, tool runtime, workspace engine, event log + snapshots, CLI (interactive + headless), agent server (HTTP/SSE + OpenAPI), benchmarks/fixtures.
+- Phase 2: config/policy foundations, extensions/hooks, skills, subagents, context compiler + compaction, UI/interaction, SDKs, TUI/MCP surfaces, integrations, expanded execution modes + model/provider routing.
+- Phase 3: search/index + memory, background workers/sync, policy/steering (adaptive budgets), enterprise config, extended sandboxing.
 
 Architecture posture
 - Rust core runtime for hot path.
 - Internal compact frames; JSON only at edges.
 - Plugins default to WASM; hot path may be native in‑process.
 - Heavy modules may run out‑of‑process.
+- All inter-module traffic is structured events, not raw text.
 
 Surface parity principle
-- No feature is considered done unless it exists in the core capability contract and is exposed in all active surfaces, or the gap is explicitly tracked and approved.
+- No feature is considered done unless it exists in the core capability contract and is exposed in all active surfaces, or the gap is explicitly tracked and approved (owner + reason + expiry).
 - Surface packages are adapters only; no business logic or core decisions live in UI or transport layers.
+- Surface-specific capabilities still require explicit support/unsupported declarations on every surface.
+- Parity matrix + gap list are required artifacts; CI enforces them.
+
+Capability contract
+- Capabilities are the canonical, versioned API; the registry is the source of truth (`docs/03_contracts/capability_registry.md`).
+- New feature work starts by updating the capability contract + registry, then wiring surface adapters and tests.
+- Breaking changes require a version bump and an ADR.
 
 Approval gates
 - Operational changes (dependencies, scripts/hooks, repo config, commits, pushes) require explicit operator approval.
+- If a non-obvious choice impacts implementation details or dependencies, request explicit approval before changes.
 
 Up-to-date sources rule
 - For any non-obvious implementation choice, consult current official docs before acting.
@@ -68,7 +80,7 @@ Communication expectations
 - Avoid long explanations unless explicitly requested.
 
 Quality gates
-- Every module must have contract tests.
+- Every module must have contract tests and replay tests.
 - Benchmarks are CI gates; regressions fail builds.
 - Deterministic fixtures required for replay tests.
 
@@ -77,9 +89,10 @@ Engineering practices (Rust)
 - Clippy warnings are treated as errors.
 
 Definitions (avoid confusion)
-- Server: exposes agent sessions over HTTP/SSE.
+- Server: exposes agent sessions over HTTP/SSE; canonical control plane for active capabilities; serves generated OpenAPI.
 - Provider adapters: Open Responses boundary only.
 - CLI: interactive and headless front‑ends to the same runtime.
+- SDK: programmatic surface over the server API (TypeScript first).
 
 Decision log
 - Material changes require an ADR in docs/06_decisions/.

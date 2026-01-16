@@ -11,7 +11,7 @@ Outputs
 - CLI binary that connects to ripd.
 
 Acceptance criteria
-- Interactive UI renders event stream and approvals.
+- Interactive UI renders event stream (no diffs/approvals in Phase 1).
 - Headless mode emits JSON events.
 
 Tests

@@ -13,24 +13,20 @@ How to use
 - Date-stamp moves between Now/Next/Later to preserve intent over time.
 
 Now
-- CLI interactive renderer + approvals/diffs UI surface [needs work]
+- Capability validation pass (parity + headless schema + tool conformance + server smoke) [needs work]
+  - Refs: `docs/05_quality/tests.md`, `docs/05_quality/surface-parity.md`, `docs/03_contracts/event_frames.md`, `docs/03_contracts/capability_registry.md`, `docs/07_tasks/phase-1/03_tool_runtime.md`, `docs/04_execution/cli.md`, `docs/04_execution/server.md`
+  - Ready: event frame schema stable; tool runtime emits structured tool events; server session API stable
+  - Done: parity matrix + gap list enforced in CI; headless JSON schema validation; tool runtime conformance tests (read/write/grep/ls + limits + line ranges); server API smoke tests (sessions + SSE ordering)
+- CLI interactive streaming renderer (minimal UI) [needs work]
   - Refs: `docs/07_tasks/phase-1/06_cli.md`, `docs/03_contracts/modules/phase-1/05_cli.md`, `docs/04_execution/cli.md`
-  - Ready: event frame schema final; approval UX spec confirmed
-  - Done: interactive UI renders streams + approvals/diffs; golden render tests
+  - Ready: event frame schema final; interactive input/controls scope confirmed
+  - Done: interactive UI renders event stream (no diffs/approvals in Phase 1); golden render tests
 
 Next
 - Workspace engine: checkpoint + rewind hooks integration in runtime [needs work]
   - Refs: `docs/07_tasks/phase-1/04_workspace_engine.md`, `docs/03_contracts/modules/phase-1/04_workspace_engine.md`
   - Ready: hook points in runtime defined; checkpoint event frames defined
   - Done: runtime integration + rewind behavior tests
-- Surface parity matrix + gap list enforcement [needs work]
-  - Refs: `docs/05_quality/surface-parity.md`, `docs/03_contracts/capability_registry.md`
-  - Ready: registry expanded with baseline capabilities and surface support fields
-  - Done: parity matrix generated; gap list maintained with approvals; CI gate enforced
-- Headless CLI JSON validation [needs work]
-  - Refs: `docs/03_contracts/modules/phase-1/05_cli.md`, `docs/04_execution/cli.md`
-  - Ready: event frame schema stable
-  - Done: headless mode validates JSON frames; schema tests added
 
 Later
 - TUI surface (`rip-tui`) plan + MVP renderer [needs work]
@@ -77,7 +73,7 @@ Capability coverage map (index)
 - Search/index & memory [needs work] - Phase 3.
 
 Doc/impl gaps
-- Interactive CLI is specified but not implemented (see `docs/07_tasks/phase-1/06_cli.md`).
+- Interactive CLI (minimal streaming renderer) is specified but not implemented (see `docs/07_tasks/phase-1/06_cli.md`).
 - TUI surface is documented but not implemented (`rip-tui`).
 - MCP surface is documented but deferred to Phase 2 (`rip-mcp`).
 - Surface parity matrix/gap list not generated from registry.
