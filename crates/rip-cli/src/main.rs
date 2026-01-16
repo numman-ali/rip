@@ -5,7 +5,9 @@ use futures_util::StreamExt;
 use reqwest::Client;
 use reqwest_eventsource::{Error as EventSourceError, Event, RequestBuilderExt};
 use rip_kernel::Event as FrameEvent;
-use rip_provider_openresponses::extract_text_deltas;
+use rip_provider_openresponses::{
+    extract_reasoning_deltas, extract_text_deltas, extract_tool_call_argument_deltas,
+};
 use serde::Deserialize;
 
 #[derive(Parser)]
@@ -141,6 +143,12 @@ fn render_message(view: OutputView, payload: &str, out: &mut dyn Write) -> anyho
             let frame: FrameEvent = serde_json::from_str(payload)?;
             for delta in extract_text_deltas(std::slice::from_ref(&frame)) {
                 writeln!(out, "{delta}")?;
+            }
+            for delta in extract_reasoning_deltas(std::slice::from_ref(&frame)) {
+                writeln!(out, "reasoning: {delta}")?;
+            }
+            for delta in extract_tool_call_argument_deltas(std::slice::from_ref(&frame)) {
+                writeln!(out, "tool: {delta}")?;
             }
             out.flush()?;
         }
@@ -303,6 +311,49 @@ mod tests {
         render_message(OutputView::Output, &payload, &mut buffer).expect("render");
         let rendered = String::from_utf8(buffer).expect("utf8");
         assert_eq!(rendered.trim_end(), "hi");
+    }
+
+    #[test]
+    fn renders_reasoning_and_tool_deltas() {
+        let mut buffer = Vec::new();
+        let reasoning_payload = serde_json::json!({
+            "id": "e2",
+            "session_id": "s1",
+            "timestamp_ms": 0,
+            "seq": 1,
+            "type": "provider_event",
+            "provider": "openresponses",
+            "status": "event",
+            "event_name": "response.reasoning.delta",
+            "data": {"type": "response.reasoning.delta", "delta": "step"},
+            "raw": null,
+            "errors": [],
+            "response_errors": []
+        })
+        .to_string();
+        render_message(OutputView::Output, &reasoning_payload, &mut buffer).expect("render");
+
+        let tool_payload = serde_json::json!({
+            "id": "e3",
+            "session_id": "s1",
+            "timestamp_ms": 0,
+            "seq": 2,
+            "type": "provider_event",
+            "provider": "openresponses",
+            "status": "event",
+            "event_name": "response.function_call_arguments.delta",
+            "data": {"type": "response.function_call_arguments.delta", "delta": "{\"arg\":1}"},
+            "raw": null,
+            "errors": [],
+            "response_errors": []
+        })
+        .to_string();
+        render_message(OutputView::Output, &tool_payload, &mut buffer).expect("render");
+
+        let rendered = String::from_utf8(buffer).expect("utf8");
+        let lines: Vec<&str> = rendered.lines().collect();
+        assert!(lines.contains(&"reasoning: step"));
+        assert!(lines.contains(&"tool: {\"arg\":1}"));
     }
 
     #[test]

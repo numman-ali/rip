@@ -15,7 +15,7 @@ Outputs
 Config
 - Mode: interactive or headless.
 - Output format and verbosity.
-- View mode: raw frames or derived output (text deltas).
+- View mode: raw frames or derived output (text/reasoning/tool deltas).
 
 Invariants
 - No business logic; UI only.
