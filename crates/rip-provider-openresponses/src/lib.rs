@@ -200,4 +200,44 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].kind, ParsedEventKind::Event);
     }
+
+    #[test]
+    fn ignores_comment_lines() {
+        let mut decoder = SseDecoder::new();
+        let payload = ": keep-alive\n\
+                       data: {\"type\":\"response.created\",\"sequence_number\":1,\"response\":{}}\n\n";
+        let events = decoder.push(payload);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, ParsedEventKind::Event);
+    }
+
+    #[test]
+    fn empty_event_name_sets_none() {
+        let mut decoder = SseDecoder::new();
+        let payload = "event:\n\
+                      data: {\"type\":\"response.created\",\"sequence_number\":1,\"response\":{}}\n\n";
+        let events = decoder.push(payload);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event, None);
+    }
+
+    #[test]
+    fn finish_flushes_buffer() {
+        let mut decoder = SseDecoder::new();
+        let events = decoder
+            .push("data: {\"type\":\"response.created\",\"sequence_number\":1,\"response\":{}}");
+        assert!(events.is_empty());
+        let flushed = decoder.finish();
+        assert!(flushed.is_empty());
+    }
+
+    #[test]
+    fn captures_response_validation_errors() {
+        let mut decoder = SseDecoder::new();
+        let payload = "event: response.completed\n\
+                      data: {\"type\":\"response.completed\",\"sequence_number\":1,\"response\":{}}\n\n";
+        let events = decoder.push(payload);
+        assert_eq!(events.len(), 1);
+        assert!(!events[0].response_errors.is_empty());
+    }
 }

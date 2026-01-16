@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+require_cmd() {
+  local name="$1"
+  if ! command -v "$name" >/dev/null 2>&1; then
+    echo "missing command: $name"
+    exit 1
+  fi
+}
+
+require_cmd cargo
+require_cmd rustup
+
+ensure_toolchain() {
+  local toolchain="$1"
+  if ! rustup toolchain list | awk '{print $1}' | grep -q "^${toolchain}$"; then
+    rustup toolchain install "$toolchain"
+  fi
+}
+
+install_cargo_subcmd() {
+  local name="$1"
+  local install_cmd="$2"
+  if ! cargo "$name" --version >/dev/null 2>&1; then
+    echo "installing cargo subcommand: $name"
+    eval "$install_cmd"
+  fi
+}
+
+install_cargo_subcmd_nightly() {
+  local name="$1"
+  local install_cmd="$2"
+  if ! cargo +nightly "$name" --version >/dev/null 2>&1; then
+    echo "installing nightly cargo subcommand: $name"
+    eval "$install_cmd"
+  fi
+}
+
+ensure_toolchain nightly
+
+rustup component add rustfmt
+rustup component add clippy
+rustup component add llvm-tools-preview
+
+install_cargo_subcmd llvm-cov "cargo install cargo-llvm-cov"
+install_cargo_subcmd_nightly udeps "cargo install cargo-udeps"

@@ -102,4 +102,14 @@ mod tests {
         let path = write_snapshot(dir.path(), "session-1", &events).expect("snapshot");
         assert!(path.exists());
     }
+
+    #[test]
+    fn replay_invalid_line_returns_error() {
+        let dir = tempdir().expect("tmp");
+        let log_path = dir.path().join("events.jsonl");
+        fs::write(&log_path, "not json\n").expect("write");
+        let log = EventLog::new(&log_path).expect("log");
+        let err = log.replay().expect_err("error");
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    }
 }

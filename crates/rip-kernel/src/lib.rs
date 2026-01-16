@@ -261,4 +261,91 @@ mod tests {
 
         assert_eq!(result.expect("command"), "pong");
     }
+
+    #[test]
+    fn command_registry_rejects_duplicates() {
+        let runtime = Runtime::new();
+        runtime
+            .register_command("dup", "first", |_ctx| Ok("ok".to_string()))
+            .expect("register");
+        let err = runtime
+            .register_command("dup", "second", |_ctx| Ok("ok".to_string()))
+            .expect_err("error");
+        assert!(err.contains("already registered"));
+    }
+
+    #[test]
+    fn command_registry_lists_commands() {
+        let runtime = Runtime::new();
+        runtime
+            .register_command("a", "first", |_ctx| Ok("a".to_string()))
+            .expect("register");
+        runtime
+            .register_command("b", "second", |_ctx| Ok("b".to_string()))
+            .expect("register");
+
+        let mut names: Vec<String> = runtime
+            .commands()
+            .list()
+            .into_iter()
+            .map(|cmd| cmd.name)
+            .collect();
+        names.sort();
+        assert_eq!(names, vec!["a".to_string(), "b".to_string()]);
+    }
+
+    #[test]
+    fn command_registry_unknown_command_errors() {
+        let runtime = Runtime::new();
+        let result = runtime.commands().execute(
+            "missing",
+            CommandContext {
+                session_id: None,
+                args: Vec::new(),
+                raw: "missing".to_string(),
+            },
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn hooks_run_in_order() {
+        let runtime = Runtime::new();
+        let order: Arc<std::sync::Mutex<Vec<&'static str>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
+        let first = order.clone();
+        let second = order.clone();
+
+        runtime.register_hook("first", HookEventKind::SessionStarted, move |_| {
+            first.lock().expect("lock").push("first");
+            HookOutcome::Continue
+        });
+        runtime.register_hook("second", HookEventKind::SessionStarted, move |_| {
+            second.lock().expect("lock").push("second");
+            HookOutcome::Continue
+        });
+
+        let mut session = runtime.start_session("hello".to_string());
+        session.next_event();
+
+        let recorded = order.lock().expect("lock").clone();
+        assert_eq!(recorded, vec!["first", "second"]);
+    }
+
+    #[test]
+    fn runtime_default_exposes_ids_and_hooks() {
+        let runtime = Runtime::default();
+        let session = runtime.start_session("hello".to_string());
+        assert!(!session.id().is_empty());
+
+        let hooks = runtime.hooks();
+        let ctx = HookContext {
+            session_id: session.id().to_string(),
+            seq: 0,
+            timestamp_ms: 0,
+            event: HookEventKind::SessionStarted,
+            output: None,
+        };
+        assert_eq!(hooks.run(&ctx), HookOutcome::Continue);
+    }
 }

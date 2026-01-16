@@ -32,11 +32,7 @@ pub struct Hook {
 }
 
 impl Hook {
-    pub fn new(
-        name: impl Into<String>,
-        event: HookEventKind,
-        handler: HookHandler,
-    ) -> Self {
+    pub fn new(name: impl Into<String>, event: HookEventKind, handler: HookHandler) -> Self {
         Self {
             name: name.into(),
             event,

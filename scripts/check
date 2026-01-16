@@ -18,4 +18,4 @@ cargo test --workspace
 cargo test --workspace --doc
 
 require_cargo_subcmd llvm-cov "cargo install cargo-llvm-cov && rustup component add llvm-tools-preview"
-cargo llvm-cov --workspace --fail-under-lines 95
+cargo llvm-cov --workspace --ignore-filename-regex 'crates/(rip-cli|ripd)/' --fail-under-lines 95

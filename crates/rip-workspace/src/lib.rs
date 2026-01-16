@@ -48,10 +48,7 @@ impl Workspace {
         let checkpoint_id = Uuid::new_v4().to_string();
         let label = label.into();
         let created_at_ms = now_ms();
-        let checkpoint_root = self
-            .checkpoints_dir
-            .join(session_id)
-            .join(&checkpoint_id);
+        let checkpoint_root = self.checkpoints_dir.join(session_id).join(&checkpoint_id);
         let files_root = checkpoint_root.join("files");
         fs::create_dir_all(&files_root)?;
 
@@ -121,10 +118,7 @@ impl Workspace {
     }
 
     pub fn rewind_to_checkpoint(&self, session_id: &str, checkpoint_id: &str) -> io::Result<()> {
-        let checkpoint_root = self
-            .checkpoints_dir
-            .join(session_id)
-            .join(checkpoint_id);
+        let checkpoint_root = self.checkpoints_dir.join(session_id).join(checkpoint_id);
         let metadata_path = checkpoint_root.join("checkpoint.json");
         let payload = fs::read(&metadata_path)?;
         let checkpoint: Checkpoint = serde_json::from_slice(&payload)
@@ -246,15 +240,108 @@ mod tests {
         fs::write(&file_a, b"one").expect("write");
 
         let cp1 = workspace
-            .create_checkpoint("s1", "first", &[file_a.clone()])
+            .create_checkpoint("s1", "first", std::slice::from_ref(&file_a))
             .expect("checkpoint");
         let cp2 = workspace
-            .create_checkpoint("s1", "second", &[file_a.clone()])
+            .create_checkpoint("s1", "second", std::slice::from_ref(&file_a))
             .expect("checkpoint");
 
         let list = workspace.list_checkpoints("s1").expect("list");
         assert_eq!(list.len(), 2);
         assert_eq!(list[0].id, cp1.id);
         assert_eq!(list[1].id, cp2.id);
+    }
+
+    #[test]
+    fn list_checkpoints_empty_session() {
+        let dir = tempdir().expect("tmp");
+        let workspace = Workspace::new(dir.path()).expect("workspace");
+        let list = workspace.list_checkpoints("missing").expect("list");
+        assert!(list.is_empty());
+    }
+
+    #[test]
+    fn create_checkpoint_records_missing_file() {
+        let dir = tempdir().expect("tmp");
+        let root = dir.path();
+        let workspace = Workspace::new(root).expect("workspace");
+        let missing = root.join("missing.txt");
+
+        let checkpoint = workspace
+            .create_checkpoint("s1", "missing", std::slice::from_ref(&missing))
+            .expect("checkpoint");
+
+        assert_eq!(checkpoint.files.len(), 1);
+        assert!(!checkpoint.files[0].exists);
+    }
+
+    #[test]
+    fn create_checkpoint_rejects_outside_paths() {
+        let dir = tempdir().expect("tmp");
+        let root = dir.path();
+        let workspace = Workspace::new(root).expect("workspace");
+        let outside = root.parent().unwrap().join("outside.txt");
+        let err = workspace
+            .create_checkpoint("s1", "outside", std::slice::from_ref(&outside))
+            .expect_err("error");
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn rewind_missing_checkpoint_errors() {
+        let dir = tempdir().expect("tmp");
+        let root = dir.path();
+        let workspace = Workspace::new(root).expect("workspace");
+        let err = workspace
+            .rewind_to_checkpoint("s1", "missing")
+            .expect_err("err");
+        assert_eq!(err.kind(), io::ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn rewind_failure_rolls_back() {
+        let dir = tempdir().expect("tmp");
+        let root = dir.path();
+        let workspace = Workspace::new(root).expect("workspace");
+        let file_a = root.join("a.txt");
+        fs::write(&file_a, b"one").expect("write");
+
+        let checkpoint = workspace
+            .create_checkpoint("s1", "initial", std::slice::from_ref(&file_a))
+            .expect("checkpoint");
+
+        fs::write(&file_a, b"two").expect("write");
+
+        let checkpoint_file = root
+            .join(".rip")
+            .join("checkpoints")
+            .join("s1")
+            .join(&checkpoint.id)
+            .join("files")
+            .join("a.txt");
+        fs::remove_file(&checkpoint_file).expect("remove");
+
+        let err = workspace
+            .rewind_to_checkpoint("s1", &checkpoint.id)
+            .expect_err("rewind");
+        assert_eq!(err.kind(), io::ErrorKind::NotFound);
+        assert_eq!(fs::read_to_string(&file_a).unwrap(), "two");
+    }
+
+    #[test]
+    fn list_checkpoints_invalid_metadata_errors() {
+        let dir = tempdir().expect("tmp");
+        let root = dir.path();
+        let workspace = Workspace::new(root).expect("workspace");
+        let session_dir = root.join(".rip").join("checkpoints").join("s1");
+        fs::create_dir_all(&session_dir).expect("dir");
+        let bad = session_dir.join("bad.json");
+        fs::write(&bad, "{not json}").expect("write");
+        let entry_dir = session_dir.join("bad-checkpoint");
+        fs::create_dir_all(&entry_dir).expect("dir");
+        fs::rename(&bad, entry_dir.join("checkpoint.json")).expect("move");
+
+        let err = workspace.list_checkpoints("s1").expect_err("err");
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
     }
 }
