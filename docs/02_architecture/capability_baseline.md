@@ -33,11 +33,14 @@ Context & Guidance
 
 Configuration & Policy
 - Layered settings scopes (managed, user, project, local) with clear precedence.
+- Config merging across scopes (non-destructive merges).
+- JSON/JSONC config support with schema validation.
 - Environment variable overrides for critical settings.
 - Permission rules with allow/ask/deny/delegate and argument matching.
 - Sandbox profiles and execution policies stored in config.
 - Output style and model defaults configurable per scope.
 - Plugin, tool, and subagent configuration stored in config.
+- Managed policies to restrict plugins, hooks, and marketplaces.
 
 Commands & Automation
 - Slash commands for common actions (session control, model selection, permissions).
@@ -45,6 +48,7 @@ Commands & Automation
 - Command aliases and prompt templates.
 - Commands can run scripts or insert structured prompts.
 - Command definitions can include allowed-tools and file references.
+- Commands can define scoped hooks that run while the command is active.
 
 Execution Modes
 - Interactive TUI/CLI mode.
@@ -56,6 +60,7 @@ Execution Modes
 - Structured JSONL event stream with an explicit output schema.
 - Resume prior sessions by ID in headless mode.
 - Output format control for text, JSON, and streaming JSON.
+- Structured output using a JSON Schema.
 
 Tools & Tooling
 - Built-in file tools (read/write/edit/grep/find/ls) and shell tool.
@@ -69,6 +74,8 @@ Tools & Tooling
 - Remote tool execution as an optional backend.
 - Tool-level permissions and per-tool argument rules.
 - Allowed-tools lists for noninteractive runs to auto-approve safe tools.
+- Read tools support line ranges for large files.
+- LSP tool integration for code intelligence and navigation.
 
 Compaction & Summarization
 - Auto-compaction when context exceeds threshold (reserve tokens).
@@ -94,6 +101,9 @@ Extensions & Hooks
 - Extension error reporting and recovery hooks.
 - Extension access to session control (new session, branch, navigate tree).
 - Extension access to agent state (idle detection, abort, queue visibility).
+- Hook events include permission, user prompt, stop, subagent start/stop, tool failure, and pre-compaction.
+- Hook types include command, prompt, and agentic verification.
+- Hook timeouts and once-only hooks for scoped components.
 
 Skills
 - Skills discovered by `SKILL.md` files in workspace/user scopes.
@@ -114,6 +124,7 @@ Subagents
 - Auto-delegation rules from the primary agent to subagents.
 - Subagent definitions loaded from config or markdown.
 - Subagents definable at runtime via CLI flags or RPC config.
+- Manual subagent invocation via mention syntax.
 
 Models & Providers
 - Multi-provider support with model switching at runtime.
@@ -122,6 +133,7 @@ Models & Providers
 - Runtime model cycling and model availability queries.
 - Agent mode profiles (fast vs deep) with different budgets.
 - Second-opinion model/tool for review-grade reasoning.
+- Per-run overrides for model, sandbox, and approval policy.
 
 Output Styles
 - Output styles that alter response format or tone via system prompts.
@@ -145,6 +157,8 @@ UI/Interaction
 - Interactive mode keyboard shortcuts, reverse search, and editor integrations.
 - Background task execution with status updates.
 - Direct shell input mode for quick commands.
+- Permission mode toggles (auto-accept, plan/read-only, normal).
+- Vim-style editor mode for input.
 
 Integrations
 - MCP servers (local/remote) with OAuth support.
@@ -154,6 +168,7 @@ Integrations
 - Agent can run as a local MCP server for external orchestration.
 - CI automation via a thin wrapper or action around headless mode.
 - Programmatic SDK to start/resume sessions and stream events.
+- TUI can attach to an existing server instance.
 
 Checkpointing & Rewind
 - Automatic checkpoints for tool-based file edits.
@@ -164,3 +179,4 @@ Security & Safety
 - Sandboxing profiles for untrusted execution.
 - Secret redaction in logs/outputs where applicable.
 - Permission policy engine (allow/ask/reject/delegate).
+- Loop detection to stop repeated identical tool calls.
