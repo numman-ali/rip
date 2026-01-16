@@ -1,6 +1,34 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cargo fmt --all
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all
+require_cargo_subcmd() {
+  local name="$1"
+  local install_hint="$2"
+  if ! cargo "$name" --version >/dev/null 2>&1; then
+    echo "missing cargo subcommand: $name"
+    echo "install: $install_hint"
+    exit 1
+  fi
+}
+
+require_nightly_subcmd() {
+  local name="$1"
+  local install_hint="$2"
+  if ! cargo +nightly "$name" --version >/dev/null 2>&1; then
+    echo "missing nightly cargo subcommand: $name"
+    echo "install: $install_hint"
+    exit 1
+  fi
+}
+
+cargo fmt --all -- --check
+cargo check --workspace --all-targets
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace
+cargo test --workspace --doc
+
+require_nightly_subcmd udeps "rustup toolchain install nightly && cargo install cargo-udeps"
+cargo +nightly udeps --workspace --all-targets --all-features
+
+require_cargo_subcmd llvm-cov "cargo install cargo-llvm-cov && rustup component add llvm-tools-preview"
+cargo llvm-cov --workspace --fail-under-lines 95
