@@ -9,6 +9,7 @@ Navigation
 - North star and success metrics: docs/01_north_star.md
 - Architecture map and data flow: docs/02_architecture/component_map.md
 - Capability baseline (vendor-neutral): docs/02_architecture/capability_baseline.md
+- Capability matrix (phases + hook points): docs/02_architecture/capability_matrix.md
 - Module contracts (Phase 1): docs/03_contracts/modules/phase-1/
 - CLI and server usage model: docs/04_execution/
 - Quality gates (tests, benchmarks): docs/05_quality/
