@@ -8,11 +8,16 @@ Summary
 Navigation
 - North star and success metrics: docs/01_north_star.md
 - Architecture map and data flow: docs/02_architecture/component_map.md
-- Capability baseline (vendor-neutral): docs/02_architecture/capability_baseline.md
+- Capability baseline: docs/02_architecture/capability_baseline.md
 - Capability matrix (phases + hook points): docs/02_architecture/capability_matrix.md
+- Surface layers + parity rules: docs/02_architecture/surfaces.md
 - Module contracts (Phase 1): docs/03_contracts/modules/phase-1/
+- Capability contract + registry: docs/03_contracts/capabilities.md
+- Capability registry (source of truth): docs/03_contracts/capability_registry.md
 - CLI and server usage model: docs/04_execution/
 - Quality gates (tests, benchmarks): docs/05_quality/
+- Source-of-truth policy: docs/05_quality/source-policy.md
+- Surface parity gates: docs/05_quality/surface-parity.md
 - Decision log (ADRs): docs/06_decisions/
 - Task cards by phase: docs/07_tasks/
 

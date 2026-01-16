@@ -3,7 +3,6 @@
 Summary
 - Maps capability groups to delivery phases and primary hook points.
 - Keeps the core small while proving extensibility early.
-- No vendor names or external product references.
 
 Phase 1 — Foundation
 - Sessions & threads: session manager + event log + server API + CLI/TUI; hook: session lifecycle events.

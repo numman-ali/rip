@@ -1,8 +1,7 @@
 # Capability Baseline (Modern Coding Agents)
 
 Summary
-- Vendor-neutral capability checklist for modern coding agents.
-- No product names or vendor references.
+- Capability checklist for modern coding agents.
 - Used to ensure architectural coverage across phases.
 
 Sessions & Threads

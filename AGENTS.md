@@ -26,6 +26,19 @@ Architecture posture
 - Plugins default to WASM; hot path may be native in‑process.
 - Heavy modules may run out‑of‑process.
 
+Surface parity principle
+- No feature is considered done unless it exists in the core capability contract and is exposed in all active surfaces, or the gap is explicitly tracked and approved.
+- Surface packages are adapters only; no business logic or core decisions live in UI or transport layers.
+
+Approval gates
+- Operational changes (dependencies, scripts/hooks, repo config, commits, pushes) require explicit operator approval.
+
+Up-to-date sources rule
+- For any non-obvious implementation choice, consult current official docs before acting.
+- If multiple viable approaches exist or guidance is unclear, escalate to the operator before implementation.
+- Capture evidence in `temp/docs`.
+- Check `temp/docs/references.md` before any web search to see what documentation is already available.
+
 Working style
 - Build one concrete piece at a time.
 - Always provide: goal, proposed change, acceptance criteria, and tests.
