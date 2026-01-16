@@ -1050,6 +1050,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rip-openresponses"
+version = "0.1.0"
+dependencies = [
+ "once_cell",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ripd"
 version = "0.1.0"
 dependencies = [

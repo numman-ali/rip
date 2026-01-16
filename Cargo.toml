@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "crates/rip-kernel",
   "crates/rip-log",
+  "crates/rip-openresponses",
   "crates/rip-cli",
   "crates/ripd",
 ]

@@ -9,6 +9,7 @@ Inputs
 
 Outputs
 - Internal event frames mapped from provider SSE events.
+- Streaming event `type` validation against Open Responses schema-derived list.
 
 Config
 - Provider selection and routing rules.
