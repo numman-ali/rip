@@ -12,11 +12,11 @@ How to use
 - Each item includes: refs, ready checklist, and done criteria.
 
 Now
-- Provider adapter: Open Responses SSE -> internal frames + validation [confirm spec]
+- Provider adapter: Open Responses SSE -> provider_event frames + validation [confirm spec]
   - Refs: `docs/07_tasks/phase-1/02_provider_adapter.md`, `docs/03_contracts/modules/phase-1/02_provider_adapters.md`
-  - Ready: internal frame schema decided (above); OpenAPI schema synced
-  - Done: SSE decoder maps to frames, validates `type` + response schema, acceptance fixtures + golden stream replay pass
-  - Progress: mapping + unit tests done; fixtures pending
+  - Ready: provider_event frame schema defined; OpenAPI schema synced; split-schema fixtures generated
+  - Done: every SSE event (incl. `[DONE]`/invalid JSON) maps to provider_event, `type` + response validation recorded, golden stream replay vs fixtures passes
+  - Progress: mapping + unit tests updated; fixtures pending
 - Event log replay -> snapshot equivalence + corruption detection [confirm spec]
   - Refs: `docs/07_tasks/phase-1/05_event_log.md`, `docs/03_contracts/modules/phase-1/07_event_log.md`
   - Ready: frame schema stable; snapshot format confirmed
@@ -62,7 +62,7 @@ Doc/impl gaps
 
 Decisions
 - Event frames live in `rip-kernel`; schema documented at `docs/03_contracts/event_frames.md`.
-- Phase 1 frame types: `session_started`, `output_text_delta`, `session_ended`.
+- Phase 1 frame types: `session_started`, `output_text_delta`, `session_ended`, `provider_event`.
 
 Open questions
 - (empty)

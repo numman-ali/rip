@@ -12,6 +12,7 @@ Outputs
 Acceptance criteria
 - Pass Open Responses acceptance fixtures.
 - Preserve event order and timing.
+- Emit `provider_event` for every SSE event, including `[DONE]` and invalid JSON.
 
 Tests
 - Schema validation tests.

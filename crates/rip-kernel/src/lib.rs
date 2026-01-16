@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use uuid::Uuid;
 
 pub use commands::{Command, CommandContext, CommandHandler, CommandRegistry, CommandResult};
@@ -20,12 +21,35 @@ pub struct Event {
     pub kind: EventKind,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderEventStatus {
+    Event,
+    Done,
+    InvalidJson,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EventKind {
-    SessionStarted { input: String },
-    OutputTextDelta { delta: String },
-    SessionEnded { reason: String },
+    SessionStarted {
+        input: String,
+    },
+    OutputTextDelta {
+        delta: String,
+    },
+    SessionEnded {
+        reason: String,
+    },
+    ProviderEvent {
+        provider: String,
+        status: ProviderEventStatus,
+        event_name: Option<String>,
+        data: Option<Value>,
+        raw: Option<String>,
+        errors: Vec<String>,
+        response_errors: Vec<String>,
+    },
 }
 
 #[derive(Clone)]
@@ -147,42 +171,45 @@ impl Session {
             kind,
         };
 
-        let hook_event = match &event.kind {
-            EventKind::SessionStarted { .. } => HookEventKind::SessionStarted,
-            EventKind::OutputTextDelta { .. } => HookEventKind::Output,
-            EventKind::SessionEnded { .. } => HookEventKind::SessionEnded,
-        };
-
-        let output = match &event.kind {
-            EventKind::OutputTextDelta { delta } => Some(delta.clone()),
-            _ => None,
-        };
-
-        let ctx = HookContext {
-            session_id: self.id.clone(),
-            seq: self.seq,
-            timestamp_ms,
-            event: hook_event,
-            output,
-        };
-
-        match self.hooks.run(&ctx) {
-            HookOutcome::Continue => {
-                self.seq += 1;
-                Some(event)
+        let (hook_event, output) = match &event.kind {
+            EventKind::SessionStarted { .. } => (Some(HookEventKind::SessionStarted), None),
+            EventKind::OutputTextDelta { delta } => {
+                (Some(HookEventKind::Output), Some(delta.clone()))
             }
-            HookOutcome::Abort { reason } => {
-                self.stage = Stage::Done;
-                let abort_event = Event {
-                    id: Uuid::new_v4().to_string(),
-                    session_id: self.id.clone(),
-                    timestamp_ms: now_ms(),
-                    seq: self.seq,
-                    kind: EventKind::SessionEnded { reason },
-                };
-                self.seq += 1;
-                Some(abort_event)
+            EventKind::SessionEnded { .. } => (Some(HookEventKind::SessionEnded), None),
+            EventKind::ProviderEvent { .. } => (None, None),
+        };
+
+        if let Some(hook_event) = hook_event {
+            let ctx = HookContext {
+                session_id: self.id.clone(),
+                seq: self.seq,
+                timestamp_ms,
+                event: hook_event,
+                output,
+            };
+
+            match self.hooks.run(&ctx) {
+                HookOutcome::Continue => {
+                    self.seq += 1;
+                    Some(event)
+                }
+                HookOutcome::Abort { reason } => {
+                    self.stage = Stage::Done;
+                    let abort_event = Event {
+                        id: Uuid::new_v4().to_string(),
+                        session_id: self.id.clone(),
+                        timestamp_ms: now_ms(),
+                        seq: self.seq,
+                        kind: EventKind::SessionEnded { reason },
+                    };
+                    self.seq += 1;
+                    Some(abort_event)
+                }
             }
+        } else {
+            self.seq += 1;
+            Some(event)
         }
     }
 }

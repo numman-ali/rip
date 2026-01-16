@@ -2,7 +2,7 @@ use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
-use rip_kernel::{Event, EventKind};
+use rip_kernel::{Event, EventKind, ProviderEventStatus};
 use rip_openresponses::{validate_response_resource, validate_stream_event};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,7 +83,6 @@ impl ParsedEvent {
 pub struct EventFrameMapper {
     session_id: String,
     seq: u64,
-    ended: bool,
 }
 
 impl EventFrameMapper {
@@ -91,42 +90,28 @@ impl EventFrameMapper {
         Self {
             session_id: session_id.into(),
             seq: 0,
-            ended: false,
         }
     }
 
     pub fn map(&mut self, parsed: &ParsedEvent) -> Option<Event> {
-        if self.ended {
-            return None;
-        }
+        let (status, data, raw) = match parsed.kind {
+            ParsedEventKind::Done => (ProviderEventStatus::Done, None, Some(parsed.raw.clone())),
+            ParsedEventKind::InvalidJson => (
+                ProviderEventStatus::InvalidJson,
+                None,
+                Some(parsed.raw.clone()),
+            ),
+            ParsedEventKind::Event => (ProviderEventStatus::Event, parsed.data.clone(), None),
+        };
 
-        match parsed.kind {
-            ParsedEventKind::Done => self.emit_end("done"),
-            ParsedEventKind::InvalidJson => None,
-            ParsedEventKind::Event => {
-                let data = parsed.data.as_ref()?;
-                let event_type = data.get("type")?.as_str()?;
-                match event_type {
-                    "response.output_text.delta" => {
-                        let delta = data.get("delta")?.as_str()?.to_string();
-                        Some(self.emit(EventKind::OutputTextDelta { delta }))
-                    }
-                    "response.completed" | "response.failed" | "response.incomplete" => {
-                        self.emit_end(event_type)
-                    }
-                    _ => None,
-                }
-            }
-        }
-    }
-
-    fn emit_end(&mut self, reason: &str) -> Option<Event> {
-        if self.ended {
-            return None;
-        }
-        self.ended = true;
-        Some(self.emit(EventKind::SessionEnded {
-            reason: reason.to_string(),
+        Some(self.emit(EventKind::ProviderEvent {
+            provider: "openresponses".to_string(),
+            status,
+            event_name: parsed.event.clone(),
+            data,
+            raw,
+            errors: parsed.errors.clone(),
+            response_errors: parsed.response_errors.clone(),
         }))
     }
 
@@ -296,7 +281,7 @@ mod tests {
     }
 
     #[test]
-    fn maps_output_text_delta_to_frame() {
+    fn maps_output_text_delta_to_provider_frame() {
         let parsed = ParsedEvent {
             kind: ParsedEventKind::Event,
             event: Some("response.output_text.delta".to_string()),
@@ -314,13 +299,27 @@ mod tests {
         assert_eq!(frame.session_id, "session-1");
         assert_eq!(frame.seq, 0);
         match frame.kind {
-            EventKind::OutputTextDelta { delta } => assert_eq!(delta, "hi"),
-            _ => panic!("expected output_text_delta"),
+            EventKind::ProviderEvent {
+                provider,
+                status,
+                event_name,
+                data,
+                raw,
+                ..
+            } => {
+                assert_eq!(provider, "openresponses");
+                assert_eq!(status, ProviderEventStatus::Event);
+                assert_eq!(event_name.as_deref(), Some("response.output_text.delta"));
+                let data = data.expect("data");
+                assert_eq!(data.get("delta").and_then(|v| v.as_str()), Some("hi"));
+                assert!(raw.is_none());
+            }
+            _ => panic!("expected provider_event"),
         }
     }
 
     #[test]
-    fn maps_completed_to_session_end() {
+    fn maps_completed_to_provider_frame() {
         let parsed = ParsedEvent {
             kind: ParsedEventKind::Event,
             event: Some("response.completed".to_string()),
@@ -335,13 +334,26 @@ mod tests {
         let mut mapper = EventFrameMapper::new("session-1");
         let frame = mapper.map(&parsed).expect("frame");
         match frame.kind {
-            EventKind::SessionEnded { reason } => assert_eq!(reason, "response.completed"),
-            _ => panic!("expected session_ended"),
+            EventKind::ProviderEvent {
+                status,
+                event_name,
+                data,
+                ..
+            } => {
+                assert_eq!(status, ProviderEventStatus::Event);
+                assert_eq!(event_name.as_deref(), Some("response.completed"));
+                let data = data.expect("data");
+                assert_eq!(
+                    data.get("type").and_then(|v| v.as_str()),
+                    Some("response.completed")
+                );
+            }
+            _ => panic!("expected provider_event"),
         }
     }
 
     #[test]
-    fn done_sentinel_emits_end_once() {
+    fn done_sentinel_maps_to_provider_frame() {
         let done = ParsedEvent {
             kind: ParsedEventKind::Done,
             event: None,
@@ -351,23 +363,48 @@ mod tests {
             response_errors: Vec::new(),
         };
 
-        let delta = ParsedEvent {
-            kind: ParsedEventKind::Event,
-            event: Some("response.output_text.delta".to_string()),
-            raw: "{\"type\":\"response.output_text.delta\",\"delta\":\"late\"}".to_string(),
-            data: Some(serde_json::json!({
-                "type": "response.output_text.delta",
-                "delta": "late"
-            })),
-            errors: Vec::new(),
+        let mut mapper = EventFrameMapper::new("session-1");
+        let frame = mapper.map(&done).expect("frame");
+        match frame.kind {
+            EventKind::ProviderEvent {
+                status, raw, data, ..
+            } => {
+                assert_eq!(status, ProviderEventStatus::Done);
+                assert_eq!(raw.as_deref(), Some("[DONE]"));
+                assert!(data.is_none());
+            }
+            _ => panic!("expected provider_event"),
+        }
+    }
+
+    #[test]
+    fn invalid_json_maps_to_provider_frame() {
+        let invalid = ParsedEvent {
+            kind: ParsedEventKind::InvalidJson,
+            event: Some("response.created".to_string()),
+            raw: "{not json}".to_string(),
+            data: None,
+            errors: vec!["oops".to_string()],
             response_errors: Vec::new(),
         };
 
         let mut mapper = EventFrameMapper::new("session-1");
-        let first = mapper.map(&done);
-        let second = mapper.map(&delta);
-        assert!(first.is_some());
-        assert!(second.is_none());
+        let frame = mapper.map(&invalid).expect("frame");
+        match frame.kind {
+            EventKind::ProviderEvent {
+                status,
+                raw,
+                data,
+                errors,
+                ..
+            } => {
+                assert_eq!(status, ProviderEventStatus::InvalidJson);
+                assert_eq!(raw.as_deref(), Some("{not json}"));
+                assert!(data.is_none());
+                assert_eq!(errors, vec!["oops".to_string()]);
+            }
+            _ => panic!("expected provider_event"),
+        }
     }
 
     #[test]

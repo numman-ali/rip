@@ -5,6 +5,11 @@ Purpose
 - The human operator is C-suite level and will not read code or docs.
 - All coordination happens through chat; be concise, decision‑focused, and ask for validation before moving on.
 
+Core directive: Open Responses coverage
+- Implement full, first-class support for the entire Open Responses spec (no minimal/partial mappings).
+- Before changing provider logic, review the split schemas in `temp/openresponses/schema` and capture findings in `temp/docs`.
+- Never drop fields/events; preserve full fidelity into internal frames.
+
 Operator intent (non‑negotiables)
 - Build the fastest coding‑agent harness possible.
 - Modular, pluggable, and testable by default.
