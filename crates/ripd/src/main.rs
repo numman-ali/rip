@@ -23,6 +23,7 @@ struct AppState {
     sessions: Arc<Mutex<HashMap<String, SessionHandle>>>,
     event_log: Arc<EventLog>,
     snapshot_dir: Arc<std::path::PathBuf>,
+    runtime: Arc<Runtime>,
 }
 
 #[derive(Clone)]
@@ -47,6 +48,7 @@ async fn main() {
         sessions: Arc::new(Mutex::new(HashMap::new())),
         event_log: Arc::new(EventLog::new(data_dir().join("events.jsonl")).expect("event log")),
         snapshot_dir: Arc::new(data_dir().join("snapshots")),
+        runtime: Arc::new(Runtime::new()),
     };
 
     let app = Router::new()
@@ -102,9 +104,9 @@ async fn send_input(
 
     let event_log = state.event_log.clone();
     let snapshot_dir = state.snapshot_dir.clone();
+    let runtime = state.runtime.clone();
 
     tokio::spawn(async move {
-        let runtime = Runtime::new();
         let mut session = runtime.start_session(payload.input);
         while let Some(event) = session.next_event() {
             let _ = sender.send(event.clone());
