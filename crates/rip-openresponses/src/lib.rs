@@ -3,8 +3,8 @@ use once_cell::sync::Lazy;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-const OPENAPI_URI: &str = "urn:openresponses:openapi";
 const SPLIT_COMPONENTS_URI_PREFIX: &str = "https://openresponses.local/components/schemas/";
+const SPLIT_PATHS_URI: &str = "https://openresponses.local/paths/responses.json";
 
 static OPENAPI: Lazy<Value> = Lazy::new(|| {
     let raw = include_str!("../../../schemas/openresponses/openapi.json");
@@ -16,20 +16,29 @@ static SPLIT_COMPONENTS: Lazy<BTreeMap<String, Value>> = Lazy::new(|| {
     serde_json::from_str(raw).expect("split_components.json valid")
 });
 
+static SPLIT_PATHS_RESPONSES: Lazy<Value> = Lazy::new(|| {
+    let raw = include_str!("../../../schemas/openresponses/paths_responses.json");
+    serde_json::from_str(raw).expect("paths_responses.json valid")
+});
+
 static STREAM_EVENT_TYPES: Lazy<Vec<String>> = Lazy::new(|| {
     let raw = include_str!("../../../schemas/openresponses/streaming_event_types.json");
     serde_json::from_str(raw).expect("streaming_event_types.json valid")
 });
 
 static STREAM_SCHEMA: Lazy<Value> =
-    Lazy::new(|| extract_streaming_schema().expect("streaming event schema not found"));
+    Lazy::new(|| extract_split_streaming_schema().expect("split streaming event schema not found"));
 
 static RESPONSE_SCHEMA: Lazy<Value> = Lazy::new(|| {
-    extract_component_schema("ResponseResource").expect("ResponseResource schema not found")
+    split_component_schema("ResponseResource.json")
+        .cloned()
+        .expect("ResponseResource schema not found")
 });
 
 static CREATE_RESPONSE_SCHEMA: Lazy<Value> = Lazy::new(|| {
-    extract_component_schema("CreateResponseBody").expect("CreateResponseBody schema not found")
+    split_component_schema("CreateResponseBody.json")
+        .cloned()
+        .expect("CreateResponseBody schema not found")
 });
 
 static TOOL_PARAM_SCHEMA: Lazy<Value> = Lazy::new(|| {
@@ -45,33 +54,22 @@ static TOOL_CHOICE_SCHEMA: Lazy<Value> = Lazy::new(|| {
 });
 
 static ITEM_PARAM_SCHEMA: Lazy<Value> = Lazy::new(|| {
-    let mut schema = extract_component_schema("ItemParam").expect("ItemParam schema not found");
+    let mut schema = split_component_schema("ItemParam.json")
+        .cloned()
+        .expect("ItemParam schema not found");
     if let Some(obj) = schema.as_object_mut() {
         obj.remove("discriminator");
     }
     schema
 });
 
-static STREAM_VALIDATOR: Lazy<JSONSchema> = Lazy::new(|| {
-    JSONSchema::options()
-        .with_document(OPENAPI_URI.to_string(), OPENAPI.clone())
-        .compile(&STREAM_SCHEMA)
-        .expect("compile streaming schema")
-});
+static STREAM_VALIDATOR: Lazy<JSONSchema> = Lazy::new(compile_split_stream_schema);
 
-static RESPONSE_VALIDATOR: Lazy<JSONSchema> = Lazy::new(|| {
-    JSONSchema::options()
-        .with_document(OPENAPI_URI.to_string(), OPENAPI.clone())
-        .compile(&RESPONSE_SCHEMA)
-        .expect("compile response schema")
-});
+static RESPONSE_VALIDATOR: Lazy<JSONSchema> =
+    Lazy::new(|| compile_split_schema("ResponseResource.json"));
 
-static CREATE_RESPONSE_VALIDATOR: Lazy<JSONSchema> = Lazy::new(|| {
-    JSONSchema::options()
-        .with_document(OPENAPI_URI.to_string(), OPENAPI.clone())
-        .compile(&CREATE_RESPONSE_SCHEMA)
-        .expect("compile create response schema")
-});
+static CREATE_RESPONSE_VALIDATOR: Lazy<JSONSchema> =
+    Lazy::new(|| compile_split_schema("CreateResponseBody.json"));
 
 static TOOL_PARAM_VALIDATOR: Lazy<JSONSchema> =
     Lazy::new(|| compile_split_schema("ResponsesToolParam.json"));
@@ -465,11 +463,27 @@ fn compile_split_schema(name: &str) -> JSONSchema {
         .unwrap_or_else(|_| panic!("compile split schema {name}"))
 }
 
-fn extract_streaming_schema() -> Option<Value> {
-    let pointer = "/paths/~1responses/post/responses/200/content/text~1event-stream/schema";
-    OPENAPI.pointer(pointer).cloned()
+fn compile_split_stream_schema() -> JSONSchema {
+    let mut options = JSONSchema::options();
+    for (schema_name, schema) in SPLIT_COMPONENTS.iter() {
+        let uri = format!("{SPLIT_COMPONENTS_URI_PREFIX}{schema_name}");
+        options.with_document(uri, schema.clone());
+    }
+    options.with_document(SPLIT_PATHS_URI.to_string(), SPLIT_PATHS_RESPONSES.clone());
+    let root_ref = serde_json::json!({
+        "$ref": format!("{SPLIT_PATHS_URI}#/post/responses/200/content/text~1event-stream/schema")
+    });
+    options
+        .compile(&root_ref)
+        .expect("compile split streaming schema")
 }
 
+fn extract_split_streaming_schema() -> Option<Value> {
+    let pointer = "/post/responses/200/content/text~1event-stream/schema";
+    SPLIT_PATHS_RESPONSES.pointer(pointer).cloned()
+}
+
+#[cfg(test)]
 fn extract_component_schema(name: &str) -> Option<Value> {
     let pointer = format!("/components/schemas/{name}");
     OPENAPI.pointer(&pointer).cloned()
@@ -523,6 +537,21 @@ mod tests {
     fn validate_stream_event_rejects_empty() {
         let value = serde_json::json!({});
         assert!(validate_stream_event(&value).is_err());
+    }
+
+    #[test]
+    fn validate_stream_event_accepts_output_text_delta() {
+        let value = serde_json::json!({
+            "type": "response.output_text.delta",
+            "sequence_number": 1,
+            "item_id": "item_1",
+            "output_index": 0,
+            "content_index": 0,
+            "delta": "hi",
+            "logprobs": []
+        });
+        let errors = validate_stream_event(&value).err().unwrap_or_default();
+        assert!(errors.is_empty(), "errors: {errors:?}");
     }
 
     #[test]
@@ -1060,7 +1089,7 @@ mod tests {
         let schema =
             extract_component_schema("UserMessageItemParam").expect("UserMessageItemParam schema");
         let validator = JSONSchema::options()
-            .with_document(OPENAPI_URI.to_string(), OPENAPI.clone())
+            .with_document("urn:openresponses:openapi".to_string(), OPENAPI.clone())
             .compile(&schema)
             .expect("compile user message schema");
         let value = serde_json::json!({
