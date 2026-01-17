@@ -522,6 +522,14 @@ mod tests {
         response
     }
 
+    fn response_with_output(items: Vec<Value>) -> Value {
+        let mut response = fixture_response_resource();
+        if let Value::Object(map) = &mut response {
+            map.insert("output".to_string(), Value::Array(items));
+        }
+        response
+    }
+
     #[test]
     fn types_list_is_non_empty() {
         assert!(!allowed_stream_event_types().is_empty());
@@ -695,6 +703,44 @@ mod tests {
             let errors = validate_response_resource(&value).err().unwrap_or_default();
             assert!(errors.is_empty(), "errors: {errors:?} for {tool}");
         }
+    }
+
+    #[test]
+    fn validate_response_resource_accepts_mcp_list_tools_output() {
+        let item = serde_json::json!({
+            "type": "mcp_list_tools",
+            "id": "list_1",
+            "server_label": "srv",
+            "tools": [
+                {
+                    "name": "tool_a",
+                    "description": null,
+                    "input_schema": {},
+                    "annotations": null
+                }
+            ]
+        });
+        let value = response_with_output(vec![item]);
+        let errors = validate_response_resource(&value).err().unwrap_or_default();
+        assert!(errors.is_empty(), "errors: {errors:?}");
+    }
+
+    #[test]
+    fn validate_memory_tool_param_schema() {
+        let schema = compile_split_schema("MemoryToolParam.json");
+        let value = serde_json::json!({
+            "type": "memory",
+            "memory": "remember this",
+            "environment": {
+                "type": "local_file",
+                "root": "/tmp"
+            }
+        });
+        let errors = match schema.validate(&value) {
+            Ok(_) => Vec::new(),
+            Err(errors) => errors.map(|err| err.to_string()).collect(),
+        };
+        assert!(errors.is_empty(), "errors: {errors:?}");
     }
 
     #[test]

@@ -5,6 +5,7 @@ Summary
 - Each item should be marked complete only when mapped to internal frames and validated at the provider boundary.
 
 Progress log
+- 2026-01-17: Added MCPListTools output item validation and MemoryToolParam schema test; checklist updated.
 - 2026-01-17: Added response tool_choice/tool validation tests (fixture-based) plus auto code-interpreter tool param coverage; checklist updated.
 - 2026-01-17: Added ItemParam constructors for all input item variants in the provider request builder; checklist updated.
 - 2026-01-17: Added committed OpenResponses traceability record (`docs/03_contracts/openresponses_traceability.md`) to track upstream snapshot and sync steps.
@@ -255,7 +256,7 @@ Progress log
 - [ ] `LogProb` mapped and validated.
 - [ ] `MCPApprovalRequest` mapped and validated.
 - [ ] `MCPApprovalResponse` mapped and validated.
-- [ ] `MCPListTools` mapped and validated.
+- [x] `MCPListTools` mapped and validated.
 - [ ] `MCPRequireApprovalApiEnum` mapped and validated.
 - [ ] `MCPRequireApprovalFieldEnum` mapped and validated.
 - [ ] `MCPRequireApprovalFilterField` mapped and validated.
@@ -450,11 +451,11 @@ Progress log
 - [x] `ImageGenToolParam` mapped and validated.
 - [x] `LocalShellToolChoice` mapped and validated.
 - [x] `LocalShellToolParam` mapped and validated.
-- [ ] `MCPListToolsTool` mapped and validated.
+- [x] `MCPListToolsTool` mapped and validated.
 - [x] `MCPTool` mapped and validated.
 - [x] `MCPToolChoice` mapped and validated.
 - [x] `MCPToolParam` mapped and validated.
-- [ ] `MemoryToolParam` mapped and validated.
+- [x] `MemoryToolParam` mapped and validated.
 - [x] `ResponsesToolParam` mapped and validated.
 - [x] `SpecificCustomToolParam` mapped and validated.
 - [x] `Tool` mapped and validated.
