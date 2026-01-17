@@ -5,6 +5,7 @@ Summary
 - Each item should be marked complete only when mapped to internal frames and validated at the provider boundary.
 
 Progress log
+- 2026-01-17: Validated content block and response format schemas (input/output text, image, file, summary/refusal/reasoning text, response formats, additive patch schemas); checklist updated.
 - 2026-01-17: Validated code interpreter call/output schemas and output params; checklist updated.
 - 2026-01-17: Validated file/web search, computer, image gen, and apply_patch tool call schemas and outputs; checklist updated.
 - 2026-01-17: Added local/function shell output item validation plus shell param schema tests; checklist updated.
@@ -233,20 +234,20 @@ Progress log
 - [ ] `IncludeEnum` mapped and validated.
 - [ ] `IncompleteDetails` mapped and validated.
 - [ ] `InputFidelity` mapped and validated.
-- [ ] `InputFileContent` mapped and validated.
-- [ ] `InputFileContentParam` mapped and validated.
-- [ ] `InputImageContent` mapped and validated.
-- [ ] `InputImageContentParamAutoParam` mapped and validated.
-- [ ] `InputImageMaskContentParam` mapped and validated.
-- [ ] `InputTextContent` mapped and validated.
-- [ ] `InputTextContentParam` mapped and validated.
+- [x] `InputFileContent` mapped and validated.
+- [x] `InputFileContentParam` mapped and validated.
+- [x] `InputImageContent` mapped and validated.
+- [x] `InputImageContentParamAutoParam` mapped and validated.
+- [x] `InputImageMaskContentParam` mapped and validated.
+- [x] `InputTextContent` mapped and validated.
+- [x] `InputTextContentParam` mapped and validated.
 - [ ] `InputTokensDetails` mapped and validated.
-- [ ] `InputVideoContent` mapped and validated.
+- [x] `InputVideoContent` mapped and validated.
 - [ ] `ItemListResource` mapped and validated.
 - [ ] `ItemReferenceParam` mapped and validated.
-- [ ] `JsonObjectResponseFormat` mapped and validated.
-- [ ] `JsonSchemaResponseFormatParam` mapped and validated.
-- [ ] `JsonSchemaResponseFormat` mapped and validated.
+- [x] `JsonObjectResponseFormat` mapped and validated.
+- [x] `JsonSchemaResponseFormatParam` mapped and validated.
+- [x] `JsonSchemaResponseFormat` mapped and validated.
 - [ ] `KeyPressAction` mapped and validated.
 - [ ] `KeyPressParam` mapped and validated.
 - [ ] `LocalFileEnvironmentParam` mapped and validated.
@@ -277,8 +278,8 @@ Progress log
 - [ ] `MoveAction` mapped and validated.
 - [ ] `MoveParam` mapped and validated.
 - [ ] `OrderEnum` mapped and validated.
-- [ ] `OutputTextContent` mapped and validated.
-- [ ] `OutputTextContentParam` mapped and validated.
+- [x] `OutputTextContent` mapped and validated.
+- [x] `OutputTextContentParam` mapped and validated.
 - [ ] `OutputTokensDetails` mapped and validated.
 - [ ] `Payer` mapped and validated.
 - [ ] `PromptCacheRetentionEnum` mapped and validated.
@@ -289,10 +290,10 @@ Progress log
 - [x] `ReasoningBody` mapped and validated.
 - [ ] `ReasoningEffortEnum` mapped and validated.
 - [ ] `ReasoningParam` mapped and validated.
-- [ ] `ReasoningSummaryContentParam` mapped and validated.
+- [x] `ReasoningSummaryContentParam` mapped and validated.
 - [ ] `ReasoningSummaryEnum` mapped and validated.
-- [ ] `ReasoningTextContent` mapped and validated.
-- [ ] `RefusalContent` mapped and validated.
+- [x] `ReasoningTextContent` mapped and validated.
+- [x] `RefusalContent` mapped and validated.
 - [ ] `RefusalContentParam` mapped and validated.
 - [ ] `SafetyCheck` mapped and validated.
 - [ ] `ScreenshotAction` mapped and validated.
@@ -315,12 +316,12 @@ Progress log
 - [x] `SpecificWebSearchParam` mapped and validated.
 - [x] `SpecificWebSearchPreviewParam` mapped and validated.
 - [ ] `StreamOptionsParam` mapped and validated.
-- [ ] `SummaryTextContent` mapped and validated.
-- [ ] `TextContent` mapped and validated.
+- [x] `SummaryTextContent` mapped and validated.
+- [x] `TextContent` mapped and validated.
 - [ ] `TextField` mapped and validated.
 - [ ] `TextParam` mapped and validated.
-- [ ] `TextResponseFormat` mapped and validated.
-- [ ] `TextFormatParam` mapped and validated.
+- [x] `TextResponseFormat` mapped and validated.
+- [x] `TextFormatParam` mapped and validated.
 - [ ] `TokenCountsBody` mapped and validated.
 - [ ] `TokenCountsResource` mapped and validated.
 - [x] `ToolChoiceParam` mapped and validated.

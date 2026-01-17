@@ -539,6 +539,21 @@ mod tests {
         errors
     }
 
+    fn openapi_schema_errors(name: &str, value: Value) -> Vec<String> {
+        let root_ref = serde_json::json!({
+            "$ref": format!("urn:openresponses:openapi#/components/schemas/{name}")
+        });
+        let validator = JSONSchema::options()
+            .with_document("urn:openresponses:openapi".to_string(), OPENAPI.clone())
+            .compile(&root_ref)
+            .unwrap_or_else(|_| panic!("compile openapi schema {name}"));
+        let errors = match validator.validate(&value) {
+            Ok(_) => Vec::new(),
+            Err(errors) => errors.map(|err| err.to_string()).collect(),
+        };
+        errors
+    }
+
     #[test]
     fn types_list_is_non_empty() {
         assert!(!allowed_stream_event_types().is_empty());
@@ -1304,6 +1319,164 @@ mod tests {
                 "url": "https://example.com/img.png"
             }),
         );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+    }
+
+    #[test]
+    fn validate_content_block_schemas() {
+        let errors = schema_errors(
+            "InputTextContent.json",
+            serde_json::json!({ "type": "input_text", "text": "hi" }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "InputTextContentParam.json",
+            serde_json::json!({ "type": "input_text", "text": "hi" }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "InputImageContent.json",
+            serde_json::json!({
+                "type": "input_image",
+                "image_url": "https://example.com/image.png",
+                "file_id": null,
+                "detail": "auto"
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "InputImageContentParamAutoParam.json",
+            serde_json::json!({
+                "type": "input_image",
+                "image_url": "https://example.com/image.png",
+                "file_id": null,
+                "detail": "auto"
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors("InputImageMaskContentParam.json", serde_json::json!({}));
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "InputFileContent.json",
+            serde_json::json!({
+                "type": "input_file",
+                "file_id": "file_1",
+                "filename": "notes.txt"
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "InputFileContentParam.json",
+            serde_json::json!({
+                "type": "input_file",
+                "file_id": "file_1"
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = openapi_schema_errors(
+            "InputVideoContent",
+            serde_json::json!({
+                "type": "input_video",
+                "video_url": "https://example.com/video.mp4"
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "OutputTextContent.json",
+            serde_json::json!({
+                "type": "output_text",
+                "text": "hi",
+                "annotations": [],
+                "logprobs": []
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "OutputTextContentParam.json",
+            serde_json::json!({ "type": "output_text", "text": "hi" }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "TextContent.json",
+            serde_json::json!({ "type": "text", "text": "hi" }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "SummaryTextContent.json",
+            serde_json::json!({ "type": "summary_text", "text": "ok" }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "ReasoningTextContent.json",
+            serde_json::json!({ "type": "reasoning_text", "text": "ok" }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "RefusalContent.json",
+            serde_json::json!({ "type": "refusal", "refusal": "nope" }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "ReasoningSummaryContentParam.json",
+            serde_json::json!({ "type": "summary_text", "text": "ok" }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+    }
+
+    #[test]
+    fn validate_response_format_schemas() {
+        let errors = schema_errors(
+            "TextResponseFormat.json",
+            serde_json::json!({ "type": "text" }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "JsonObjectResponseFormat.json",
+            serde_json::json!({ "type": "json_object" }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "JsonSchemaResponseFormat.json",
+            serde_json::json!({
+                "type": "json_schema",
+                "name": "schema",
+                "description": null,
+                "schema": {},
+                "strict": false
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = openapi_schema_errors(
+            "JsonSchemaResponseFormatParam",
+            serde_json::json!({
+                "type": "json_schema",
+                "name": "schema",
+                "description": "desc",
+                "schema": {},
+                "strict": false
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors =
+            openapi_schema_errors("TextFormatParam", serde_json::json!({ "type": "text" }));
         assert!(errors.is_empty(), "errors: {errors:?}");
     }
 
