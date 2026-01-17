@@ -427,9 +427,9 @@ Legend
 | `ApproximateLocation` | no | yes | pending |
 | `ApproximateLocationParam` | no | no | pending |
 | `Billing` | no | yes | pending |
-| `ClickAction` | no | yes | pending |
-| `ClickButtonType` | no | no | pending |
-| `ClickParam` | no | no | pending |
+| `ClickAction` | no | yes | provider_event (validated) |
+| `ClickButtonType` | no | yes | provider_request (validated) |
+| `ClickParam` | no | yes | provider_request (validated) |
 | `CodeInterpreterCall` | no | yes | provider_event (validated) |
 | `CodeInterpreterCallStatus` | no | yes | pending |
 | `CodeInterpreterOutputImage` | no | yes | pending |
@@ -471,10 +471,10 @@ Legend
 | `ComputerCallOutput` | no | yes | provider_event (validated) |
 | `ComputerCallOutputStatus` | no | yes | pending |
 | `ComputerCallSafetyCheckParam` | no | no | pending |
-| `ComputerEnvironment` | no | no | pending |
-| `ComputerEnvironment1` | no | yes | pending |
-| `ComputerScreenshotContent` | no | yes | pending |
-| `ComputerScreenshotParam` | no | no | pending |
+| `ComputerEnvironment` | no | yes | provider_request (validated) |
+| `ComputerEnvironment1` | no | yes | provider_event (validated) |
+| `ComputerScreenshotContent` | no | yes | provider_event (validated) |
+| `ComputerScreenshotParam` | no | yes | provider_request (validated) |
 | `ContainerFileCitationBody` | no | yes | provider_event (validated) |
 | `ContainerFileCitationParam` | no | yes | provider_request (validated) |
 | `ContainerMemoryLimit` | no | no | pending |
@@ -482,7 +482,7 @@ Legend
 | `ContextEditDetails` | no | yes | pending |
 | `Conversation` | no | yes | pending |
 | `ConversationParam` | no | no | pending |
-| `CoordParam` | no | no | pending |
+| `CoordParam` | no | yes | provider_request (validated) |
 | `CreateImageBody15Param` | no | no | pending |
 | `CreateImageBody1MiniParam` | no | no | pending |
 | `CreateImageBody1Param` | no | no | pending |
@@ -498,18 +498,18 @@ Legend
 | `CustomToolFormat` | no | yes | pending |
 | `DeletedResponseResource` | no | no | pending |
 | `DeletedVideoResource` | no | no | pending |
-| `DetailEnum` | yes | no | pending |
-| `DoubleClickAction` | no | yes | pending |
-| `DoubleClickParam` | no | no | pending |
-| `DragAction` | no | yes | pending |
-| `DragParam` | no | no | pending |
-| `DragPoint` | no | yes | pending |
+| `DetailEnum` | yes | yes | provider_request (validated) |
+| `DoubleClickAction` | no | yes | provider_event (validated) |
+| `DoubleClickParam` | no | yes | provider_request (validated) |
+| `DragAction` | no | yes | provider_event (validated) |
+| `DragParam` | no | yes | provider_request (validated) |
+| `DragPoint` | no | yes | provider_event (validated) |
 | `EditImageBody15Param` | no | no | pending |
 | `EditImageBody1MiniParam` | no | no | pending |
 | `EditImageBody1Param` | no | no | pending |
 | `EditImageBodyChatGPTImageLatestParam` | no | no | pending |
 | `EditsBodyDallE2Param` | no | no | pending |
-| `EmptyAction` | no | yes | pending |
+| `EmptyAction` | no | yes | provider_event (validated) |
 | `EmptyModelParam` | yes | no | pending |
 | `ExcludeEnum` | no | no | pending |
 | `FileCitationBody` | no | yes | provider_event (validated) |

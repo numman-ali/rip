@@ -5,6 +5,7 @@ Summary
 - Each item should be marked complete only when mapped to internal frames and validated at the provider boundary.
 
 Progress log
+- 2026-01-17: Validated computer action + screenshot schemas (environment, click/double-click/drag, coords, screenshot content/param, detail enum, empty action); checklist updated.
 - 2026-01-17: Validated filter schemas (Filters + comparison/compound field + param variants); checklist updated.
 - 2026-01-17: Validated annotation + citation schemas (Annotation, file/url/container citations + params); checklist updated.
 - 2026-01-17: Validated content block and response format schemas (input/output text, image, file, summary/refusal/reasoning text, response formats, additive patch schemas); checklist updated.
@@ -94,9 +95,9 @@ Progress log
 - [ ] `ApproximateLocation` mapped and validated.
 - [ ] `ApproximateLocationParam` mapped and validated.
 - [ ] `Billing` mapped and validated.
-- [ ] `ClickAction` mapped and validated.
-- [ ] `ClickButtonType` mapped and validated.
-- [ ] `ClickParam` mapped and validated.
+- [x] `ClickAction` mapped and validated.
+- [x] `ClickButtonType` mapped and validated.
+- [x] `ClickParam` mapped and validated.
 - [x] `CodeInterpreterCall` mapped and validated.
 - [x] `CodeInterpreterCallStatus` mapped and validated.
 - [x] `CodeInterpreterOutputImage` mapped and validated.
@@ -138,10 +139,10 @@ Progress log
 - [x] `ComputerCallOutput` mapped and validated.
 - [x] `ComputerCallOutputStatus` mapped and validated.
 - [x] `ComputerCallSafetyCheckParam` mapped and validated.
-- [ ] `ComputerEnvironment` mapped and validated.
-- [ ] `ComputerEnvironment1` mapped and validated.
-- [ ] `ComputerScreenshotContent` mapped and validated.
-- [ ] `ComputerScreenshotParam` mapped and validated.
+- [x] `ComputerEnvironment` mapped and validated.
+- [x] `ComputerEnvironment1` mapped and validated.
+- [x] `ComputerScreenshotContent` mapped and validated.
+- [x] `ComputerScreenshotParam` mapped and validated.
 - [x] `ContainerFileCitationBody` mapped and validated.
 - [x] `ContainerFileCitationParam` mapped and validated.
 - [ ] `ContainerMemoryLimit` mapped and validated.
@@ -149,7 +150,7 @@ Progress log
 - [ ] `ContextEditDetails` mapped and validated.
 - [ ] `Conversation` mapped and validated.
 - [ ] `ConversationParam` mapped and validated.
-- [ ] `CoordParam` mapped and validated.
+- [x] `CoordParam` mapped and validated.
 - [ ] `CreateImageBody15Param` mapped and validated.
 - [ ] `CreateImageBody1MiniParam` mapped and validated.
 - [ ] `CreateImageBody1Param` mapped and validated.
@@ -165,18 +166,18 @@ Progress log
 - [ ] `CustomToolFormat` mapped and validated.
 - [ ] `DeletedResponseResource` mapped and validated.
 - [ ] `DeletedVideoResource` mapped and validated.
-- [ ] `DetailEnum` mapped and validated.
-- [ ] `DoubleClickAction` mapped and validated.
-- [ ] `DoubleClickParam` mapped and validated.
-- [ ] `DragAction` mapped and validated.
-- [ ] `DragParam` mapped and validated.
-- [ ] `DragPoint` mapped and validated.
+- [x] `DetailEnum` mapped and validated.
+- [x] `DoubleClickAction` mapped and validated.
+- [x] `DoubleClickParam` mapped and validated.
+- [x] `DragAction` mapped and validated.
+- [x] `DragParam` mapped and validated.
+- [x] `DragPoint` mapped and validated.
 - [ ] `EditImageBody15Param` mapped and validated.
 - [ ] `EditImageBody1MiniParam` mapped and validated.
 - [ ] `EditImageBody1Param` mapped and validated.
 - [ ] `EditImageBodyChatGPTImageLatestParam` mapped and validated.
 - [ ] `EditsBodyDallE2Param` mapped and validated.
-- [ ] `EmptyAction` mapped and validated.
+- [x] `EmptyAction` mapped and validated.
 - [ ] `EmptyModelParam` mapped and validated.
 - [ ] `ExcludeEnum` mapped and validated.
 - [x] `FileCitationBody` mapped and validated.

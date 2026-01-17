@@ -1703,6 +1703,88 @@ mod tests {
     }
 
     #[test]
+    fn validate_computer_action_schemas() {
+        let errors = schema_errors("ComputerEnvironment.json", serde_json::json!("browser"));
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors("ComputerEnvironment1.json", serde_json::json!("ubuntu"));
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "ComputerScreenshotContent.json",
+            serde_json::json!({
+                "type": "computer_screenshot",
+                "image_url": "https://example.com/s.png",
+                "file_id": null
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "ComputerScreenshotParam.json",
+            serde_json::json!({
+                "type": "computer_screenshot",
+                "image_url": "https://example.com/s.png",
+                "file_id": null,
+                "detail": "auto"
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors("DetailEnum.json", serde_json::json!("auto"));
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors("ClickButtonType.json", serde_json::json!("left"));
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "ClickAction.json",
+            serde_json::json!({ "type": "click", "button": "left", "x": 10, "y": 20 }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "ClickParam.json",
+            serde_json::json!({ "type": "click", "button": "left", "x": 10, "y": 20 }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "DoubleClickAction.json",
+            serde_json::json!({ "type": "double_click", "x": 10, "y": 20 }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "DoubleClickParam.json",
+            serde_json::json!({ "type": "double_click", "x": 10, "y": 20 }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let coord = serde_json::json!({ "x": 1, "y": 2 });
+        let errors = schema_errors("CoordParam.json", coord.clone());
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors("DragPoint.json", coord.clone());
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "DragAction.json",
+            serde_json::json!({ "type": "drag", "path": [coord.clone()] }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "DragParam.json",
+            serde_json::json!({ "type": "drag", "path": [coord] }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors("EmptyAction.json", serde_json::json!({}));
+        assert!(errors.is_empty(), "errors: {errors:?}");
+    }
+
+    #[test]
     fn validate_response_format_schemas() {
         let errors = schema_errors(
             "TextResponseFormat.json",
