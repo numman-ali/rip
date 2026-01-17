@@ -5,6 +5,7 @@ Summary
 - Each item should be marked complete only when mapped to internal frames and validated at the provider boundary.
 
 Progress log
+- 2026-01-17: Switched tool/tool_choice validation to split-schema JSONSchema (optional fields + nested structures validated); vendored split components in `schemas/openresponses/split_components.json`.
 - 2026-01-17: Provider adapter emits `output_text_delta` frames for `response.output_text.delta` events; stream fixture/tests updated.
 - 2026-01-17: Checked bundled validation coverage for Error/ErrorPayload, CreateResponseBody, ResponseResource, and ItemField; aligned streaming-event schema-index statuses with validated vs pending coverage.
 - 2026-01-17: Marked bundled streaming events and output item schemas as mapped/validated in the checklist (remaining events/items pending split-schema validation).

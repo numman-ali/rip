@@ -1,12 +1,19 @@
 use jsonschema::JSONSchema;
 use once_cell::sync::Lazy;
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 const OPENAPI_URI: &str = "urn:openresponses:openapi";
+const SPLIT_COMPONENTS_URI_PREFIX: &str = "https://openresponses.local/components/schemas/";
 
 static OPENAPI: Lazy<Value> = Lazy::new(|| {
     let raw = include_str!("../../../schemas/openresponses/openapi.json");
     serde_json::from_str(raw).expect("openapi.json valid")
+});
+
+static SPLIT_COMPONENTS: Lazy<BTreeMap<String, Value>> = Lazy::new(|| {
+    let raw = include_str!("../../../schemas/openresponses/split_components.json");
+    serde_json::from_str(raw).expect("split_components.json valid")
 });
 
 static STREAM_EVENT_TYPES: Lazy<Vec<String>> = Lazy::new(|| {
@@ -26,11 +33,15 @@ static CREATE_RESPONSE_SCHEMA: Lazy<Value> = Lazy::new(|| {
 });
 
 static TOOL_PARAM_SCHEMA: Lazy<Value> = Lazy::new(|| {
-    extract_component_schema("ResponsesToolParam").expect("ResponsesToolParam schema not found")
+    split_component_schema("ResponsesToolParam.json")
+        .cloned()
+        .expect("ResponsesToolParam schema not found")
 });
 
 static TOOL_CHOICE_SCHEMA: Lazy<Value> = Lazy::new(|| {
-    extract_component_schema("ToolChoiceParam").expect("ToolChoiceParam schema not found")
+    split_component_schema("ToolChoiceParam.json")
+        .cloned()
+        .expect("ToolChoiceParam schema not found")
 });
 
 static ITEM_PARAM_SCHEMA: Lazy<Value> = Lazy::new(|| {
@@ -62,8 +73,15 @@ static CREATE_RESPONSE_VALIDATOR: Lazy<JSONSchema> = Lazy::new(|| {
         .expect("compile create response schema")
 });
 
-const TOOL_CHOICE_VALUES: [&str; 3] = ["auto", "required", "none"];
-const COMPUTER_ENVIRONMENTS: [&str; 4] = ["windows", "mac", "linux", "browser"];
+static TOOL_PARAM_VALIDATOR: Lazy<JSONSchema> =
+    Lazy::new(|| compile_split_schema("ResponsesToolParam.json"));
+
+static TOOL_CHOICE_VALIDATOR: Lazy<JSONSchema> =
+    Lazy::new(|| compile_split_schema("ToolChoiceParam.json"));
+
+static SPECIFIC_TOOL_CHOICE_VALIDATOR: Lazy<JSONSchema> =
+    Lazy::new(|| compile_split_schema("SpecificToolChoiceParam.json"));
+
 const MESSAGE_ROLES: [&str; 4] = ["assistant", "developer", "system", "user"];
 
 pub fn openapi() -> &'static Value {
@@ -155,173 +173,24 @@ pub fn validate_create_response_body(value: &Value) -> Result<(), Vec<String>> {
 }
 
 pub fn validate_responses_tool_param(value: &Value) -> Result<(), Vec<String>> {
-    let mut errors = Vec::new();
-    let map = match value.as_object() {
-        Some(map) => map,
-        None => return Err(vec!["ResponsesToolParam must be an object".to_string()]),
-    };
-
-    let tool_type = match map.get("type").and_then(|value| value.as_str()) {
-        Some(tool_type) => tool_type,
-        None => {
-            errors.push("ResponsesToolParam.type must be a string".to_string());
-            return Err(errors);
-        }
-    };
-
-    match tool_type {
-        "function" => {
-            require_string_field(map, "name", "ResponsesToolParam(function)", &mut errors);
-        }
-        "custom" => {
-            require_string_field(map, "name", "ResponsesToolParam(custom)", &mut errors);
-        }
-        "mcp" => {
-            require_string_field(map, "server_label", "ResponsesToolParam(mcp)", &mut errors);
-        }
-        "file_search" => {
-            let context = "ResponsesToolParam(file_search)";
-            match require_field(map, "vector_store_ids", context, &mut errors) {
-                Some(Value::Array(items)) => {
-                    if items.is_empty() {
-                        errors.push(format!("{context}.vector_store_ids must not be empty"));
-                    }
-                    for (idx, item) in items.iter().enumerate() {
-                        if !item.is_string() {
-                            errors.push(format!(
-                                "{context}.vector_store_ids[{idx}] must be a string"
-                            ));
-                        }
-                    }
-                }
-                Some(_) => errors.push(format!("{context}.vector_store_ids must be an array")),
-                None => {}
-            }
-        }
-        "code_interpreter" => {
-            let context = "ResponsesToolParam(code_interpreter)";
-            match require_field(map, "container", context, &mut errors) {
-                Some(Value::String(_)) => {}
-                Some(Value::Object(container)) => {
-                    match container.get("type").and_then(|value| value.as_str()) {
-                        Some("auto") => {}
-                        Some(_) => {
-                            errors.push(format!("{context}.container.type must be \"auto\""))
-                        }
-                        None => errors.push(format!("{context}.container.type must be a string")),
-                    }
-                }
-                Some(_) => errors.push(format!("{context}.container must be a string or object")),
-                None => {}
-            }
-        }
-        "computer-preview" | "computer_use_preview" => {
-            let context = format!("ResponsesToolParam({tool_type})");
-            require_positive_integer_field(map, "display_width", &context, &mut errors);
-            require_positive_integer_field(map, "display_height", &context, &mut errors);
-            if let Some(value) = require_field(map, "environment", &context, &mut errors) {
-                match value.as_str() {
-                    Some(env) => {
-                        if !COMPUTER_ENVIRONMENTS.contains(&env) {
-                            errors.push(format!(
-                                "{context}.environment must be one of {}",
-                                COMPUTER_ENVIRONMENTS.join(", ")
-                            ));
-                        }
-                    }
-                    None => errors.push(format!("{context}.environment must be a string")),
-                }
-            }
-        }
-        "web_search"
-        | "web_search_2025_08_26"
-        | "web_search_ga"
-        | "web_search_preview"
-        | "web_search_preview_2025_03_11"
-        | "image_generation"
-        | "local_shell"
-        | "shell"
-        | "apply_patch" => {}
-        other => errors.push(format!(
-            "ResponsesToolParam.type has unsupported value \"{other}\""
-        )),
-    }
-
-    if errors.is_empty() {
-        Ok(())
-    } else {
-        Err(errors)
+    match TOOL_PARAM_VALIDATOR.validate(value) {
+        Ok(_) => Ok(()),
+        Err(errors) => Err(errors.map(|e| e.to_string()).collect()),
     }
 }
 
 pub fn validate_tool_choice_param(value: &Value) -> Result<(), Vec<String>> {
-    let mut errors = Vec::new();
-    match value {
-        Value::String(choice) => {
-            if !TOOL_CHOICE_VALUES.contains(&choice.as_str()) {
-                errors.push(format!(
-                    "ToolChoiceParam must be one of {}",
-                    TOOL_CHOICE_VALUES.join(", ")
-                ));
-            }
-        }
-        Value::Object(map) => {
-            let choice_type = match map.get("type").and_then(|value| value.as_str()) {
-                Some(choice_type) => choice_type,
-                None => {
-                    errors.push("ToolChoiceParam.type must be a string".to_string());
-                    return Err(errors);
-                }
-            };
-            if choice_type == "allowed_tools" {
-                let context = "ToolChoiceParam(allowed_tools)";
-                match require_field(map, "tools", context, &mut errors) {
-                    Some(Value::Array(items)) => {
-                        if items.is_empty() {
-                            errors.push(format!("{context}.tools must not be empty"));
-                        }
-                        for (idx, item) in items.iter().enumerate() {
-                            match validate_specific_tool_choice(item) {
-                                Ok(_) => {}
-                                Err(errs) => errors.extend(
-                                    errs.into_iter()
-                                        .map(|err| format!("{context}.tools[{idx}]: {err}")),
-                                ),
-                            }
-                        }
-                    }
-                    Some(_) => errors.push(format!("{context}.tools must be an array")),
-                    None => {}
-                }
-                if let Some(mode) = map.get("mode") {
-                    match mode.as_str() {
-                        Some(value) => {
-                            if !TOOL_CHOICE_VALUES.contains(&value) {
-                                errors.push(format!(
-                                    "{context}.mode must be one of {}",
-                                    TOOL_CHOICE_VALUES.join(", ")
-                                ));
-                            }
-                        }
-                        None => errors.push(format!("{context}.mode must be a string")),
-                    }
-                }
-            } else if let Err(errs) = validate_specific_tool_choice(value) {
-                errors.extend(errs);
-            }
-        }
-        _ => errors.push("ToolChoiceParam must be a string or object".to_string()),
-    }
-
-    if errors.is_empty() {
-        Ok(())
-    } else {
-        Err(errors)
+    match TOOL_CHOICE_VALIDATOR.validate(value) {
+        Ok(_) => Ok(()),
+        Err(errors) => Err(errors.map(|e| e.to_string()).collect()),
     }
 }
 
 pub fn validate_specific_tool_choice_param(value: &Value) -> Result<(), Vec<String>> {
-    validate_specific_tool_choice(value)
+    match SPECIFIC_TOOL_CHOICE_VALIDATOR.validate(value) {
+        Ok(_) => Ok(()),
+        Err(errors) => Err(errors.map(|e| e.to_string()).collect()),
+    }
 }
 
 pub fn validate_item_param(value: &Value) -> Result<(), Vec<String>> {
@@ -512,28 +381,6 @@ fn require_string_field(
     }
 }
 
-fn require_positive_integer_field(
-    map: &serde_json::Map<String, Value>,
-    field: &str,
-    context: &str,
-    errors: &mut Vec<String>,
-) {
-    match require_field(map, field, context, errors) {
-        Some(Value::Number(num)) => {
-            let ok = match (num.as_i64(), num.as_u64()) {
-                (Some(value), _) => value > 0,
-                (None, Some(value)) => value > 0,
-                (None, None) => false,
-            };
-            if !ok {
-                errors.push(format!("{context}.{field} must be a positive integer"));
-            }
-        }
-        Some(_) => errors.push(format!("{context}.{field} must be an integer")),
-        None => {}
-    }
-}
-
 fn require_array_field(
     map: &serde_json::Map<String, Value>,
     field: &str,
@@ -600,56 +447,22 @@ fn validate_item_reference(
     }
 }
 
-fn validate_specific_tool_choice(value: &Value) -> Result<(), Vec<String>> {
-    let mut errors = Vec::new();
-    let map = match value.as_object() {
-        Some(map) => map,
-        None => return Err(vec!["SpecificToolChoiceParam must be an object".to_string()]),
-    };
-    let tool_type = match map.get("type").and_then(|value| value.as_str()) {
-        Some(tool_type) => tool_type,
-        None => {
-            errors.push("SpecificToolChoiceParam.type must be a string".to_string());
-            return Err(errors);
-        }
-    };
+fn split_component_schema(name: &str) -> Option<&'static Value> {
+    SPLIT_COMPONENTS.get(name)
+}
 
-    match tool_type {
-        "function" => require_string_field(
-            map,
-            "name",
-            "SpecificToolChoiceParam(function)",
-            &mut errors,
-        ),
-        "custom" => {
-            require_string_field(map, "name", "SpecificToolChoiceParam(custom)", &mut errors)
-        }
-        "mcp" => require_string_field(
-            map,
-            "server_label",
-            "SpecificToolChoiceParam(mcp)",
-            &mut errors,
-        ),
-        "file_search"
-        | "web_search"
-        | "web_search_preview"
-        | "image_generation"
-        | "computer-preview"
-        | "computer_use_preview"
-        | "code_interpreter"
-        | "local_shell"
-        | "shell"
-        | "apply_patch" => {}
-        other => errors.push(format!(
-            "SpecificToolChoiceParam.type has unsupported value \"{other}\""
-        )),
+fn compile_split_schema(name: &str) -> JSONSchema {
+    let mut options = JSONSchema::options();
+    for (schema_name, schema) in SPLIT_COMPONENTS.iter() {
+        let uri = format!("{SPLIT_COMPONENTS_URI_PREFIX}{schema_name}");
+        options.with_document(uri, schema.clone());
     }
-
-    if errors.is_empty() {
-        Ok(())
-    } else {
-        Err(errors)
-    }
+    let root_ref = serde_json::json!({
+        "$ref": format!("{SPLIT_COMPONENTS_URI_PREFIX}{name}")
+    });
+    options
+        .compile(&root_ref)
+        .unwrap_or_else(|_| panic!("compile split schema {name}"))
 }
 
 fn extract_streaming_schema() -> Option<Value> {
@@ -823,6 +636,36 @@ mod tests {
     #[test]
     fn validate_tool_param_rejects_invalid() {
         let value = serde_json::json!(42);
+        assert!(validate_responses_tool_param(&value).is_err());
+    }
+
+    #[test]
+    fn validate_tool_param_rejects_invalid_optional_fields() {
+        let value = serde_json::json!({
+            "type": "file_search",
+            "vector_store_ids": ["vs_1"],
+            "max_num_results": "nope"
+        });
+        assert!(validate_responses_tool_param(&value).is_err());
+
+        let value = serde_json::json!({
+            "type": "custom",
+            "name": "custom_tool",
+            "format": {
+                "type": "grammar",
+                "syntax": "bad",
+                "definition": "start: /[a-z]+/"
+            }
+        });
+        assert!(validate_responses_tool_param(&value).is_err());
+
+        let value = serde_json::json!({
+            "type": "web_search",
+            "user_location": {
+                "type": "approximate",
+                "country": 123
+            }
+        });
         assert!(validate_responses_tool_param(&value).is_err());
     }
 
@@ -1196,48 +1039,20 @@ mod tests {
             "errors: {errors:?}"
         );
 
-        let errors = validate_specific_tool_choice(&serde_json::json!({ "name": "tool" }))
+        let errors = validate_specific_tool_choice_param(&serde_json::json!({ "name": "tool" }))
             .err()
             .unwrap_or_default();
-        assert!(
-            errors
-                .iter()
-                .any(|err| err.contains("SpecificToolChoiceParam.type must be a string")),
-            "errors: {errors:?}"
-        );
+        assert!(!errors.is_empty(), "errors: {errors:?}");
 
-        let errors = validate_specific_tool_choice(&serde_json::json!({ "type": "unknown" }))
+        let errors = validate_specific_tool_choice_param(&serde_json::json!({ "type": "unknown" }))
             .err()
             .unwrap_or_default();
-        assert!(
-            errors.iter().any(|err| err.contains("unsupported value")),
-            "errors: {errors:?}"
-        );
+        assert!(!errors.is_empty(), "errors: {errors:?}");
 
-        let errors = validate_specific_tool_choice(&serde_json::json!("nope"))
+        let errors = validate_specific_tool_choice_param(&serde_json::json!("nope"))
             .err()
             .unwrap_or_default();
-        assert!(
-            errors
-                .iter()
-                .any(|err| err.contains("SpecificToolChoiceParam must be an object")),
-            "errors: {errors:?}"
-        );
-
-        let value = serde_json::json!({ "display_width": 0 });
-        let mut errors = Vec::new();
-        require_positive_integer_field(
-            value.as_object().unwrap(),
-            "display_width",
-            "Test",
-            &mut errors,
-        );
-        assert!(
-            errors
-                .iter()
-                .any(|err| err.contains("must be a positive integer")),
-            "errors: {errors:?}"
-        );
+        assert!(!errors.is_empty(), "errors: {errors:?}");
     }
 
     #[test]

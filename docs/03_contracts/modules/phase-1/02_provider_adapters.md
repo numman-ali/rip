@@ -3,7 +3,7 @@
 Summary
 - Translate between internal frames and provider protocol.
 - Open Responses used only at the boundary.
-- Canonical schema source is the bundled OpenAPI JSON synced into this repo.
+- Canonical schema source is the bundled OpenAPI JSON synced into this repo; split component schemas are vendored for full tool validation.
 - SSE parsing uses a deterministic decoder; `[DONE]` is treated as terminal.
 
 Inputs

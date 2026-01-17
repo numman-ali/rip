@@ -35,7 +35,8 @@ Implementation status (current)
 - Bundled OpenAPI validates 24/58 streaming event schemas and 4/23 output item variants; remaining streaming events and output items are pending validation until the split schemas are integrated.
 - Provider adapter emits `output_text_delta` frames for `response.output_text.delta` events alongside `provider_event` frames.
 - Provider request builder validates CreateResponseBody payloads (errors captured; payload preserved); tool fields use per-variant validation to avoid jsonschema oneOf failures; request sending is not wired yet.
-- Tool schema validation is available for all `ResponsesToolParam` and `ToolChoiceParam` variants using manual required-field checks; bundled OpenAPI only includes function tool variants.
+- Tool schema validation uses split component schemas for `ResponsesToolParam` and `ToolChoiceParam`, validating optional fields and nested structures; bundled OpenAPI still only includes function tool variants.
+- Split component schemas are vendored in `schemas/openresponses/split_components.json` for tool validation.
 - Input item variants are not yet mapped to internal request frames (pending).
 - ItemParam validation covers all input variants using manual required-field checks (message role/item reference handling included); internal request-frame mapping is still pending.
 - Split schema inventory and SSE event type map captured in `temp/docs/openresponses/` and reflected in the tables below.
