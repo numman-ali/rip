@@ -37,6 +37,7 @@ Implementation status (current)
 - Provider adapter validates streaming events against the split `paths/responses.json` schema and embedded `response` objects against split component schemas.
 - Split schemas validate all 58 streaming event variants and 23 output item variants; bundled OpenAPI remains partial (24/58 streaming events, 4/23 output items).
 - Provider adapter emits `output_text_delta` frames for `response.output_text.delta` events alongside `provider_event` frames.
+- ResponseResource validation tests cover tool_choice variants (including allowed_tools + value enum) and Tool union variants.
 - Provider request builder validates CreateResponseBody payloads (errors captured; payload preserved); tool fields use per-variant validation to avoid jsonschema oneOf failures; request sending is not wired yet.
 - Tool schema validation uses split component schemas for `ResponsesToolParam` and `ToolChoiceParam`, validating optional fields and nested structures; bundled OpenAPI still only includes function tool variants.
 - Split component schemas are vendored in `schemas/openresponses/split_components.json`; split paths schema is vendored in `schemas/openresponses/paths_responses.json`.

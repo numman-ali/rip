@@ -361,6 +361,24 @@ impl ToolParam {
         Self::new(Value::Object(obj))
     }
 
+    pub fn code_interpreter_auto(
+        file_ids: Option<Vec<String>>,
+        memory_limit: Option<String>,
+    ) -> Self {
+        let mut container = Map::new();
+        container.insert("type".to_string(), Value::String("auto".to_string()));
+        if let Some(file_ids) = file_ids {
+            container.insert(
+                "file_ids".to_string(),
+                Value::Array(file_ids.into_iter().map(Value::String).collect()),
+            );
+        }
+        if let Some(memory_limit) = memory_limit {
+            container.insert("memory_limit".to_string(), Value::String(memory_limit));
+        }
+        Self::code_interpreter(Value::Object(container))
+    }
+
     pub fn custom(name: impl Into<String>) -> Self {
         let mut obj = Map::new();
         obj.insert("type".to_string(), Value::String("custom".to_string()));

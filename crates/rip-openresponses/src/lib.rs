@@ -493,6 +493,35 @@ fn extract_component_schema(name: &str) -> Option<Value> {
 mod tests {
     use super::*;
 
+    fn fixture_response_resource() -> Value {
+        let raw = include_str!(
+            "../../rip-provider-openresponses/fixtures/openresponses/stream_all.jsonl"
+        );
+        for line in raw.lines() {
+            let value: Value = serde_json::from_str(line).expect("fixture line must be valid json");
+            if let Some(response) = value.get("response") {
+                return response.clone();
+            }
+        }
+        panic!("stream fixture missing response resource");
+    }
+
+    fn response_with_tool_choice(choice: Value) -> Value {
+        let mut response = fixture_response_resource();
+        if let Value::Object(map) = &mut response {
+            map.insert("tool_choice".to_string(), choice);
+        }
+        response
+    }
+
+    fn response_with_tools(tools: Vec<Value>) -> Value {
+        let mut response = fixture_response_resource();
+        if let Value::Object(map) = &mut response {
+            map.insert("tools".to_string(), Value::Array(tools));
+        }
+        response
+    }
+
     #[test]
     fn types_list_is_non_empty() {
         assert!(!allowed_stream_event_types().is_empty());
@@ -558,6 +587,114 @@ mod tests {
     fn validate_response_resource_rejects_empty() {
         let value = serde_json::json!({});
         assert!(validate_response_resource(&value).is_err());
+    }
+
+    #[test]
+    fn validate_response_resource_accepts_fixture() {
+        let value = fixture_response_resource();
+        let errors = validate_response_resource(&value).err().unwrap_or_default();
+        assert!(errors.is_empty(), "errors: {errors:?}");
+    }
+
+    #[test]
+    fn validate_response_resource_accepts_tool_choice_variants() {
+        let variants = vec![
+            serde_json::json!({ "type": "code_interpreter" }),
+            serde_json::json!({ "type": "function" }),
+            serde_json::json!({ "type": "mcp", "server_label": "srv", "name": null }),
+            serde_json::json!({ "type": "file_search" }),
+            serde_json::json!({ "type": "web_search_preview" }),
+            serde_json::json!({ "type": "image_generation" }),
+            serde_json::json!({ "type": "computer_use_preview" }),
+            serde_json::json!({ "type": "local_shell" }),
+            serde_json::json!({ "type": "shell" }),
+            serde_json::json!({ "type": "apply_patch" }),
+            serde_json::json!({ "type": "custom" }),
+            serde_json::json!({
+                "type": "allowed_tools",
+                "tools": [
+                    { "type": "function" }
+                ],
+                "mode": "auto"
+            }),
+            serde_json::json!("auto"),
+            serde_json::json!("required"),
+            serde_json::json!("none"),
+        ];
+
+        for choice in variants {
+            let value = response_with_tool_choice(choice.clone());
+            let errors = validate_response_resource(&value).err().unwrap_or_default();
+            assert!(errors.is_empty(), "errors: {errors:?} for {choice}");
+        }
+    }
+
+    #[test]
+    fn validate_response_resource_accepts_tool_variants() {
+        let tools = vec![
+            serde_json::json!({
+                "type": "file_search",
+                "vector_store_ids": ["vs_1"],
+                "max_num_results": 1,
+                "ranking_options": {
+                    "ranker": "auto",
+                    "score_threshold": 0.0
+                },
+                "filters": null
+            }),
+            serde_json::json!({
+                "type": "function",
+                "name": "echo",
+                "description": null,
+                "parameters": null,
+                "strict": null
+            }),
+            serde_json::json!({
+                "type": "web_search_preview",
+                "user_location": null,
+                "search_context_size": "medium"
+            }),
+            serde_json::json!({
+                "type": "mcp",
+                "server_label": "srv",
+                "server_description": null,
+                "server_url": null,
+                "headers": null,
+                "allowed_tools": null,
+                "require_approval": "always"
+            }),
+            serde_json::json!({
+                "type": "computer_use_preview",
+                "environment": "browser",
+                "display_width": 800,
+                "display_height": 600
+            }),
+            serde_json::json!({
+                "type": "image_generation",
+                "model": null,
+                "n": 1,
+                "quality": null,
+                "size": null,
+                "output_format": null,
+                "output_compression": 100,
+                "moderation": null,
+                "background": null
+            }),
+            serde_json::json!({ "type": "shell" }),
+            serde_json::json!({
+                "type": "custom",
+                "name": "custom_tool",
+                "description": null,
+                "format": null
+            }),
+            serde_json::json!({ "type": "apply_patch" }),
+        ];
+
+        for tool in tools {
+            let value = response_with_tools(vec![tool.clone()]);
+            let errors = validate_response_resource(&value).err().unwrap_or_default();
+            assert!(errors.is_empty(), "errors: {errors:?} for {tool}");
+        }
     }
 
     #[test]
@@ -628,6 +765,7 @@ mod tests {
     fn validate_tool_param_accepts_all_variants() {
         let variants = vec![
             serde_json::json!({ "type": "code_interpreter", "container": "cntr_123" }),
+            serde_json::json!({ "type": "code_interpreter", "container": { "type": "auto" } }),
             serde_json::json!({ "type": "custom", "name": "custom_tool" }),
             serde_json::json!({ "type": "web_search" }),
             serde_json::json!({ "type": "web_search_2025_08_26" }),

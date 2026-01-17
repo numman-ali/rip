@@ -5,6 +5,7 @@ Summary
 - Each item should be marked complete only when mapped to internal frames and validated at the provider boundary.
 
 Progress log
+- 2026-01-17: Added response tool_choice/tool validation tests (fixture-based) plus auto code-interpreter tool param coverage; checklist updated.
 - 2026-01-17: Added ItemParam constructors for all input item variants in the provider request builder; checklist updated.
 - 2026-01-17: Added committed OpenResponses traceability record (`docs/03_contracts/openresponses_traceability.md`) to track upstream snapshot and sync steps.
 - 2026-01-17: Validated streaming events and ResponseResource output items against split schemas (paths + components); updated fixtures/event type list to 58 events.
@@ -421,44 +422,44 @@ Progress log
 - [x] `ResponseWebSearchCallSearchingStreamingEvent` mapped and validated.
 
 ### Tool schemas
-- [ ] `AllowedToolChoice` mapped and validated.
-- [ ] `ApplyPatchTool` mapped and validated.
-- [ ] `ApplyPatchToolChoice` mapped and validated.
+- [x] `AllowedToolChoice` mapped and validated.
+- [x] `ApplyPatchTool` mapped and validated.
+- [x] `ApplyPatchToolChoice` mapped and validated.
 - [x] `ApplyPatchToolParam` mapped and validated.
-- [ ] `AutoCodeInterpreterToolParam` mapped and validated.
-- [ ] `CodeInterpreterToolChoice` mapped and validated.
+- [x] `AutoCodeInterpreterToolParam` mapped and validated.
+- [x] `CodeInterpreterToolChoice` mapped and validated.
 - [x] `CodeInterpreterToolParam` mapped and validated.
-- [ ] `ComputerToolChoice` mapped and validated.
+- [x] `ComputerToolChoice` mapped and validated.
 - [x] `ComputerToolParam` mapped and validated.
-- [ ] `ComputerUsePreviewTool` mapped and validated.
+- [x] `ComputerUsePreviewTool` mapped and validated.
 - [x] `ComputerUsePreviewToolParam` mapped and validated.
-- [ ] `CustomTool` mapped and validated.
-- [ ] `CustomToolChoice` mapped and validated.
+- [x] `CustomTool` mapped and validated.
+- [x] `CustomToolChoice` mapped and validated.
 - [x] `CustomToolParam` mapped and validated.
-- [ ] `FileSearchTool` mapped and validated.
-- [ ] `FileSearchToolChoice` mapped and validated.
+- [x] `FileSearchTool` mapped and validated.
+- [x] `FileSearchToolChoice` mapped and validated.
 - [x] `FileSearchToolParam` mapped and validated.
-- [ ] `FunctionShellTool` mapped and validated.
-- [ ] `FunctionShellToolChoice` mapped and validated.
+- [x] `FunctionShellTool` mapped and validated.
+- [x] `FunctionShellToolChoice` mapped and validated.
 - [x] `FunctionShellToolParam` mapped and validated.
-- [ ] `FunctionTool` mapped and validated.
-- [ ] `FunctionToolChoice` mapped and validated.
+- [x] `FunctionTool` mapped and validated.
+- [x] `FunctionToolChoice` mapped and validated.
 - [x] `FunctionToolParam` mapped and validated.
-- [ ] `ImageGenTool` mapped and validated.
-- [ ] `ImageGenToolChoice` mapped and validated.
+- [x] `ImageGenTool` mapped and validated.
+- [x] `ImageGenToolChoice` mapped and validated.
 - [x] `ImageGenToolParam` mapped and validated.
-- [ ] `LocalShellToolChoice` mapped and validated.
+- [x] `LocalShellToolChoice` mapped and validated.
 - [x] `LocalShellToolParam` mapped and validated.
 - [ ] `MCPListToolsTool` mapped and validated.
-- [ ] `MCPTool` mapped and validated.
-- [ ] `MCPToolChoice` mapped and validated.
+- [x] `MCPTool` mapped and validated.
+- [x] `MCPToolChoice` mapped and validated.
 - [x] `MCPToolParam` mapped and validated.
 - [ ] `MemoryToolParam` mapped and validated.
 - [x] `ResponsesToolParam` mapped and validated.
 - [x] `SpecificCustomToolParam` mapped and validated.
-- [ ] `Tool` mapped and validated.
+- [x] `Tool` mapped and validated.
 - [x] `WebSearchGADeprecatedToolParam` mapped and validated.
-- [ ] `WebSearchPreviewTool` mapped and validated.
+- [x] `WebSearchPreviewTool` mapped and validated.
 - [x] `WebSearchPreviewToolParam` mapped and validated.
-- [ ] `WebSearchToolChoice` mapped and validated.
+- [x] `WebSearchToolChoice` mapped and validated.
 - [x] `WebSearchToolParam` mapped and validated.
