@@ -61,6 +61,7 @@ Working style
 - Always provide: goal, proposed change, acceptance criteria, and tests.
 - Keep outputs deterministic; use replayable event logs + snapshots.
 - Prefer simple, verifiable steps over broad refactors.
+- Keep Rust source files small and single-purpose; split modules when files exceed ~700–800 lines unless there's a clear reason not to.
 - Use `scripts/check` before reporting a task as complete.
 - Use `scripts/install-hooks` once to enable repo hooks.
 - Sync the canonical Open Responses OpenAPI spec via `scripts/update-openresponses-types` when schemas change.

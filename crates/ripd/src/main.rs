@@ -1,4 +1,4 @@
-use std::{collections::HashMap, convert::Infallible, net::SocketAddr, sync::Arc};
+use std::{collections::HashMap, convert::Infallible, sync::Arc};
 
 use axum::{
     extract::{Path, State},
@@ -11,14 +11,16 @@ use futures_util::StreamExt;
 use rip_kernel::Runtime;
 use rip_log::{write_snapshot, EventLog};
 use serde::{Deserialize, Serialize};
-use tokio::{
-    net::TcpListener,
-    sync::{broadcast, Mutex},
-};
+use tokio::sync::{broadcast, Mutex};
 use tokio_stream::wrappers::BroadcastStream;
 use utoipa::{OpenApi, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
+
+#[cfg(not(test))]
+use std::net::SocketAddr;
+#[cfg(not(test))]
+use tokio::net::TcpListener;
 
 #[derive(Clone)]
 struct AppState {
@@ -53,6 +55,7 @@ struct InputPayload {
 ))]
 struct ApiDoc;
 
+#[cfg(not(test))]
 #[tokio::main]
 async fn main() {
     let app = build_app(data_dir());

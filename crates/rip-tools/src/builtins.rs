@@ -569,6 +569,7 @@ fn run_shell_with_args(
     }
 }
 
+#[cfg_attr(test, inline(never))]
 fn parse_args<T: DeserializeOwned>(args: Value) -> Result<T, ToolOutput> {
     serde_json::from_value(args)
         .map_err(|err| ToolOutput::invalid_args(format!("invalid args: {err}")))
@@ -700,6 +701,37 @@ fn globsets_match(include: &Option<GlobSet>, exclude: &Option<GlobSet>, path: &s
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsString;
+    use std::path::Path;
+    use std::sync::{Mutex, OnceLock};
+    use tempfile::tempdir;
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    struct EnvGuard {
+        key: &'static str,
+        previous: Option<OsString>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, value: impl Into<OsString>) -> Self {
+            let previous = env::var_os(key);
+            env::set_var(key, value.into());
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(value) => env::set_var(self.key, value),
+                None => env::remove_var(self.key),
+            }
+        }
+    }
 
     #[test]
     fn default_config_has_limits() {
@@ -739,5 +771,169 @@ mod tests {
         let exclude = build_globset(Some(&patterns)).expect("globset");
         assert!(!globsets_match(&None, &exclude, "a.log"));
         assert!(globsets_match(&None, &exclude, "a.txt"));
+    }
+
+    #[test]
+    fn write_fails_when_parent_is_file() {
+        let dir = tempdir().expect("tmp");
+        let root = dir.path();
+        fs::write(root.join("blocked"), "nope").expect("write");
+
+        let config = BuiltinToolConfig {
+            workspace_root: root.to_path_buf(),
+            max_bytes: 1024,
+            max_results: 10,
+            max_depth: 4,
+            follow_symlinks: false,
+            include_hidden: false,
+        };
+
+        let output = run_write(
+            ToolInvocation {
+                name: "write".to_string(),
+                args: serde_json::json!({
+                    "path": "blocked/child.txt",
+                    "content": "hi"
+                }),
+                timeout_ms: None,
+            },
+            &config,
+        );
+
+        assert_eq!(output.exit_code, 1);
+        assert!(output.stderr.join("\n").contains("write failed"));
+    }
+
+    #[test]
+    fn write_fails_when_target_is_directory() {
+        let dir = tempdir().expect("tmp");
+        let root = dir.path();
+        fs::create_dir_all(root.join("target")).expect("dir");
+
+        let config = BuiltinToolConfig {
+            workspace_root: root.to_path_buf(),
+            max_bytes: 1024,
+            max_results: 10,
+            max_depth: 4,
+            follow_symlinks: false,
+            include_hidden: false,
+        };
+
+        let output = run_write(
+            ToolInvocation {
+                name: "write".to_string(),
+                args: serde_json::json!({
+                    "path": "target",
+                    "content": "hi",
+                    "atomic": true
+                }),
+                timeout_ms: None,
+            },
+            &config,
+        );
+
+        assert_eq!(output.exit_code, 1);
+        assert!(output.stderr.join("\n").contains("write failed"));
+    }
+
+    #[test]
+    fn bash_falls_back_to_shell_when_missing() {
+        let _lock = env_lock().lock().expect("lock");
+        if !Path::new("/bin/sh").exists() {
+            return;
+        }
+        let _path_guard = EnvGuard::set("PATH", "");
+        let _shell_guard = EnvGuard::set("SHELL", "/bin/sh");
+
+        let dir = tempdir().expect("tmp");
+        let root = dir.path();
+        let config = BuiltinToolConfig {
+            workspace_root: root.to_path_buf(),
+            max_bytes: 1024,
+            max_results: 10,
+            max_depth: 4,
+            follow_symlinks: false,
+            include_hidden: false,
+        };
+
+        let rt = tokio::runtime::Runtime::new().expect("runtime");
+        let output = rt.block_on(run_bash(
+            ToolInvocation {
+                name: "bash".to_string(),
+                args: serde_json::json!({
+                    "command": "echo ok",
+                    "cwd": ".",
+                    "env": { "RIP_TEST": "1" }
+                }),
+                timeout_ms: None,
+            },
+            config,
+        ));
+
+        assert_eq!(output.exit_code, 0);
+        assert!(output.stdout.join("\n").contains("ok"));
+    }
+
+    #[test]
+    fn run_ls_lists_entries_direct() {
+        let dir = tempdir().expect("tmp");
+        let root = dir.path();
+        fs::write(root.join("a.txt"), "hi").expect("write");
+
+        let config = BuiltinToolConfig {
+            workspace_root: root.to_path_buf(),
+            max_bytes: 1024,
+            max_results: 10,
+            max_depth: 4,
+            follow_symlinks: false,
+            include_hidden: false,
+        };
+
+        let output = run_ls(
+            ToolInvocation {
+                name: "ls".to_string(),
+                args: serde_json::json!({ "path": "." }),
+                timeout_ms: None,
+            },
+            &config,
+        );
+
+        assert_eq!(output.exit_code, 0);
+        assert!(output.stdout.iter().any(|line| line.ends_with("a.txt")));
+    }
+
+    #[test]
+    fn run_grep_finds_matches_direct() {
+        let dir = tempdir().expect("tmp");
+        let root = dir.path();
+        fs::write(root.join("notes.txt"), "hello\n").expect("write");
+
+        let config = BuiltinToolConfig {
+            workspace_root: root.to_path_buf(),
+            max_bytes: 1024,
+            max_results: 10,
+            max_depth: 4,
+            follow_symlinks: false,
+            include_hidden: false,
+        };
+
+        let output = run_grep(
+            ToolInvocation {
+                name: "grep".to_string(),
+                args: serde_json::json!({ "pattern": "hello", "path": "." }),
+                timeout_ms: None,
+            },
+            &config,
+        );
+
+        assert_eq!(output.exit_code, 0);
+        assert!(
+            output
+                .stdout
+                .iter()
+                .any(|line| line.contains("notes.txt:1:hello")),
+            "stdout: {:?}",
+            output.stdout
+        );
     }
 }

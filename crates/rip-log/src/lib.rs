@@ -181,6 +181,18 @@ mod tests {
     }
 
     #[test]
+    fn event_log_creates_parent_dirs() {
+        let dir = tempdir().expect("tmp");
+        let log_path = dir.path().join("nested").join("events.jsonl");
+        let log = EventLog::new(&log_path).expect("log");
+        let runtime = Runtime::new();
+        let mut session = runtime.start_session("hello".to_string());
+        let event = session.next_event().expect("event");
+        log.append(&event).expect("append");
+        assert!(log_path.exists());
+    }
+
+    #[test]
     fn write_snapshot_creates_file() {
         let dir = tempdir().expect("tmp");
         let runtime = Runtime::new();
@@ -276,6 +288,63 @@ mod tests {
 
         let err = verify_snapshot(&log, snapshot_path).expect_err("error");
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn verify_snapshot_rejects_empty_snapshot() {
+        let dir = tempdir().expect("tmp");
+        let log_path = dir.path().join("events.jsonl");
+        let log = EventLog::new(&log_path).expect("log");
+        let snapshot_path = dir.path().join("empty.json");
+        fs::write(&snapshot_path, "[]").expect("write");
+
+        let err = verify_snapshot(&log, snapshot_path).expect_err("error");
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn verify_snapshot_detects_content_mismatch() {
+        let dir = tempdir().expect("tmp");
+        let log_path = dir.path().join("events.jsonl");
+        let log = EventLog::new(&log_path).expect("log");
+
+        let runtime = Runtime::new();
+        let mut session = runtime.start_session("hello".to_string());
+        let mut events = Vec::new();
+        while let Some(event) = session.next_event() {
+            log.append(&event).expect("append");
+            events.push(event);
+        }
+
+        let snapshot_path = write_snapshot(dir.path(), session.id(), &events).expect("snapshot");
+        let mut snapshot_events = read_snapshot(&snapshot_path).expect("read");
+        snapshot_events[0].seq = snapshot_events[0].seq.saturating_add(1);
+        let payload = serde_json::to_string_pretty(&snapshot_events).expect("json");
+        fs::write(&snapshot_path, payload).expect("write");
+
+        let err = verify_snapshot(&log, snapshot_path).expect_err("error");
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn snapshot_roundtrip_accepts_pathbuf() {
+        let dir = tempdir().expect("tmp");
+        let log_path = dir.path().join("events.jsonl");
+        let log = EventLog::new(log_path.clone()).expect("log");
+
+        let runtime = Runtime::new();
+        let mut session = runtime.start_session("hello".to_string());
+        let mut events = Vec::new();
+        while let Some(event) = session.next_event() {
+            log.append(&event).expect("append");
+            events.push(event);
+        }
+
+        let snapshot_root = log_path.parent().unwrap().join("snapshots");
+        let snapshot_path = write_snapshot(snapshot_root, session.id(), &events).expect("snapshot");
+        let roundtrip = read_snapshot(snapshot_path.clone()).expect("read");
+        assert_eq!(roundtrip.len(), events.len());
+        verify_snapshot(&log, snapshot_path).expect("verify");
     }
 
     #[test]

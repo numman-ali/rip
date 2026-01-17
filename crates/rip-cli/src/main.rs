@@ -47,6 +47,7 @@ struct SessionCreated {
     session_id: String,
 }
 
+#[cfg(not(test))]
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     run(Cli::parse()).await

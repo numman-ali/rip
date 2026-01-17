@@ -58,10 +58,14 @@ fn item_param_value_roundtrip() {
 fn item_param_variants_are_valid() {
     let items = vec![
         ItemParam::item_reference("item_1"),
+        ItemParam::user_message(json!("hi")),
         ItemParam::user_message_text("hi"),
         ItemParam::assistant_message_text("hello"),
+        ItemParam::assistant_message(json!("hello")),
         ItemParam::developer_message_text("note"),
+        ItemParam::developer_message(json!("note")),
         ItemParam::system_message_text("sys"),
+        ItemParam::system_message(json!("sys")),
         ItemParam::function_call("c1", "echo", "{}"),
         ItemParam::function_call_output("c1", json!("ok")),
         ItemParam::reasoning(Vec::new()),
@@ -176,6 +180,48 @@ fn tool_choice_allowed_tools_with_mode_is_valid() {
         Some(ToolChoiceValue::Required),
     );
     assert!(choice.errors().is_empty());
+}
+
+#[test]
+fn tool_choice_allowed_tools_without_mode_is_valid() {
+    let choice = ToolChoiceParam::allowed_tools(vec![SpecificToolChoiceParam::function("echo")]);
+    assert!(choice.errors().is_empty());
+}
+
+#[test]
+fn tool_choice_value_modes_are_valid() {
+    let choice = ToolChoiceParam::allowed_tools_with_mode(
+        vec![SpecificToolChoiceParam::function("echo")],
+        Some(ToolChoiceValue::Auto),
+    );
+    assert!(choice.errors().is_empty());
+
+    let choice = ToolChoiceParam::allowed_tools_with_mode(
+        vec![SpecificToolChoiceParam::function("echo")],
+        Some(ToolChoiceValue::None),
+    );
+    assert!(choice.errors().is_empty());
+}
+
+#[test]
+fn specific_tool_choice_roundtrip() {
+    let specific = SpecificToolChoiceParam::function("echo");
+    assert!(specific.errors().is_empty());
+    assert_eq!(
+        specific.value(),
+        &json!({
+            "type": "function",
+            "name": "echo"
+        })
+    );
+    let value = specific.clone().into_value();
+    assert_eq!(
+        value,
+        json!({
+            "type": "function",
+            "name": "echo"
+        })
+    );
 }
 
 #[test]

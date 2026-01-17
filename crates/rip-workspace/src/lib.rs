@@ -232,6 +232,20 @@ mod tests {
     }
 
     #[test]
+    fn create_checkpoint_accepts_string_label() {
+        let dir = tempdir().expect("tmp");
+        let root = dir.path();
+        let workspace = Workspace::new(root).expect("workspace");
+        let file_a = root.join("a.txt");
+        fs::write(&file_a, b"one").expect("write");
+
+        let checkpoint = workspace
+            .create_checkpoint("s1", "label".to_string(), std::slice::from_ref(&file_a))
+            .expect("checkpoint");
+        assert_eq!(checkpoint.label, "label");
+    }
+
+    #[test]
     fn list_checkpoints_sorted() {
         let dir = tempdir().expect("tmp");
         let root = dir.path();

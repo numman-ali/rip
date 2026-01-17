@@ -421,4 +421,55 @@ mod tests {
         };
         assert_eq!(hooks.run(&ctx), HookOutcome::Continue);
     }
+
+    #[test]
+    fn runtime_exposes_commands_registry() {
+        let runtime = Runtime::new();
+        let registry = runtime.commands();
+        registry
+            .register(Command::new(
+                "noop",
+                "no-op",
+                std::sync::Arc::new(|_ctx| Ok("ok".to_string())),
+            ))
+            .expect("register");
+        let result = registry.execute(
+            "noop",
+            CommandContext {
+                session_id: None,
+                args: Vec::new(),
+                raw: String::new(),
+            },
+        );
+        assert_eq!(result.expect("execute"), "ok");
+    }
+
+    #[test]
+    fn runtime_registers_command_and_hook() {
+        let runtime = Runtime::new();
+        runtime
+            .register_command("echo", "echo", |ctx| Ok(ctx.raw))
+            .expect("register command");
+        let result = runtime.commands().execute(
+            "echo",
+            CommandContext {
+                session_id: None,
+                args: vec!["hi".to_string()],
+                raw: "hi".to_string(),
+            },
+        );
+        assert_eq!(result.expect("execute"), "hi");
+
+        runtime.register_hook("noop", HookEventKind::SessionStarted, |_ctx| {
+            HookOutcome::Continue
+        });
+        let ctx = HookContext {
+            session_id: "s1".to_string(),
+            seq: 0,
+            timestamp_ms: 0,
+            event: HookEventKind::SessionStarted,
+            output: None,
+        };
+        assert_eq!(runtime.hooks().run(&ctx), HookOutcome::Continue);
+    }
 }
