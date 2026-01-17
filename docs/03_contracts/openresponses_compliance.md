@@ -700,64 +700,64 @@ Legend
 ### Streaming events
 | schema | bundled | validated | status |
 | --- | --- | --- | --- |
-| `ErrorStreamingEvent` | yes | yes | provider_event |
-| `ImageEditCompletedStreamingEvent` | no | no | pending |
-| `ImageEditPartialImageStreamingEvent` | no | no | pending |
-| `ImageGenerationCompletedStreamingEvent` | no | no | pending |
-| `ImageGenerationPartialImageStreamingEvent` | no | no | pending |
-| `ResponseApplyPatchCallOperationDiffDeltaStreamingEvent` | no | no | pending |
-| `ResponseApplyPatchCallOperationDiffDoneStreamingEvent` | no | no | pending |
-| `ResponseCodeInterpreterCallCodeDeltaStreamingEvent` | no | no | pending |
-| `ResponseCodeInterpreterCallCodeDoneStreamingEvent` | no | no | pending |
-| `ResponseCodeInterpreterCallCompletedStreamingEvent` | no | no | pending |
-| `ResponseCodeInterpreterCallInProgressStreamingEvent` | no | no | pending |
-| `ResponseCodeInterpreterCallInterpretingStreamingEvent` | no | no | pending |
-| `ResponseCompletedStreamingEvent` | yes | yes | provider_event |
-| `ResponseContentPartAddedStreamingEvent` | yes | yes | provider_event |
-| `ResponseContentPartDoneStreamingEvent` | yes | yes | provider_event |
-| `ResponseCreatedStreamingEvent` | yes | yes | provider_event |
-| `ResponseCustomToolCallInputDeltaStreamingEvent` | no | no | pending |
-| `ResponseCustomToolCallInputDoneStreamingEvent` | no | no | pending |
-| `ResponseFailedStreamingEvent` | yes | yes | provider_event |
-| `ResponseFileSearchCallCompletedStreamingEvent` | no | no | pending |
-| `ResponseFileSearchCallInProgressStreamingEvent` | no | no | pending |
-| `ResponseFileSearchCallSearchingStreamingEvent` | no | no | pending |
-| `ResponseFunctionCallArgumentsDeltaStreamingEvent` | yes | yes | provider_event |
-| `ResponseFunctionCallArgumentsDoneStreamingEvent` | yes | yes | provider_event |
-| `ResponseImageGenCallCompletedStreamingEvent` | no | no | pending |
-| `ResponseImageGenCallGeneratingStreamingEvent` | no | no | pending |
-| `ResponseImageGenCallInProgressStreamingEvent` | no | no | pending |
-| `ResponseImageGenCallPartialImageStreamingEvent` | no | no | pending |
-| `ResponseInProgressStreamingEvent` | yes | yes | provider_event |
-| `ResponseIncompleteStreamingEvent` | yes | yes | provider_event |
-| `ResponseMCPCallArgumentsDeltaStreamingEvent` | no | no | pending |
-| `ResponseMCPCallArgumentsDoneStreamingEvent` | no | no | pending |
-| `ResponseMCPCallCompletedStreamingEvent` | no | no | pending |
-| `ResponseMCPCallFailedStreamingEvent` | no | no | pending |
-| `ResponseMCPCallInProgressStreamingEvent` | no | no | pending |
-| `ResponseMCPListToolsCompletedStreamingEvent` | no | no | pending |
-| `ResponseMCPListToolsFailedStreamingEvent` | no | no | pending |
-| `ResponseMCPListToolsInProgressStreamingEvent` | no | no | pending |
-| `ResponseOutputItemAddedStreamingEvent` | yes | yes | provider_event |
-| `ResponseOutputItemDoneStreamingEvent` | yes | yes | provider_event |
-| `ResponseOutputTextAnnotationAddedStreamingEvent` | yes | yes | provider_event |
-| `ResponseOutputTextDeltaStreamingEvent` | yes | yes | provider_event |
-| `ResponseOutputTextDoneStreamingEvent` | yes | yes | provider_event |
-| `ResponseQueuedStreamingEvent` | yes | yes | provider_event |
-| `ResponseReasoningDeltaStreamingEvent` | yes | yes | provider_event |
-| `ResponseReasoningDoneStreamingEvent` | yes | yes | provider_event |
-| `ResponseReasoningSummaryDeltaStreamingEvent` | yes | yes | provider_event |
-| `ResponseReasoningSummaryDoneStreamingEvent` | yes | yes | provider_event |
-| `ResponseReasoningSummaryPartAddedStreamingEvent` | yes | yes | provider_event |
-| `ResponseReasoningSummaryPartDoneStreamingEvent` | yes | yes | provider_event |
-| `ResponseRefusalDeltaStreamingEvent` | yes | yes | provider_event |
-| `ResponseRefusalDoneStreamingEvent` | yes | yes | provider_event |
-| `ResponseShellCallCommandAddedStreamingEvent` | no | no | pending |
-| `ResponseShellCallCommandDeltaStreamingEvent` | no | no | pending |
-| `ResponseShellCallCommandDoneStreamingEvent` | no | no | pending |
-| `ResponseWebSearchCallCompletedStreamingEvent` | no | no | pending |
-| `ResponseWebSearchCallInProgressStreamingEvent` | no | no | pending |
-| `ResponseWebSearchCallSearchingStreamingEvent` | no | no | pending |
+| `ErrorStreamingEvent` | yes | yes | provider_event (validated) |
+| `ImageEditCompletedStreamingEvent` | no | no | provider_event (pending validation) |
+| `ImageEditPartialImageStreamingEvent` | no | no | provider_event (pending validation) |
+| `ImageGenerationCompletedStreamingEvent` | no | no | provider_event (pending validation) |
+| `ImageGenerationPartialImageStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseApplyPatchCallOperationDiffDeltaStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseApplyPatchCallOperationDiffDoneStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseCodeInterpreterCallCodeDeltaStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseCodeInterpreterCallCodeDoneStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseCodeInterpreterCallCompletedStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseCodeInterpreterCallInProgressStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseCodeInterpreterCallInterpretingStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseCompletedStreamingEvent` | yes | yes | provider_event (validated) |
+| `ResponseContentPartAddedStreamingEvent` | yes | yes | provider_event (validated) |
+| `ResponseContentPartDoneStreamingEvent` | yes | yes | provider_event (validated) |
+| `ResponseCreatedStreamingEvent` | yes | yes | provider_event (validated) |
+| `ResponseCustomToolCallInputDeltaStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseCustomToolCallInputDoneStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseFailedStreamingEvent` | yes | yes | provider_event (validated) |
+| `ResponseFileSearchCallCompletedStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseFileSearchCallInProgressStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseFileSearchCallSearchingStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseFunctionCallArgumentsDeltaStreamingEvent` | yes | yes | provider_event (validated) |
+| `ResponseFunctionCallArgumentsDoneStreamingEvent` | yes | yes | provider_event (validated) |
+| `ResponseImageGenCallCompletedStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseImageGenCallGeneratingStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseImageGenCallInProgressStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseImageGenCallPartialImageStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseInProgressStreamingEvent` | yes | yes | provider_event (validated) |
+| `ResponseIncompleteStreamingEvent` | yes | yes | provider_event (validated) |
+| `ResponseMCPCallArgumentsDeltaStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseMCPCallArgumentsDoneStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseMCPCallCompletedStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseMCPCallFailedStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseMCPCallInProgressStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseMCPListToolsCompletedStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseMCPListToolsFailedStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseMCPListToolsInProgressStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseOutputItemAddedStreamingEvent` | yes | yes | provider_event (validated) |
+| `ResponseOutputItemDoneStreamingEvent` | yes | yes | provider_event (validated) |
+| `ResponseOutputTextAnnotationAddedStreamingEvent` | yes | yes | provider_event (validated) |
+| `ResponseOutputTextDeltaStreamingEvent` | yes | yes | provider_event (validated) |
+| `ResponseOutputTextDoneStreamingEvent` | yes | yes | provider_event (validated) |
+| `ResponseQueuedStreamingEvent` | yes | yes | provider_event (validated) |
+| `ResponseReasoningDeltaStreamingEvent` | yes | yes | provider_event (validated) |
+| `ResponseReasoningDoneStreamingEvent` | yes | yes | provider_event (validated) |
+| `ResponseReasoningSummaryDeltaStreamingEvent` | yes | yes | provider_event (validated) |
+| `ResponseReasoningSummaryDoneStreamingEvent` | yes | yes | provider_event (validated) |
+| `ResponseReasoningSummaryPartAddedStreamingEvent` | yes | yes | provider_event (validated) |
+| `ResponseReasoningSummaryPartDoneStreamingEvent` | yes | yes | provider_event (validated) |
+| `ResponseRefusalDeltaStreamingEvent` | yes | yes | provider_event (validated) |
+| `ResponseRefusalDoneStreamingEvent` | yes | yes | provider_event (validated) |
+| `ResponseShellCallCommandAddedStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseShellCallCommandDeltaStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseShellCallCommandDoneStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseWebSearchCallCompletedStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseWebSearchCallInProgressStreamingEvent` | no | no | provider_event (pending validation) |
+| `ResponseWebSearchCallSearchingStreamingEvent` | no | no | provider_event (pending validation) |
 
 ### Tool schemas
 | schema | bundled | validated | status |

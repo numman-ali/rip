@@ -5,6 +5,7 @@ Summary
 - Each item should be marked complete only when mapped to internal frames and validated at the provider boundary.
 
 Progress log
+- 2026-01-17: Checked bundled validation coverage for Error/ErrorPayload, CreateResponseBody, ResponseResource, and ItemField; aligned streaming-event schema-index statuses with validated vs pending coverage.
 - 2026-01-17: Marked bundled streaming events and output item schemas as mapped/validated in the checklist (remaining events/items pending split-schema validation).
 - 2026-01-17: Roadmap gate added (`docs/07_tasks/roadmap.md`). Tool/tool_choice request validation + builder support landed (commit `c8946dd`); split schema notes captured in `temp/docs/openresponses/`.
 - 2026-01-17: Verified schema index covers all 412 split components; added additive patch schemas (`InputVideoContent`, `JsonSchemaResponseFormatParam`, `TextFormatParam`) to checklist.
@@ -26,8 +27,8 @@ Progress log
 
 ## Schema checklist (all components)
 ### Error schemas
-- [ ] `Error` mapped and validated.
-- [ ] `ErrorPayload` mapped and validated.
+- [x] `Error` mapped and validated.
+- [x] `ErrorPayload` mapped and validated.
 - [ ] `HTTPError` mapped and validated.
 - [ ] `MCPProtocolError` mapped and validated.
 - [ ] `MCPToolExecutionError` mapped and validated.
@@ -343,15 +344,15 @@ Progress log
 - [x] `WebSearchToolParam_2025_08_14Param` mapped and validated.
 
 ### Output item fields
-- [ ] `ItemField` mapped and validated.
+- [x] `ItemField` mapped and validated.
   - Output variant schemas are tracked in the schema checklist below (`Message`, `FunctionCall`, `CustomToolCall`, etc.).
 
 ### Request-related schemas
-- [ ] `CreateResponseBody` mapped and validated.
+- [x] `CreateResponseBody` mapped and validated.
 
 ### Response-related schemas
 - [ ] `ResponseFormatDallE` mapped and validated.
-- [ ] `ResponseResource` mapped and validated.
+- [x] `ResponseResource` mapped and validated.
 - [ ] `ResponsesConversationParam` mapped and validated.
 
 ### Streaming events
