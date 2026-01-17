@@ -5,6 +5,7 @@ Summary
 - Each item should be marked complete only when mapped to internal frames and validated at the provider boundary.
 
 Progress log
+- 2026-01-17: Validated file/web search, computer, image gen, and apply_patch tool call schemas and outputs; checklist updated.
 - 2026-01-17: Added local/function shell output item validation plus shell param schema tests; checklist updated.
 - 2026-01-17: Added MCP approval/tool-call output validation plus MCP filter/approval/error schema tests; checklist updated.
 - 2026-01-17: Added MCPListTools output item validation and MemoryToolParam schema test; checklist updated.
@@ -73,19 +74,19 @@ Progress log
 - [x] `AllowedToolsParam` mapped and validated.
 - [ ] `Annotation` mapped and validated.
 - [ ] `ApiSourceParam` mapped and validated.
-- [ ] `ApplyPatchCallOutputStatus` mapped and validated.
-- [ ] `ApplyPatchCallOutputStatusParam` mapped and validated.
-- [ ] `ApplyPatchCallStatus` mapped and validated.
-- [ ] `ApplyPatchCallStatusParam` mapped and validated.
-- [ ] `ApplyPatchCreateFileOperation` mapped and validated.
-- [ ] `ApplyPatchCreateFileOperationParam` mapped and validated.
-- [ ] `ApplyPatchDeleteFileOperation` mapped and validated.
-- [ ] `ApplyPatchDeleteFileOperationParam` mapped and validated.
-- [ ] `ApplyPatchOperationParam` mapped and validated.
-- [ ] `ApplyPatchToolCall` mapped and validated.
-- [ ] `ApplyPatchToolCallOutput` mapped and validated.
-- [ ] `ApplyPatchUpdateFileOperation` mapped and validated.
-- [ ] `ApplyPatchUpdateFileOperationParam` mapped and validated.
+- [x] `ApplyPatchCallOutputStatus` mapped and validated.
+- [x] `ApplyPatchCallOutputStatusParam` mapped and validated.
+- [x] `ApplyPatchCallStatus` mapped and validated.
+- [x] `ApplyPatchCallStatusParam` mapped and validated.
+- [x] `ApplyPatchCreateFileOperation` mapped and validated.
+- [x] `ApplyPatchCreateFileOperationParam` mapped and validated.
+- [x] `ApplyPatchDeleteFileOperation` mapped and validated.
+- [x] `ApplyPatchDeleteFileOperationParam` mapped and validated.
+- [x] `ApplyPatchOperationParam` mapped and validated.
+- [x] `ApplyPatchToolCall` mapped and validated.
+- [x] `ApplyPatchToolCallOutput` mapped and validated.
+- [x] `ApplyPatchUpdateFileOperation` mapped and validated.
+- [x] `ApplyPatchUpdateFileOperationParam` mapped and validated.
 - [ ] `ApproximateLocation` mapped and validated.
 - [ ] `ApproximateLocationParam` mapped and validated.
 - [ ] `Billing` mapped and validated.
@@ -129,10 +130,10 @@ Progress log
 - [ ] `CompoundFilterFieldOR` mapped and validated.
 - [ ] `CompoundFilterParamAndParam` mapped and validated.
 - [ ] `CompoundFilterParamOrParam` mapped and validated.
-- [ ] `ComputerCall` mapped and validated.
-- [ ] `ComputerCallOutput` mapped and validated.
-- [ ] `ComputerCallOutputStatus` mapped and validated.
-- [ ] `ComputerCallSafetyCheckParam` mapped and validated.
+- [x] `ComputerCall` mapped and validated.
+- [x] `ComputerCallOutput` mapped and validated.
+- [x] `ComputerCallOutputStatus` mapped and validated.
+- [x] `ComputerCallSafetyCheckParam` mapped and validated.
 - [ ] `ComputerEnvironment` mapped and validated.
 - [ ] `ComputerEnvironment1` mapped and validated.
 - [ ] `ComputerScreenshotContent` mapped and validated.
@@ -176,11 +177,11 @@ Progress log
 - [ ] `ExcludeEnum` mapped and validated.
 - [ ] `FileCitationBody` mapped and validated.
 - [ ] `FileCitationParam` mapped and validated.
-- [ ] `FileSearchCall` mapped and validated.
+- [x] `FileSearchCall` mapped and validated.
 - [ ] `FileSearchRankingOptionsParam` mapped and validated.
 - [ ] `FileSearchResult` mapped and validated.
 - [ ] `FileSearchRetrievedChunksParam` mapped and validated.
-- [ ] `FileSearchToolCallStatusEnum` mapped and validated.
+- [x] `FileSearchToolCallStatusEnum` mapped and validated.
 - [ ] `Filters` mapped and validated.
 - [x] `FunctionCall` mapped and validated.
 - [ ] `FunctionCallItemStatus` mapped and validated.
@@ -210,8 +211,8 @@ Progress log
 - [ ] `ImageDetail` mapped and validated.
 - [ ] `ImageGenAction` mapped and validated.
 - [ ] `ImageGenActionEnum` mapped and validated.
-- [ ] `ImageGenCall` mapped and validated.
-- [ ] `ImageGenCallStatus` mapped and validated.
+- [x] `ImageGenCall` mapped and validated.
+- [x] `ImageGenCallStatus` mapped and validated.
 - [ ] `ImageGenInputUsageDetails` mapped and validated.
 - [ ] `ImageGenOutputTokensDetails` mapped and validated.
 - [ ] `ImageGenToolModel` mapped and validated.
@@ -341,14 +342,14 @@ Progress log
 - [ ] `VideoStatus` mapped and validated.
 - [ ] `WaitAction` mapped and validated.
 - [ ] `WaitParam` mapped and validated.
-- [ ] `WebSearchCall` mapped and validated.
-- [ ] `WebSearchCallActionFindInPage` mapped and validated.
-- [ ] `WebSearchCallActionFindInPageParam` mapped and validated.
-- [ ] `WebSearchCallActionOpenPage` mapped and validated.
-- [ ] `WebSearchCallActionOpenPageParam` mapped and validated.
-- [ ] `WebSearchCallActionSearch` mapped and validated.
-- [ ] `WebSearchCallActionSearchParam` mapped and validated.
-- [ ] `WebSearchCallStatus` mapped and validated.
+- [x] `WebSearchCall` mapped and validated.
+- [x] `WebSearchCallActionFindInPage` mapped and validated.
+- [x] `WebSearchCallActionFindInPageParam` mapped and validated.
+- [x] `WebSearchCallActionOpenPage` mapped and validated.
+- [x] `WebSearchCallActionOpenPageParam` mapped and validated.
+- [x] `WebSearchCallActionSearch` mapped and validated.
+- [x] `WebSearchCallActionSearchParam` mapped and validated.
+- [x] `WebSearchCallStatus` mapped and validated.
 - [x] `WebSearchPreviewToolParam_2025_03_11Param` mapped and validated.
 - [x] `WebSearchToolParam_2025_08_14Param` mapped and validated.
 

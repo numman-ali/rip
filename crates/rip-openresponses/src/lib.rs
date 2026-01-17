@@ -1039,6 +1039,210 @@ mod tests {
     }
 
     #[test]
+    fn validate_response_resource_accepts_search_and_tool_calls() {
+        let file_search = serde_json::json!({
+            "type": "file_search_call",
+            "id": "fs_1",
+            "status": "completed",
+            "queries": ["query"],
+            "results": [
+                {
+                    "file_id": "file_1",
+                    "filename": "notes.txt",
+                    "text": "hello",
+                    "attributes": {},
+                    "score": 0.1,
+                    "vector_store_id": null
+                }
+            ]
+        });
+        let web_search = serde_json::json!({
+            "type": "web_search_call",
+            "id": "ws_1",
+            "status": "completed",
+            "action": {
+                "type": "search",
+                "query": null,
+                "queries": ["query"]
+            }
+        });
+        let image_gen = serde_json::json!({
+            "type": "image_generation_call",
+            "id": "ig_1",
+            "status": "completed"
+        });
+        let computer_call = serde_json::json!({
+            "type": "computer_call",
+            "id": "cc_1",
+            "call_id": "call_1",
+            "pending_safety_checks": []
+        });
+        let computer_output = serde_json::json!({
+            "type": "computer_call_output",
+            "id": "cc_out_1",
+            "call_id": "call_1",
+            "output": { "type": "input_text", "text": "ok" },
+            "status": "completed",
+            "current_url": null
+        });
+        let apply_patch_call = serde_json::json!({
+            "type": "apply_patch_call",
+            "id": "ap_1",
+            "call_id": "call_2",
+            "status": "completed",
+            "operation": {
+                "type": "create_file",
+                "path": "notes.txt",
+                "diff": "@@ -0,0 +1 @@\\n+hello\\n"
+            }
+        });
+        let apply_patch_output = serde_json::json!({
+            "type": "apply_patch_call_output",
+            "id": "ap_out_1",
+            "call_id": "call_2",
+            "status": "completed",
+            "output": null
+        });
+
+        for item in [
+            file_search,
+            web_search,
+            image_gen,
+            computer_call,
+            computer_output,
+            apply_patch_call,
+            apply_patch_output,
+        ] {
+            let value = response_with_output(vec![item.clone()]);
+            let errors = validate_response_resource(&value).err().unwrap_or_default();
+            assert!(errors.is_empty(), "errors: {errors:?} for {item}");
+        }
+    }
+
+    #[test]
+    fn validate_search_and_tool_param_schemas() {
+        let errors = schema_errors(
+            "FileSearchToolCallStatusEnum.json",
+            serde_json::json!("completed"),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors("WebSearchCallStatus.json", serde_json::json!("completed"));
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "WebSearchCallActionSearchParam.json",
+            serde_json::json!({
+                "type": "search",
+                "query": null,
+                "queries": ["q"],
+                "sources": [
+                    { "type": "url", "url": "https://example.com" },
+                    { "type": "api", "name": "internal" }
+                ]
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "WebSearchCallActionOpenPageParam.json",
+            serde_json::json!({
+                "type": "open_page",
+                "url": null
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "WebSearchCallActionFindInPageParam.json",
+            serde_json::json!({
+                "type": "find_in_page",
+                "url": null,
+                "pattern": null
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "ComputerCallOutputStatus.json",
+            serde_json::json!("completed"),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "ComputerCallSafetyCheckParam.json",
+            serde_json::json!({ "id": "sc_1" }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors("ImageGenCallStatus.json", serde_json::json!("completed"));
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors("ImageGenAction.json", serde_json::json!("generate"));
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors("ApplyPatchCallStatus.json", serde_json::json!("completed"));
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "ApplyPatchCallStatusParam.json",
+            serde_json::json!("completed"),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "ApplyPatchCallOutputStatus.json",
+            serde_json::json!("completed"),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "ApplyPatchCallOutputStatusParam.json",
+            serde_json::json!("completed"),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "ApplyPatchOperationParam.json",
+            serde_json::json!({
+                "type": "update_file",
+                "path": "notes.txt",
+                "diff": "@@ -1 +1 @@\\n-hello\\n+hi\\n"
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "ApplyPatchCreateFileOperationParam.json",
+            serde_json::json!({
+                "type": "create_file",
+                "path": "notes.txt",
+                "diff": "@@ -0,0 +1 @@\\n+hello\\n"
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "ApplyPatchDeleteFileOperationParam.json",
+            serde_json::json!({
+                "type": "delete_file",
+                "path": "notes.txt"
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "ApplyPatchUpdateFileOperationParam.json",
+            serde_json::json!({
+                "type": "update_file",
+                "path": "notes.txt",
+                "diff": "@@ -1 +1 @@\\n-hello\\n+hi\\n"
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+    }
+
+    #[test]
     fn validate_create_response_body_accepts_minimal() {
         let value = serde_json::json!({
             "model": "gpt-4.1",
