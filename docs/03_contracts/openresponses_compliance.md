@@ -2,6 +2,7 @@
 
 Summary
 - Source repo: `temp/openresponses` (local vendor).
+- Reviewed: 2026-01-17.
 - Schema files: 412 total components in `temp/openresponses/schema/components/schemas`.
 - Streaming event schemas: 58 (from `temp/openresponses/schema/paths/responses.json`).
 - Input item variants: 25 (from `ItemParam.json`).
@@ -25,6 +26,38 @@ Mapping rules (Phase 1)
 - All OpenResponses SSE events map to `provider_event` frames with full payload fidelity.
 - Internal frames are emitted for a subset (session + text/tool deltas); all other events remain provider-only until explicitly promoted.
 - No OpenResponses fields/events are dropped at the provider boundary.
+
+Doc review notes (normative requirements)
+
+Specification (`temp/openresponses/src/pages/specification.mdx`)
+- Requests MUST use HTTP with `Authorization` + `Content-Type` headers; request bodies MUST be `application/json`.
+- Non-stream responses MUST be `application/json`; streams MUST be `text/event-stream` with terminal `[DONE]`.
+- SSE `event` field MUST match payload `type`; servers SHOULD NOT use `id`.
+- Items are state machines with `in_progress`, `incomplete`, `completed`; `incomplete` is terminal and MUST be the last item, and response MUST be `incomplete`.
+- First item event MUST be `response.output_item.added` with all non-nullable fields present (use zero values).
+- Streamable content MUST emit `response.content_part.added` -> repeated `response.<content>.delta` -> `response.<content>.done` -> `response.content_part.done`.
+- Items MAY emit multiple content parts; items close with `response.output_item.done`.
+- Extended item types MUST be prefixed with implementor slug; clients SHOULD tolerate unknown items.
+- Streaming events MUST be either delta or state-machine events.
+- `previous_response_id`: server MUST load prior input + output and preserve order `previous_response.input` -> `previous_response.output` -> new `input` (truncation allowed per policy).
+- `tool_choice`: `auto`/`required`/`none` controls tool use; structured choice can force a tool.
+- `allowed_tools`: server MUST enforce; tool calls outside allowed list MUST be rejected/suppressed.
+- `truncation`: `disabled` MUST NOT truncate and MUST error on overflow; `auto` MAY truncate and SHOULD preserve system + recent context.
+- Error types include `server_error`, `invalid_request`, `not_found`, `model_error`, `too_many_requests`.
+- Extended streaming events MUST be prefixed with implementor slug and include `type` + `sequence_number`; clients MUST ignore unknown events safely.
+- Schema extensions MUST NOT change core semantics; extensions SHOULD be optional and documented.
+
+Reference (`temp/openresponses/src/pages/reference.mdx`)
+- `/v1/responses` request bodies are documented as JSON or form-encoded; response bodies as JSON or SSE.
+
+Compliance (`temp/openresponses/src/pages/compliance.mdx`)
+- Acceptance tests validate API responses against the OpenAPI schema.
+
+README/index/changelog/governance
+- High-level positioning and project governance; no additional protocol requirements.
+
+Doc discrepancies to resolve
+- Spec says request bodies MUST be `application/json`, while reference allows `application/x-www-form-urlencoded`. Decide canonical behavior and document.
 
 ## CreateResponseBody fields
 | field | required |

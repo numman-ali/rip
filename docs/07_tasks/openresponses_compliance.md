@@ -5,13 +5,13 @@ Summary
 - Each item should be marked complete only when mapped to internal frames and validated at the provider boundary.
 
 ## Docs review checklist
-- [ ] Review `temp/openresponses/README.md` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
-- [ ] Review `temp/openresponses/src/pages/index.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
-- [ ] Review `temp/openresponses/src/pages/specification.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
-- [ ] Review `temp/openresponses/src/pages/reference.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
-- [ ] Review `temp/openresponses/src/pages/compliance.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
-- [ ] Review `temp/openresponses/src/pages/changelog.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
-- [ ] Review `temp/openresponses/src/pages/governance.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
+- [x] Review `temp/openresponses/README.md` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
+- [x] Review `temp/openresponses/src/pages/index.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
+- [x] Review `temp/openresponses/src/pages/specification.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
+- [x] Review `temp/openresponses/src/pages/reference.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
+- [x] Review `temp/openresponses/src/pages/compliance.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
+- [x] Review `temp/openresponses/src/pages/changelog.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
+- [x] Review `temp/openresponses/src/pages/governance.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
 
 ## Schema checklist (all components)
 ### Error schemas
