@@ -13,6 +13,9 @@ Summary
 - [x] Review `temp/openresponses/src/pages/changelog.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
 - [x] Review `temp/openresponses/src/pages/governance.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
 
+## Open issues
+- [ ] Resolve request body content-type conflict (`application/json` MUST vs `application/x-www-form-urlencoded` allowed).
+
 ## Schema checklist (all components)
 ### Error schemas
 - [ ] `Error` mapped and validated.

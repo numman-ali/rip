@@ -27,6 +27,12 @@ Mapping rules (Phase 1)
 - Internal frames are emitted for a subset (session + text/tool deltas); all other events remain provider-only until explicitly promoted.
 - No OpenResponses fields/events are dropped at the provider boundary.
 
+Implementation status (current)
+- Provider adapter validates streaming events and embedded `response` objects against the bundled OpenAPI schema (`schemas/openresponses/openapi.json`).
+- Request bodies are not yet validated; CreateResponseBody fields are mapped only when provider request building is implemented.
+- Input item variants are not yet mapped to internal request frames (pending).
+- Bundled OpenAPI schema currently includes 102 component schemas; the split OpenResponses schema defines 412 component schemas. Missing schemas are tracked in the checklist.
+
 Doc review notes (normative requirements)
 
 Specification (`temp/openresponses/src/pages/specification.mdx`)
@@ -200,31 +206,31 @@ Doc discrepancies to resolve
 ## Input item variants
 | item type | schema | mapping |
 | --- | --- | --- |
-| `apply_patch_call` | `ApplyPatchToolCallItemParam.json` | provider_event |
-| `apply_patch_call_output` | `ApplyPatchToolCallOutputItemParam.json` | provider_event |
-| `code_interpreter_call` | `CodeInterpreterCallItemParam.json` | provider_event |
-| `compaction` | `CompactionSummaryItemParam.json` | provider_event |
-| `computer_call` | `ComputerCallItemParam.json` | provider_event |
-| `computer_call_output` | `ComputerCallOutputItemParam.json` | provider_event |
-| `custom_tool_call` | `CustomToolCallItemParam.json` | provider_event |
-| `custom_tool_call_output` | `CustomToolCallOutputItemParam.json` | provider_event |
-| `file_search_call` | `FileSearchCallItemParam.json` | provider_event |
-| `function_call` | `FunctionCallItemParam.json` | provider_event |
-| `function_call_output` | `FunctionCallOutputItemParam.json` | provider_event |
-| `image_generation_call` | `ImageGenCallItemParam.json` | provider_event |
-| `local_shell_call` | `LocalShellCallItemParam.json` | provider_event |
-| `local_shell_call_output` | `LocalShellCallOutputItemParam.json` | provider_event |
-| `mcp_approval_request` | `MCPApprovalRequestItemParam.json` | provider_event |
-| `mcp_approval_response` | `MCPApprovalResponseItemParam.json` | provider_event |
-| `message` | `AssistantMessageItemParam.json` | provider_event |
-| `message` | `DeveloperMessageItemParam.json` | provider_event |
-| `message` | `SystemMessageItemParam.json` | provider_event |
-| `message` | `UserMessageItemParam.json` | provider_event |
-| `reasoning` | `ReasoningItemParam.json` | provider_event |
-| `shell_call` | `FunctionShellCallItemParam.json` | provider_event |
-| `shell_call_output` | `FunctionShellCallOutputItemParam.json` | provider_event |
-| `unknown` | `ItemReferenceParam.json` | provider_event |
-| `web_search_call` | `WebSearchCallItemParam.json` | provider_event |
+| `apply_patch_call` | `ApplyPatchToolCallItemParam.json` | pending (request mapping) |
+| `apply_patch_call_output` | `ApplyPatchToolCallOutputItemParam.json` | pending (request mapping) |
+| `code_interpreter_call` | `CodeInterpreterCallItemParam.json` | pending (request mapping) |
+| `compaction` | `CompactionSummaryItemParam.json` | pending (request mapping) |
+| `computer_call` | `ComputerCallItemParam.json` | pending (request mapping) |
+| `computer_call_output` | `ComputerCallOutputItemParam.json` | pending (request mapping) |
+| `custom_tool_call` | `CustomToolCallItemParam.json` | pending (request mapping) |
+| `custom_tool_call_output` | `CustomToolCallOutputItemParam.json` | pending (request mapping) |
+| `file_search_call` | `FileSearchCallItemParam.json` | pending (request mapping) |
+| `function_call` | `FunctionCallItemParam.json` | pending (request mapping) |
+| `function_call_output` | `FunctionCallOutputItemParam.json` | pending (request mapping) |
+| `image_generation_call` | `ImageGenCallItemParam.json` | pending (request mapping) |
+| `local_shell_call` | `LocalShellCallItemParam.json` | pending (request mapping) |
+| `local_shell_call_output` | `LocalShellCallOutputItemParam.json` | pending (request mapping) |
+| `mcp_approval_request` | `MCPApprovalRequestItemParam.json` | pending (request mapping) |
+| `mcp_approval_response` | `MCPApprovalResponseItemParam.json` | pending (request mapping) |
+| `message` | `AssistantMessageItemParam.json` | pending (request mapping) |
+| `message` | `DeveloperMessageItemParam.json` | pending (request mapping) |
+| `message` | `SystemMessageItemParam.json` | pending (request mapping) |
+| `message` | `UserMessageItemParam.json` | pending (request mapping) |
+| `reasoning` | `ReasoningItemParam.json` | pending (request mapping) |
+| `shell_call` | `FunctionShellCallItemParam.json` | pending (request mapping) |
+| `shell_call_output` | `FunctionShellCallOutputItemParam.json` | pending (request mapping) |
+| `unknown` | `ItemReferenceParam.json` | pending (request mapping) |
+| `web_search_call` | `WebSearchCallItemParam.json` | pending (request mapping) |
 
 ## Output item variants
 | item type | schema | mapping |
@@ -257,430 +263,451 @@ Doc discrepancies to resolve
 
 This list is exhaustive and drives the task tracker in `docs/07_tasks/openresponses_compliance.md`.
 
+Legend
+- `bundled`: schema is present in `schemas/openresponses/openapi.json` (used for current validation).
+- `validated`: schema is reachable from streaming-event or ResponseResource validation in the bundled OpenAPI.
+- `status`: mapping status in current codebase.
+
 ### Error schemas
-- `Error`
-- `ErrorPayload`
-- `HTTPError`
-- `MCPProtocolError`
-- `MCPToolExecutionError`
+| schema | bundled | validated | status |
+| --- | --- | --- | --- |
+| `Error` | yes | yes | provider_event |
+| `ErrorPayload` | yes | yes | provider_event |
+| `HTTPError` | no | no | pending |
+| `MCPProtocolError` | no | no | pending |
+| `MCPToolExecutionError` | no | no | pending |
 
 ### Input item params
-- `ApplyPatchToolCallItemParam`
-- `ApplyPatchToolCallOutputItemParam`
-- `AssistantMessageItemParam`
-- `CodeInterpreterCallItemParam`
-- `CompactionSummaryItemParam`
-- `ComputerCallItemParam`
-- `ComputerCallOutputItemParam`
-- `CustomToolCallItemParam`
-- `CustomToolCallOutputItemParam`
-- `DeveloperMessageItemParam`
-- `FileSearchCallItemParam`
-- `FunctionCallItemParam`
-- `FunctionCallOutputItemParam`
-- `FunctionShellCallItemParam`
-- `FunctionShellCallOutputItemParam`
-- `ImageGenCallItemParam`
-- `ItemParam`
-- `LocalShellCallItemParam`
-- `LocalShellCallOutputItemParam`
-- `MCPApprovalRequestItemParam`
-- `MCPApprovalResponseItemParam`
-- `ReasoningItemParam`
-- `SystemMessageItemParam`
-- `UserMessageItemParam`
-- `WebSearchCallItemParam`
+| schema | bundled | validated | status |
+| --- | --- | --- | --- |
+| `ApplyPatchToolCallItemParam` | no | no | pending |
+| `ApplyPatchToolCallOutputItemParam` | no | no | pending |
+| `AssistantMessageItemParam` | yes | no | pending |
+| `CodeInterpreterCallItemParam` | no | no | pending |
+| `CompactionSummaryItemParam` | no | no | pending |
+| `ComputerCallItemParam` | no | no | pending |
+| `ComputerCallOutputItemParam` | no | no | pending |
+| `CustomToolCallItemParam` | no | no | pending |
+| `CustomToolCallOutputItemParam` | no | no | pending |
+| `DeveloperMessageItemParam` | yes | no | pending |
+| `FileSearchCallItemParam` | no | no | pending |
+| `FunctionCallItemParam` | yes | no | pending |
+| `FunctionCallOutputItemParam` | yes | no | pending |
+| `FunctionShellCallItemParam` | no | no | pending |
+| `FunctionShellCallOutputItemParam` | no | no | pending |
+| `ImageGenCallItemParam` | no | no | pending |
+| `ItemParam` | yes | no | pending |
+| `LocalShellCallItemParam` | no | no | pending |
+| `LocalShellCallOutputItemParam` | no | no | pending |
+| `MCPApprovalRequestItemParam` | no | no | pending |
+| `MCPApprovalResponseItemParam` | no | no | pending |
+| `ReasoningItemParam` | yes | no | pending |
+| `SystemMessageItemParam` | yes | no | pending |
+| `UserMessageItemParam` | yes | no | pending |
+| `WebSearchCallItemParam` | no | no | pending |
 
 ### Other schemas
-- `AllowedToolsParam`
-- `Annotation`
-- `ApiSourceParam`
-- `ApplyPatchCallOutputStatus`
-- `ApplyPatchCallOutputStatusParam`
-- `ApplyPatchCallStatus`
-- `ApplyPatchCallStatusParam`
-- `ApplyPatchCreateFileOperation`
-- `ApplyPatchCreateFileOperationParam`
-- `ApplyPatchDeleteFileOperation`
-- `ApplyPatchDeleteFileOperationParam`
-- `ApplyPatchOperationParam`
-- `ApplyPatchToolCall`
-- `ApplyPatchToolCallOutput`
-- `ApplyPatchUpdateFileOperation`
-- `ApplyPatchUpdateFileOperationParam`
-- `ApproximateLocation`
-- `ApproximateLocationParam`
-- `Billing`
-- `ClickAction`
-- `ClickButtonType`
-- `ClickParam`
-- `CodeInterpreterCall`
-- `CodeInterpreterCallStatus`
-- `CodeInterpreterOutputImage`
-- `CodeInterpreterOutputLogs`
-- `CodeInterpreterToolCallOutputImageParam`
-- `CodeInterpreterToolCallOutputLogsParam`
-- `CompactResource`
-- `CompactResponseMethodPublicBody`
-- `CompactionBody`
-- `ComparisonFilterFieldCONTAINS`
-- `ComparisonFilterFieldCONTAINSANY`
-- `ComparisonFilterFieldEQ`
-- `ComparisonFilterFieldGT`
-- `ComparisonFilterFieldGTE`
-- `ComparisonFilterFieldIN`
-- `ComparisonFilterFieldLT`
-- `ComparisonFilterFieldLTE`
-- `ComparisonFilterFieldNCONTAINS`
-- `ComparisonFilterFieldNCONTAINSANY`
-- `ComparisonFilterFieldNE`
-- `ComparisonFilterFieldNIN`
-- `ComparisonFilterParamContainsAnyParam`
-- `ComparisonFilterParamContainsParam`
-- `ComparisonFilterParamEQParam`
-- `ComparisonFilterParamGTEParam`
-- `ComparisonFilterParamGTParam`
-- `ComparisonFilterParamINParam`
-- `ComparisonFilterParamLTEParam`
-- `ComparisonFilterParamLTParam`
-- `ComparisonFilterParamNContainsAnyParam`
-- `ComparisonFilterParamNContainsParam`
-- `ComparisonFilterParamNEParam`
-- `ComparisonFilterParamNINParam`
-- `CompoundFilterFieldAND`
-- `CompoundFilterFieldOR`
-- `CompoundFilterParamAndParam`
-- `CompoundFilterParamOrParam`
-- `ComputerCall`
-- `ComputerCallOutput`
-- `ComputerCallOutputStatus`
-- `ComputerCallSafetyCheckParam`
-- `ComputerEnvironment`
-- `ComputerEnvironment1`
-- `ComputerScreenshotContent`
-- `ComputerScreenshotParam`
-- `ContainerFileCitationBody`
-- `ContainerFileCitationParam`
-- `ContainerMemoryLimit`
-- `ContextEdit`
-- `ContextEditDetails`
-- `Conversation`
-- `ConversationParam`
-- `CoordParam`
-- `CreateImageBody15Param`
-- `CreateImageBody1MiniParam`
-- `CreateImageBody1Param`
-- `CreateImageBodyChatGPTImageLatestParam`
-- `CreateVideoBody`
-- `CreateVideoRemixBody`
-- `CustomGrammarFormatField`
-- `CustomGrammarFormatParam`
-- `CustomTextFormatField`
-- `CustomTextFormatParam`
-- `CustomToolCall`
-- `CustomToolCallOutput`
-- `CustomToolFormat`
-- `DeletedResponseResource`
-- `DeletedVideoResource`
-- `DetailEnum`
-- `DoubleClickAction`
-- `DoubleClickParam`
-- `DragAction`
-- `DragParam`
-- `DragPoint`
-- `EditImageBody15Param`
-- `EditImageBody1MiniParam`
-- `EditImageBody1Param`
-- `EditImageBodyChatGPTImageLatestParam`
-- `EditsBodyDallE2Param`
-- `EmptyAction`
-- `EmptyModelParam`
-- `ExcludeEnum`
-- `FileCitationBody`
-- `FileCitationParam`
-- `FileSearchCall`
-- `FileSearchRankingOptionsParam`
-- `FileSearchResult`
-- `FileSearchRetrievedChunksParam`
-- `FileSearchToolCallStatusEnum`
-- `Filters`
-- `FunctionCall`
-- `FunctionCallItemStatus`
-- `FunctionCallOutput`
-- `FunctionCallOutputStatusEnum`
-- `FunctionCallStatus`
-- `FunctionShellAction`
-- `FunctionShellActionParam`
-- `FunctionShellCall`
-- `FunctionShellCallItemStatus`
-- `FunctionShellCallOutput`
-- `FunctionShellCallOutputContent`
-- `FunctionShellCallOutputContentParam`
-- `FunctionShellCallOutputExitOutcome`
-- `FunctionShellCallOutputExitOutcomeParam`
-- `FunctionShellCallOutputOutcomeParam`
-- `FunctionShellCallOutputTimeoutOutcome`
-- `FunctionShellCallOutputTimeoutOutcomeParam`
-- `GenerationsBodyDallE2Param`
-- `GenerationsBodyDallE3Param`
-- `GrammarSyntax`
-- `GrammarSyntax1`
-- `HybridSearchOptions`
-- `HybridSearchOptionsParam`
-- `Image`
-- `ImageBackground`
-- `ImageDetail`
-- `ImageGenAction`
-- `ImageGenActionEnum`
-- `ImageGenCall`
-- `ImageGenCallStatus`
-- `ImageGenInputUsageDetails`
-- `ImageGenOutputTokensDetails`
-- `ImageGenToolModel`
-- `ImageGenUsage`
-- `ImageModeration`
-- `ImageOutputFormat`
-- `ImageQuality`
-- `ImageQualityDallE`
-- `ImageResource`
-- `ImageSize`
-- `ImageSizeDallE2`
-- `ImageSizeDallE3`
-- `ImageStyleDallE`
-- `ImageUsage`
-- `ImageUsageInputTokensDetails`
-- `ImageUsageOutputTokensDetails`
-- `IncludeEnum`
-- `IncompleteDetails`
-- `InputFidelity`
-- `InputFileContent`
-- `InputFileContentParam`
-- `InputImageContent`
-- `InputImageContentParamAutoParam`
-- `InputImageMaskContentParam`
-- `InputTextContent`
-- `InputTextContentParam`
-- `InputTokensDetails`
-- `ItemListResource`
-- `ItemReferenceParam`
-- `JsonObjectResponseFormat`
-- `JsonSchemaResponseFormat`
-- `KeyPressAction`
-- `KeyPressParam`
-- `LocalFileEnvironmentParam`
-- `LocalShellCall`
-- `LocalShellCallItemStatus`
-- `LocalShellCallOutput`
-- `LocalShellCallOutputStatusEnum`
-- `LocalShellCallStatus`
-- `LocalShellExecAction`
-- `LocalShellExecActionParam`
-- `LogProb`
-- `MCPApprovalRequest`
-- `MCPApprovalResponse`
-- `MCPListTools`
-- `MCPRequireApprovalApiEnum`
-- `MCPRequireApprovalFieldEnum`
-- `MCPRequireApprovalFilterField`
-- `MCPRequireApprovalFilterParam`
-- `MCPToolCall`
-- `MCPToolCallStatus`
-- `MCPToolFilterField`
-- `MCPToolFilterParam`
-- `Message`
-- `MessageRole`
-- `MessageRole1`
-- `MessageStatus`
-- `MetadataParam`
-- `MoveAction`
-- `MoveParam`
-- `OrderEnum`
-- `OutputTextContent`
-- `OutputTextContentParam`
-- `OutputTokensDetails`
-- `Payer`
-- `PromptCacheRetentionEnum`
-- `PromptInstructionMessage`
-- `RankerVersionType`
-- `RankingOptions`
-- `Reasoning`
-- `ReasoningBody`
-- `ReasoningEffortEnum`
-- `ReasoningParam`
-- `ReasoningSummaryContentParam`
-- `ReasoningSummaryEnum`
-- `ReasoningTextContent`
-- `RefusalContent`
-- `RefusalContentParam`
-- `SafetyCheck`
-- `ScreenshotAction`
-- `ScreenshotParam`
-- `ScrollAction`
-- `ScrollParam`
-- `SearchContextSize`
-- `ServiceTierEnum`
-- `SpecificApplyPatchParam`
-- `SpecificCodeInterpreterParam`
-- `SpecificComputerParam`
-- `SpecificComputerPreviewParam`
-- `SpecificFileSearchParam`
-- `SpecificFunctionParam`
-- `SpecificFunctionShellParam`
-- `SpecificImageGenParam`
-- `SpecificLocalShellParam`
-- `SpecificMCPFunctionParam`
-- `SpecificToolChoiceParam`
-- `SpecificWebSearchParam`
-- `SpecificWebSearchPreviewParam`
-- `StreamOptionsParam`
-- `SummaryTextContent`
-- `TextContent`
-- `TextField`
-- `TextParam`
-- `TextResponseFormat`
-- `TokenCountsBody`
-- `TokenCountsResource`
-- `ToolChoiceParam`
-- `ToolChoiceValueEnum`
-- `TopLogProb`
-- `TruncationEnum`
-- `TypeAction`
-- `TypeParam`
-- `UrlCitationBody`
-- `UrlCitationParam`
-- `UrlSourceParam`
-- `Usage`
-- `VerbosityEnum`
-- `VideoContentVariant`
-- `VideoListResource`
-- `VideoModel`
-- `VideoResource`
-- `VideoSeconds`
-- `VideoSize`
-- `VideoStatus`
-- `WaitAction`
-- `WaitParam`
-- `WebSearchCall`
-- `WebSearchCallActionFindInPage`
-- `WebSearchCallActionFindInPageParam`
-- `WebSearchCallActionOpenPage`
-- `WebSearchCallActionOpenPageParam`
-- `WebSearchCallActionSearch`
-- `WebSearchCallActionSearchParam`
-- `WebSearchCallStatus`
-- `WebSearchPreviewToolParam_2025_03_11Param`
-- `WebSearchToolParam_2025_08_14Param`
+| schema | bundled | validated | status |
+| --- | --- | --- | --- |
+| `AllowedToolsParam` | yes | no | pending |
+| `Annotation` | yes | yes | pending |
+| `ApiSourceParam` | no | no | pending |
+| `ApplyPatchCallOutputStatus` | no | no | pending |
+| `ApplyPatchCallOutputStatusParam` | no | no | pending |
+| `ApplyPatchCallStatus` | no | no | pending |
+| `ApplyPatchCallStatusParam` | no | no | pending |
+| `ApplyPatchCreateFileOperation` | no | no | pending |
+| `ApplyPatchCreateFileOperationParam` | no | no | pending |
+| `ApplyPatchDeleteFileOperation` | no | no | pending |
+| `ApplyPatchDeleteFileOperationParam` | no | no | pending |
+| `ApplyPatchOperationParam` | no | no | pending |
+| `ApplyPatchToolCall` | no | no | pending |
+| `ApplyPatchToolCallOutput` | no | no | pending |
+| `ApplyPatchUpdateFileOperation` | no | no | pending |
+| `ApplyPatchUpdateFileOperationParam` | no | no | pending |
+| `ApproximateLocation` | no | no | pending |
+| `ApproximateLocationParam` | no | no | pending |
+| `Billing` | no | no | pending |
+| `ClickAction` | no | no | pending |
+| `ClickButtonType` | no | no | pending |
+| `ClickParam` | no | no | pending |
+| `CodeInterpreterCall` | no | no | pending |
+| `CodeInterpreterCallStatus` | no | no | pending |
+| `CodeInterpreterOutputImage` | no | no | pending |
+| `CodeInterpreterOutputLogs` | no | no | pending |
+| `CodeInterpreterToolCallOutputImageParam` | no | no | pending |
+| `CodeInterpreterToolCallOutputLogsParam` | no | no | pending |
+| `CompactResource` | no | no | pending |
+| `CompactResponseMethodPublicBody` | no | no | pending |
+| `CompactionBody` | no | no | pending |
+| `ComparisonFilterFieldCONTAINS` | no | no | pending |
+| `ComparisonFilterFieldCONTAINSANY` | no | no | pending |
+| `ComparisonFilterFieldEQ` | no | no | pending |
+| `ComparisonFilterFieldGT` | no | no | pending |
+| `ComparisonFilterFieldGTE` | no | no | pending |
+| `ComparisonFilterFieldIN` | no | no | pending |
+| `ComparisonFilterFieldLT` | no | no | pending |
+| `ComparisonFilterFieldLTE` | no | no | pending |
+| `ComparisonFilterFieldNCONTAINS` | no | no | pending |
+| `ComparisonFilterFieldNCONTAINSANY` | no | no | pending |
+| `ComparisonFilterFieldNE` | no | no | pending |
+| `ComparisonFilterFieldNIN` | no | no | pending |
+| `ComparisonFilterParamContainsAnyParam` | no | no | pending |
+| `ComparisonFilterParamContainsParam` | no | no | pending |
+| `ComparisonFilterParamEQParam` | no | no | pending |
+| `ComparisonFilterParamGTEParam` | no | no | pending |
+| `ComparisonFilterParamGTParam` | no | no | pending |
+| `ComparisonFilterParamINParam` | no | no | pending |
+| `ComparisonFilterParamLTEParam` | no | no | pending |
+| `ComparisonFilterParamLTParam` | no | no | pending |
+| `ComparisonFilterParamNContainsAnyParam` | no | no | pending |
+| `ComparisonFilterParamNContainsParam` | no | no | pending |
+| `ComparisonFilterParamNEParam` | no | no | pending |
+| `ComparisonFilterParamNINParam` | no | no | pending |
+| `CompoundFilterFieldAND` | no | no | pending |
+| `CompoundFilterFieldOR` | no | no | pending |
+| `CompoundFilterParamAndParam` | no | no | pending |
+| `CompoundFilterParamOrParam` | no | no | pending |
+| `ComputerCall` | no | no | pending |
+| `ComputerCallOutput` | no | no | pending |
+| `ComputerCallOutputStatus` | no | no | pending |
+| `ComputerCallSafetyCheckParam` | no | no | pending |
+| `ComputerEnvironment` | no | no | pending |
+| `ComputerEnvironment1` | no | no | pending |
+| `ComputerScreenshotContent` | no | no | pending |
+| `ComputerScreenshotParam` | no | no | pending |
+| `ContainerFileCitationBody` | no | no | pending |
+| `ContainerFileCitationParam` | no | no | pending |
+| `ContainerMemoryLimit` | no | no | pending |
+| `ContextEdit` | no | no | pending |
+| `ContextEditDetails` | no | no | pending |
+| `Conversation` | no | no | pending |
+| `ConversationParam` | no | no | pending |
+| `CoordParam` | no | no | pending |
+| `CreateImageBody15Param` | no | no | pending |
+| `CreateImageBody1MiniParam` | no | no | pending |
+| `CreateImageBody1Param` | no | no | pending |
+| `CreateImageBodyChatGPTImageLatestParam` | no | no | pending |
+| `CreateVideoBody` | no | no | pending |
+| `CreateVideoRemixBody` | no | no | pending |
+| `CustomGrammarFormatField` | no | no | pending |
+| `CustomGrammarFormatParam` | no | no | pending |
+| `CustomTextFormatField` | no | no | pending |
+| `CustomTextFormatParam` | no | no | pending |
+| `CustomToolCall` | no | no | pending |
+| `CustomToolCallOutput` | no | no | pending |
+| `CustomToolFormat` | no | no | pending |
+| `DeletedResponseResource` | no | no | pending |
+| `DeletedVideoResource` | no | no | pending |
+| `DetailEnum` | yes | no | pending |
+| `DoubleClickAction` | no | no | pending |
+| `DoubleClickParam` | no | no | pending |
+| `DragAction` | no | no | pending |
+| `DragParam` | no | no | pending |
+| `DragPoint` | no | no | pending |
+| `EditImageBody15Param` | no | no | pending |
+| `EditImageBody1MiniParam` | no | no | pending |
+| `EditImageBody1Param` | no | no | pending |
+| `EditImageBodyChatGPTImageLatestParam` | no | no | pending |
+| `EditsBodyDallE2Param` | no | no | pending |
+| `EmptyAction` | no | no | pending |
+| `EmptyModelParam` | yes | no | pending |
+| `ExcludeEnum` | no | no | pending |
+| `FileCitationBody` | no | no | pending |
+| `FileCitationParam` | no | no | pending |
+| `FileSearchCall` | no | no | pending |
+| `FileSearchRankingOptionsParam` | no | no | pending |
+| `FileSearchResult` | no | no | pending |
+| `FileSearchRetrievedChunksParam` | no | no | pending |
+| `FileSearchToolCallStatusEnum` | no | no | pending |
+| `Filters` | no | no | pending |
+| `FunctionCall` | yes | yes | pending |
+| `FunctionCallItemStatus` | yes | no | pending |
+| `FunctionCallOutput` | yes | yes | pending |
+| `FunctionCallOutputStatusEnum` | yes | yes | pending |
+| `FunctionCallStatus` | yes | yes | pending |
+| `FunctionShellAction` | no | no | pending |
+| `FunctionShellActionParam` | no | no | pending |
+| `FunctionShellCall` | no | no | pending |
+| `FunctionShellCallItemStatus` | no | no | pending |
+| `FunctionShellCallOutput` | no | no | pending |
+| `FunctionShellCallOutputContent` | no | no | pending |
+| `FunctionShellCallOutputContentParam` | no | no | pending |
+| `FunctionShellCallOutputExitOutcome` | no | no | pending |
+| `FunctionShellCallOutputExitOutcomeParam` | no | no | pending |
+| `FunctionShellCallOutputOutcomeParam` | no | no | pending |
+| `FunctionShellCallOutputTimeoutOutcome` | no | no | pending |
+| `FunctionShellCallOutputTimeoutOutcomeParam` | no | no | pending |
+| `GenerationsBodyDallE2Param` | no | no | pending |
+| `GenerationsBodyDallE3Param` | no | no | pending |
+| `GrammarSyntax` | no | no | pending |
+| `GrammarSyntax1` | no | no | pending |
+| `HybridSearchOptions` | no | no | pending |
+| `HybridSearchOptionsParam` | no | no | pending |
+| `Image` | no | no | pending |
+| `ImageBackground` | no | no | pending |
+| `ImageDetail` | yes | yes | pending |
+| `ImageGenAction` | no | no | pending |
+| `ImageGenActionEnum` | no | no | pending |
+| `ImageGenCall` | no | no | pending |
+| `ImageGenCallStatus` | no | no | pending |
+| `ImageGenInputUsageDetails` | no | no | pending |
+| `ImageGenOutputTokensDetails` | no | no | pending |
+| `ImageGenToolModel` | no | no | pending |
+| `ImageGenUsage` | no | no | pending |
+| `ImageModeration` | no | no | pending |
+| `ImageOutputFormat` | no | no | pending |
+| `ImageQuality` | no | no | pending |
+| `ImageQualityDallE` | no | no | pending |
+| `ImageResource` | no | no | pending |
+| `ImageSize` | no | no | pending |
+| `ImageSizeDallE2` | no | no | pending |
+| `ImageSizeDallE3` | no | no | pending |
+| `ImageStyleDallE` | no | no | pending |
+| `ImageUsage` | no | no | pending |
+| `ImageUsageInputTokensDetails` | no | no | pending |
+| `ImageUsageOutputTokensDetails` | no | no | pending |
+| `IncludeEnum` | yes | no | pending |
+| `IncompleteDetails` | yes | yes | pending |
+| `InputFidelity` | no | no | pending |
+| `InputFileContent` | yes | yes | pending |
+| `InputFileContentParam` | yes | no | pending |
+| `InputImageContent` | yes | yes | pending |
+| `InputImageContentParamAutoParam` | yes | no | pending |
+| `InputImageMaskContentParam` | no | no | pending |
+| `InputTextContent` | yes | yes | pending |
+| `InputTextContentParam` | yes | no | pending |
+| `InputTokensDetails` | yes | yes | pending |
+| `ItemListResource` | no | no | pending |
+| `ItemReferenceParam` | yes | no | pending |
+| `JsonObjectResponseFormat` | yes | yes | pending |
+| `JsonSchemaResponseFormat` | yes | yes | pending |
+| `KeyPressAction` | no | no | pending |
+| `KeyPressParam` | no | no | pending |
+| `LocalFileEnvironmentParam` | no | no | pending |
+| `LocalShellCall` | no | no | pending |
+| `LocalShellCallItemStatus` | no | no | pending |
+| `LocalShellCallOutput` | no | no | pending |
+| `LocalShellCallOutputStatusEnum` | no | no | pending |
+| `LocalShellCallStatus` | no | no | pending |
+| `LocalShellExecAction` | no | no | pending |
+| `LocalShellExecActionParam` | no | no | pending |
+| `LogProb` | yes | yes | pending |
+| `MCPApprovalRequest` | no | no | pending |
+| `MCPApprovalResponse` | no | no | pending |
+| `MCPListTools` | no | no | pending |
+| `MCPRequireApprovalApiEnum` | no | no | pending |
+| `MCPRequireApprovalFieldEnum` | no | no | pending |
+| `MCPRequireApprovalFilterField` | no | no | pending |
+| `MCPRequireApprovalFilterParam` | no | no | pending |
+| `MCPToolCall` | no | no | pending |
+| `MCPToolCallStatus` | no | no | pending |
+| `MCPToolFilterField` | no | no | pending |
+| `MCPToolFilterParam` | no | no | pending |
+| `Message` | yes | yes | pending |
+| `MessageRole` | yes | yes | pending |
+| `MessageRole1` | no | no | pending |
+| `MessageStatus` | yes | yes | pending |
+| `MetadataParam` | yes | no | pending |
+| `MoveAction` | no | no | pending |
+| `MoveParam` | no | no | pending |
+| `OrderEnum` | no | no | pending |
+| `OutputTextContent` | yes | yes | pending |
+| `OutputTextContentParam` | yes | no | pending |
+| `OutputTokensDetails` | yes | yes | pending |
+| `Payer` | no | no | pending |
+| `PromptCacheRetentionEnum` | no | no | pending |
+| `PromptInstructionMessage` | no | no | pending |
+| `RankerVersionType` | no | no | pending |
+| `RankingOptions` | no | no | pending |
+| `Reasoning` | yes | yes | pending |
+| `ReasoningBody` | yes | yes | pending |
+| `ReasoningEffortEnum` | yes | yes | pending |
+| `ReasoningParam` | yes | no | pending |
+| `ReasoningSummaryContentParam` | yes | no | pending |
+| `ReasoningSummaryEnum` | yes | yes | pending |
+| `ReasoningTextContent` | yes | yes | pending |
+| `RefusalContent` | yes | yes | pending |
+| `RefusalContentParam` | yes | no | pending |
+| `SafetyCheck` | no | no | pending |
+| `ScreenshotAction` | no | no | pending |
+| `ScreenshotParam` | no | no | pending |
+| `ScrollAction` | no | no | pending |
+| `ScrollParam` | no | no | pending |
+| `SearchContextSize` | no | no | pending |
+| `ServiceTierEnum` | yes | no | pending |
+| `SpecificApplyPatchParam` | no | no | pending |
+| `SpecificCodeInterpreterParam` | no | no | pending |
+| `SpecificComputerParam` | no | no | pending |
+| `SpecificComputerPreviewParam` | no | no | pending |
+| `SpecificFileSearchParam` | no | no | pending |
+| `SpecificFunctionParam` | yes | no | pending |
+| `SpecificFunctionShellParam` | no | no | pending |
+| `SpecificImageGenParam` | no | no | pending |
+| `SpecificLocalShellParam` | no | no | pending |
+| `SpecificMCPFunctionParam` | no | no | pending |
+| `SpecificToolChoiceParam` | yes | no | pending |
+| `SpecificWebSearchParam` | no | no | pending |
+| `SpecificWebSearchPreviewParam` | no | no | pending |
+| `StreamOptionsParam` | yes | no | pending |
+| `SummaryTextContent` | yes | yes | pending |
+| `TextContent` | yes | yes | pending |
+| `TextField` | yes | yes | pending |
+| `TextParam` | yes | no | pending |
+| `TextResponseFormat` | yes | yes | pending |
+| `TokenCountsBody` | no | no | pending |
+| `TokenCountsResource` | no | no | pending |
+| `ToolChoiceParam` | yes | no | pending |
+| `ToolChoiceValueEnum` | yes | yes | pending |
+| `TopLogProb` | yes | yes | pending |
+| `TruncationEnum` | yes | yes | pending |
+| `TypeAction` | no | no | pending |
+| `TypeParam` | no | no | pending |
+| `UrlCitationBody` | yes | yes | pending |
+| `UrlCitationParam` | yes | no | pending |
+| `UrlSourceParam` | no | no | pending |
+| `Usage` | yes | yes | pending |
+| `VerbosityEnum` | yes | yes | pending |
+| `VideoContentVariant` | no | no | pending |
+| `VideoListResource` | no | no | pending |
+| `VideoModel` | no | no | pending |
+| `VideoResource` | no | no | pending |
+| `VideoSeconds` | no | no | pending |
+| `VideoSize` | no | no | pending |
+| `VideoStatus` | no | no | pending |
+| `WaitAction` | no | no | pending |
+| `WaitParam` | no | no | pending |
+| `WebSearchCall` | no | no | pending |
+| `WebSearchCallActionFindInPage` | no | no | pending |
+| `WebSearchCallActionFindInPageParam` | no | no | pending |
+| `WebSearchCallActionOpenPage` | no | no | pending |
+| `WebSearchCallActionOpenPageParam` | no | no | pending |
+| `WebSearchCallActionSearch` | no | no | pending |
+| `WebSearchCallActionSearchParam` | no | no | pending |
+| `WebSearchCallStatus` | no | no | pending |
+| `WebSearchPreviewToolParam_2025_03_11Param` | no | no | pending |
+| `WebSearchToolParam_2025_08_14Param` | no | no | pending |
 
 ### Output item fields
-- `ItemField`
+| schema | bundled | validated | status |
+| --- | --- | --- | --- |
+| `ItemField` | yes | yes | provider_event |
 
 ### Request-related schemas
-- `CreateResponseBody`
+| schema | bundled | validated | status |
+| --- | --- | --- | --- |
+| `CreateResponseBody` | yes | no | pending |
 
 ### Response-related schemas
-- `ResponseFormatDallE`
-- `ResponseResource`
-- `ResponsesConversationParam`
+| schema | bundled | validated | status |
+| --- | --- | --- | --- |
+| `ResponseFormatDallE` | no | no | pending |
+| `ResponseResource` | yes | yes | provider_event |
+| `ResponsesConversationParam` | no | no | pending |
 
 ### Streaming events
-- `ErrorStreamingEvent`
-- `ImageEditCompletedStreamingEvent`
-- `ImageEditPartialImageStreamingEvent`
-- `ImageGenerationCompletedStreamingEvent`
-- `ImageGenerationPartialImageStreamingEvent`
-- `ResponseApplyPatchCallOperationDiffDeltaStreamingEvent`
-- `ResponseApplyPatchCallOperationDiffDoneStreamingEvent`
-- `ResponseCodeInterpreterCallCodeDeltaStreamingEvent`
-- `ResponseCodeInterpreterCallCodeDoneStreamingEvent`
-- `ResponseCodeInterpreterCallCompletedStreamingEvent`
-- `ResponseCodeInterpreterCallInProgressStreamingEvent`
-- `ResponseCodeInterpreterCallInterpretingStreamingEvent`
-- `ResponseCompletedStreamingEvent`
-- `ResponseContentPartAddedStreamingEvent`
-- `ResponseContentPartDoneStreamingEvent`
-- `ResponseCreatedStreamingEvent`
-- `ResponseCustomToolCallInputDeltaStreamingEvent`
-- `ResponseCustomToolCallInputDoneStreamingEvent`
-- `ResponseFailedStreamingEvent`
-- `ResponseFileSearchCallCompletedStreamingEvent`
-- `ResponseFileSearchCallInProgressStreamingEvent`
-- `ResponseFileSearchCallSearchingStreamingEvent`
-- `ResponseFunctionCallArgumentsDeltaStreamingEvent`
-- `ResponseFunctionCallArgumentsDoneStreamingEvent`
-- `ResponseImageGenCallCompletedStreamingEvent`
-- `ResponseImageGenCallGeneratingStreamingEvent`
-- `ResponseImageGenCallInProgressStreamingEvent`
-- `ResponseImageGenCallPartialImageStreamingEvent`
-- `ResponseInProgressStreamingEvent`
-- `ResponseIncompleteStreamingEvent`
-- `ResponseMCPCallArgumentsDeltaStreamingEvent`
-- `ResponseMCPCallArgumentsDoneStreamingEvent`
-- `ResponseMCPCallCompletedStreamingEvent`
-- `ResponseMCPCallFailedStreamingEvent`
-- `ResponseMCPCallInProgressStreamingEvent`
-- `ResponseMCPListToolsCompletedStreamingEvent`
-- `ResponseMCPListToolsFailedStreamingEvent`
-- `ResponseMCPListToolsInProgressStreamingEvent`
-- `ResponseOutputItemAddedStreamingEvent`
-- `ResponseOutputItemDoneStreamingEvent`
-- `ResponseOutputTextAnnotationAddedStreamingEvent`
-- `ResponseOutputTextDeltaStreamingEvent`
-- `ResponseOutputTextDoneStreamingEvent`
-- `ResponseQueuedStreamingEvent`
-- `ResponseReasoningDeltaStreamingEvent`
-- `ResponseReasoningDoneStreamingEvent`
-- `ResponseReasoningSummaryDeltaStreamingEvent`
-- `ResponseReasoningSummaryDoneStreamingEvent`
-- `ResponseReasoningSummaryPartAddedStreamingEvent`
-- `ResponseReasoningSummaryPartDoneStreamingEvent`
-- `ResponseRefusalDeltaStreamingEvent`
-- `ResponseRefusalDoneStreamingEvent`
-- `ResponseShellCallCommandAddedStreamingEvent`
-- `ResponseShellCallCommandDeltaStreamingEvent`
-- `ResponseShellCallCommandDoneStreamingEvent`
-- `ResponseWebSearchCallCompletedStreamingEvent`
-- `ResponseWebSearchCallInProgressStreamingEvent`
-- `ResponseWebSearchCallSearchingStreamingEvent`
+| schema | bundled | validated | status |
+| --- | --- | --- | --- |
+| `ErrorStreamingEvent` | yes | yes | provider_event |
+| `ImageEditCompletedStreamingEvent` | no | no | pending |
+| `ImageEditPartialImageStreamingEvent` | no | no | pending |
+| `ImageGenerationCompletedStreamingEvent` | no | no | pending |
+| `ImageGenerationPartialImageStreamingEvent` | no | no | pending |
+| `ResponseApplyPatchCallOperationDiffDeltaStreamingEvent` | no | no | pending |
+| `ResponseApplyPatchCallOperationDiffDoneStreamingEvent` | no | no | pending |
+| `ResponseCodeInterpreterCallCodeDeltaStreamingEvent` | no | no | pending |
+| `ResponseCodeInterpreterCallCodeDoneStreamingEvent` | no | no | pending |
+| `ResponseCodeInterpreterCallCompletedStreamingEvent` | no | no | pending |
+| `ResponseCodeInterpreterCallInProgressStreamingEvent` | no | no | pending |
+| `ResponseCodeInterpreterCallInterpretingStreamingEvent` | no | no | pending |
+| `ResponseCompletedStreamingEvent` | yes | yes | provider_event |
+| `ResponseContentPartAddedStreamingEvent` | yes | yes | provider_event |
+| `ResponseContentPartDoneStreamingEvent` | yes | yes | provider_event |
+| `ResponseCreatedStreamingEvent` | yes | yes | provider_event |
+| `ResponseCustomToolCallInputDeltaStreamingEvent` | no | no | pending |
+| `ResponseCustomToolCallInputDoneStreamingEvent` | no | no | pending |
+| `ResponseFailedStreamingEvent` | yes | yes | provider_event |
+| `ResponseFileSearchCallCompletedStreamingEvent` | no | no | pending |
+| `ResponseFileSearchCallInProgressStreamingEvent` | no | no | pending |
+| `ResponseFileSearchCallSearchingStreamingEvent` | no | no | pending |
+| `ResponseFunctionCallArgumentsDeltaStreamingEvent` | yes | yes | provider_event |
+| `ResponseFunctionCallArgumentsDoneStreamingEvent` | yes | yes | provider_event |
+| `ResponseImageGenCallCompletedStreamingEvent` | no | no | pending |
+| `ResponseImageGenCallGeneratingStreamingEvent` | no | no | pending |
+| `ResponseImageGenCallInProgressStreamingEvent` | no | no | pending |
+| `ResponseImageGenCallPartialImageStreamingEvent` | no | no | pending |
+| `ResponseInProgressStreamingEvent` | yes | yes | provider_event |
+| `ResponseIncompleteStreamingEvent` | yes | yes | provider_event |
+| `ResponseMCPCallArgumentsDeltaStreamingEvent` | no | no | pending |
+| `ResponseMCPCallArgumentsDoneStreamingEvent` | no | no | pending |
+| `ResponseMCPCallCompletedStreamingEvent` | no | no | pending |
+| `ResponseMCPCallFailedStreamingEvent` | no | no | pending |
+| `ResponseMCPCallInProgressStreamingEvent` | no | no | pending |
+| `ResponseMCPListToolsCompletedStreamingEvent` | no | no | pending |
+| `ResponseMCPListToolsFailedStreamingEvent` | no | no | pending |
+| `ResponseMCPListToolsInProgressStreamingEvent` | no | no | pending |
+| `ResponseOutputItemAddedStreamingEvent` | yes | yes | provider_event |
+| `ResponseOutputItemDoneStreamingEvent` | yes | yes | provider_event |
+| `ResponseOutputTextAnnotationAddedStreamingEvent` | yes | yes | provider_event |
+| `ResponseOutputTextDeltaStreamingEvent` | yes | yes | provider_event |
+| `ResponseOutputTextDoneStreamingEvent` | yes | yes | provider_event |
+| `ResponseQueuedStreamingEvent` | yes | yes | provider_event |
+| `ResponseReasoningDeltaStreamingEvent` | yes | yes | provider_event |
+| `ResponseReasoningDoneStreamingEvent` | yes | yes | provider_event |
+| `ResponseReasoningSummaryDeltaStreamingEvent` | yes | yes | provider_event |
+| `ResponseReasoningSummaryDoneStreamingEvent` | yes | yes | provider_event |
+| `ResponseReasoningSummaryPartAddedStreamingEvent` | yes | yes | provider_event |
+| `ResponseReasoningSummaryPartDoneStreamingEvent` | yes | yes | provider_event |
+| `ResponseRefusalDeltaStreamingEvent` | yes | yes | provider_event |
+| `ResponseRefusalDoneStreamingEvent` | yes | yes | provider_event |
+| `ResponseShellCallCommandAddedStreamingEvent` | no | no | pending |
+| `ResponseShellCallCommandDeltaStreamingEvent` | no | no | pending |
+| `ResponseShellCallCommandDoneStreamingEvent` | no | no | pending |
+| `ResponseWebSearchCallCompletedStreamingEvent` | no | no | pending |
+| `ResponseWebSearchCallInProgressStreamingEvent` | no | no | pending |
+| `ResponseWebSearchCallSearchingStreamingEvent` | no | no | pending |
 
 ### Tool schemas
-- `AllowedToolChoice`
-- `ApplyPatchTool`
-- `ApplyPatchToolChoice`
-- `ApplyPatchToolParam`
-- `AutoCodeInterpreterToolParam`
-- `CodeInterpreterToolChoice`
-- `CodeInterpreterToolParam`
-- `ComputerToolChoice`
-- `ComputerToolParam`
-- `ComputerUsePreviewTool`
-- `ComputerUsePreviewToolParam`
-- `CustomTool`
-- `CustomToolChoice`
-- `CustomToolParam`
-- `FileSearchTool`
-- `FileSearchToolChoice`
-- `FileSearchToolParam`
-- `FunctionShellTool`
-- `FunctionShellToolChoice`
-- `FunctionShellToolParam`
-- `FunctionTool`
-- `FunctionToolChoice`
-- `FunctionToolParam`
-- `ImageGenTool`
-- `ImageGenToolChoice`
-- `ImageGenToolParam`
-- `LocalShellToolChoice`
-- `LocalShellToolParam`
-- `MCPListToolsTool`
-- `MCPTool`
-- `MCPToolChoice`
-- `MCPToolParam`
-- `MemoryToolParam`
-- `ResponsesToolParam`
-- `SpecificCustomToolParam`
-- `Tool`
-- `WebSearchGADeprecatedToolParam`
-- `WebSearchPreviewTool`
-- `WebSearchPreviewToolParam`
-- `WebSearchToolChoice`
-- `WebSearchToolParam`
+| schema | bundled | validated | status |
+| --- | --- | --- | --- |
+| `AllowedToolChoice` | yes | yes | pending |
+| `ApplyPatchTool` | no | no | pending |
+| `ApplyPatchToolChoice` | no | no | pending |
+| `ApplyPatchToolParam` | no | no | pending |
+| `AutoCodeInterpreterToolParam` | no | no | pending |
+| `CodeInterpreterToolChoice` | no | no | pending |
+| `CodeInterpreterToolParam` | no | no | pending |
+| `ComputerToolChoice` | no | no | pending |
+| `ComputerToolParam` | no | no | pending |
+| `ComputerUsePreviewTool` | no | no | pending |
+| `ComputerUsePreviewToolParam` | no | no | pending |
+| `CustomTool` | no | no | pending |
+| `CustomToolChoice` | no | no | pending |
+| `CustomToolParam` | no | no | pending |
+| `FileSearchTool` | no | no | pending |
+| `FileSearchToolChoice` | no | no | pending |
+| `FileSearchToolParam` | no | no | pending |
+| `FunctionShellTool` | no | no | pending |
+| `FunctionShellToolChoice` | no | no | pending |
+| `FunctionShellToolParam` | no | no | pending |
+| `FunctionTool` | yes | yes | pending |
+| `FunctionToolChoice` | yes | yes | pending |
+| `FunctionToolParam` | yes | no | pending |
+| `ImageGenTool` | no | no | pending |
+| `ImageGenToolChoice` | no | no | pending |
+| `ImageGenToolParam` | no | no | pending |
+| `LocalShellToolChoice` | no | no | pending |
+| `LocalShellToolParam` | no | no | pending |
+| `MCPListToolsTool` | no | no | pending |
+| `MCPTool` | no | no | pending |
+| `MCPToolChoice` | no | no | pending |
+| `MCPToolParam` | no | no | pending |
+| `MemoryToolParam` | no | no | pending |
+| `ResponsesToolParam` | yes | no | pending |
+| `SpecificCustomToolParam` | no | no | pending |
+| `Tool` | yes | yes | pending |
+| `WebSearchGADeprecatedToolParam` | no | no | pending |
+| `WebSearchPreviewTool` | no | no | pending |
+| `WebSearchPreviewToolParam` | no | no | pending |
+| `WebSearchToolChoice` | no | no | pending |
+| `WebSearchToolParam` | no | no | pending |
