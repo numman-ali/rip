@@ -5,6 +5,7 @@ Summary
 - Each item should be marked complete only when mapped to internal frames and validated at the provider boundary.
 
 Progress log
+- 2026-01-17: Added committed OpenResponses traceability record (`docs/03_contracts/openresponses_traceability.md`) to track upstream snapshot and sync steps.
 - 2026-01-17: Validated streaming events and ResponseResource output items against split schemas (paths + components); updated fixtures/event type list to 58 events.
 - 2026-01-17: Switched tool/tool_choice validation to split-schema JSONSchema (optional fields + nested structures validated); vendored split components in `schemas/openresponses/split_components.json`.
 - 2026-01-17: Provider adapter emits `output_text_delta` frames for `response.output_text.delta` events; stream fixture/tests updated.

@@ -3,6 +3,7 @@
 Summary
 - Source repo: `temp/openresponses` (local vendor).
 - Reviewed: 2026-01-17.
+- Traceability: see `docs/03_contracts/openresponses_traceability.md` for the current upstream snapshot.
 - Schema files: 412 split components in `temp/openresponses/schema/components/schemas` (+3 additive patch schemas: `InputVideoContent`, `JsonSchemaResponseFormatParam`, `TextFormatParam`).
 - Streaming event schemas: 58 (from `temp/openresponses/schema/paths/responses.json`).
 - Input item variants: 25 (from `ItemParam.json`).
