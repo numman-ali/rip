@@ -361,43 +361,43 @@ Progress log
 
 ### Streaming events
 - [x] `ErrorStreamingEvent` mapped and validated.
-- [ ] `ImageEditCompletedStreamingEvent` mapped and validated.
-- [ ] `ImageEditPartialImageStreamingEvent` mapped and validated.
-- [ ] `ImageGenerationCompletedStreamingEvent` mapped and validated.
-- [ ] `ImageGenerationPartialImageStreamingEvent` mapped and validated.
-- [ ] `ResponseApplyPatchCallOperationDiffDeltaStreamingEvent` mapped and validated.
-- [ ] `ResponseApplyPatchCallOperationDiffDoneStreamingEvent` mapped and validated.
-- [ ] `ResponseCodeInterpreterCallCodeDeltaStreamingEvent` mapped and validated.
-- [ ] `ResponseCodeInterpreterCallCodeDoneStreamingEvent` mapped and validated.
-- [ ] `ResponseCodeInterpreterCallCompletedStreamingEvent` mapped and validated.
-- [ ] `ResponseCodeInterpreterCallInProgressStreamingEvent` mapped and validated.
-- [ ] `ResponseCodeInterpreterCallInterpretingStreamingEvent` mapped and validated.
+- [x] `ImageEditCompletedStreamingEvent` mapped and validated.
+- [x] `ImageEditPartialImageStreamingEvent` mapped and validated.
+- [x] `ImageGenerationCompletedStreamingEvent` mapped and validated.
+- [x] `ImageGenerationPartialImageStreamingEvent` mapped and validated.
+- [x] `ResponseApplyPatchCallOperationDiffDeltaStreamingEvent` mapped and validated.
+- [x] `ResponseApplyPatchCallOperationDiffDoneStreamingEvent` mapped and validated.
+- [x] `ResponseCodeInterpreterCallCodeDeltaStreamingEvent` mapped and validated.
+- [x] `ResponseCodeInterpreterCallCodeDoneStreamingEvent` mapped and validated.
+- [x] `ResponseCodeInterpreterCallCompletedStreamingEvent` mapped and validated.
+- [x] `ResponseCodeInterpreterCallInProgressStreamingEvent` mapped and validated.
+- [x] `ResponseCodeInterpreterCallInterpretingStreamingEvent` mapped and validated.
 - [x] `ResponseCompletedStreamingEvent` mapped and validated.
 - [x] `ResponseContentPartAddedStreamingEvent` mapped and validated.
 - [x] `ResponseContentPartDoneStreamingEvent` mapped and validated.
 - [x] `ResponseCreatedStreamingEvent` mapped and validated.
-- [ ] `ResponseCustomToolCallInputDeltaStreamingEvent` mapped and validated.
-- [ ] `ResponseCustomToolCallInputDoneStreamingEvent` mapped and validated.
+- [x] `ResponseCustomToolCallInputDeltaStreamingEvent` mapped and validated.
+- [x] `ResponseCustomToolCallInputDoneStreamingEvent` mapped and validated.
 - [x] `ResponseFailedStreamingEvent` mapped and validated.
-- [ ] `ResponseFileSearchCallCompletedStreamingEvent` mapped and validated.
-- [ ] `ResponseFileSearchCallInProgressStreamingEvent` mapped and validated.
-- [ ] `ResponseFileSearchCallSearchingStreamingEvent` mapped and validated.
+- [x] `ResponseFileSearchCallCompletedStreamingEvent` mapped and validated.
+- [x] `ResponseFileSearchCallInProgressStreamingEvent` mapped and validated.
+- [x] `ResponseFileSearchCallSearchingStreamingEvent` mapped and validated.
 - [x] `ResponseFunctionCallArgumentsDeltaStreamingEvent` mapped and validated.
 - [x] `ResponseFunctionCallArgumentsDoneStreamingEvent` mapped and validated.
-- [ ] `ResponseImageGenCallCompletedStreamingEvent` mapped and validated.
-- [ ] `ResponseImageGenCallGeneratingStreamingEvent` mapped and validated.
-- [ ] `ResponseImageGenCallInProgressStreamingEvent` mapped and validated.
-- [ ] `ResponseImageGenCallPartialImageStreamingEvent` mapped and validated.
+- [x] `ResponseImageGenCallCompletedStreamingEvent` mapped and validated.
+- [x] `ResponseImageGenCallGeneratingStreamingEvent` mapped and validated.
+- [x] `ResponseImageGenCallInProgressStreamingEvent` mapped and validated.
+- [x] `ResponseImageGenCallPartialImageStreamingEvent` mapped and validated.
 - [x] `ResponseInProgressStreamingEvent` mapped and validated.
 - [x] `ResponseIncompleteStreamingEvent` mapped and validated.
-- [ ] `ResponseMCPCallArgumentsDeltaStreamingEvent` mapped and validated.
-- [ ] `ResponseMCPCallArgumentsDoneStreamingEvent` mapped and validated.
-- [ ] `ResponseMCPCallCompletedStreamingEvent` mapped and validated.
-- [ ] `ResponseMCPCallFailedStreamingEvent` mapped and validated.
-- [ ] `ResponseMCPCallInProgressStreamingEvent` mapped and validated.
-- [ ] `ResponseMCPListToolsCompletedStreamingEvent` mapped and validated.
-- [ ] `ResponseMCPListToolsFailedStreamingEvent` mapped and validated.
-- [ ] `ResponseMCPListToolsInProgressStreamingEvent` mapped and validated.
+- [x] `ResponseMCPCallArgumentsDeltaStreamingEvent` mapped and validated.
+- [x] `ResponseMCPCallArgumentsDoneStreamingEvent` mapped and validated.
+- [x] `ResponseMCPCallCompletedStreamingEvent` mapped and validated.
+- [x] `ResponseMCPCallFailedStreamingEvent` mapped and validated.
+- [x] `ResponseMCPCallInProgressStreamingEvent` mapped and validated.
+- [x] `ResponseMCPListToolsCompletedStreamingEvent` mapped and validated.
+- [x] `ResponseMCPListToolsFailedStreamingEvent` mapped and validated.
+- [x] `ResponseMCPListToolsInProgressStreamingEvent` mapped and validated.
 - [x] `ResponseOutputItemAddedStreamingEvent` mapped and validated.
 - [x] `ResponseOutputItemDoneStreamingEvent` mapped and validated.
 - [x] `ResponseOutputTextAnnotationAddedStreamingEvent` mapped and validated.
@@ -412,12 +412,12 @@ Progress log
 - [x] `ResponseReasoningSummaryPartDoneStreamingEvent` mapped and validated.
 - [x] `ResponseRefusalDeltaStreamingEvent` mapped and validated.
 - [x] `ResponseRefusalDoneStreamingEvent` mapped and validated.
-- [ ] `ResponseShellCallCommandAddedStreamingEvent` mapped and validated.
-- [ ] `ResponseShellCallCommandDeltaStreamingEvent` mapped and validated.
-- [ ] `ResponseShellCallCommandDoneStreamingEvent` mapped and validated.
-- [ ] `ResponseWebSearchCallCompletedStreamingEvent` mapped and validated.
-- [ ] `ResponseWebSearchCallInProgressStreamingEvent` mapped and validated.
-- [ ] `ResponseWebSearchCallSearchingStreamingEvent` mapped and validated.
+- [x] `ResponseShellCallCommandAddedStreamingEvent` mapped and validated.
+- [x] `ResponseShellCallCommandDeltaStreamingEvent` mapped and validated.
+- [x] `ResponseShellCallCommandDoneStreamingEvent` mapped and validated.
+- [x] `ResponseWebSearchCallCompletedStreamingEvent` mapped and validated.
+- [x] `ResponseWebSearchCallInProgressStreamingEvent` mapped and validated.
+- [x] `ResponseWebSearchCallSearchingStreamingEvent` mapped and validated.
 
 ### Tool schemas
 - [ ] `AllowedToolChoice` mapped and validated.
