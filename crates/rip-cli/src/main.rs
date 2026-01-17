@@ -134,13 +134,15 @@ async fn stream_events(
 }
 
 fn render_message(view: OutputView, payload: &str, out: &mut dyn Write) -> anyhow::Result<()> {
+    let frame: FrameEvent = serde_json::from_str(payload)
+        .map_err(|err| anyhow::anyhow!("invalid event frame: {err}"))?;
+
     match view {
         OutputView::Raw => {
             writeln!(out, "{payload}")?;
             out.flush()?;
         }
         OutputView::Output => {
-            let frame: FrameEvent = serde_json::from_str(payload)?;
             for delta in extract_text_deltas(std::slice::from_ref(&frame)) {
                 writeln!(out, "{delta}")?;
             }
@@ -161,6 +163,18 @@ mod tests {
     use super::*;
     use httpmock::Method::{GET, POST};
     use httpmock::MockServer;
+
+    fn session_started_frame() -> String {
+        serde_json::json!({
+            "id": "e1",
+            "session_id": "s1",
+            "timestamp_ms": 0,
+            "seq": 0,
+            "type": "session_started",
+            "input": "hi"
+        })
+        .to_string()
+    }
 
     #[tokio::test]
     async fn create_session_success() {
@@ -211,11 +225,12 @@ mod tests {
     #[tokio::test]
     async fn stream_events_reads_messages() {
         let server = MockServer::start();
+        let payload = session_started_frame();
         let _mock = server.mock(|when, then| {
             when.method(GET).path("/sessions/s1/events");
             then.status(200)
                 .header("content-type", "text/event-stream")
-                .body("data: {\"type\":\"session_started\"}\n\n");
+                .body(format!("data: {payload}\n\n"));
         });
         let client = Client::new();
         let result = stream_events(&client, &server.base_url(), "s1", OutputView::Raw).await;
@@ -239,7 +254,7 @@ mod tests {
             when.method(GET).path("/sessions/abc/events");
             then.status(200)
                 .header("content-type", "text/event-stream")
-                .body("data: {\"type\":\"session_started\"}\n\n");
+                .body(format!("data: {}\n\n", session_started_frame()));
         });
 
         let cli = Cli {
@@ -284,10 +299,18 @@ mod tests {
     #[test]
     fn renders_raw_payload() {
         let mut buffer = Vec::new();
-        let payload = "{\"type\":\"session_started\"}";
-        render_message(OutputView::Raw, payload, &mut buffer).expect("render");
+        let payload = session_started_frame();
+        render_message(OutputView::Raw, payload.as_str(), &mut buffer).expect("render");
         let rendered = String::from_utf8(buffer).expect("utf8");
         assert_eq!(rendered.trim_end(), payload);
+    }
+
+    #[test]
+    fn raw_view_rejects_invalid_frame() {
+        let mut buffer = Vec::new();
+        let payload = "{\"type\":\"session_started\"}";
+        let err = render_message(OutputView::Raw, payload, &mut buffer).unwrap_err();
+        assert!(err.to_string().contains("invalid event frame"));
     }
 
     #[test]

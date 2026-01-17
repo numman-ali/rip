@@ -76,10 +76,8 @@ Doc/impl gaps
 - Interactive CLI (minimal streaming renderer) is specified but not implemented (see `docs/07_tasks/phase-1/06_cli.md`).
 - TUI surface is documented but not implemented (`rip-tui`).
 - MCP surface is documented but deferred to Phase 2 (`rip-mcp`).
-- Surface parity matrix/gap list not generated from registry.
 - Tool runtime not yet integrated into session execution.
 - Benchmarks are required by docs but no harness exists.
-- Headless CLI currently streams raw SSE messages, not validated JSON frames.
 
 Decisions
 - Event frames live in `rip-kernel`; schema documented at `docs/03_contracts/event_frames.md`.
@@ -89,6 +87,9 @@ Open questions
 - (empty)
 
 Done (recent)
+- 2026-01-16: Capability parity matrix + gap list enforcement added.
+- 2026-01-16: Headless CLI validates JSON event frames.
+- 2026-01-16: Built-in tools crate + conformance tests added.
 - 2026-01-16: Server OpenAPI spec generation + schema snapshot.
 - 2026-01-16: Server SSE compliance tests + session lifecycle integration.
 - 2026-01-16: Tool runtime emits structured tool events with limits + tests.

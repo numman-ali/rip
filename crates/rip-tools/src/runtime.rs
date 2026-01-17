@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -33,6 +31,24 @@ impl ToolOutput {
             stdout,
             stderr: Vec::new(),
             exit_code: 0,
+            artifacts: None,
+        }
+    }
+
+    pub fn failure(stderr: Vec<String>) -> Self {
+        Self {
+            stdout: Vec::new(),
+            stderr,
+            exit_code: 1,
+            artifacts: None,
+        }
+    }
+
+    pub fn invalid_args(message: impl Into<String>) -> Self {
+        Self {
+            stdout: Vec::new(),
+            stderr: vec![message.into()],
+            exit_code: 2,
             artifacts: None,
         }
     }
@@ -185,6 +201,7 @@ fn now_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures_util::future::pending;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[tokio::test]
@@ -236,12 +253,7 @@ mod tests {
         let registry = Arc::new(ToolRegistry::default());
         registry.register(
             "slow",
-            Arc::new(|_invocation| {
-                Box::pin(async move {
-                    tokio::time::sleep(Duration::from_millis(50)).await;
-                    ToolOutput::success(vec!["late".to_string()])
-                })
-            }),
+            Arc::new(|_invocation| Box::pin(async move { pending::<ToolOutput>().await })),
         );
 
         let runner = ToolRunner::new(registry, 1);
@@ -254,6 +266,57 @@ mod tests {
                     name: "slow".to_string(),
                     args: serde_json::json!({}),
                     timeout_ms: Some(10),
+                },
+            )
+            .await;
+
+        assert!(events
+            .iter()
+            .any(|event| matches!(event.kind, EventKind::ToolFailed { .. })));
+    }
+
+    #[tokio::test]
+    async fn timeout_allows_fast_tool() {
+        let registry = Arc::new(ToolRegistry::default());
+        registry.register(
+            "fast",
+            Arc::new(|_invocation| {
+                Box::pin(async move { ToolOutput::success(vec!["ok".to_string()]) })
+            }),
+        );
+
+        let runner = ToolRunner::new(registry, 1);
+        let mut seq = 0;
+        let events = runner
+            .run(
+                "session-1",
+                &mut seq,
+                ToolInvocation {
+                    name: "fast".to_string(),
+                    args: serde_json::json!({}),
+                    timeout_ms: Some(50),
+                },
+            )
+            .await;
+
+        assert!(events
+            .iter()
+            .any(|event| matches!(event.kind, EventKind::ToolEnded { .. })));
+    }
+
+    #[tokio::test]
+    async fn unknown_tool_emits_failure() {
+        let registry = Arc::new(ToolRegistry::default());
+        let runner = ToolRunner::new(registry, 1);
+        let mut seq = 0;
+        let events = runner
+            .run(
+                "session-1",
+                &mut seq,
+                ToolInvocation {
+                    name: "missing".to_string(),
+                    args: serde_json::json!({}),
+                    timeout_ms: None,
                 },
             )
             .await;

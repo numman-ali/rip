@@ -5,6 +5,7 @@ members = [
   "crates/rip-log",
   "crates/rip-openresponses",
   "crates/rip-provider-openresponses",
+  "crates/rip-tools",
   "crates/rip-cli",
   "crates/rip-workspace",
   "crates/ripd",
