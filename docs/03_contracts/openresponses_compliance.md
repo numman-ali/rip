@@ -38,8 +38,8 @@ Implementation status (current)
 - Provider request builder validates CreateResponseBody payloads (errors captured; payload preserved); tool fields use per-variant validation to avoid jsonschema oneOf failures; request sending is not wired yet.
 - Tool schema validation uses split component schemas for `ResponsesToolParam` and `ToolChoiceParam`, validating optional fields and nested structures; bundled OpenAPI still only includes function tool variants.
 - Split component schemas are vendored in `schemas/openresponses/split_components.json`; split paths schema is vendored in `schemas/openresponses/paths_responses.json`.
-- Input item variants are not yet mapped to internal request frames (pending).
-- ItemParam validation covers all input variants using manual required-field checks (message role/item reference handling included); internal request-frame mapping is still pending.
+- Input item variants are mapped via `ItemParam` constructors in the provider request builder; runtime request-frame integration remains pending.
+- ItemParam validation covers all input variants using required-field checks (message role/item reference handling included); runtime mapping remains pending.
 - Split schema inventory and SSE event type map captured in `temp/docs/openresponses/` and reflected in the tables below.
 - Requests are JSON-only per spec; form-encoded bodies are not supported (ADR-0002).
 - Bundled OpenAPI schema currently includes 102 component schemas; the split OpenResponses schema defines 412 component schemas. Missing schemas are tracked in the checklist.
@@ -301,31 +301,31 @@ Doc discrepancies (resolved)
 ## Input item variants
 | item type | schema | mapping |
 | --- | --- | --- |
-| `apply_patch_call` | `ApplyPatchToolCallItemParam.json` | provider_request (validated; internal mapping pending) |
-| `apply_patch_call_output` | `ApplyPatchToolCallOutputItemParam.json` | provider_request (validated; internal mapping pending) |
-| `code_interpreter_call` | `CodeInterpreterCallItemParam.json` | provider_request (validated; internal mapping pending) |
-| `compaction` | `CompactionSummaryItemParam.json` | provider_request (validated; internal mapping pending) |
-| `computer_call` | `ComputerCallItemParam.json` | provider_request (validated; internal mapping pending) |
-| `computer_call_output` | `ComputerCallOutputItemParam.json` | provider_request (validated; internal mapping pending) |
-| `custom_tool_call` | `CustomToolCallItemParam.json` | provider_request (validated; internal mapping pending) |
-| `custom_tool_call_output` | `CustomToolCallOutputItemParam.json` | provider_request (validated; internal mapping pending) |
-| `file_search_call` | `FileSearchCallItemParam.json` | provider_request (validated; internal mapping pending) |
-| `function_call` | `FunctionCallItemParam.json` | provider_request (validated; internal mapping pending) |
-| `function_call_output` | `FunctionCallOutputItemParam.json` | provider_request (validated; internal mapping pending) |
-| `image_generation_call` | `ImageGenCallItemParam.json` | provider_request (validated; internal mapping pending) |
-| `local_shell_call` | `LocalShellCallItemParam.json` | provider_request (validated; internal mapping pending) |
-| `local_shell_call_output` | `LocalShellCallOutputItemParam.json` | provider_request (validated; internal mapping pending) |
-| `mcp_approval_request` | `MCPApprovalRequestItemParam.json` | provider_request (validated; internal mapping pending) |
-| `mcp_approval_response` | `MCPApprovalResponseItemParam.json` | provider_request (validated; internal mapping pending) |
-| `message` | `AssistantMessageItemParam.json` | provider_request (validated; internal mapping pending) |
-| `message` | `DeveloperMessageItemParam.json` | provider_request (validated; internal mapping pending) |
-| `message` | `SystemMessageItemParam.json` | provider_request (validated; internal mapping pending) |
-| `message` | `UserMessageItemParam.json` | provider_request (validated; internal mapping pending) |
-| `reasoning` | `ReasoningItemParam.json` | provider_request (validated; internal mapping pending) |
-| `shell_call` | `FunctionShellCallItemParam.json` | provider_request (validated; internal mapping pending) |
-| `shell_call_output` | `FunctionShellCallOutputItemParam.json` | provider_request (validated; internal mapping pending) |
-| `item_reference` | `ItemReferenceParam.json` | provider_request (validated; internal mapping pending) |
-| `web_search_call` | `WebSearchCallItemParam.json` | provider_request (validated; internal mapping pending) |
+| `apply_patch_call` | `ApplyPatchToolCallItemParam.json` | provider_request (mapped; runtime mapping pending) |
+| `apply_patch_call_output` | `ApplyPatchToolCallOutputItemParam.json` | provider_request (mapped; runtime mapping pending) |
+| `code_interpreter_call` | `CodeInterpreterCallItemParam.json` | provider_request (mapped; runtime mapping pending) |
+| `compaction` | `CompactionSummaryItemParam.json` | provider_request (mapped; runtime mapping pending) |
+| `computer_call` | `ComputerCallItemParam.json` | provider_request (mapped; runtime mapping pending) |
+| `computer_call_output` | `ComputerCallOutputItemParam.json` | provider_request (mapped; runtime mapping pending) |
+| `custom_tool_call` | `CustomToolCallItemParam.json` | provider_request (mapped; runtime mapping pending) |
+| `custom_tool_call_output` | `CustomToolCallOutputItemParam.json` | provider_request (mapped; runtime mapping pending) |
+| `file_search_call` | `FileSearchCallItemParam.json` | provider_request (mapped; runtime mapping pending) |
+| `function_call` | `FunctionCallItemParam.json` | provider_request (mapped; runtime mapping pending) |
+| `function_call_output` | `FunctionCallOutputItemParam.json` | provider_request (mapped; runtime mapping pending) |
+| `image_generation_call` | `ImageGenCallItemParam.json` | provider_request (mapped; runtime mapping pending) |
+| `local_shell_call` | `LocalShellCallItemParam.json` | provider_request (mapped; runtime mapping pending) |
+| `local_shell_call_output` | `LocalShellCallOutputItemParam.json` | provider_request (mapped; runtime mapping pending) |
+| `mcp_approval_request` | `MCPApprovalRequestItemParam.json` | provider_request (mapped; runtime mapping pending) |
+| `mcp_approval_response` | `MCPApprovalResponseItemParam.json` | provider_request (mapped; runtime mapping pending) |
+| `message` | `AssistantMessageItemParam.json` | provider_request (mapped; runtime mapping pending) |
+| `message` | `DeveloperMessageItemParam.json` | provider_request (mapped; runtime mapping pending) |
+| `message` | `SystemMessageItemParam.json` | provider_request (mapped; runtime mapping pending) |
+| `message` | `UserMessageItemParam.json` | provider_request (mapped; runtime mapping pending) |
+| `reasoning` | `ReasoningItemParam.json` | provider_request (mapped; runtime mapping pending) |
+| `shell_call` | `FunctionShellCallItemParam.json` | provider_request (mapped; runtime mapping pending) |
+| `shell_call_output` | `FunctionShellCallOutputItemParam.json` | provider_request (mapped; runtime mapping pending) |
+| `item_reference` | `ItemReferenceParam.json` | provider_request (mapped; runtime mapping pending) |
+| `web_search_call` | `WebSearchCallItemParam.json` | provider_request (mapped; runtime mapping pending) |
 
 ## Output item variants
 | item type | schema | mapping |

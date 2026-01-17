@@ -55,6 +55,41 @@ fn item_param_value_roundtrip() {
 }
 
 #[test]
+fn item_param_variants_are_valid() {
+    let items = vec![
+        ItemParam::item_reference("item_1"),
+        ItemParam::user_message_text("hi"),
+        ItemParam::assistant_message_text("hello"),
+        ItemParam::developer_message_text("note"),
+        ItemParam::system_message_text("sys"),
+        ItemParam::function_call("c1", "echo", "{}"),
+        ItemParam::function_call_output("c1", json!("ok")),
+        ItemParam::reasoning(Vec::new()),
+        ItemParam::compaction("enc"),
+        ItemParam::code_interpreter_call("ci1", "cntr_1", "print(1)"),
+        ItemParam::computer_call("cc1", json!({})),
+        ItemParam::computer_call_output("cc1", json!({})),
+        ItemParam::custom_tool_call("ct1", "tool", "input"),
+        ItemParam::custom_tool_call_output("ct1", "out"),
+        ItemParam::file_search_call("fs1", vec!["q1".to_string()]),
+        ItemParam::web_search_call(),
+        ItemParam::image_generation_call("ig1"),
+        ItemParam::local_shell_call("ls1", json!({})),
+        ItemParam::local_shell_call_output("ls1", "output"),
+        ItemParam::shell_call("sh1", json!({})),
+        ItemParam::shell_call_output("sh1", Vec::new()),
+        ItemParam::apply_patch_call("ap1", "in_progress", json!({})),
+        ItemParam::apply_patch_call_output("ap1", "completed"),
+        ItemParam::mcp_approval_request("srv", "tool", "{}"),
+        ItemParam::mcp_approval_response("req1", true),
+    ];
+
+    for item in items {
+        assert!(item.errors().is_empty());
+    }
+}
+
+#[test]
 fn tool_param_function_is_valid() {
     let tool = ToolParam::function("echo");
     assert!(tool.errors().is_empty());

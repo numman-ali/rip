@@ -5,6 +5,7 @@ Summary
 - Each item should be marked complete only when mapped to internal frames and validated at the provider boundary.
 
 Progress log
+- 2026-01-17: Added ItemParam constructors for all input item variants in the provider request builder; checklist updated.
 - 2026-01-17: Added committed OpenResponses traceability record (`docs/03_contracts/openresponses_traceability.md`) to track upstream snapshot and sync steps.
 - 2026-01-17: Validated streaming events and ResponseResource output items against split schemas (paths + components); updated fixtures/event type list to 58 events.
 - 2026-01-17: Switched tool/tool_choice validation to split-schema JSONSchema (optional fields + nested structures validated); vendored split components in `schemas/openresponses/split_components.json`.
@@ -38,31 +39,31 @@ Progress log
 - [ ] `MCPToolExecutionError` mapped and validated.
 
 ### Input item params
-- [ ] `ApplyPatchToolCallItemParam` mapped and validated.
-- [ ] `ApplyPatchToolCallOutputItemParam` mapped and validated.
-- [ ] `AssistantMessageItemParam` mapped and validated.
-- [ ] `CodeInterpreterCallItemParam` mapped and validated.
-- [ ] `CompactionSummaryItemParam` mapped and validated.
-- [ ] `ComputerCallItemParam` mapped and validated.
-- [ ] `ComputerCallOutputItemParam` mapped and validated.
-- [ ] `CustomToolCallItemParam` mapped and validated.
-- [ ] `CustomToolCallOutputItemParam` mapped and validated.
-- [ ] `DeveloperMessageItemParam` mapped and validated.
-- [ ] `FileSearchCallItemParam` mapped and validated.
-- [ ] `FunctionCallItemParam` mapped and validated.
-- [ ] `FunctionCallOutputItemParam` mapped and validated.
-- [ ] `FunctionShellCallItemParam` mapped and validated.
-- [ ] `FunctionShellCallOutputItemParam` mapped and validated.
-- [ ] `ImageGenCallItemParam` mapped and validated.
-- [ ] `ItemParam` mapped and validated.
-- [ ] `LocalShellCallItemParam` mapped and validated.
-- [ ] `LocalShellCallOutputItemParam` mapped and validated.
-- [ ] `MCPApprovalRequestItemParam` mapped and validated.
-- [ ] `MCPApprovalResponseItemParam` mapped and validated.
-- [ ] `ReasoningItemParam` mapped and validated.
-- [ ] `SystemMessageItemParam` mapped and validated.
-- [ ] `UserMessageItemParam` mapped and validated.
-- [ ] `WebSearchCallItemParam` mapped and validated.
+- [x] `ApplyPatchToolCallItemParam` mapped and validated.
+- [x] `ApplyPatchToolCallOutputItemParam` mapped and validated.
+- [x] `AssistantMessageItemParam` mapped and validated.
+- [x] `CodeInterpreterCallItemParam` mapped and validated.
+- [x] `CompactionSummaryItemParam` mapped and validated.
+- [x] `ComputerCallItemParam` mapped and validated.
+- [x] `ComputerCallOutputItemParam` mapped and validated.
+- [x] `CustomToolCallItemParam` mapped and validated.
+- [x] `CustomToolCallOutputItemParam` mapped and validated.
+- [x] `DeveloperMessageItemParam` mapped and validated.
+- [x] `FileSearchCallItemParam` mapped and validated.
+- [x] `FunctionCallItemParam` mapped and validated.
+- [x] `FunctionCallOutputItemParam` mapped and validated.
+- [x] `FunctionShellCallItemParam` mapped and validated.
+- [x] `FunctionShellCallOutputItemParam` mapped and validated.
+- [x] `ImageGenCallItemParam` mapped and validated.
+- [x] `ItemParam` mapped and validated.
+- [x] `LocalShellCallItemParam` mapped and validated.
+- [x] `LocalShellCallOutputItemParam` mapped and validated.
+- [x] `MCPApprovalRequestItemParam` mapped and validated.
+- [x] `MCPApprovalResponseItemParam` mapped and validated.
+- [x] `ReasoningItemParam` mapped and validated.
+- [x] `SystemMessageItemParam` mapped and validated.
+- [x] `UserMessageItemParam` mapped and validated.
+- [x] `WebSearchCallItemParam` mapped and validated.
 
 ### Other schemas
 - [x] `AllowedToolsParam` mapped and validated.
