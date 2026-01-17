@@ -8,7 +8,7 @@ Purpose
 
 Core directive: Open Responses coverage
 - Implement full, first-class support for the entire Open Responses spec (no minimal/partial mappings).
-- Before changing provider logic, review the split schemas in `temp/openresponses/schema` and capture findings in `temp/docs`.
+- Before changing provider logic, review the split schemas in `temp/openresponses/schema` and capture findings in committed docs (use `docs/` for authoritative notes; use `temp/docs` only for external/research evidence).
 - Never drop fields/events; preserve full fidelity into internal frames.
 
 Operator intent (non‑negotiables)
@@ -53,7 +53,7 @@ Approval gates
 Up-to-date sources rule
 - For any non-obvious implementation choice, consult current official docs before acting.
 - If multiple viable approaches exist or guidance is unclear, escalate to the operator before implementation.
-- Capture evidence in `temp/docs`.
+- Capture external/online research evidence in `temp/docs` (indexed in `temp/docs/references.md`); keep authoritative decisions in `docs/`.
 - Check `temp/docs/references.md` before any web search to see what documentation is already available.
 
 Working style
@@ -99,5 +99,5 @@ Decision log
 
 Maintenance
 - AGENTS.md must be kept current as the system evolves; update it whenever intent, scope, or architecture changes.
-- Research artifacts live in `temp/docs`, with an index at `temp/docs/references.md`.
+- External research artifacts live in `temp/docs`, with an index at `temp/docs/references.md`. Committed docs live in `docs/`.
 - Doc drift is a defect: if you notice docs diverging from each other or the implementation, fix it in the same change. If the fix is non-trivial, flag it and get approval before proceeding.
