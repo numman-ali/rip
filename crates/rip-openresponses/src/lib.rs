@@ -909,6 +909,136 @@ mod tests {
     }
 
     #[test]
+    fn validate_response_resource_accepts_shell_items() {
+        let local_call = serde_json::json!({
+            "type": "local_shell_call",
+            "id": "ls_1",
+            "call_id": "call_1",
+            "action": {
+                "type": "exec",
+                "command": ["echo", "hi"],
+                "env": {}
+            },
+            "status": "in_progress"
+        });
+        let local_output = serde_json::json!({
+            "type": "local_shell_call_output",
+            "id": "ls_out_1",
+            "call_id": "call_1",
+            "output": "{\"stdout\":\"hi\"}",
+            "status": "completed"
+        });
+        let shell_call = serde_json::json!({
+            "type": "shell_call",
+            "id": "sh_1",
+            "call_id": "call_2",
+            "action": {
+                "commands": ["ls"],
+                "timeout_ms": null,
+                "max_output_length": null
+            },
+            "status": "completed"
+        });
+        let shell_output = serde_json::json!({
+            "type": "shell_call_output",
+            "id": "sh_out_1",
+            "call_id": "call_2",
+            "output": [
+                {
+                    "stdout": "",
+                    "stderr": "",
+                    "outcome": {
+                        "type": "exit",
+                        "exit_code": 0
+                    }
+                }
+            ],
+            "max_output_length": null
+        });
+
+        for item in [local_call, local_output, shell_call, shell_output] {
+            let value = response_with_output(vec![item.clone()]);
+            let errors = validate_response_resource(&value).err().unwrap_or_default();
+            assert!(errors.is_empty(), "errors: {errors:?} for {item}");
+        }
+    }
+
+    #[test]
+    fn validate_shell_param_schemas() {
+        let errors = schema_errors(
+            "LocalShellExecActionParam.json",
+            serde_json::json!({
+                "type": "exec",
+                "command": ["echo", "hi"],
+                "env": {}
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "LocalShellCallItemStatus.json",
+            serde_json::json!("completed"),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors("LocalShellCallStatus.json", serde_json::json!("completed"));
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "LocalShellCallOutputStatusEnum.json",
+            serde_json::json!("completed"),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "FunctionShellActionParam.json",
+            serde_json::json!({
+                "commands": ["ls"],
+                "timeout_ms": null,
+                "max_output_length": null
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "FunctionShellCallItemStatus.json",
+            serde_json::json!("completed"),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "FunctionShellCallOutputContentParam.json",
+            serde_json::json!({
+                "stdout": "",
+                "stderr": "",
+                "outcome": {
+                    "type": "exit",
+                    "exit_code": 0
+                }
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "FunctionShellCallOutputOutcomeParam.json",
+            serde_json::json!({ "type": "timeout" }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "FunctionShellCallOutputExitOutcomeParam.json",
+            serde_json::json!({ "type": "exit", "exit_code": 0 }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "FunctionShellCallOutputTimeoutOutcomeParam.json",
+            serde_json::json!({ "type": "timeout" }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+    }
+
+    #[test]
     fn validate_create_response_body_accepts_minimal() {
         let value = serde_json::json!({
             "model": "gpt-4.1",

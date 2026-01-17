@@ -5,6 +5,7 @@ Summary
 - Each item should be marked complete only when mapped to internal frames and validated at the provider boundary.
 
 Progress log
+- 2026-01-17: Added local/function shell output item validation plus shell param schema tests; checklist updated.
 - 2026-01-17: Added MCP approval/tool-call output validation plus MCP filter/approval/error schema tests; checklist updated.
 - 2026-01-17: Added MCPListTools output item validation and MemoryToolParam schema test; checklist updated.
 - 2026-01-17: Added response tool_choice/tool validation tests (fixture-based) plus auto code-interpreter tool param coverage; checklist updated.
@@ -186,18 +187,18 @@ Progress log
 - [x] `FunctionCallOutput` mapped and validated.
 - [ ] `FunctionCallOutputStatusEnum` mapped and validated.
 - [ ] `FunctionCallStatus` mapped and validated.
-- [ ] `FunctionShellAction` mapped and validated.
-- [ ] `FunctionShellActionParam` mapped and validated.
-- [ ] `FunctionShellCall` mapped and validated.
-- [ ] `FunctionShellCallItemStatus` mapped and validated.
-- [ ] `FunctionShellCallOutput` mapped and validated.
-- [ ] `FunctionShellCallOutputContent` mapped and validated.
-- [ ] `FunctionShellCallOutputContentParam` mapped and validated.
-- [ ] `FunctionShellCallOutputExitOutcome` mapped and validated.
-- [ ] `FunctionShellCallOutputExitOutcomeParam` mapped and validated.
-- [ ] `FunctionShellCallOutputOutcomeParam` mapped and validated.
-- [ ] `FunctionShellCallOutputTimeoutOutcome` mapped and validated.
-- [ ] `FunctionShellCallOutputTimeoutOutcomeParam` mapped and validated.
+- [x] `FunctionShellAction` mapped and validated.
+- [x] `FunctionShellActionParam` mapped and validated.
+- [x] `FunctionShellCall` mapped and validated.
+- [x] `FunctionShellCallItemStatus` mapped and validated.
+- [x] `FunctionShellCallOutput` mapped and validated.
+- [x] `FunctionShellCallOutputContent` mapped and validated.
+- [x] `FunctionShellCallOutputContentParam` mapped and validated.
+- [x] `FunctionShellCallOutputExitOutcome` mapped and validated.
+- [x] `FunctionShellCallOutputExitOutcomeParam` mapped and validated.
+- [x] `FunctionShellCallOutputOutcomeParam` mapped and validated.
+- [x] `FunctionShellCallOutputTimeoutOutcome` mapped and validated.
+- [x] `FunctionShellCallOutputTimeoutOutcomeParam` mapped and validated.
 - [ ] `GenerationsBodyDallE2Param` mapped and validated.
 - [ ] `GenerationsBodyDallE3Param` mapped and validated.
 - [ ] `GrammarSyntax` mapped and validated.
@@ -247,13 +248,13 @@ Progress log
 - [ ] `KeyPressAction` mapped and validated.
 - [ ] `KeyPressParam` mapped and validated.
 - [ ] `LocalFileEnvironmentParam` mapped and validated.
-- [ ] `LocalShellCall` mapped and validated.
-- [ ] `LocalShellCallItemStatus` mapped and validated.
-- [ ] `LocalShellCallOutput` mapped and validated.
-- [ ] `LocalShellCallOutputStatusEnum` mapped and validated.
-- [ ] `LocalShellCallStatus` mapped and validated.
-- [ ] `LocalShellExecAction` mapped and validated.
-- [ ] `LocalShellExecActionParam` mapped and validated.
+- [x] `LocalShellCall` mapped and validated.
+- [x] `LocalShellCallItemStatus` mapped and validated.
+- [x] `LocalShellCallOutput` mapped and validated.
+- [x] `LocalShellCallOutputStatusEnum` mapped and validated.
+- [x] `LocalShellCallStatus` mapped and validated.
+- [x] `LocalShellExecAction` mapped and validated.
+- [x] `LocalShellExecActionParam` mapped and validated.
 - [ ] `LogProb` mapped and validated.
 - [x] `MCPApprovalRequest` mapped and validated.
 - [x] `MCPApprovalResponse` mapped and validated.
