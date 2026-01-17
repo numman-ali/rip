@@ -22,7 +22,7 @@ Vendored artifacts
 
 Sync procedure (standard)
 1. Update `temp/openresponses` to the desired commit (record the hash above).
-2. Run `scripts/update-openresponses-types` (refreshes OpenAPI + baseline event types).
+2. Run `scripts/update-openresponses-types` (prefers `temp/openresponses/public/openapi/openapi.json`, falls back to `temp/openresponses/schema/openapi.json`, and refreshes baseline event types).
 3. Regenerate `schemas/openresponses/split_components.json` from
    `temp/openresponses/schema/components/schemas/*.json`.
 4. Copy `temp/openresponses/schema/paths/responses.json` to
