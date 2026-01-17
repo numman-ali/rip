@@ -13,6 +13,10 @@ How to use
 - Date-stamp moves between Now/Next/Later to preserve intent over time.
 
 Now
+- OpenResponses compliance map + exhaustive checklist [confirm spec]
+  - Refs: `docs/03_contracts/openresponses_compliance.md`, `docs/07_tasks/openresponses_compliance.md`, `temp/openresponses/schema/`, `docs/03_contracts/modules/phase-1/02_provider_adapters.md`
+  - Ready: OpenResponses schema repo present in `temp/openresponses`
+  - Done: compliance map enumerates every schema/event/item; checklist covers all schema components; roadmap references map for future phases
 - Capability validation pass (parity + headless schema + tool conformance + server smoke) [needs work]
   - Refs: `docs/05_quality/tests.md`, `docs/05_quality/surface-parity.md`, `docs/03_contracts/event_frames.md`, `docs/03_contracts/capability_registry.md`, `docs/07_tasks/phase-1/03_tool_runtime.md`, `docs/04_execution/cli.md`, `docs/04_execution/server.md`
   - Ready: event frame schema stable; tool runtime emits structured tool events; server session API stable
