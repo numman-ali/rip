@@ -29,7 +29,8 @@ Mapping rules (Phase 1)
 
 Implementation status (current)
 - Provider adapter validates streaming events and embedded `response` objects against the bundled OpenAPI schema (`schemas/openresponses/openapi.json`).
-- Provider request builder validates CreateResponseBody payloads (errors captured; payload preserved); request sending is not wired yet.
+- Provider request builder validates CreateResponseBody payloads (errors captured; payload preserved); tool fields use per-variant validation to avoid jsonschema oneOf failures; request sending is not wired yet.
+- Tool schema validation is available for `ResponsesToolParam` and `ToolChoiceParam` using per-variant checks; bundled OpenAPI only includes function tool variants.
 - Input item variants are not yet mapped to internal request frames (pending).
 - ItemParam validation is available for request assembly using per-variant checks (jsonschema rejects the oneOf with multiple message roles); unknown item types still require raw passthrough.
 - Requests are JSON-only per spec; form-encoded bodies are not supported (ADR-0002).
@@ -311,7 +312,7 @@ Legend
 ### Other schemas
 | schema | bundled | validated | status |
 | --- | --- | --- | --- |
-| `AllowedToolsParam` | yes | no | pending |
+| `AllowedToolsParam` | yes | no | provider_request (validated) |
 | `Annotation` | yes | yes | pending |
 | `ApiSourceParam` | no | no | pending |
 | `ApplyPatchCallOutputStatus` | no | no | pending |
@@ -548,7 +549,7 @@ Legend
 | `SpecificImageGenParam` | no | no | pending |
 | `SpecificLocalShellParam` | no | no | pending |
 | `SpecificMCPFunctionParam` | no | no | pending |
-| `SpecificToolChoiceParam` | yes | no | pending |
+| `SpecificToolChoiceParam` | yes | no | provider_request (validated) |
 | `SpecificWebSearchParam` | no | no | pending |
 | `SpecificWebSearchPreviewParam` | no | no | pending |
 | `StreamOptionsParam` | yes | no | pending |
@@ -559,8 +560,8 @@ Legend
 | `TextResponseFormat` | yes | yes | pending |
 | `TokenCountsBody` | no | no | pending |
 | `TokenCountsResource` | no | no | pending |
-| `ToolChoiceParam` | yes | no | pending |
-| `ToolChoiceValueEnum` | yes | yes | pending |
+| `ToolChoiceParam` | yes | no | provider_request (validated) |
+| `ToolChoiceValueEnum` | yes | yes | provider_request (validated) |
 | `TopLogProb` | yes | yes | pending |
 | `TruncationEnum` | yes | yes | pending |
 | `TypeAction` | no | no | pending |
@@ -694,7 +695,7 @@ Legend
 | `FunctionShellToolParam` | no | no | pending |
 | `FunctionTool` | yes | yes | pending |
 | `FunctionToolChoice` | yes | yes | pending |
-| `FunctionToolParam` | yes | no | pending |
+| `FunctionToolParam` | yes | no | provider_request (validated) |
 | `ImageGenTool` | no | no | pending |
 | `ImageGenToolChoice` | no | no | pending |
 | `ImageGenToolParam` | no | no | pending |
@@ -705,7 +706,7 @@ Legend
 | `MCPToolChoice` | no | no | pending |
 | `MCPToolParam` | no | no | pending |
 | `MemoryToolParam` | no | no | pending |
-| `ResponsesToolParam` | yes | no | pending |
+| `ResponsesToolParam` | yes | no | provider_request (validated) |
 | `SpecificCustomToolParam` | no | no | pending |
 | `Tool` | yes | yes | pending |
 | `WebSearchGADeprecatedToolParam` | no | no | pending |

@@ -6,7 +6,9 @@ use rip_kernel::{Event, EventKind, ProviderEventStatus};
 
 mod request;
 mod stream_transformers;
-pub use request::{CreateResponseBuilder, CreateResponsePayload, ItemParam};
+pub use request::{
+    CreateResponseBuilder, CreateResponsePayload, ItemParam, ToolChoiceParam, ToolParam,
+};
 use rip_openresponses::{validate_response_resource, validate_stream_event};
 pub use stream_transformers::{
     extract_reasoning_deltas, extract_text_deltas, extract_tool_call_argument_deltas,
