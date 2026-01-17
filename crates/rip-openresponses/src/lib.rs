@@ -1243,6 +1243,71 @@ mod tests {
     }
 
     #[test]
+    fn validate_response_resource_accepts_code_interpreter_call() {
+        let item = serde_json::json!({
+            "type": "code_interpreter_call",
+            "id": "ci_1",
+            "status": "completed",
+            "container_id": "cntr_1",
+            "code": null,
+            "outputs": [
+                {
+                    "type": "logs",
+                    "logs": "ok"
+                }
+            ]
+        });
+        let value = response_with_output(vec![item.clone()]);
+        let errors = validate_response_resource(&value).err().unwrap_or_default();
+        assert!(errors.is_empty(), "errors: {errors:?} for {item}");
+    }
+
+    #[test]
+    fn validate_code_interpreter_param_schemas() {
+        let errors = schema_errors(
+            "CodeInterpreterCallStatus.json",
+            serde_json::json!("completed"),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "CodeInterpreterOutputLogs.json",
+            serde_json::json!({
+                "type": "logs",
+                "logs": "ok"
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "CodeInterpreterOutputImage.json",
+            serde_json::json!({
+                "type": "image",
+                "url": "https://example.com/img.png"
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "CodeInterpreterToolCallOutputLogsParam.json",
+            serde_json::json!({
+                "type": "logs",
+                "logs": "ok"
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "CodeInterpreterToolCallOutputImageParam.json",
+            serde_json::json!({
+                "type": "image",
+                "url": "https://example.com/img.png"
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+    }
+
+    #[test]
     fn validate_create_response_body_accepts_minimal() {
         let value = serde_json::json!({
             "model": "gpt-4.1",

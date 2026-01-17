@@ -5,6 +5,7 @@ Summary
 - Each item should be marked complete only when mapped to internal frames and validated at the provider boundary.
 
 Progress log
+- 2026-01-17: Validated code interpreter call/output schemas and output params; checklist updated.
 - 2026-01-17: Validated file/web search, computer, image gen, and apply_patch tool call schemas and outputs; checklist updated.
 - 2026-01-17: Added local/function shell output item validation plus shell param schema tests; checklist updated.
 - 2026-01-17: Added MCP approval/tool-call output validation plus MCP filter/approval/error schema tests; checklist updated.
@@ -93,12 +94,12 @@ Progress log
 - [ ] `ClickAction` mapped and validated.
 - [ ] `ClickButtonType` mapped and validated.
 - [ ] `ClickParam` mapped and validated.
-- [ ] `CodeInterpreterCall` mapped and validated.
-- [ ] `CodeInterpreterCallStatus` mapped and validated.
-- [ ] `CodeInterpreterOutputImage` mapped and validated.
-- [ ] `CodeInterpreterOutputLogs` mapped and validated.
-- [ ] `CodeInterpreterToolCallOutputImageParam` mapped and validated.
-- [ ] `CodeInterpreterToolCallOutputLogsParam` mapped and validated.
+- [x] `CodeInterpreterCall` mapped and validated.
+- [x] `CodeInterpreterCallStatus` mapped and validated.
+- [x] `CodeInterpreterOutputImage` mapped and validated.
+- [x] `CodeInterpreterOutputLogs` mapped and validated.
+- [x] `CodeInterpreterToolCallOutputImageParam` mapped and validated.
+- [x] `CodeInterpreterToolCallOutputLogsParam` mapped and validated.
 - [ ] `CompactResource` mapped and validated.
 - [ ] `CompactResponseMethodPublicBody` mapped and validated.
 - [ ] `CompactionBody` mapped and validated.
