@@ -439,34 +439,34 @@ Legend
 | `CompactResource` | no | no | pending |
 | `CompactResponseMethodPublicBody` | no | no | pending |
 | `CompactionBody` | no | yes | provider_event (validated) |
-| `ComparisonFilterFieldCONTAINS` | no | yes | pending |
-| `ComparisonFilterFieldCONTAINSANY` | no | yes | pending |
-| `ComparisonFilterFieldEQ` | no | yes | pending |
-| `ComparisonFilterFieldGT` | no | yes | pending |
-| `ComparisonFilterFieldGTE` | no | yes | pending |
-| `ComparisonFilterFieldIN` | no | yes | pending |
-| `ComparisonFilterFieldLT` | no | yes | pending |
-| `ComparisonFilterFieldLTE` | no | yes | pending |
-| `ComparisonFilterFieldNCONTAINS` | no | yes | pending |
-| `ComparisonFilterFieldNCONTAINSANY` | no | yes | pending |
-| `ComparisonFilterFieldNE` | no | yes | pending |
-| `ComparisonFilterFieldNIN` | no | yes | pending |
-| `ComparisonFilterParamContainsAnyParam` | no | no | pending |
-| `ComparisonFilterParamContainsParam` | no | no | pending |
-| `ComparisonFilterParamEQParam` | no | no | pending |
-| `ComparisonFilterParamGTEParam` | no | no | pending |
-| `ComparisonFilterParamGTParam` | no | no | pending |
-| `ComparisonFilterParamINParam` | no | no | pending |
-| `ComparisonFilterParamLTEParam` | no | no | pending |
-| `ComparisonFilterParamLTParam` | no | no | pending |
-| `ComparisonFilterParamNContainsAnyParam` | no | no | pending |
-| `ComparisonFilterParamNContainsParam` | no | no | pending |
-| `ComparisonFilterParamNEParam` | no | no | pending |
-| `ComparisonFilterParamNINParam` | no | no | pending |
-| `CompoundFilterFieldAND` | no | yes | pending |
-| `CompoundFilterFieldOR` | no | yes | pending |
-| `CompoundFilterParamAndParam` | no | no | pending |
-| `CompoundFilterParamOrParam` | no | no | pending |
+| `ComparisonFilterFieldCONTAINS` | no | yes | provider_event (validated) |
+| `ComparisonFilterFieldCONTAINSANY` | no | yes | provider_event (validated) |
+| `ComparisonFilterFieldEQ` | no | yes | provider_event (validated) |
+| `ComparisonFilterFieldGT` | no | yes | provider_event (validated) |
+| `ComparisonFilterFieldGTE` | no | yes | provider_event (validated) |
+| `ComparisonFilterFieldIN` | no | yes | provider_event (validated) |
+| `ComparisonFilterFieldLT` | no | yes | provider_event (validated) |
+| `ComparisonFilterFieldLTE` | no | yes | provider_event (validated) |
+| `ComparisonFilterFieldNCONTAINS` | no | yes | provider_event (validated) |
+| `ComparisonFilterFieldNCONTAINSANY` | no | yes | provider_event (validated) |
+| `ComparisonFilterFieldNE` | no | yes | provider_event (validated) |
+| `ComparisonFilterFieldNIN` | no | yes | provider_event (validated) |
+| `ComparisonFilterParamContainsAnyParam` | no | yes | provider_request (validated) |
+| `ComparisonFilterParamContainsParam` | no | yes | provider_request (validated) |
+| `ComparisonFilterParamEQParam` | no | yes | provider_request (validated) |
+| `ComparisonFilterParamGTEParam` | no | yes | provider_request (validated) |
+| `ComparisonFilterParamGTParam` | no | yes | provider_request (validated) |
+| `ComparisonFilterParamINParam` | no | yes | provider_request (validated) |
+| `ComparisonFilterParamLTEParam` | no | yes | provider_request (validated) |
+| `ComparisonFilterParamLTParam` | no | yes | provider_request (validated) |
+| `ComparisonFilterParamNContainsAnyParam` | no | yes | provider_request (validated) |
+| `ComparisonFilterParamNContainsParam` | no | yes | provider_request (validated) |
+| `ComparisonFilterParamNEParam` | no | yes | provider_request (validated) |
+| `ComparisonFilterParamNINParam` | no | yes | provider_request (validated) |
+| `CompoundFilterFieldAND` | no | yes | provider_event (validated) |
+| `CompoundFilterFieldOR` | no | yes | provider_event (validated) |
+| `CompoundFilterParamAndParam` | no | yes | provider_request (validated) |
+| `CompoundFilterParamOrParam` | no | yes | provider_request (validated) |
 | `ComputerCall` | no | yes | provider_event (validated) |
 | `ComputerCallOutput` | no | yes | provider_event (validated) |
 | `ComputerCallOutputStatus` | no | yes | pending |
@@ -519,7 +519,7 @@ Legend
 | `FileSearchResult` | no | yes | pending |
 | `FileSearchRetrievedChunksParam` | no | no | pending |
 | `FileSearchToolCallStatusEnum` | no | yes | pending |
-| `Filters` | no | yes | pending |
+| `Filters` | no | yes | provider_event (validated) |
 | `FunctionCall` | yes | yes | provider_event (validated) |
 | `FunctionCallItemStatus` | yes | no | pending |
 | `FunctionCallOutput` | yes | yes | provider_event (validated) |

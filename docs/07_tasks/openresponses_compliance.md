@@ -5,6 +5,7 @@ Summary
 - Each item should be marked complete only when mapped to internal frames and validated at the provider boundary.
 
 Progress log
+- 2026-01-17: Validated filter schemas (Filters + comparison/compound field + param variants); checklist updated.
 - 2026-01-17: Validated annotation + citation schemas (Annotation, file/url/container citations + params); checklist updated.
 - 2026-01-17: Validated content block and response format schemas (input/output text, image, file, summary/refusal/reasoning text, response formats, additive patch schemas); checklist updated.
 - 2026-01-17: Validated code interpreter call/output schemas and output params; checklist updated.
@@ -105,34 +106,34 @@ Progress log
 - [ ] `CompactResource` mapped and validated.
 - [ ] `CompactResponseMethodPublicBody` mapped and validated.
 - [ ] `CompactionBody` mapped and validated.
-- [ ] `ComparisonFilterFieldCONTAINS` mapped and validated.
-- [ ] `ComparisonFilterFieldCONTAINSANY` mapped and validated.
-- [ ] `ComparisonFilterFieldEQ` mapped and validated.
-- [ ] `ComparisonFilterFieldGT` mapped and validated.
-- [ ] `ComparisonFilterFieldGTE` mapped and validated.
-- [ ] `ComparisonFilterFieldIN` mapped and validated.
-- [ ] `ComparisonFilterFieldLT` mapped and validated.
-- [ ] `ComparisonFilterFieldLTE` mapped and validated.
-- [ ] `ComparisonFilterFieldNCONTAINS` mapped and validated.
-- [ ] `ComparisonFilterFieldNCONTAINSANY` mapped and validated.
-- [ ] `ComparisonFilterFieldNE` mapped and validated.
-- [ ] `ComparisonFilterFieldNIN` mapped and validated.
-- [ ] `ComparisonFilterParamContainsAnyParam` mapped and validated.
-- [ ] `ComparisonFilterParamContainsParam` mapped and validated.
-- [ ] `ComparisonFilterParamEQParam` mapped and validated.
-- [ ] `ComparisonFilterParamGTEParam` mapped and validated.
-- [ ] `ComparisonFilterParamGTParam` mapped and validated.
-- [ ] `ComparisonFilterParamINParam` mapped and validated.
-- [ ] `ComparisonFilterParamLTEParam` mapped and validated.
-- [ ] `ComparisonFilterParamLTParam` mapped and validated.
-- [ ] `ComparisonFilterParamNContainsAnyParam` mapped and validated.
-- [ ] `ComparisonFilterParamNContainsParam` mapped and validated.
-- [ ] `ComparisonFilterParamNEParam` mapped and validated.
-- [ ] `ComparisonFilterParamNINParam` mapped and validated.
-- [ ] `CompoundFilterFieldAND` mapped and validated.
-- [ ] `CompoundFilterFieldOR` mapped and validated.
-- [ ] `CompoundFilterParamAndParam` mapped and validated.
-- [ ] `CompoundFilterParamOrParam` mapped and validated.
+- [x] `ComparisonFilterFieldCONTAINS` mapped and validated.
+- [x] `ComparisonFilterFieldCONTAINSANY` mapped and validated.
+- [x] `ComparisonFilterFieldEQ` mapped and validated.
+- [x] `ComparisonFilterFieldGT` mapped and validated.
+- [x] `ComparisonFilterFieldGTE` mapped and validated.
+- [x] `ComparisonFilterFieldIN` mapped and validated.
+- [x] `ComparisonFilterFieldLT` mapped and validated.
+- [x] `ComparisonFilterFieldLTE` mapped and validated.
+- [x] `ComparisonFilterFieldNCONTAINS` mapped and validated.
+- [x] `ComparisonFilterFieldNCONTAINSANY` mapped and validated.
+- [x] `ComparisonFilterFieldNE` mapped and validated.
+- [x] `ComparisonFilterFieldNIN` mapped and validated.
+- [x] `ComparisonFilterParamContainsAnyParam` mapped and validated.
+- [x] `ComparisonFilterParamContainsParam` mapped and validated.
+- [x] `ComparisonFilterParamEQParam` mapped and validated.
+- [x] `ComparisonFilterParamGTEParam` mapped and validated.
+- [x] `ComparisonFilterParamGTParam` mapped and validated.
+- [x] `ComparisonFilterParamINParam` mapped and validated.
+- [x] `ComparisonFilterParamLTEParam` mapped and validated.
+- [x] `ComparisonFilterParamLTParam` mapped and validated.
+- [x] `ComparisonFilterParamNContainsAnyParam` mapped and validated.
+- [x] `ComparisonFilterParamNContainsParam` mapped and validated.
+- [x] `ComparisonFilterParamNEParam` mapped and validated.
+- [x] `ComparisonFilterParamNINParam` mapped and validated.
+- [x] `CompoundFilterFieldAND` mapped and validated.
+- [x] `CompoundFilterFieldOR` mapped and validated.
+- [x] `CompoundFilterParamAndParam` mapped and validated.
+- [x] `CompoundFilterParamOrParam` mapped and validated.
 - [x] `ComputerCall` mapped and validated.
 - [x] `ComputerCallOutput` mapped and validated.
 - [x] `ComputerCallOutputStatus` mapped and validated.
@@ -185,7 +186,7 @@ Progress log
 - [ ] `FileSearchResult` mapped and validated.
 - [ ] `FileSearchRetrievedChunksParam` mapped and validated.
 - [x] `FileSearchToolCallStatusEnum` mapped and validated.
-- [ ] `Filters` mapped and validated.
+- [x] `Filters` mapped and validated.
 - [x] `FunctionCall` mapped and validated.
 - [ ] `FunctionCallItemStatus` mapped and validated.
 - [x] `FunctionCallOutput` mapped and validated.
