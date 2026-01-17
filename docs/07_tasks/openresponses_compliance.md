@@ -5,6 +5,7 @@ Summary
 - Each item should be marked complete only when mapped to internal frames and validated at the provider boundary.
 
 Progress log
+- 2026-01-17: Added MCP approval/tool-call output validation plus MCP filter/approval/error schema tests; checklist updated.
 - 2026-01-17: Added MCPListTools output item validation and MemoryToolParam schema test; checklist updated.
 - 2026-01-17: Added response tool_choice/tool validation tests (fixture-based) plus auto code-interpreter tool param coverage; checklist updated.
 - 2026-01-17: Added ItemParam constructors for all input item variants in the provider request builder; checklist updated.
@@ -36,9 +37,9 @@ Progress log
 ### Error schemas
 - [x] `Error` mapped and validated.
 - [x] `ErrorPayload` mapped and validated.
-- [ ] `HTTPError` mapped and validated.
-- [ ] `MCPProtocolError` mapped and validated.
-- [ ] `MCPToolExecutionError` mapped and validated.
+- [x] `HTTPError` mapped and validated.
+- [x] `MCPProtocolError` mapped and validated.
+- [x] `MCPToolExecutionError` mapped and validated.
 
 ### Input item params
 - [x] `ApplyPatchToolCallItemParam` mapped and validated.
@@ -254,17 +255,17 @@ Progress log
 - [ ] `LocalShellExecAction` mapped and validated.
 - [ ] `LocalShellExecActionParam` mapped and validated.
 - [ ] `LogProb` mapped and validated.
-- [ ] `MCPApprovalRequest` mapped and validated.
-- [ ] `MCPApprovalResponse` mapped and validated.
+- [x] `MCPApprovalRequest` mapped and validated.
+- [x] `MCPApprovalResponse` mapped and validated.
 - [x] `MCPListTools` mapped and validated.
-- [ ] `MCPRequireApprovalApiEnum` mapped and validated.
-- [ ] `MCPRequireApprovalFieldEnum` mapped and validated.
-- [ ] `MCPRequireApprovalFilterField` mapped and validated.
-- [ ] `MCPRequireApprovalFilterParam` mapped and validated.
-- [ ] `MCPToolCall` mapped and validated.
-- [ ] `MCPToolCallStatus` mapped and validated.
-- [ ] `MCPToolFilterField` mapped and validated.
-- [ ] `MCPToolFilterParam` mapped and validated.
+- [x] `MCPRequireApprovalApiEnum` mapped and validated.
+- [x] `MCPRequireApprovalFieldEnum` mapped and validated.
+- [x] `MCPRequireApprovalFilterField` mapped and validated.
+- [x] `MCPRequireApprovalFilterParam` mapped and validated.
+- [x] `MCPToolCall` mapped and validated.
+- [x] `MCPToolCallStatus` mapped and validated.
+- [x] `MCPToolFilterField` mapped and validated.
+- [x] `MCPToolFilterParam` mapped and validated.
 - [x] `Message` mapped and validated.
 - [ ] `MessageRole` mapped and validated.
 - [ ] `MessageRole1` mapped and validated.

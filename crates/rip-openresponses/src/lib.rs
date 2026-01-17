@@ -530,6 +530,15 @@ mod tests {
         response
     }
 
+    fn schema_errors(name: &str, value: Value) -> Vec<String> {
+        let schema = compile_split_schema(name);
+        let errors = match schema.validate(&value) {
+            Ok(_) => Vec::new(),
+            Err(errors) => errors.map(|err| err.to_string()).collect(),
+        };
+        errors
+    }
+
     #[test]
     fn types_list_is_non_empty() {
         assert!(!allowed_stream_event_types().is_empty());
@@ -727,7 +736,6 @@ mod tests {
 
     #[test]
     fn validate_memory_tool_param_schema() {
-        let schema = compile_split_schema("MemoryToolParam.json");
         let value = serde_json::json!({
             "type": "memory",
             "memory": "remember this",
@@ -736,10 +744,167 @@ mod tests {
                 "root": "/tmp"
             }
         });
-        let errors = match schema.validate(&value) {
-            Ok(_) => Vec::new(),
-            Err(errors) => errors.map(|err| err.to_string()).collect(),
-        };
+        let errors = schema_errors("MemoryToolParam.json", value);
+        assert!(errors.is_empty(), "errors: {errors:?}");
+    }
+
+    #[test]
+    fn validate_response_resource_accepts_mcp_approval_items() {
+        let request = serde_json::json!({
+            "type": "mcp_approval_request",
+            "id": "req_1",
+            "server_label": "srv",
+            "name": "tool",
+            "arguments": "{}"
+        });
+        let response = serde_json::json!({
+            "type": "mcp_approval_response",
+            "id": "resp_1",
+            "approval_request_id": "req_1",
+            "approve": true,
+            "reason": null
+        });
+        for item in [request, response] {
+            let value = response_with_output(vec![item.clone()]);
+            let errors = validate_response_resource(&value).err().unwrap_or_default();
+            assert!(errors.is_empty(), "errors: {errors:?} for {item}");
+        }
+    }
+
+    #[test]
+    fn validate_response_resource_accepts_mcp_tool_calls() {
+        let base = serde_json::json!({
+            "type": "mcp_call",
+            "id": "call_1",
+            "status": "completed",
+            "approval_request_id": null,
+            "server_label": "srv",
+            "name": "tool",
+            "arguments": "{}",
+            "output": null,
+            "error": null
+        });
+        let value = response_with_output(vec![base]);
+        let errors = validate_response_resource(&value).err().unwrap_or_default();
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let error_variants = vec![
+            serde_json::json!({
+                "type": "mcp_protocol_error",
+                "code": 1,
+                "message": "oops"
+            }),
+            serde_json::json!({
+                "type": "mcp_tool_execution_error",
+                "content": { "detail": "failed" }
+            }),
+            serde_json::json!({
+                "type": "http_error",
+                "code": 500,
+                "message": "server"
+            }),
+        ];
+
+        for error in error_variants {
+            let item = serde_json::json!({
+                "type": "mcp_call",
+                "id": "call_2",
+                "status": "failed",
+                "approval_request_id": null,
+                "server_label": "srv",
+                "name": "tool",
+                "arguments": "{}",
+                "output": null,
+                "error": error
+            });
+            let value = response_with_output(vec![item.clone()]);
+            let errors = validate_response_resource(&value).err().unwrap_or_default();
+            assert!(errors.is_empty(), "errors: {errors:?} for {item}");
+        }
+    }
+
+    #[test]
+    fn validate_mcp_filter_and_require_approval_schemas() {
+        let errors = schema_errors(
+            "MCPToolFilterField.json",
+            serde_json::json!({
+                "tool_names": ["tool_a"],
+                "read_only": null
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "MCPToolFilterParam.json",
+            serde_json::json!({
+                "tool_names": ["tool_a"],
+                "read_only": true
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "MCPRequireApprovalApiEnum.json",
+            serde_json::json!("always"),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "MCPRequireApprovalFieldEnum.json",
+            serde_json::json!("never"),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "MCPRequireApprovalFilterField.json",
+            serde_json::json!({
+                "always": null,
+                "never": null
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "MCPRequireApprovalFilterParam.json",
+            serde_json::json!({
+                "always": { "tool_names": ["tool_b"], "read_only": false }
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors("MCPToolCallStatus.json", serde_json::json!("completed"));
+        assert!(errors.is_empty(), "errors: {errors:?}");
+    }
+
+    #[test]
+    fn validate_mcp_error_schemas() {
+        let errors = schema_errors(
+            "MCPProtocolError.json",
+            serde_json::json!({
+                "type": "mcp_protocol_error",
+                "code": 400,
+                "message": "bad request"
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "MCPToolExecutionError.json",
+            serde_json::json!({
+                "type": "mcp_tool_execution_error",
+                "content": { "detail": "fail" }
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "HTTPError.json",
+            serde_json::json!({
+                "type": "http_error",
+                "code": 500,
+                "message": "server error"
+            }),
+        );
         assert!(errors.is_empty(), "errors: {errors:?}");
     }
 
