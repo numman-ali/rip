@@ -1785,6 +1785,70 @@ mod tests {
     }
 
     #[test]
+    fn validate_context_and_billing_schemas() {
+        let errors = schema_errors(
+            "ApiSourceParam.json",
+            serde_json::json!({ "type": "api", "name": "source" }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors("Payer.json", serde_json::json!("developer"));
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors("Billing.json", serde_json::json!({ "payer": "developer" }));
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors("Conversation.json", serde_json::json!({ "id": "conv_1" }));
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "ConversationParam.json",
+            serde_json::json!({ "id": "conv_1" }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "ContextEditDetails.json",
+            serde_json::json!({
+                "cleared_input_tokens": 10,
+                "cleared_tool_call_ids": ["call_1"]
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "ContextEdit.json",
+            serde_json::json!({
+                "type": "truncate",
+                "summary": "trimmed",
+                "details": {
+                    "cleared_input_tokens": 10,
+                    "cleared_tool_call_ids": []
+                }
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "ApproximateLocation.json",
+            serde_json::json!({
+                "type": "approximate",
+                "country": "US",
+                "region": null,
+                "city": null,
+                "timezone": "America/Los_Angeles"
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "ApproximateLocationParam.json",
+            serde_json::json!({ "type": "approximate", "country": "US" }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+    }
+
+    #[test]
     fn validate_response_format_schemas() {
         let errors = schema_errors(
             "TextResponseFormat.json",

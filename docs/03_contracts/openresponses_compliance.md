@@ -410,7 +410,7 @@ Legend
 | --- | --- | --- | --- |
 | `AllowedToolsParam` | yes | no | provider_request (validated) |
 | `Annotation` | yes | yes | provider_event (validated) |
-| `ApiSourceParam` | no | no | pending |
+| `ApiSourceParam` | no | yes | provider_request (validated) |
 | `ApplyPatchCallOutputStatus` | no | yes | pending |
 | `ApplyPatchCallOutputStatusParam` | no | no | pending |
 | `ApplyPatchCallStatus` | no | yes | pending |
@@ -424,9 +424,9 @@ Legend
 | `ApplyPatchToolCallOutput` | no | yes | provider_event (validated) |
 | `ApplyPatchUpdateFileOperation` | no | yes | pending |
 | `ApplyPatchUpdateFileOperationParam` | no | no | pending |
-| `ApproximateLocation` | no | yes | pending |
-| `ApproximateLocationParam` | no | no | pending |
-| `Billing` | no | yes | pending |
+| `ApproximateLocation` | no | yes | provider_event (validated) |
+| `ApproximateLocationParam` | no | yes | provider_request (validated) |
+| `Billing` | no | yes | provider_event (validated) |
 | `ClickAction` | no | yes | provider_event (validated) |
 | `ClickButtonType` | no | yes | provider_request (validated) |
 | `ClickParam` | no | yes | provider_request (validated) |
@@ -478,10 +478,10 @@ Legend
 | `ContainerFileCitationBody` | no | yes | provider_event (validated) |
 | `ContainerFileCitationParam` | no | yes | provider_request (validated) |
 | `ContainerMemoryLimit` | no | no | pending |
-| `ContextEdit` | no | yes | pending |
-| `ContextEditDetails` | no | yes | pending |
-| `Conversation` | no | yes | pending |
-| `ConversationParam` | no | no | pending |
+| `ContextEdit` | no | yes | provider_event (validated) |
+| `ContextEditDetails` | no | yes | provider_event (validated) |
+| `Conversation` | no | yes | provider_event (validated) |
+| `ConversationParam` | no | yes | provider_request (validated) |
 | `CoordParam` | no | yes | provider_request (validated) |
 | `CreateImageBody15Param` | no | no | pending |
 | `CreateImageBody1MiniParam` | no | no | pending |
@@ -614,7 +614,7 @@ Legend
 | `OutputTextContent` | yes | yes | pending |
 | `OutputTextContentParam` | yes | no | pending |
 | `OutputTokensDetails` | yes | yes | pending |
-| `Payer` | no | yes | pending |
+| `Payer` | no | yes | provider_event (validated) |
 | `PromptCacheRetentionEnum` | no | yes | pending |
 | `PromptInstructionMessage` | no | yes | pending |
 | `RankerVersionType` | no | yes | pending |

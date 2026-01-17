@@ -5,6 +5,7 @@ Summary
 - Each item should be marked complete only when mapped to internal frames and validated at the provider boundary.
 
 Progress log
+- 2026-01-17: Validated context/billing/location schemas (ApiSourceParam, Payer/Billing, Conversation + ConversationParam, ContextEdit + details, ApproximateLocation + param); checklist updated.
 - 2026-01-17: Validated computer action + screenshot schemas (environment, click/double-click/drag, coords, screenshot content/param, detail enum, empty action); checklist updated.
 - 2026-01-17: Validated filter schemas (Filters + comparison/compound field + param variants); checklist updated.
 - 2026-01-17: Validated annotation + citation schemas (Annotation, file/url/container citations + params); checklist updated.
@@ -78,7 +79,7 @@ Progress log
 ### Other schemas
 - [x] `AllowedToolsParam` mapped and validated.
 - [x] `Annotation` mapped and validated.
-- [ ] `ApiSourceParam` mapped and validated.
+- [x] `ApiSourceParam` mapped and validated.
 - [x] `ApplyPatchCallOutputStatus` mapped and validated.
 - [x] `ApplyPatchCallOutputStatusParam` mapped and validated.
 - [x] `ApplyPatchCallStatus` mapped and validated.
@@ -92,9 +93,9 @@ Progress log
 - [x] `ApplyPatchToolCallOutput` mapped and validated.
 - [x] `ApplyPatchUpdateFileOperation` mapped and validated.
 - [x] `ApplyPatchUpdateFileOperationParam` mapped and validated.
-- [ ] `ApproximateLocation` mapped and validated.
-- [ ] `ApproximateLocationParam` mapped and validated.
-- [ ] `Billing` mapped and validated.
+- [x] `ApproximateLocation` mapped and validated.
+- [x] `ApproximateLocationParam` mapped and validated.
+- [x] `Billing` mapped and validated.
 - [x] `ClickAction` mapped and validated.
 - [x] `ClickButtonType` mapped and validated.
 - [x] `ClickParam` mapped and validated.
@@ -146,10 +147,10 @@ Progress log
 - [x] `ContainerFileCitationBody` mapped and validated.
 - [x] `ContainerFileCitationParam` mapped and validated.
 - [ ] `ContainerMemoryLimit` mapped and validated.
-- [ ] `ContextEdit` mapped and validated.
-- [ ] `ContextEditDetails` mapped and validated.
-- [ ] `Conversation` mapped and validated.
-- [ ] `ConversationParam` mapped and validated.
+- [x] `ContextEdit` mapped and validated.
+- [x] `ContextEditDetails` mapped and validated.
+- [x] `Conversation` mapped and validated.
+- [x] `ConversationParam` mapped and validated.
 - [x] `CoordParam` mapped and validated.
 - [ ] `CreateImageBody15Param` mapped and validated.
 - [ ] `CreateImageBody1MiniParam` mapped and validated.
@@ -284,7 +285,7 @@ Progress log
 - [x] `OutputTextContent` mapped and validated.
 - [x] `OutputTextContentParam` mapped and validated.
 - [ ] `OutputTokensDetails` mapped and validated.
-- [ ] `Payer` mapped and validated.
+- [x] `Payer` mapped and validated.
 - [ ] `PromptCacheRetentionEnum` mapped and validated.
 - [ ] `PromptInstructionMessage` mapped and validated.
 - [ ] `RankerVersionType` mapped and validated.
