@@ -29,6 +29,7 @@ Invariants
 Phase 1 mapping
 - All SSE events map to `provider_event` frames with full payload fidelity.
 - No events are dropped; `[DONE]` is captured as a `provider_event` with `status=done`.
+- `response.output_text.delta` also emits `output_text_delta` frames (derived, no payload loss).
 
 Tests
 - Acceptance fixtures against Open Responses schema.

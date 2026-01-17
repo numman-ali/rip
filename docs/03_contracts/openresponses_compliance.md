@@ -33,6 +33,7 @@ Mapping rules (Phase 1)
 Implementation status (current)
 - Provider adapter validates streaming events and embedded `response` objects against the bundled OpenAPI schema (`schemas/openresponses/openapi.json`).
 - Bundled OpenAPI validates 24/58 streaming event schemas and 4/23 output item variants; remaining streaming events and output items are pending validation until the split schemas are integrated.
+- Provider adapter emits `output_text_delta` frames for `response.output_text.delta` events alongside `provider_event` frames.
 - Provider request builder validates CreateResponseBody payloads (errors captured; payload preserved); tool fields use per-variant validation to avoid jsonschema oneOf failures; request sending is not wired yet.
 - Tool schema validation is available for all `ResponsesToolParam` and `ToolChoiceParam` variants using manual required-field checks; bundled OpenAPI only includes function tool variants.
 - Input item variants are not yet mapped to internal request frames (pending).

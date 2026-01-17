@@ -12,11 +12,24 @@ fn stream_fixture_maps_all_events() {
     let mut mapper = EventFrameMapper::new("session-1");
     let mut frames = Vec::new();
     for event in &parsed {
-        frames.push(mapper.map(event).expect("frame"));
+        frames.extend(mapper.map(event));
     }
 
-    assert_eq!(frames.len(), parsed.len());
-    let expected = allowed_stream_event_types().len() + 1;
+    let expected_output_text = parsed
+        .iter()
+        .filter(|event| {
+            matches!(
+                event.kind,
+                rip_provider_openresponses::ParsedEventKind::Event
+            ) && event
+                .data
+                .as_ref()
+                .and_then(|value| value.get("type"))
+                .and_then(|value| value.as_str())
+                == Some("response.output_text.delta")
+        })
+        .count();
+    let expected = allowed_stream_event_types().len() + 1 + expected_output_text;
     assert_eq!(frames.len(), expected);
 
     for (idx, frame) in frames.iter().enumerate() {
@@ -41,7 +54,20 @@ fn stream_fixture_maps_all_events() {
                     assert!(data.is_none());
                 }
             },
-            _ => panic!("expected provider_event"),
+            EventKind::OutputTextDelta { .. } => {}
+            _ => panic!("unexpected frame type"),
         }
     }
+
+    let provider_frames = frames
+        .iter()
+        .filter(|frame| matches!(frame.kind, EventKind::ProviderEvent { .. }))
+        .count();
+    assert_eq!(provider_frames, parsed.len());
+
+    let output_text_frames = frames
+        .iter()
+        .filter(|frame| matches!(frame.kind, EventKind::OutputTextDelta { .. }))
+        .count();
+    assert_eq!(output_text_frames, expected_output_text);
 }

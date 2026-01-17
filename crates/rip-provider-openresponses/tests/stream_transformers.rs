@@ -10,10 +10,7 @@ fn load_events() -> Vec<rip_kernel::Event> {
     parsed.extend(decoder.finish());
 
     let mut mapper = EventFrameMapper::new("session-1");
-    parsed
-        .iter()
-        .map(|event| mapper.map(event).expect("frame"))
-        .collect()
+    parsed.iter().flat_map(|event| mapper.map(event)).collect()
 }
 
 #[test]
