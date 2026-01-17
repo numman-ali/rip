@@ -4,6 +4,7 @@ Summary
 - Source repo: `temp/openresponses` (local vendor).
 - Reviewed: 2026-01-17.
 - Traceability: see `docs/03_contracts/openresponses_traceability.md` for the current upstream snapshot.
+- OpenAPI source: `temp/openresponses/public/openapi/openapi.json` (canonical; `temp/openresponses/schema/openapi.json` is fallback only).
 - Schema files: 412 split components in `temp/openresponses/schema/components/schemas` (+3 additive patch schemas: `InputVideoContent`, `JsonSchemaResponseFormatParam`, `TextFormatParam`).
 - Streaming event schemas: 58 (from `temp/openresponses/schema/paths/responses.json`).
 - Input item variants: 25 (from `ItemParam.json`).
@@ -18,6 +19,7 @@ Sources reviewed
 - `temp/openresponses/src/pages/compliance.mdx`
 - `temp/openresponses/src/pages/changelog.mdx`
 - `temp/openresponses/src/pages/governance.mdx`
+- `temp/openresponses/public/openapi/openapi.json`
 - `temp/openresponses/schema/openapi.json`
 - `temp/openresponses/schema/openapi_additive_patches.yaml`
 - `temp/openresponses/schema/openapi_filter_manifest.yaml`

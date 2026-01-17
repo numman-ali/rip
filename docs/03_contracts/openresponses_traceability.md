@@ -12,6 +12,12 @@ Current snapshot
 - Commit date: 2026-01-15
 - Last synced: 2026-01-17
 
+Upstream layout (authoritative)
+- Full OpenAPI spec: `temp/openresponses/public/openapi/openapi.json`.
+- Fallback OpenAPI spec: `temp/openresponses/schema/openapi.json`.
+- Split component schemas: `temp/openresponses/schema/components/schemas/*.json`.
+- Streaming paths schema: `temp/openresponses/schema/paths/responses.json`.
+
 Vendored artifacts
 - `schemas/openresponses/openapi.json`
 - `schemas/openresponses/streaming_event_types.json` (58 events)
