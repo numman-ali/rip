@@ -4,6 +4,9 @@ Summary
 - Exhaustive checklist for every OpenResponses doc and schema element.
 - Each item should be marked complete only when mapped to internal frames and validated at the provider boundary.
 
+Progress log
+- 2026-01-17: Roadmap gate added (`docs/07_tasks/roadmap.md`). Tool/tool_choice request validation + builder support landed (commit `c8946dd`); split schema notes captured in `temp/docs/openresponses/`.
+
 ## Docs review checklist
 - [x] Review `temp/openresponses/README.md` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
 - [x] Review `temp/openresponses/src/pages/index.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
@@ -221,9 +224,11 @@ Summary
 - [ ] `InputTextContent` mapped and validated.
 - [ ] `InputTextContentParam` mapped and validated.
 - [ ] `InputTokensDetails` mapped and validated.
+- [ ] `InputVideoContent` mapped and validated.
 - [ ] `ItemListResource` mapped and validated.
 - [ ] `ItemReferenceParam` mapped and validated.
 - [ ] `JsonObjectResponseFormat` mapped and validated.
+- [ ] `JsonSchemaResponseFormatParam` mapped and validated.
 - [ ] `JsonSchemaResponseFormat` mapped and validated.
 - [ ] `KeyPressAction` mapped and validated.
 - [ ] `KeyPressParam` mapped and validated.
@@ -298,6 +303,7 @@ Summary
 - [ ] `TextField` mapped and validated.
 - [ ] `TextParam` mapped and validated.
 - [ ] `TextResponseFormat` mapped and validated.
+- [ ] `TextFormatParam` mapped and validated.
 - [ ] `TokenCountsBody` mapped and validated.
 - [ ] `TokenCountsResource` mapped and validated.
 - [ ] `ToolChoiceParam` mapped and validated.

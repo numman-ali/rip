@@ -3,7 +3,7 @@
 Summary
 - Source repo: `temp/openresponses` (local vendor).
 - Reviewed: 2026-01-17.
-- Schema files: 412 total components in `temp/openresponses/schema/components/schemas`.
+- Schema files: 412 split components in `temp/openresponses/schema/components/schemas` (+3 additive patch schemas: `InputVideoContent`, `JsonSchemaResponseFormatParam`, `TextFormatParam`).
 - Streaming event schemas: 58 (from `temp/openresponses/schema/paths/responses.json`).
 - Input item variants: 25 (from `ItemParam.json`).
 - Output item variants: 23 (from `ItemField.json`).
@@ -35,6 +35,7 @@ Implementation status (current)
 - ItemParam validation is available for request assembly using per-variant checks (jsonschema rejects the oneOf with multiple message roles); unknown item types still require raw passthrough.
 - Requests are JSON-only per spec; form-encoded bodies are not supported (ADR-0002).
 - Bundled OpenAPI schema currently includes 102 component schemas; the split OpenResponses schema defines 412 component schemas. Missing schemas are tracked in the checklist.
+- Split schemas + additive patches are authoritative; the filter manifest represents a reduced allowlist and is not a compliance target.
 
 Doc review notes (normative requirements)
 
@@ -43,6 +44,7 @@ Specification (`temp/openresponses/src/pages/specification.mdx`)
 - Non-stream responses MUST be `application/json`; streams MUST be `text/event-stream` with terminal `[DONE]`.
 - SSE `event` field MUST match payload `type`; servers SHOULD NOT use `id`.
 - Items are state machines with `in_progress`, `incomplete`, `completed`; `incomplete` is terminal and MUST be the last item, and response MUST be `incomplete`.
+- Every item MUST include `id`, `type`, `status`; extension types MUST be prefixed; clients SHOULD tolerate unknown item/status values.
 - First item event MUST be `response.output_item.added` with all non-nullable fields present (use zero values).
 - Streamable content MUST emit `response.content_part.added` -> repeated `response.<content>.delta` -> `response.<content>.done` -> `response.content_part.done`.
 - Items MAY emit multiple content parts; items close with `response.output_item.done`.
@@ -55,6 +57,7 @@ Specification (`temp/openresponses/src/pages/specification.mdx`)
 - Error types include `server_error`, `invalid_request`, `not_found`, `model_error`, `too_many_requests`.
 - Extended streaming events MUST be prefixed with implementor slug and include `type` + `sequence_number`; clients MUST ignore unknown events safely.
 - Schema extensions MUST NOT change core semantics; extensions SHOULD be optional and documented.
+- Service tiers MAY exist; implementations SHOULD document supported tiers, behaviors, and quotas.
 
 Reference (`temp/openresponses/src/pages/reference.mdx`)
 - `/v1/responses` request bodies are documented as JSON or form-encoded; response bodies as JSON or SSE.
@@ -67,6 +70,13 @@ README/index/changelog/governance
 
 Doc discrepancies (resolved)
 - Spec says request bodies MUST be `application/json`, while reference allows `application/x-www-form-urlencoded`. Decision: enforce JSON-only (ADR-0002).
+
+## Additive patch schemas
+| schema | purpose | mapping |
+| --- | --- | --- |
+| `InputVideoContent` | Adds `input_video` content blocks to message content unions. | pending |
+| `JsonSchemaResponseFormatParam` | Adds JSON Schema response format support. | pending |
+| `TextFormatParam` | Adds `json_schema` format option to text formats. | pending |
 
 ## CreateResponseBody fields
 | field | required |
@@ -143,6 +153,59 @@ Doc discrepancies (resolved)
 | `truncation` | yes |
 | `usage` | yes |
 | `user` | yes |
+
+## Tool param variants (ResponsesToolParam)
+| tool type | schema | request validation |
+| --- | --- | --- |
+| `function` | `FunctionToolParam.json` | implemented |
+| `code_interpreter` | `CodeInterpreterToolParam.json` | pending |
+| `custom` | `CustomToolParam.json` | pending |
+| `web_search` | `WebSearchToolParam.json` | pending |
+| `web_search_2025_08_26` | `WebSearchToolParam_2025_08_14Param.json` | pending |
+| `web_search_ga` | `WebSearchGADeprecatedToolParam.json` | pending |
+| `web_search_preview` | `WebSearchPreviewToolParam.json` | pending |
+| `web_search_preview_2025_03_11` | `WebSearchPreviewToolParam_2025_03_11Param.json` | pending |
+| `image_generation` | `ImageGenToolParam.json` | pending |
+| `mcp` | `MCPToolParam.json` | pending |
+| `file_search` | `FileSearchToolParam.json` | pending |
+| `computer-preview` | `ComputerToolParam.json` | pending |
+| `computer_use_preview` | `ComputerUsePreviewToolParam.json` | pending |
+| `local_shell` | `LocalShellToolParam.json` | pending |
+| `shell` | `FunctionShellToolParam.json` | pending |
+| `apply_patch` | `ApplyPatchToolParam.json` | pending |
+
+## Tool choice variants
+| ToolChoiceParam variant | schema | status |
+| --- | --- | --- |
+| value enum | `ToolChoiceValueEnum.json` | implemented |
+| allowed tools | `AllowedToolsParam.json` | partial (function-only) |
+| specific tool | `SpecificToolChoiceParam.json` | partial (function-only) |
+
+### Specific tool choices (SpecificToolChoiceParam)
+| tool type | schema | required fields | status |
+| --- | --- | --- | --- |
+| `file_search` | `SpecificFileSearchParam.json` | `type` | pending |
+| `web_search` | `SpecificWebSearchParam.json` | `type` | pending |
+| `web_search_preview` | `SpecificWebSearchPreviewParam.json` | `type` | pending |
+| `image_generation` | `SpecificImageGenParam.json` | `type` | pending |
+| `computer-preview` | `SpecificComputerParam.json` | `type` | pending |
+| `computer_use_preview` | `SpecificComputerPreviewParam.json` | `type` | pending |
+| `code_interpreter` | `SpecificCodeInterpreterParam.json` | `type` | pending |
+| `function` | `SpecificFunctionParam.json` | `type`, `name` | implemented |
+| `mcp` | `SpecificMCPFunctionParam.json` | `type`, `server_label` | pending |
+| `local_shell` | `SpecificLocalShellParam.json` | `type` | pending |
+| `shell` | `SpecificFunctionShellParam.json` | `type` | pending |
+| `custom` | `SpecificCustomToolParam.json` | `type`, `name` | pending |
+| `apply_patch` | `SpecificApplyPatchParam.json` | `type` | pending |
+
+## Error schemas
+| schema | required fields | notes |
+| --- | --- | --- |
+| `Error.json` | `code`, `message` | base error payload (no `type` field) |
+| `ErrorPayload.json` | `type`, `code`, `message`, `param` | `type` is freeform string |
+| `HTTPError.json` | `type`, `code`, `message` | `type` enum: `http_error` |
+| `MCPProtocolError.json` | `type`, `code`, `message` | `type` enum: `mcp_protocol_error` |
+| `MCPToolExecutionError.json` | `type`, `content` | `type` enum: `mcp_tool_execution_error` |
 
 ## Streaming events (SSE)
 | event type | schema | mapping |
