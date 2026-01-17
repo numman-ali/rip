@@ -409,7 +409,7 @@ Legend
 | schema | bundled | validated | status |
 | --- | --- | --- | --- |
 | `AllowedToolsParam` | yes | no | provider_request (validated) |
-| `Annotation` | yes | yes | pending |
+| `Annotation` | yes | yes | provider_event (validated) |
 | `ApiSourceParam` | no | no | pending |
 | `ApplyPatchCallOutputStatus` | no | yes | pending |
 | `ApplyPatchCallOutputStatusParam` | no | no | pending |
@@ -475,8 +475,8 @@ Legend
 | `ComputerEnvironment1` | no | yes | pending |
 | `ComputerScreenshotContent` | no | yes | pending |
 | `ComputerScreenshotParam` | no | no | pending |
-| `ContainerFileCitationBody` | no | yes | pending |
-| `ContainerFileCitationParam` | no | no | pending |
+| `ContainerFileCitationBody` | no | yes | provider_event (validated) |
+| `ContainerFileCitationParam` | no | yes | provider_request (validated) |
 | `ContainerMemoryLimit` | no | no | pending |
 | `ContextEdit` | no | yes | pending |
 | `ContextEditDetails` | no | yes | pending |
@@ -512,8 +512,8 @@ Legend
 | `EmptyAction` | no | yes | pending |
 | `EmptyModelParam` | yes | no | pending |
 | `ExcludeEnum` | no | no | pending |
-| `FileCitationBody` | no | yes | pending |
-| `FileCitationParam` | no | no | pending |
+| `FileCitationBody` | no | yes | provider_event (validated) |
+| `FileCitationParam` | no | yes | provider_request (validated) |
 | `FileSearchCall` | no | yes | provider_event (validated) |
 | `FileSearchRankingOptionsParam` | no | no | pending |
 | `FileSearchResult` | no | yes | pending |
@@ -662,8 +662,8 @@ Legend
 | `TruncationEnum` | yes | yes | pending |
 | `TypeAction` | no | yes | pending |
 | `TypeParam` | no | no | pending |
-| `UrlCitationBody` | yes | yes | pending |
-| `UrlCitationParam` | yes | no | pending |
+| `UrlCitationBody` | yes | yes | provider_event (validated) |
+| `UrlCitationParam` | yes | yes | provider_request (validated) |
 | `UrlSourceParam` | no | no | pending |
 | `Usage` | yes | yes | pending |
 | `VerbosityEnum` | yes | yes | pending |

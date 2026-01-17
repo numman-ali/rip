@@ -5,6 +5,7 @@ Summary
 - Each item should be marked complete only when mapped to internal frames and validated at the provider boundary.
 
 Progress log
+- 2026-01-17: Validated annotation + citation schemas (Annotation, file/url/container citations + params); checklist updated.
 - 2026-01-17: Validated content block and response format schemas (input/output text, image, file, summary/refusal/reasoning text, response formats, additive patch schemas); checklist updated.
 - 2026-01-17: Validated code interpreter call/output schemas and output params; checklist updated.
 - 2026-01-17: Validated file/web search, computer, image gen, and apply_patch tool call schemas and outputs; checklist updated.
@@ -74,7 +75,7 @@ Progress log
 
 ### Other schemas
 - [x] `AllowedToolsParam` mapped and validated.
-- [ ] `Annotation` mapped and validated.
+- [x] `Annotation` mapped and validated.
 - [ ] `ApiSourceParam` mapped and validated.
 - [x] `ApplyPatchCallOutputStatus` mapped and validated.
 - [x] `ApplyPatchCallOutputStatusParam` mapped and validated.
@@ -140,8 +141,8 @@ Progress log
 - [ ] `ComputerEnvironment1` mapped and validated.
 - [ ] `ComputerScreenshotContent` mapped and validated.
 - [ ] `ComputerScreenshotParam` mapped and validated.
-- [ ] `ContainerFileCitationBody` mapped and validated.
-- [ ] `ContainerFileCitationParam` mapped and validated.
+- [x] `ContainerFileCitationBody` mapped and validated.
+- [x] `ContainerFileCitationParam` mapped and validated.
 - [ ] `ContainerMemoryLimit` mapped and validated.
 - [ ] `ContextEdit` mapped and validated.
 - [ ] `ContextEditDetails` mapped and validated.
@@ -177,8 +178,8 @@ Progress log
 - [ ] `EmptyAction` mapped and validated.
 - [ ] `EmptyModelParam` mapped and validated.
 - [ ] `ExcludeEnum` mapped and validated.
-- [ ] `FileCitationBody` mapped and validated.
-- [ ] `FileCitationParam` mapped and validated.
+- [x] `FileCitationBody` mapped and validated.
+- [x] `FileCitationParam` mapped and validated.
 - [x] `FileSearchCall` mapped and validated.
 - [ ] `FileSearchRankingOptionsParam` mapped and validated.
 - [ ] `FileSearchResult` mapped and validated.
@@ -330,8 +331,8 @@ Progress log
 - [ ] `TruncationEnum` mapped and validated.
 - [ ] `TypeAction` mapped and validated.
 - [ ] `TypeParam` mapped and validated.
-- [ ] `UrlCitationBody` mapped and validated.
-- [ ] `UrlCitationParam` mapped and validated.
+- [x] `UrlCitationBody` mapped and validated.
+- [x] `UrlCitationParam` mapped and validated.
 - [ ] `UrlSourceParam` mapped and validated.
 - [ ] `Usage` mapped and validated.
 - [ ] `VerbosityEnum` mapped and validated.

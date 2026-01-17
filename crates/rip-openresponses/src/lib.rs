@@ -1438,6 +1438,93 @@ mod tests {
     }
 
     #[test]
+    fn validate_annotation_schemas() {
+        let file_citation = serde_json::json!({
+            "type": "file_citation",
+            "file_id": "file_1",
+            "index": 0,
+            "filename": "notes.txt"
+        });
+        let errors = schema_errors("FileCitationBody.json", file_citation.clone());
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let url_citation = serde_json::json!({
+            "type": "url_citation",
+            "url": "https://example.com",
+            "start_index": 0,
+            "end_index": 10,
+            "title": "Example"
+        });
+        let errors = schema_errors("UrlCitationBody.json", url_citation.clone());
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let container_citation = serde_json::json!({
+            "type": "container_file_citation",
+            "container_id": "cntr_1",
+            "file_id": "file_1",
+            "start_index": 0,
+            "end_index": 4,
+            "filename": "doc.txt"
+        });
+        let errors = schema_errors("ContainerFileCitationBody.json", container_citation.clone());
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors("Annotation.json", file_citation);
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let file_citation_param = serde_json::json!({
+            "type": "file_citation",
+            "index": 0,
+            "file_id": "file_1",
+            "filename": "notes.txt"
+        });
+        let errors = schema_errors("FileCitationParam.json", file_citation_param.clone());
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let url_citation_param = serde_json::json!({
+            "type": "url_citation",
+            "start_index": 0,
+            "end_index": 10,
+            "url": "https://example.com",
+            "title": "Example"
+        });
+        let errors = schema_errors("UrlCitationParam.json", url_citation_param.clone());
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let container_citation_param = serde_json::json!({
+            "type": "container_file_citation",
+            "start_index": 0,
+            "end_index": 4,
+            "container_id": "cntr_1",
+            "file_id": "file_1",
+            "filename": "doc.txt"
+        });
+        let errors = schema_errors("ContainerFileCitationParam.json", container_citation_param);
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "OutputTextContentParam.json",
+            serde_json::json!({
+                "type": "output_text",
+                "text": "hi",
+                "annotations": [file_citation_param]
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "OutputTextContent.json",
+            serde_json::json!({
+                "type": "output_text",
+                "text": "hi",
+                "annotations": [url_citation],
+                "logprobs": []
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+    }
+
+    #[test]
     fn validate_response_format_schemas() {
         let errors = schema_errors(
             "TextResponseFormat.json",
