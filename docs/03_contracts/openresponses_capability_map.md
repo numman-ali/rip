@@ -42,9 +42,9 @@ Capability alignment (expanded)
 | Response include/extras | spec: (schema-only) | `IncludeEnum`, `top_logprobs` | `execution.response_include`, `model.logprobs` | server + cli_h + cli_i + sdk | registry: present; impl: pending |
 | Usage + token counts | spec: (implicit via schema) | `Usage`, `TokenCountsBody/Resource` | `usage.token_counts` | server + sdk | registry: present; impl: partial (validation only) |
 | Request metadata + identity | spec: (schema-only) | `metadata`, `user`, `safety_identifier`, `prompt_cache_*`, `store`, `background` | `policy.request_identifiers`, `model.prompt_cache`, `openresponses.request_fidelity` | server + cli_h + cli_i + sdk | registry: present; impl: partial (passthrough + validation) |
-| Extensions (items/events/schemas) | spec: Extending Open Responses | extension-prefixed items/events, schema extensions | `openresponses.extensions`, `extensions.*` | server + tui + mcp | registry: present; impl: pending |
+| Extensions (items/events/schemas) | spec: Extending Open Responses | extension-prefixed items/events, schema extensions | `openresponses.extensions` | server + tui + mcp | registry: present; impl: pending |
 
 Next steps
-- Add missing capability ids to `capability_registry.md` and update surface parity.
-- Update `docs/02_architecture/capability_matrix.md` to mention OpenResponses boundary fidelity.
+- Confirm capability registry and matrix alignment with OpenResponses boundary capabilities.
+- Update `docs/02_architecture/capability_matrix.md` to call out OpenResponses boundary + extensions explicitly.
 - Add roadmap items for any feature not covered by Phase 1 scope.
