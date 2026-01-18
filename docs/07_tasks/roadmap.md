@@ -70,10 +70,10 @@ Capability coverage map (index)
 - Search/index & memory [needs work] - Phase 3.
 
 Doc/impl gaps
-- Interactive CLI (minimal streaming renderer) is specified but not implemented (see `docs/07_tasks/phase-1/06_cli.md`).
 - TUI surface is documented but not implemented (`rip-tui`).
 - MCP surface is documented but deferred to Phase 2 (`rip-mcp`).
 - Tool runtime not yet integrated into session execution.
+- Workspace engine exists but checkpoint/rewind hooks are not integrated into runtime.
 - Benchmarks are required by docs but no harness exists.
 
 Decisions

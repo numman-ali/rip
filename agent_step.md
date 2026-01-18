@@ -1,7 +1,7 @@
 # Agent Step
 
 Current focus
-- Awaiting operator direction on next roadmap item ([needs work]): workspace engine checkpoint + rewind hooks integration.
+- Workspace engine integration planning (checkpoint + rewind hooks), plus doc/impl gap alignment.
 - Keep capability registry/matrix aligned as Phase 1 scope shifts.
 
 Reorientation (read in order after compaction)
@@ -18,6 +18,7 @@ Reorientation (read in order after compaction)
 Active priorities
 - Confirm workspace engine integration scope and acceptance criteria.
 - Update capability registry/matrix if checkpointing adds surface gaps.
+- Keep roadmap doc/impl gaps aligned with recent changes.
 
 Next checkpoints
 - Move workspace engine task into Now once approved.
