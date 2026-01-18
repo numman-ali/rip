@@ -83,6 +83,18 @@ Communication expectations
 - Avoid offering multiple options unless explicitly requested.
 - Avoid long explanations unless explicitly requested.
 
+Decision packets (required)
+- Before asking the operator to “confirm” a non-obvious choice, provide a short decision packet:
+  - Decision: one sentence describing what will be decided.
+  - Options: 2–3 viable approaches (max), each with 1–2 key tradeoffs.
+  - Recommendation: the default choice, with why (performance/safety/determinism).
+  - Reversibility: how we can iterate later without breaking replay/surface parity (versioning/ADR/tests).
+- If the operator says “I don’t know”, treat it as delegation: proceed with the recommendation and record the choice (ADR if material; otherwise roadmap note).
+
+Auto mode posture
+- Phase 1 defaults should be safe + deterministic (explicit allowlists, strong sandbox defaults).
+- “Full auto mode” (everything allowed) is a planned policy profile and must be explicit, versioned, and logged; do not silently widen permissions.
+
 Quality gates
 - Every module must have contract tests and replay tests.
 - Benchmarks are CI gates; regressions fail builds.
