@@ -9,6 +9,7 @@ Inputs
 
 Outputs
 - Diffs, snapshots, and status events.
+- Status events map to `checkpoint_created`, `checkpoint_rewound`, and `checkpoint_failed` frames.
 
 Config
 - Workspace root.

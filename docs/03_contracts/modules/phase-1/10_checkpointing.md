@@ -19,6 +19,7 @@ Behavior
 - Checkpoints persist across sessions in the same workspace.
 - Each checkpoint records files touched and a snapshot hash.
 - Rewind must be atomic; partial rewinds are invalid.
+- Emits checkpoint events (`checkpoint_created`, `checkpoint_rewound`, `checkpoint_failed`) on the session event stream.
 
 Non-goals (Phase 1)
 - Cross-repo checkpoints.

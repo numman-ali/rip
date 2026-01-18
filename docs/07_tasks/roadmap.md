@@ -13,13 +13,13 @@ How to use
 - Date-stamp moves between Now/Next/Later to preserve intent over time.
 
 Now
-<!-- empty -->
-
-Next
-- Workspace engine: checkpoint + rewind hooks integration in runtime [needs work]
-  - Refs: `docs/07_tasks/phase-1/04_workspace_engine.md`, `docs/03_contracts/modules/phase-1/04_workspace_engine.md`
+- Workspace engine: checkpoint + rewind hooks integration in runtime [confirm spec]
+  - Refs: `docs/07_tasks/phase-1/04_workspace_engine.md`, `docs/03_contracts/modules/phase-1/04_workspace_engine.md`, `docs/03_contracts/modules/phase-1/10_checkpointing.md`
   - Ready: hook points in runtime defined; checkpoint event frames defined
   - Done: runtime integration + rewind behavior tests
+  - Status: tool runtime emits checkpoint events; ripd session wiring pending
+
+Next
 
 Later
 - Models & providers: multi-provider + routing + catalogs (Phase 2) [needs work]
@@ -73,7 +73,7 @@ Doc/impl gaps
 - TUI surface is documented but not implemented (`rip-tui`).
 - MCP surface is documented but deferred to Phase 2 (`rip-mcp`).
 - Tool runtime not yet integrated into session execution.
-- Workspace engine exists but checkpoint/rewind hooks are not integrated into runtime.
+- Checkpoint hooks are available in tool runtime, but not wired into ripd session execution.
 - Benchmarks are required by docs but no harness exists.
 
 Decisions

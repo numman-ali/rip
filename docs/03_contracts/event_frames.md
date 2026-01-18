@@ -46,12 +46,27 @@ Frame types
   - `raw`: string | null (raw `data:` payload, only when needed)
   - `errors`: string[] (schema/validation errors)
   - `response_errors`: string[] (ResponseResource validation errors)
+- `checkpoint_created`
+  - `checkpoint_id`: string (uuid)
+  - `label`: string
+  - `created_at_ms`: u64
+  - `files`: string[] (relative paths)
+  - `auto`: bool
+  - `tool_name`: string | null
+- `checkpoint_rewound`
+  - `checkpoint_id`: string (uuid)
+  - `label`: string
+  - `files`: string[] (relative paths)
+- `checkpoint_failed`
+  - `action`: `create` | `rewind`
+  - `error`: string
 
 Invariants
 - `seq` starts at 0 and increments by 1 for each emitted frame.
 - Frames are append-only and ordered within a session.
 - `session_ended` is the terminal frame for a runtime-generated session.
 - Provider adapters emit `provider_event` for every SSE event (no drops).
+- Automatic checkpoint events for file-edit tools are emitted before the tool starts.
 
 Example
 ```

@@ -1,8 +1,8 @@
 # Agent Step
 
 Current focus
-- Workspace engine integration planning (checkpoint + rewind hooks), plus doc/impl gap alignment.
-- Keep capability registry/matrix aligned as Phase 1 scope shifts.
+- Checkpoint hooks + event frames implemented in tool runtime; next is wiring into ripd session execution.
+- Keep capability registry/matrix aligned once checkpoints are exposed on active surfaces.
 
 Reorientation (read in order after compaction)
 - `AGENTS.md`
@@ -16,8 +16,8 @@ Reorientation (read in order after compaction)
 - `docs/07_tasks/openresponses_coverage.md`
 
 Active priorities
-- Confirm workspace engine integration scope and acceptance criteria.
-- Update capability registry/matrix if checkpointing adds surface gaps.
+- Wire tool runtime + workspace checkpoint hooks into ripd session loop (requires dependency approval).
+- Update capability registry/matrix if checkpointing is exposed on CLI/server.
 - Keep roadmap doc/impl gaps aligned with recent changes.
 
 Next checkpoints

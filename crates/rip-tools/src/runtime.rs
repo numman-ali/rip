@@ -1,11 +1,13 @@
 use std::{
     collections::HashMap,
+    path::PathBuf,
     sync::{Arc, Mutex},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use futures_util::future::BoxFuture;
-use rip_kernel::{Event, EventKind};
+use rip_kernel::{CheckpointAction, Event, EventKind};
+use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::Semaphore;
 use uuid::Uuid;
@@ -54,6 +56,39 @@ impl ToolOutput {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct CheckpointRequest {
+    pub session_id: String,
+    pub label: String,
+    pub files: Vec<PathBuf>,
+    pub auto: bool,
+    pub tool_name: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CheckpointRecord {
+    pub id: String,
+    pub label: String,
+    pub created_at_ms: u64,
+    pub files: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CheckpointRewindRecord {
+    pub id: String,
+    pub label: String,
+    pub files: Vec<String>,
+}
+
+pub trait CheckpointHook: Send + Sync {
+    fn create(&self, request: CheckpointRequest) -> Result<CheckpointRecord, String>;
+    fn rewind(
+        &self,
+        session_id: &str,
+        checkpoint_id: &str,
+    ) -> Result<CheckpointRewindRecord, String>;
+}
+
 pub type ToolHandler = Arc<dyn Fn(ToolInvocation) -> BoxFuture<'static, ToolOutput> + Send + Sync>;
 
 #[derive(Default)]
@@ -90,6 +125,7 @@ impl ToolRegistry {
 pub struct ToolRunner {
     registry: Arc<ToolRegistry>,
     semaphore: Arc<Semaphore>,
+    checkpoint_hook: Option<Arc<dyn CheckpointHook>>,
 }
 
 impl ToolRunner {
@@ -97,6 +133,19 @@ impl ToolRunner {
         Self {
             registry,
             semaphore: Arc::new(Semaphore::new(max_concurrency.max(1))),
+            checkpoint_hook: None,
+        }
+    }
+
+    pub fn with_checkpoint_hook(
+        registry: Arc<ToolRegistry>,
+        max_concurrency: usize,
+        hook: Arc<dyn CheckpointHook>,
+    ) -> Self {
+        Self {
+            registry,
+            semaphore: Arc::new(Semaphore::new(max_concurrency.max(1))),
+            checkpoint_hook: Some(hook),
         }
     }
 
@@ -111,6 +160,7 @@ impl ToolRunner {
         let started_at = Instant::now();
 
         let mut events = Vec::new();
+        self.emit_checkpoint_events(session_id, seq, &invocation, &mut events);
         events.push(self.emit(
             session_id,
             seq,
@@ -192,6 +242,160 @@ impl ToolRunner {
         events
     }
 
+    pub fn rewind_checkpoint(
+        &self,
+        session_id: &str,
+        seq: &mut u64,
+        checkpoint_id: &str,
+    ) -> Vec<Event> {
+        let mut events = Vec::new();
+        let Some(hook) = &self.checkpoint_hook else {
+            events.push(self.emit(
+                session_id,
+                seq,
+                EventKind::CheckpointFailed {
+                    action: CheckpointAction::Rewind,
+                    error: "checkpoint hook not configured".to_string(),
+                },
+            ));
+            return events;
+        };
+
+        match hook.rewind(session_id, checkpoint_id) {
+            Ok(record) => events.push(self.emit(
+                session_id,
+                seq,
+                EventKind::CheckpointRewound {
+                    checkpoint_id: record.id,
+                    label: record.label,
+                    files: record.files,
+                },
+            )),
+            Err(error) => events.push(self.emit(
+                session_id,
+                seq,
+                EventKind::CheckpointFailed {
+                    action: CheckpointAction::Rewind,
+                    error,
+                },
+            )),
+        }
+
+        events
+    }
+
+    pub fn create_checkpoint(
+        &self,
+        session_id: &str,
+        seq: &mut u64,
+        label: String,
+        files: Vec<PathBuf>,
+    ) -> Vec<Event> {
+        let mut events = Vec::new();
+        let Some(hook) = &self.checkpoint_hook else {
+            events.push(self.emit(
+                session_id,
+                seq,
+                EventKind::CheckpointFailed {
+                    action: CheckpointAction::Create,
+                    error: "checkpoint hook not configured".to_string(),
+                },
+            ));
+            return events;
+        };
+
+        let request = CheckpointRequest {
+            session_id: session_id.to_string(),
+            label,
+            files,
+            auto: false,
+            tool_name: None,
+        };
+
+        match hook.create(request) {
+            Ok(record) => events.push(self.emit(
+                session_id,
+                seq,
+                EventKind::CheckpointCreated {
+                    checkpoint_id: record.id,
+                    label: record.label,
+                    created_at_ms: record.created_at_ms,
+                    files: record.files,
+                    auto: false,
+                    tool_name: None,
+                },
+            )),
+            Err(error) => events.push(self.emit(
+                session_id,
+                seq,
+                EventKind::CheckpointFailed {
+                    action: CheckpointAction::Create,
+                    error,
+                },
+            )),
+        }
+
+        events
+    }
+
+    fn emit_checkpoint_events(
+        &self,
+        session_id: &str,
+        seq: &mut u64,
+        invocation: &ToolInvocation,
+        events: &mut Vec<Event>,
+    ) {
+        let Some(hook) = &self.checkpoint_hook else {
+            return;
+        };
+        let files = match files_for_invocation(invocation) {
+            Ok(Some(files)) => files,
+            Ok(None) => return,
+            Err(error) => {
+                events.push(self.emit(
+                    session_id,
+                    seq,
+                    EventKind::CheckpointFailed {
+                        action: CheckpointAction::Create,
+                        error,
+                    },
+                ));
+                return;
+            }
+        };
+        let label = format!("auto:{}", invocation.name);
+        let request = CheckpointRequest {
+            session_id: session_id.to_string(),
+            label,
+            files,
+            auto: true,
+            tool_name: Some(invocation.name.clone()),
+        };
+
+        match hook.create(request) {
+            Ok(record) => events.push(self.emit(
+                session_id,
+                seq,
+                EventKind::CheckpointCreated {
+                    checkpoint_id: record.id,
+                    label: record.label,
+                    created_at_ms: record.created_at_ms,
+                    files: record.files,
+                    auto: true,
+                    tool_name: Some(invocation.name.clone()),
+                },
+            )),
+            Err(error) => events.push(self.emit(
+                session_id,
+                seq,
+                EventKind::CheckpointFailed {
+                    action: CheckpointAction::Create,
+                    error,
+                },
+            )),
+        }
+    }
+
     fn emit(&self, session_id: &str, seq: &mut u64, kind: EventKind) -> Event {
         let event = Event {
             id: Uuid::new_v4().to_string(),
@@ -210,6 +414,22 @@ fn now_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
+}
+
+#[derive(Deserialize)]
+struct WriteArgs {
+    path: String,
+}
+
+fn files_for_invocation(invocation: &ToolInvocation) -> Result<Option<Vec<PathBuf>>, String> {
+    match invocation.name.as_str() {
+        "write" => {
+            let args: WriteArgs = serde_json::from_value(invocation.args.clone())
+                .map_err(|err| format!("checkpoint args invalid: {err}"))?;
+            Ok(Some(vec![PathBuf::from(args.path)]))
+        }
+        _ => Ok(None),
+    }
 }
 
 #[cfg(test)]

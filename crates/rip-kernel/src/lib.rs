@@ -29,6 +29,13 @@ pub enum ProviderEventStatus {
     InvalidJson,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CheckpointAction {
+    Create,
+    Rewind,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EventKind {
@@ -73,6 +80,23 @@ pub enum EventKind {
         raw: Option<String>,
         errors: Vec<String>,
         response_errors: Vec<String>,
+    },
+    CheckpointCreated {
+        checkpoint_id: String,
+        label: String,
+        created_at_ms: u64,
+        files: Vec<String>,
+        auto: bool,
+        tool_name: Option<String>,
+    },
+    CheckpointRewound {
+        checkpoint_id: String,
+        label: String,
+        files: Vec<String>,
+    },
+    CheckpointFailed {
+        action: CheckpointAction,
+        error: String,
     },
 }
 
@@ -206,7 +230,10 @@ impl Session {
             | EventKind::ToolStdout { .. }
             | EventKind::ToolStderr { .. }
             | EventKind::ToolEnded { .. }
-            | EventKind::ToolFailed { .. } => (None, None),
+            | EventKind::ToolFailed { .. }
+            | EventKind::CheckpointCreated { .. }
+            | EventKind::CheckpointRewound { .. }
+            | EventKind::CheckpointFailed { .. } => (None, None),
         };
 
         if let Some(hook_event) = hook_event {
