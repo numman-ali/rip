@@ -70,4 +70,22 @@ fn stream_fixture_maps_all_events() {
         .filter(|frame| matches!(frame.kind, EventKind::OutputTextDelta { .. }))
         .count();
     assert_eq!(output_text_frames, expected_output_text);
+
+    let mut last_sequence = None;
+    for event in parsed
+        .iter()
+        .filter(|event| event.kind == rip_provider_openresponses::ParsedEventKind::Event)
+    {
+        let data = event.data.as_ref().expect("event data");
+        let sequence = data
+            .get("sequence_number")
+            .and_then(|value| value.as_u64())
+            .expect("sequence_number");
+        if let Some(previous) = last_sequence {
+            assert_eq!(sequence, previous + 1);
+        } else {
+            assert_eq!(sequence, 1);
+        }
+        last_sequence = Some(sequence);
+    }
 }
