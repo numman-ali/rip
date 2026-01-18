@@ -3,12 +3,12 @@
 Purpose
 - This repo is operated by autonomous coding agents.
 - The human operator is C-suite level and will not read code or docs.
-- All coordination happens through chat; be concise, decision‑focused, and ask for validation before moving on.
+- All coordination happens through chat; be concise, decision‑focused, announce the plan, and proceed unless blocked (ask for approval only when required by gates).
 - `docs/` is the source of truth for scope, architecture, contracts, and tasks.
 
 Core directive: Open Responses coverage
 - Implement full, first-class support for the entire Open Responses spec (no minimal/partial mappings).
-- Before changing provider logic, review the split schemas in `temp/openresponses/schema` and capture findings in committed docs (use `docs/` for authoritative notes; use `temp/docs` only for external/online evidence, not internal references or working notes).
+- Before changing provider logic, review the split schemas in `temp/openresponses/schema` AND the specification markdown/MDX in `temp/openresponses/src/pages` (specification/reference/compliance/etc.), then capture findings in committed docs (use `docs/` for authoritative notes; use `temp/docs` only for external/online evidence, not internal references or working notes).
 - Never drop fields/events; preserve full fidelity into internal frames.
 
 Operator intent (non‑negotiables)
@@ -49,6 +49,7 @@ Capability contract
 Approval gates
 - Operational changes (dependencies, scripts/hooks, repo config, commits, pushes) require explicit operator approval.
 - If a non-obvious choice impacts implementation details or dependencies, request explicit approval before changes.
+- Pre-approved: commits/pushes for docs, schema mappings, tests, and refactors that do NOT change runtime behavior or public API.
 
 Up-to-date sources rule
 - For any non-obvious implementation choice, consult current official docs before acting.
@@ -62,6 +63,8 @@ Working style
 - Keep outputs deterministic; use replayable event logs + snapshots.
 - Prefer simple, verifiable steps over broad refactors.
 - Keep Rust source files small and single-purpose; split modules when files exceed ~700–800 lines unless there's a clear reason not to.
+- Batch related checklist items when they share schemas/logic; avoid unnecessary micro-changes.
+- Reorient by reading `AGENTS.md`, `agent_step.md`, `docs/00_index.md`, `docs/01_north_star.md`, and `docs/07_tasks/roadmap.md` before resuming after compaction.
 - Use `scripts/check` before reporting a task as complete.
 - Use `scripts/install-hooks` once to enable repo hooks.
 - Sync the canonical Open Responses OpenAPI spec via `scripts/update-openresponses-types` when schemas change.
@@ -76,7 +79,7 @@ Roadmap discipline
 Communication expectations
 - Confirm understanding when requirements shift.
 - Surface risks and tradeoffs early.
-- Lead with a clear recommendation and ask for approval to proceed.
+- Lead with a clear recommendation; ask for approval only when required by gates or ambiguity.
 - Avoid offering multiple options unless explicitly requested.
 - Avoid long explanations unless explicitly requested.
 
@@ -102,3 +105,4 @@ Maintenance
 - AGENTS.md must be kept current as the system evolves; update it whenever intent, scope, or architecture changes.
 - External research artifacts (web-sourced evidence only) live in `temp/docs`, with an index at `temp/docs/references.md`. Committed docs live in `docs/`.
 - Doc drift is a defect: if you notice docs diverging from each other or the implementation, fix it in the same change. If the fix is non-trivial, flag it and get approval before proceeding.
+- Maintain `agent_step.md` as the current working focus and reorientation checklist; update it whenever the focus shifts.

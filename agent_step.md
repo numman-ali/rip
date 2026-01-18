@@ -1,0 +1,23 @@
+# Agent Step
+
+Current focus
+- OpenResponses capability inventory and roadmap alignment (spec MDX + schemas -> capability registry/matrix + roadmap).
+- Provider-boundary validation stays in place, but prioritize product-capability mapping + surface parity.
+
+Reorientation (read in order after compaction)
+- `AGENTS.md`
+- `agent_step.md`
+- `docs/00_index.md`
+- `docs/01_north_star.md`
+- `docs/07_tasks/roadmap.md`
+- `docs/03_contracts/openresponses_compliance.md`
+- `docs/07_tasks/openresponses_compliance.md`
+
+Active priorities
+- Group OpenResponses spec + schema elements into capability-level features.
+- Map each capability to `docs/03_contracts/capability_registry.md` and `docs/02_architecture/capability_matrix.md`.
+- Ensure every OpenResponses feature appears in `docs/07_tasks/roadmap.md` with `[confirm spec]` or `[needs work]`.
+
+Next checkpoints
+- Finish spec MDX review mapping into capability/roadmap docs.
+- Track remaining schema elements with clear capability ownership (not just validation).
