@@ -1,8 +1,8 @@
 # Agent Step
 
 Current focus
-- CLI interactive streaming renderer (minimal UI) planning + implementation.
-- Keep capability registry/matrix aligned as CLI surface work lands.
+- Awaiting operator direction on next roadmap item ([needs work]): workspace engine checkpoint + rewind hooks integration.
+- Keep capability registry/matrix aligned as Phase 1 scope shifts.
 
 Reorientation (read in order after compaction)
 - `AGENTS.md`
@@ -16,10 +16,8 @@ Reorientation (read in order after compaction)
 - `docs/07_tasks/openresponses_coverage.md`
 
 Active priorities
-- Confirm interactive input/controls scope and minimal UI behavior (Phase 1).
-- Implement streaming renderer that consumes event frames (no diffs/approvals in Phase 1).
-- Add golden render tests for interactive output.
+- Confirm workspace engine integration scope and acceptance criteria.
+- Update capability registry/matrix if checkpointing adds surface gaps.
 
 Next checkpoints
-- Update roadmap/gap notes if CLI surface capabilities shift.
-- Reconcile capability registry + matrix if UI/interaction surface adds scope.
+- Move workspace engine task into Now once approved.

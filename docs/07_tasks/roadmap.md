@@ -13,10 +13,7 @@ How to use
 - Date-stamp moves between Now/Next/Later to preserve intent over time.
 
 Now
-- CLI interactive streaming renderer (minimal UI) [needs work]
-  - Refs: `docs/07_tasks/phase-1/06_cli.md`, `docs/03_contracts/modules/phase-1/05_cli.md`, `docs/04_execution/cli.md`
-  - Ready: event frame schema final; interactive input/controls scope confirmed
-  - Done: interactive UI renders event stream (no diffs/approvals in Phase 1); golden render tests
+<!-- empty -->
 
 Next
 - Workspace engine: checkpoint + rewind hooks integration in runtime [needs work]
@@ -87,6 +84,7 @@ Open questions
 - (empty)
 
 Done (recent)
+- 2026-01-18: CLI interactive streaming renderer complete (minimal UI + golden render test).
 - 2026-01-18: Capability validation pass complete (parity + headless schema + tool conformance + OpenResponses invariants + server smoke).
 - 2026-01-18: OpenResponses capability alignment complete (capability map + matrix updates + roadmap tracking).
 - 2026-01-18: OpenResponses coverage inventory + exhaustive checklist complete (schemas + spec MDX); coverage map reconciled.
