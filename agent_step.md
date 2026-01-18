@@ -1,9 +1,9 @@
 # Agent Step
 
 Current focus
-- Phase 1 closeout: land CI + fixtures + benchmarks gates.
-- Eliminate test artifact leakage (no writes under `crates/*`).
-- Start provider integration MVP wiring (single OpenResponses endpoint).
+- Phase 1: keep CI/bench gates green and ratchet budgets.
+- Ratchet TTFT + end-to-end loop benchmark budgets.
+- Design/track the agent tool-call loop (provider tool calls -> ToolRunner -> follow-up requests).
 
 Reorientation (read in order after compaction)
 - `AGENTS.md`
@@ -23,5 +23,5 @@ Active priorities
 
 Next checkpoints
 - CI runs `scripts/check-fast` on push/PR.
-- Bench harness + fixture repos exist and are CI-gated.
-- Provider streaming MVP emits `provider_event` frames from a real endpoint.
+- Bench harness includes TTFT + end-to-end loop and is CI-gated (`scripts/bench`).
+- Provider streaming emits `provider_event` frames from an OpenResponses endpoint (`RIP_OPENRESPONSES_ENDPOINT`).

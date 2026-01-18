@@ -1,8 +1,9 @@
 {
   "benchmarks": [
     { "id": "sse_parse_us_per_event", "max": 20000 },
+    { "id": "ttft_overhead_us", "max": 20000 },
     { "id": "tool_runner_noop_us", "max": 20000 },
-    { "id": "workspace_apply_patch_us", "max": 200000 }
+    { "id": "workspace_apply_patch_us", "max": 200000 },
+    { "id": "e2e_loop_us", "max": 200000 }
   ]
 }
-

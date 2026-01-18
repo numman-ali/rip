@@ -8,8 +8,10 @@ use tempfile::tempdir;
 use tokio::time::{sleep, timeout, Duration};
 use tower::util::ServiceExt;
 
+use crate::provider_openresponses::OpenResponsesConfig;
 use crate::server::{
-    build_app_with_workspace_root, build_openapi_router, workspace_root, SessionCreated,
+    build_app_with_workspace_root, build_app_with_workspace_root_and_provider,
+    build_openapi_router, workspace_root, SessionCreated,
 };
 
 fn build_test_app(dir: &tempfile::TempDir) -> Router {
@@ -17,6 +19,21 @@ fn build_test_app(dir: &tempfile::TempDir) -> Router {
     let workspace_dir = dir.path().join("workspace");
     fs::create_dir_all(&workspace_dir).expect("workspace dir");
     build_app_with_workspace_root(data_dir, workspace_dir)
+}
+
+fn build_test_app_with_openresponses_provider(dir: &tempfile::TempDir, endpoint: String) -> Router {
+    let data_dir = dir.path().join("data");
+    let workspace_dir = dir.path().join("workspace");
+    fs::create_dir_all(&workspace_dir).expect("workspace dir");
+    build_app_with_workspace_root_and_provider(
+        data_dir,
+        workspace_dir,
+        Some(OpenResponsesConfig {
+            endpoint,
+            api_key: None,
+            model: Some("fixture-model".to_string()),
+        }),
+    )
 }
 
 async fn create_session_id(app: &Router) -> String {
@@ -467,4 +484,343 @@ fn extract_data_json(message: &str) -> Option<serde_json::Value> {
     let data_line = message.lines().find(|line| line.starts_with("data:"))?;
     let json = data_line.trim_start_matches("data:").trim();
     serde_json::from_str(json).ok()
+}
+
+#[tokio::test]
+async fn prompt_uses_openresponses_provider_when_configured() {
+    use axum::http::header::CONTENT_TYPE;
+    use axum::routing::post;
+    use axum::{response::IntoResponse, Router as AxumRouter};
+    use tokio::net::TcpListener;
+
+    let sse = include_str!("../../../fixtures/openresponses/stream_all.sse").to_string();
+    let provider_app = AxumRouter::new().route(
+        "/v1/responses",
+        post(move || {
+            let body = sse.clone();
+            async move { ([(CONTENT_TYPE, "text/event-stream")], body).into_response() }
+        }),
+    );
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    tokio::spawn(async move {
+        axum::serve(listener, provider_app).await.expect("serve");
+    });
+    let endpoint = format!("http://{addr}/v1/responses");
+
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app_with_openresponses_provider(&dir, endpoint);
+    let session_id = create_session_id(&app).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/sessions/{session_id}/events"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let mut reader = TestSseReader::new(response.into_body());
+
+    let send_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/sessions/{session_id}/input"))
+                .header("content-type", "application/json")
+                .body(Body::from("{\"input\":\"hi\"}"))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(send_response.status(), axum::http::StatusCode::ACCEPTED);
+
+    let mut saw_provider_done = false;
+    let mut saw_output_delta = false;
+    let mut saw_session_ended = false;
+
+    timeout(Duration::from_secs(2), async {
+        while let Some(message) = reader.next_data_message().await {
+            if let Some(value) = extract_data_json(&message) {
+                match value.get("type").and_then(|value| value.as_str()) {
+                    Some("provider_event") => {
+                        let status = value
+                            .get("status")
+                            .and_then(|value| value.as_str())
+                            .unwrap_or("");
+                        if status == "done" {
+                            saw_provider_done = true;
+                        }
+                    }
+                    Some("output_text_delta") => saw_output_delta = true,
+                    Some("session_ended") => {
+                        saw_session_ended = true;
+                        break;
+                    }
+                    _ => {}
+                }
+
+                if saw_provider_done && saw_output_delta && saw_session_ended {
+                    break;
+                }
+            }
+        }
+    })
+    .await
+    .expect("timeout");
+
+    assert!(saw_provider_done, "expected provider_event done");
+    assert!(saw_output_delta, "expected output_text_delta");
+    assert!(saw_session_ended, "expected session_ended");
+}
+
+#[tokio::test]
+async fn prompt_openresponses_without_done_still_ends_session() {
+    use axum::http::header::CONTENT_TYPE;
+    use axum::routing::post;
+    use axum::{response::IntoResponse, Router as AxumRouter};
+    use tokio::net::TcpListener;
+
+    let sse_full = include_str!("../../../fixtures/openresponses/stream_all.sse").to_string();
+    let sse = sse_full.replace("data: [DONE]\n\n", "");
+    let sse = sse.trim_end_matches("\n\n").to_string();
+    assert!(!sse.is_empty());
+
+    let provider_app = AxumRouter::new().route(
+        "/v1/responses",
+        post(move || {
+            let body = sse.clone();
+            async move { ([(CONTENT_TYPE, "text/event-stream")], body).into_response() }
+        }),
+    );
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    tokio::spawn(async move {
+        axum::serve(listener, provider_app).await.expect("serve");
+    });
+    let endpoint = format!("http://{addr}/v1/responses");
+
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app_with_openresponses_provider(&dir, endpoint);
+    let session_id = create_session_id(&app).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/sessions/{session_id}/events"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let mut reader = TestSseReader::new(response.into_body());
+
+    let send_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/sessions/{session_id}/input"))
+                .header("content-type", "application/json")
+                .body(Body::from("{\"input\":\"hi\"}"))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(send_response.status(), axum::http::StatusCode::ACCEPTED);
+
+    let mut saw_provider_event = false;
+    let mut saw_output_delta = false;
+    let mut saw_session_ended = false;
+
+    timeout(Duration::from_secs(2), async {
+        while let Some(message) = reader.next_data_message().await {
+            if let Some(value) = extract_data_json(&message) {
+                match value.get("type").and_then(|value| value.as_str()) {
+                    Some("provider_event") => saw_provider_event = true,
+                    Some("output_text_delta") => saw_output_delta = true,
+                    Some("session_ended") => {
+                        saw_session_ended = true;
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        }
+    })
+    .await
+    .expect("timeout");
+
+    assert!(saw_provider_event, "expected provider_event");
+    assert!(saw_output_delta, "expected output_text_delta");
+    assert!(saw_session_ended, "expected session_ended");
+}
+
+#[tokio::test]
+async fn prompt_openresponses_http_error_emits_provider_error() {
+    use axum::http::header::CONTENT_TYPE;
+    use axum::http::StatusCode;
+    use axum::routing::post;
+    use axum::{response::IntoResponse, Router as AxumRouter};
+    use tokio::net::TcpListener;
+
+    let provider_app = AxumRouter::new().route(
+        "/v1/responses",
+        post(|| async move {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                [(CONTENT_TYPE, "text/plain")],
+                "fail",
+            )
+                .into_response()
+        }),
+    );
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    tokio::spawn(async move {
+        axum::serve(listener, provider_app).await.expect("serve");
+    });
+    let endpoint = format!("http://{addr}/v1/responses");
+
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app_with_openresponses_provider(&dir, endpoint);
+    let session_id = create_session_id(&app).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/sessions/{session_id}/events"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let mut reader = TestSseReader::new(response.into_body());
+
+    let send_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/sessions/{session_id}/input"))
+                .header("content-type", "application/json")
+                .body(Body::from("{\"input\":\"hi\"}"))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(send_response.status(), axum::http::StatusCode::ACCEPTED);
+
+    let mut saw_provider_error = false;
+    let mut saw_session_ended = false;
+
+    timeout(Duration::from_secs(2), async {
+        while let Some(message) = reader.next_data_message().await {
+            if let Some(value) = extract_data_json(&message) {
+                match value.get("type").and_then(|value| value.as_str()) {
+                    Some("provider_event") => {
+                        if value.get("status").and_then(|value| value.as_str())
+                            == Some("invalid_json")
+                        {
+                            saw_provider_error = true;
+                        }
+                    }
+                    Some("session_ended") => {
+                        saw_session_ended = true;
+                        assert_eq!(
+                            value.get("reason").and_then(|value| value.as_str()),
+                            Some("provider_error")
+                        );
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        }
+    })
+    .await
+    .expect("timeout");
+
+    assert!(saw_provider_error, "expected provider_event invalid_json");
+    assert!(saw_session_ended, "expected session_ended");
+}
+
+#[tokio::test]
+async fn prompt_openresponses_connection_error_emits_provider_error() {
+    let endpoint = "http://127.0.0.1:1/v1/responses".to_string();
+
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app_with_openresponses_provider(&dir, endpoint);
+    let session_id = create_session_id(&app).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/sessions/{session_id}/events"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let mut reader = TestSseReader::new(response.into_body());
+
+    let send_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/sessions/{session_id}/input"))
+                .header("content-type", "application/json")
+                .body(Body::from("{\"input\":\"hi\"}"))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(send_response.status(), axum::http::StatusCode::ACCEPTED);
+
+    let mut saw_provider_error = false;
+    let mut saw_session_ended = false;
+
+    timeout(Duration::from_secs(2), async {
+        while let Some(message) = reader.next_data_message().await {
+            if let Some(value) = extract_data_json(&message) {
+                match value.get("type").and_then(|value| value.as_str()) {
+                    Some("provider_event") => {
+                        if value.get("status").and_then(|value| value.as_str())
+                            == Some("invalid_json")
+                        {
+                            saw_provider_error = true;
+                        }
+                    }
+                    Some("session_ended") => {
+                        saw_session_ended = true;
+                        assert_eq!(
+                            value.get("reason").and_then(|value| value.as_str()),
+                            Some("provider_error")
+                        );
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        }
+    })
+    .await
+    .expect("timeout");
+
+    assert!(saw_provider_error, "expected provider_event invalid_json");
+    assert!(saw_session_ended, "expected session_ended");
 }

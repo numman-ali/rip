@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 axum = "0.8"
 futures-util = "0.3"
+reqwest = { version = "0.11", features = ["json", "stream"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.36", features = ["full"] }
@@ -16,6 +17,7 @@ uuid = { version = "1.6", features = ["v4"] }
 
 rip-kernel = { path = "../rip-kernel" }
 rip-log = { path = "../rip-log" }
+rip-provider-openresponses = { path = "../rip-provider-openresponses" }
 rip-tools = { path = "../rip-tools" }
 rip-workspace = { path = "../rip-workspace" }
 

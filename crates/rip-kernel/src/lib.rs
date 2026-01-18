@@ -124,6 +124,10 @@ impl Runtime {
         Session::new(input, self.hooks.clone())
     }
 
+    pub fn start_session_with_id(&self, session_id: impl Into<String>, input: String) -> Session {
+        Session::with_id(session_id.into(), input, self.hooks.clone())
+    }
+
     pub fn register_hook<F>(&self, name: impl Into<String>, event: HookEventKind, handler: F)
     where
         F: Fn(&HookContext) -> HookOutcome + Send + Sync + 'static,
@@ -174,6 +178,16 @@ impl Session {
     pub fn new(input: String, hooks: Arc<HookEngine>) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
+            input,
+            seq: 0,
+            stage: Stage::Start,
+            hooks,
+        }
+    }
+
+    pub fn with_id(id: String, input: String, hooks: Arc<HookEngine>) -> Self {
+        Self {
+            id,
             input,
             seq: 0,
             stage: Stage::Start,

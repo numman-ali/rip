@@ -19,6 +19,7 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
 
 use crate::checkpoints::WorkspaceCheckpointHook;
+use crate::provider_openresponses::OpenResponsesConfig;
 use crate::session::{run_session, SessionContext};
 
 #[cfg(not(test))]
@@ -35,6 +36,8 @@ pub(crate) struct AppState {
     snapshot_dir: Arc<std::path::PathBuf>,
     runtime: Arc<Runtime>,
     tool_runner: Arc<ToolRunner>,
+    http_client: reqwest::Client,
+    openresponses: Option<OpenResponsesConfig>,
     openapi_json: Arc<String>,
 }
 
@@ -75,12 +78,25 @@ pub(crate) async fn serve(data_dir: std::path::PathBuf) {
 
 #[cfg(not(test))]
 pub(crate) fn build_app(data_dir: std::path::PathBuf) -> Router {
-    build_app_with_workspace_root(data_dir, workspace_root())
+    build_app_with_workspace_root_and_provider(
+        data_dir,
+        workspace_root(),
+        OpenResponsesConfig::from_env(),
+    )
 }
 
+#[cfg(test)]
 pub(crate) fn build_app_with_workspace_root(
     data_dir: std::path::PathBuf,
     workspace_root: std::path::PathBuf,
+) -> Router {
+    build_app_with_workspace_root_and_provider(data_dir, workspace_root, None)
+}
+
+pub(crate) fn build_app_with_workspace_root_and_provider(
+    data_dir: std::path::PathBuf,
+    workspace_root: std::path::PathBuf,
+    openresponses: Option<OpenResponsesConfig>,
 ) -> Router {
     let (router, openapi_json) = build_openapi_router();
 
@@ -107,6 +123,8 @@ pub(crate) fn build_app_with_workspace_root(
         snapshot_dir: Arc::new(data_dir.join("snapshots")),
         runtime: Arc::new(Runtime::new()),
         tool_runner,
+        http_client: reqwest::Client::new(),
+        openresponses,
         openapi_json: Arc::new(openapi_json),
     };
 
@@ -189,12 +207,16 @@ async fn send_input(
     let snapshot_dir = state.snapshot_dir.clone();
     let runtime = state.runtime.clone();
     let tool_runner = state.tool_runner.clone();
+    let http_client = state.http_client.clone();
+    let openresponses = state.openresponses.clone();
     let server_session_id = session_id.clone();
 
     tokio::spawn(async move {
         run_session(SessionContext {
             runtime,
             tool_runner,
+            http_client,
+            openresponses,
             sender,
             events,
             event_log,

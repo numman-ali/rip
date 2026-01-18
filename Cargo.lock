@@ -1912,6 +1912,7 @@ dependencies = [
 name = "rip-bench"
 version = "0.1.0"
 dependencies = [
+ "rip-log",
  "rip-provider-openresponses",
  "rip-tools",
  "rip-workspace",
@@ -2014,8 +2015,10 @@ dependencies = [
  "axum",
  "futures-util",
  "http-body-util",
+ "reqwest",
  "rip-kernel",
  "rip-log",
+ "rip-provider-openresponses",
  "rip-tools",
  "rip-workspace",
  "serde",

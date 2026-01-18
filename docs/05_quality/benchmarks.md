@@ -4,11 +4,11 @@ Summary
 - Benchmarks are CI gates; regressions fail PRs.
 
 Phase 1 benchmarks
-- Event parse overhead per SSE event.
-- TTFT overhead (first byte -> first internal event).
-- Tool dispatch latency.
-- Patch apply throughput.
-- End-to-end loop latency on fixture repos.
+- Event parse overhead per SSE event (`sse_parse_us_per_event`).
+- TTFT overhead (`ttft_overhead_us`): first provider byte received -> first internal frame emitted.
+- Tool dispatch latency (`tool_runner_noop_us`).
+- Patch apply throughput (`workspace_apply_patch_us`).
+- End-to-end loop latency (`e2e_loop_us`): parse deterministic provider SSE -> run `apply_patch` -> write snapshot.
 
 Fixture requirements
 - Small repo (fast CI).

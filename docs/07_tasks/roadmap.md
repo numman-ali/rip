@@ -14,33 +14,25 @@ How to use
 
 Now
 
-## Phase 1 closeout: CI + fixtures + benchmarks [confirm spec]
-- Refs: `docs/07_tasks/phase-1/08_benchmarks.md`, `docs/07_tasks/phase-1/09_fixtures.md`, `docs/05_quality/benchmarks.md`, `scripts/check`, `scripts/check-fast`
+## Agent loop: provider tool calls -> tools -> follow-up requests [needs work]
+- Refs: `docs/03_contracts/modules/phase-1/01_ripd_core.md`, `docs/03_contracts/modules/phase-1/02_provider_adapters.md`, `docs/03_contracts/modules/phase-1/03_tool_runtime.md`, `docs/03_contracts/event_frames.md`, `docs/03_contracts/openresponses_capability_map.md`
 - Ready:
-  - Confirm CI provider (default: GitHub Actions).
-  - Confirm initial performance budgets are conservative (tighten later).
+  - Confirm which OpenResponses tool-call item/events are “promoted” to first-class internal tool frames vs provider-only frames.
+  - Confirm continuity mechanism for follow-ups (`previous_response_id` vs re-sending full context).
+  - Confirm enforcement semantics for `tool_choice` + `allowed_tools` + tool call limits (`max_tool_calls`, `parallel_tool_calls`).
 - Done:
-  - CI runs `scripts/check-fast` on PRs/pushes.
-  - Bench harness exists and is CI-gated with explicit budgets.
-  - Fixture repos exist (small + medium) and benchmarks/tests run offline.
-
-## Phase 1 hygiene: tests must not write to repo workspace [confirm spec]
-- Refs: `docs/03_contracts/modules/phase-1/04_workspace_engine.md`, `docs/03_contracts/modules/phase-1/10_checkpointing.md`
-- Ready:
-  - Identify any tests using implicit `cwd` workspace roots.
-- Done:
-  - All tests use temp workspace roots (no `.rip/` or edited files created under `crates/*`).
+  - ripd can execute provider-requested tool calls via ToolRunner and stream tool frames.
+  - ripd sends follow-up CreateResponse requests after tool completion and continues streaming.
+  - Replayable fixtures cover the full loop (provider stream -> tool -> patch -> follow-up -> done).
 
 Next
 
-## Provider integration MVP (single OpenResponses endpoint) [needs work]
-- Refs: `docs/03_contracts/modules/phase-1/02_provider_adapters.md`, `docs/03_contracts/openresponses_coverage.md`, `docs/04_execution/server.md`, `docs/03_contracts/event_frames.md`
+## Bench budgets: ratchet TTFT + end-to-end loop [confirm spec]
+- Refs: `docs/05_quality/benchmarks.md`, `docs/05_quality/benchmarks_budgets.json`, `scripts/bench`
 - Ready:
-  - Confirm config/auth surface (env-first in Phase 1).
-  - Confirm dependency choice for HTTP streaming client (default: `reqwest`).
+  - Capture CI baselines for `ttft_overhead_us` and `e2e_loop_us` (multiple runs).
 - Done:
-  - ripd can stream provider SSE -> `provider_event` frames (no drops) from a real endpoint.
-  - Failures are surfaced as deterministic `provider_event` frames + terminal `session_ended`.
+  - Budgets tightened with explicit headroom; regressions fail CI.
 
 Later
 - Models & providers: multi-provider + routing + catalogs (Phase 2) [needs work]
@@ -55,10 +47,6 @@ Later
   - Refs: `docs/02_architecture/surfaces.md`, `docs/02_architecture/capability_matrix.md`
   - Ready: server capability registry expanded; MCP protocol mapping defined
   - Done: MCP server exposes core capabilities + session lifecycle
-- Benchmarks: TTFT, parse overhead, tool dispatch, patch throughput, end-to-end loop [needs work]
-  - Refs: `docs/07_tasks/phase-1/08_benchmarks.md`, `docs/05_quality/benchmarks.md`
-  - Ready: event frames + tool runtime stable
-  - Done: CI-gated benchmarks with baseline budgets
 - Fixtures: deterministic tool outputs + replayable logs [needs work]
   - Refs: `docs/07_tasks/phase-1/09_fixtures.md`
   - Ready: tool runtime emits deterministic frames
@@ -93,7 +81,7 @@ Capability coverage map (index)
 Doc/impl gaps
 - TUI surface is documented but not implemented (`rip-tui`).
 - MCP surface is documented but deferred to Phase 2 (`rip-mcp`).
-- Bench harness exists, but TTFT and end-to-end loop benchmarks are not yet implemented.
+- Bench harness includes TTFT + end-to-end loop benchmarks; budgets are intentionally conservative (ratchet over time).
 - Fixture repos exist (`fixtures/repo_small`, `fixtures/repo_medium`), but replayable “full agent loop” fixtures are still pending.
 
 Decisions
@@ -104,6 +92,10 @@ Open questions
 - (empty)
 
 Done (recent)
+- 2026-01-18: Phase 1 closeout: CI + fixtures + bench harness are CI-gated (plus baseline budgets).
+- 2026-01-18: Phase 1 hygiene: tests use temp workspace roots (no writes under `crates/*`).
+- 2026-01-18: Benchmarks: added TTFT (`ttft_overhead_us`) + end-to-end loop (`e2e_loop_us`) CI gates.
+- 2026-01-18: Provider integration MVP wired (OpenResponses SSE -> `provider_event` + derived deltas in `ripd`, env-configured, local integration test).
 - 2026-01-18: Workspace checkpoint hooks wired into ripd session execution (tool + checkpoint envelopes, tests).
 - 2026-01-18: CLI interactive streaming renderer complete (minimal UI + golden render test).
 - 2026-01-18: Capability validation pass complete (parity + headless schema + tool conformance + OpenResponses invariants + server smoke).
