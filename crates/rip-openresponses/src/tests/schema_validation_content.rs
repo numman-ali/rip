@@ -109,6 +109,12 @@ fn validate_content_block_schemas() {
     assert!(errors.is_empty(), "errors: {errors:?}");
 
     let errors = schema_errors(
+        "RefusalContentParam.json",
+        serde_json::json!({ "type": "refusal", "refusal": "nope" }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
         "ReasoningSummaryContentParam.json",
         serde_json::json!({ "type": "summary_text", "text": "ok" }),
     );
@@ -241,5 +247,23 @@ fn validate_response_format_schemas() {
     assert!(errors.is_empty(), "errors: {errors:?}");
 
     let errors = openapi_schema_errors("TextFormatParam", serde_json::json!({ "type": "text" }));
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "TextField.json",
+        serde_json::json!({
+            "format": { "type": "text" },
+            "verbosity": "medium"
+        }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "TextParam.json",
+        serde_json::json!({
+            "format": { "type": "text" },
+            "verbosity": "medium"
+        }),
+    );
     assert!(errors.is_empty(), "errors: {errors:?}");
 }

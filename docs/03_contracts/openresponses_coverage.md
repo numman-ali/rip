@@ -481,8 +481,8 @@ Legend
 | `CodeInterpreterOutputLogs` | no | yes | pending |
 | `CodeInterpreterToolCallOutputImageParam` | no | no | pending |
 | `CodeInterpreterToolCallOutputLogsParam` | no | no | pending |
-| `CompactResource` | no | no | pending |
-| `CompactResponseMethodPublicBody` | no | no | pending |
+| `CompactResource` | no | no | provider_event (validated) |
+| `CompactResponseMethodPublicBody` | no | no | provider_request (validated) |
 | `CompactionBody` | no | yes | provider_event (validated) |
 | `ComparisonFilterFieldCONTAINS` | no | yes | provider_event (validated) |
 | `ComparisonFilterFieldCONTAINSANY` | no | yes | provider_event (validated) |
@@ -522,7 +522,7 @@ Legend
 | `ComputerScreenshotParam` | no | yes | provider_request (validated) |
 | `ContainerFileCitationBody` | no | yes | provider_event (validated) |
 | `ContainerFileCitationParam` | no | yes | provider_request (validated) |
-| `ContainerMemoryLimit` | no | no | pending |
+| `ContainerMemoryLimit` | no | no | provider_request (validated) |
 | `ContextEdit` | no | yes | provider_event (validated) |
 | `ContextEditDetails` | no | yes | provider_event (validated) |
 | `Conversation` | no | yes | provider_event (validated) |
@@ -534,14 +534,14 @@ Legend
 | `CreateImageBodyChatGPTImageLatestParam` | no | no | pending |
 | `CreateVideoBody` | no | no | pending |
 | `CreateVideoRemixBody` | no | no | pending |
-| `CustomGrammarFormatField` | no | yes | pending |
-| `CustomGrammarFormatParam` | no | no | pending |
-| `CustomTextFormatField` | no | yes | pending |
-| `CustomTextFormatParam` | no | no | pending |
+| `CustomGrammarFormatField` | no | yes | provider_request (validated) |
+| `CustomGrammarFormatParam` | no | no | provider_request (validated) |
+| `CustomTextFormatField` | no | yes | provider_request (validated) |
+| `CustomTextFormatParam` | no | no | provider_request (validated) |
 | `CustomToolCall` | no | yes | provider_event (validated) |
 | `CustomToolCallOutput` | no | yes | provider_event (validated) |
-| `CustomToolFormat` | no | yes | pending |
-| `DeletedResponseResource` | no | no | pending |
+| `CustomToolFormat` | no | yes | provider_request (validated) |
+| `DeletedResponseResource` | no | no | provider_event (validated) |
 | `DeletedVideoResource` | no | no | pending |
 | `DetailEnum` | yes | yes | provider_request (validated) |
 | `DoubleClickAction` | no | yes | provider_event (validated) |
@@ -584,15 +584,15 @@ Legend
 | `FunctionShellCallOutputTimeoutOutcomeParam` | no | yes | provider_request (validated) |
 | `GenerationsBodyDallE2Param` | no | no | pending |
 | `GenerationsBodyDallE3Param` | no | no | pending |
-| `GrammarSyntax` | no | no | pending |
-| `GrammarSyntax1` | no | yes | pending |
+| `GrammarSyntax` | no | no | provider_request (validated) |
+| `GrammarSyntax1` | no | yes | provider_request (validated) |
 | `HybridSearchOptions` | no | yes | provider_event (validated) |
 | `HybridSearchOptionsParam` | no | yes | provider_request (validated) |
 | `Image` | no | no | pending |
 | `ImageBackground` | no | yes | pending |
 | `ImageDetail` | yes | yes | pending |
-| `ImageGenAction` | no | yes | pending |
-| `ImageGenActionEnum` | no | no | pending |
+| `ImageGenAction` | no | yes | provider_request (validated) |
+| `ImageGenActionEnum` | no | no | provider_request (validated) |
 | `ImageGenCall` | no | yes | provider_event (validated) |
 | `ImageGenCallStatus` | no | yes | pending |
 | `ImageGenInputUsageDetails` | no | no | pending |
@@ -612,8 +612,8 @@ Legend
 | `ImageUsageInputTokensDetails` | no | yes | pending |
 | `ImageUsageOutputTokensDetails` | no | yes | pending |
 | `IncludeEnum` | yes | no | provider_request (validated) |
-| `IncompleteDetails` | yes | yes | pending |
-| `InputFidelity` | no | no | pending |
+| `IncompleteDetails` | yes | yes | provider_event (validated) |
+| `InputFidelity` | no | no | provider_request (validated) |
 | `InputFileContent` | yes | yes | pending |
 | `InputFileContentParam` | yes | no | pending |
 | `InputImageContent` | yes | yes | pending |
@@ -622,13 +622,13 @@ Legend
 | `InputTextContent` | yes | yes | pending |
 | `InputTextContentParam` | yes | no | pending |
 | `InputTokensDetails` | yes | yes | provider_event (validated) |
-| `ItemListResource` | no | no | pending |
+| `ItemListResource` | no | no | provider_event (validated) |
 | `ItemReferenceParam` | yes | no | provider_request (validated) |
 | `JsonObjectResponseFormat` | yes | yes | pending |
 | `JsonSchemaResponseFormat` | yes | yes | pending |
 | `KeyPressAction` | no | yes | provider_event (validated) |
 | `KeyPressParam` | no | yes | provider_request (validated) |
-| `LocalFileEnvironmentParam` | no | no | pending |
+| `LocalFileEnvironmentParam` | no | no | provider_request (validated) |
 | `LocalShellCall` | no | yes | provider_event (validated) |
 | `LocalShellCallItemStatus` | no | no | pending |
 | `LocalShellCallOutput` | no | yes | provider_event (validated) |
@@ -661,24 +661,24 @@ Legend
 | `OutputTokensDetails` | yes | yes | provider_event (validated) |
 | `Payer` | no | yes | provider_event (validated) |
 | `PromptCacheRetentionEnum` | no | yes | provider_request (validated) |
-| `PromptInstructionMessage` | no | yes | pending |
+| `PromptInstructionMessage` | no | yes | provider_request (validated) |
 | `RankerVersionType` | no | yes | provider_request (validated) |
-| `RankingOptions` | no | yes | pending |
-| `Reasoning` | yes | yes | pending |
+| `RankingOptions` | no | yes | provider_request (validated) |
+| `Reasoning` | yes | yes | provider_event (validated) |
 | `ReasoningBody` | yes | yes | provider_event (validated) |
-| `ReasoningEffortEnum` | yes | yes | pending |
-| `ReasoningParam` | yes | no | pending |
+| `ReasoningEffortEnum` | yes | yes | provider_request (validated) |
+| `ReasoningParam` | yes | no | provider_request (validated) |
 | `ReasoningSummaryContentParam` | yes | no | pending |
-| `ReasoningSummaryEnum` | yes | yes | pending |
+| `ReasoningSummaryEnum` | yes | yes | provider_request (validated) |
 | `ReasoningTextContent` | yes | yes | pending |
 | `RefusalContent` | yes | yes | pending |
-| `RefusalContentParam` | yes | no | pending |
+| `RefusalContentParam` | yes | no | provider_request (validated) |
 | `SafetyCheck` | no | yes | provider_event (validated) |
 | `ScreenshotAction` | no | yes | provider_event (validated) |
 | `ScreenshotParam` | no | yes | provider_request (validated) |
 | `ScrollAction` | no | yes | provider_event (validated) |
 | `ScrollParam` | no | yes | provider_request (validated) |
-| `SearchContextSize` | no | yes | pending |
+| `SearchContextSize` | no | yes | provider_request (validated) |
 | `ServiceTierEnum` | yes | no | provider_request (validated) |
 | `SpecificApplyPatchParam` | no | no | provider_request (validated) |
 | `SpecificCodeInterpreterParam` | no | no | provider_request (validated) |
@@ -693,11 +693,11 @@ Legend
 | `SpecificToolChoiceParam` | yes | no | provider_request (validated) |
 | `SpecificWebSearchParam` | no | no | provider_request (validated) |
 | `SpecificWebSearchPreviewParam` | no | no | provider_request (validated) |
-| `StreamOptionsParam` | yes | no | pending |
+| `StreamOptionsParam` | yes | no | provider_request (validated) |
 | `SummaryTextContent` | yes | yes | pending |
 | `TextContent` | yes | yes | pending |
-| `TextField` | yes | yes | pending |
-| `TextParam` | yes | no | pending |
+| `TextField` | yes | yes | provider_event (validated) |
+| `TextParam` | yes | no | provider_request (validated) |
 | `TextResponseFormat` | yes | yes | pending |
 | `TokenCountsBody` | no | no | provider_request (validated) |
 | `TokenCountsResource` | no | no | provider_event (validated) |
@@ -709,7 +709,7 @@ Legend
 | `TypeParam` | no | yes | provider_request (validated) |
 | `UrlCitationBody` | yes | yes | provider_event (validated) |
 | `UrlCitationParam` | yes | yes | provider_request (validated) |
-| `UrlSourceParam` | no | no | pending |
+| `UrlSourceParam` | no | no | provider_request (validated) |
 | `Usage` | yes | yes | provider_event (validated) |
 | `VerbosityEnum` | yes | yes | provider_request (validated) |
 | `VideoContentVariant` | no | no | pending |
@@ -745,9 +745,9 @@ Legend
 ### Response-related schemas
 | schema | bundled | covered | status |
 | --- | --- | --- | --- |
-| `ResponseFormatDallE` | no | no | pending |
+| `ResponseFormatDallE` | no | no | provider_request (validated) |
 | `ResponseResource` | yes | yes | provider_event |
-| `ResponsesConversationParam` | no | no | pending |
+| `ResponsesConversationParam` | no | no | provider_request (validated) |
 
 ### Streaming events
 | schema | bundled | covered | status |

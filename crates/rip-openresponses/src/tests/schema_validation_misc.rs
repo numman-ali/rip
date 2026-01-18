@@ -229,3 +229,106 @@ fn validate_context_and_billing_schemas() {
     );
     assert!(errors.is_empty(), "errors: {errors:?}");
 }
+
+#[test]
+fn validate_response_misc_schemas() {
+    let errors = schema_errors(
+        "StreamOptionsParam.json",
+        serde_json::json!({ "include_obfuscation": false }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "ReasoningParam.json",
+        serde_json::json!({ "effort": "low", "summary": "auto" }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "Reasoning.json",
+        serde_json::json!({ "effort": "low", "summary": "auto" }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "IncompleteDetails.json",
+        serde_json::json!({ "reason": "max_output_tokens" }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "PromptInstructionMessage.json",
+        serde_json::json!({
+            "type": "message",
+            "role": "system",
+            "content": [
+                { "type": "input_text", "text": "do the thing" }
+            ]
+        }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "ResponsesConversationParam.json",
+        serde_json::json!("conv_123"),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "ItemReferenceParam.json",
+        serde_json::json!({ "id": "item_1" }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "DeletedResponseResource.json",
+        serde_json::json!({ "object": "response.deleted", "deleted": true, "id": "resp_1" }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "ItemListResource.json",
+        serde_json::json!({
+            "object": "list",
+            "data": [],
+            "first_id": null,
+            "last_id": null,
+            "has_more": false
+        }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "CompactionBody.json",
+        serde_json::json!({
+            "type": "compaction",
+            "id": "cmp_1",
+            "encrypted_content": "enc"
+        }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "CompactResponseMethodPublicBody.json",
+        serde_json::json!({ "model": "gpt-4.1" }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "CompactResource.json",
+        serde_json::json!({
+            "id": "cmp_1",
+            "object": "response.compaction",
+            "output": [],
+            "created_at": 0,
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 5,
+                "total_tokens": 15,
+                "input_tokens_details": { "cached_tokens": 2 },
+                "output_tokens_details": { "reasoning_tokens": 1 }
+            }
+        }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+}

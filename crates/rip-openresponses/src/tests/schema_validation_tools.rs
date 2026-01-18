@@ -444,3 +444,79 @@ fn validate_code_interpreter_param_schemas() {
     );
     assert!(errors.is_empty(), "errors: {errors:?}");
 }
+
+#[test]
+fn validate_custom_tool_and_format_schemas() {
+    let errors = schema_errors(
+        "CustomToolCall.json",
+        serde_json::json!({
+            "type": "custom_tool_call",
+            "id": "ctc_1",
+            "call_id": "call_1",
+            "name": "custom_tool",
+            "input": "{}",
+            "status": "completed"
+        }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "CustomToolCallOutput.json",
+        serde_json::json!({
+            "type": "custom_tool_call_output",
+            "id": "ctc_out_1",
+            "call_id": "call_1",
+            "output": "ok",
+            "status": "completed"
+        }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "CustomTextFormatField.json",
+        serde_json::json!({ "type": "text" }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "CustomTextFormatParam.json",
+        serde_json::json!({ "type": "text" }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "CustomGrammarFormatField.json",
+        serde_json::json!({ "type": "grammar", "syntax": "lark", "definition": "root: /./" }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "CustomGrammarFormatParam.json",
+        serde_json::json!({ "type": "grammar", "syntax": "lark", "definition": "root: /./" }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "CustomToolFormat.json",
+        serde_json::json!({ "type": "text" }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "RankingOptions.json",
+        serde_json::json!({ "ranker": "auto", "score_threshold": 0.0 }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "UrlSourceParam.json",
+        serde_json::json!({ "type": "url", "url": "https://example.com" }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "LocalFileEnvironmentParam.json",
+        serde_json::json!({ "type": "local_file", "root": "/tmp" }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+}

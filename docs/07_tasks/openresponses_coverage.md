@@ -8,6 +8,7 @@ Summary
   - and validation/fixtures exist as a quality gate.
 
 Progress log
+- 2026-01-18: Covered compaction/stream options/reasoning/list/custom format schemas (compact endpoint resources, reasoning config, stream options, custom tool formats); checklist updated.
 - 2026-01-18: Covered request/response enums and metadata schemas (MessageRole/Status, MetadataParam, include/exclude/order/truncation/service tier/verbosity/prompt cache); checklist updated.
 - 2026-01-18: Covered usage/token count/logprob schemas (Usage, Input/OutputTokensDetails, LogProb/TopLogProb, TokenCountsBody/Resource); checklist updated.
 - 2026-01-18: Covered additional computer action schemas (keypress/move/scroll/screenshot/type/wait) and SafetyCheck; checklist updated.
@@ -112,9 +113,9 @@ Progress log
 - [x] `CodeInterpreterOutputLogs` mapped and validated.
 - [x] `CodeInterpreterToolCallOutputImageParam` mapped and validated.
 - [x] `CodeInterpreterToolCallOutputLogsParam` mapped and validated.
-- [ ] `CompactResource` mapped and validated.
-- [ ] `CompactResponseMethodPublicBody` mapped and validated.
-- [ ] `CompactionBody` mapped and validated.
+- [x] `CompactResource` mapped and validated.
+- [x] `CompactResponseMethodPublicBody` mapped and validated.
+- [x] `CompactionBody` mapped and validated.
 - [x] `ComparisonFilterFieldCONTAINS` mapped and validated.
 - [x] `ComparisonFilterFieldCONTAINSANY` mapped and validated.
 - [x] `ComparisonFilterFieldEQ` mapped and validated.
@@ -153,7 +154,7 @@ Progress log
 - [x] `ComputerScreenshotParam` mapped and validated.
 - [x] `ContainerFileCitationBody` mapped and validated.
 - [x] `ContainerFileCitationParam` mapped and validated.
-- [ ] `ContainerMemoryLimit` mapped and validated.
+- [x] `ContainerMemoryLimit` mapped and validated.
 - [x] `ContextEdit` mapped and validated.
 - [x] `ContextEditDetails` mapped and validated.
 - [x] `Conversation` mapped and validated.
@@ -165,14 +166,14 @@ Progress log
 - [ ] `CreateImageBodyChatGPTImageLatestParam` mapped and validated.
 - [ ] `CreateVideoBody` mapped and validated.
 - [ ] `CreateVideoRemixBody` mapped and validated.
-- [ ] `CustomGrammarFormatField` mapped and validated.
-- [ ] `CustomGrammarFormatParam` mapped and validated.
-- [ ] `CustomTextFormatField` mapped and validated.
-- [ ] `CustomTextFormatParam` mapped and validated.
-- [ ] `CustomToolCall` mapped and validated.
-- [ ] `CustomToolCallOutput` mapped and validated.
-- [ ] `CustomToolFormat` mapped and validated.
-- [ ] `DeletedResponseResource` mapped and validated.
+- [x] `CustomGrammarFormatField` mapped and validated.
+- [x] `CustomGrammarFormatParam` mapped and validated.
+- [x] `CustomTextFormatField` mapped and validated.
+- [x] `CustomTextFormatParam` mapped and validated.
+- [x] `CustomToolCall` mapped and validated.
+- [x] `CustomToolCallOutput` mapped and validated.
+- [x] `CustomToolFormat` mapped and validated.
+- [x] `DeletedResponseResource` mapped and validated.
 - [ ] `DeletedVideoResource` mapped and validated.
 - [x] `DetailEnum` mapped and validated.
 - [x] `DoubleClickAction` mapped and validated.
@@ -215,15 +216,15 @@ Progress log
 - [x] `FunctionShellCallOutputTimeoutOutcomeParam` mapped and validated.
 - [ ] `GenerationsBodyDallE2Param` mapped and validated.
 - [ ] `GenerationsBodyDallE3Param` mapped and validated.
-- [ ] `GrammarSyntax` mapped and validated.
-- [ ] `GrammarSyntax1` mapped and validated.
+- [x] `GrammarSyntax` mapped and validated.
+- [x] `GrammarSyntax1` mapped and validated.
 - [x] `HybridSearchOptions` mapped and validated.
 - [x] `HybridSearchOptionsParam` mapped and validated.
 - [ ] `Image` mapped and validated.
 - [ ] `ImageBackground` mapped and validated.
 - [ ] `ImageDetail` mapped and validated.
-- [ ] `ImageGenAction` mapped and validated.
-- [ ] `ImageGenActionEnum` mapped and validated.
+- [x] `ImageGenAction` mapped and validated.
+- [x] `ImageGenActionEnum` mapped and validated.
 - [x] `ImageGenCall` mapped and validated.
 - [x] `ImageGenCallStatus` mapped and validated.
 - [ ] `ImageGenInputUsageDetails` mapped and validated.
@@ -243,8 +244,8 @@ Progress log
 - [ ] `ImageUsageInputTokensDetails` mapped and validated.
 - [ ] `ImageUsageOutputTokensDetails` mapped and validated.
 - [x] `IncludeEnum` mapped and validated.
-- [ ] `IncompleteDetails` mapped and validated.
-- [ ] `InputFidelity` mapped and validated.
+- [x] `IncompleteDetails` mapped and validated.
+- [x] `InputFidelity` mapped and validated.
 - [x] `InputFileContent` mapped and validated.
 - [x] `InputFileContentParam` mapped and validated.
 - [x] `InputImageContent` mapped and validated.
@@ -254,14 +255,14 @@ Progress log
 - [x] `InputTextContentParam` mapped and validated.
 - [x] `InputTokensDetails` mapped and validated.
 - [x] `InputVideoContent` mapped and validated.
-- [ ] `ItemListResource` mapped and validated.
-- [ ] `ItemReferenceParam` mapped and validated.
+- [x] `ItemListResource` mapped and validated.
+- [x] `ItemReferenceParam` mapped and validated.
 - [x] `JsonObjectResponseFormat` mapped and validated.
 - [x] `JsonSchemaResponseFormatParam` mapped and validated.
 - [x] `JsonSchemaResponseFormat` mapped and validated.
 - [x] `KeyPressAction` mapped and validated.
 - [x] `KeyPressParam` mapped and validated.
-- [ ] `LocalFileEnvironmentParam` mapped and validated.
+- [x] `LocalFileEnvironmentParam` mapped and validated.
 - [x] `LocalShellCall` mapped and validated.
 - [x] `LocalShellCallItemStatus` mapped and validated.
 - [x] `LocalShellCallOutput` mapped and validated.
@@ -294,24 +295,24 @@ Progress log
 - [x] `OutputTokensDetails` mapped and validated.
 - [x] `Payer` mapped and validated.
 - [x] `PromptCacheRetentionEnum` mapped and validated.
-- [ ] `PromptInstructionMessage` mapped and validated.
+- [x] `PromptInstructionMessage` mapped and validated.
 - [x] `RankerVersionType` mapped and validated.
-- [ ] `RankingOptions` mapped and validated.
-- [ ] `Reasoning` mapped and validated.
+- [x] `RankingOptions` mapped and validated.
+- [x] `Reasoning` mapped and validated.
 - [x] `ReasoningBody` mapped and validated.
-- [ ] `ReasoningEffortEnum` mapped and validated.
-- [ ] `ReasoningParam` mapped and validated.
+- [x] `ReasoningEffortEnum` mapped and validated.
+- [x] `ReasoningParam` mapped and validated.
 - [x] `ReasoningSummaryContentParam` mapped and validated.
-- [ ] `ReasoningSummaryEnum` mapped and validated.
+- [x] `ReasoningSummaryEnum` mapped and validated.
 - [x] `ReasoningTextContent` mapped and validated.
 - [x] `RefusalContent` mapped and validated.
-- [ ] `RefusalContentParam` mapped and validated.
+- [x] `RefusalContentParam` mapped and validated.
 - [x] `SafetyCheck` mapped and validated.
 - [x] `ScreenshotAction` mapped and validated.
 - [x] `ScreenshotParam` mapped and validated.
 - [x] `ScrollAction` mapped and validated.
 - [x] `ScrollParam` mapped and validated.
-- [ ] `SearchContextSize` mapped and validated.
+- [x] `SearchContextSize` mapped and validated.
 - [x] `ServiceTierEnum` mapped and validated.
 - [x] `SpecificApplyPatchParam` mapped and validated.
 - [x] `SpecificCodeInterpreterParam` mapped and validated.
@@ -326,11 +327,11 @@ Progress log
 - [x] `SpecificToolChoiceParam` mapped and validated.
 - [x] `SpecificWebSearchParam` mapped and validated.
 - [x] `SpecificWebSearchPreviewParam` mapped and validated.
-- [ ] `StreamOptionsParam` mapped and validated.
+- [x] `StreamOptionsParam` mapped and validated.
 - [x] `SummaryTextContent` mapped and validated.
 - [x] `TextContent` mapped and validated.
-- [ ] `TextField` mapped and validated.
-- [ ] `TextParam` mapped and validated.
+- [x] `TextField` mapped and validated.
+- [x] `TextParam` mapped and validated.
 - [x] `TextResponseFormat` mapped and validated.
 - [x] `TextFormatParam` mapped and validated.
 - [x] `TokenCountsBody` mapped and validated.
@@ -343,7 +344,7 @@ Progress log
 - [x] `TypeParam` mapped and validated.
 - [x] `UrlCitationBody` mapped and validated.
 - [x] `UrlCitationParam` mapped and validated.
-- [ ] `UrlSourceParam` mapped and validated.
+- [x] `UrlSourceParam` mapped and validated.
 - [x] `Usage` mapped and validated.
 - [x] `VerbosityEnum` mapped and validated.
 - [ ] `VideoContentVariant` mapped and validated.
@@ -374,9 +375,9 @@ Progress log
 - [x] `CreateResponseBody` mapped and validated.
 
 ### Response-related schemas
-- [ ] `ResponseFormatDallE` mapped and validated.
+- [x] `ResponseFormatDallE` mapped and validated.
 - [x] `ResponseResource` mapped and validated.
-- [ ] `ResponsesConversationParam` mapped and validated.
+- [x] `ResponsesConversationParam` mapped and validated.
 
 ### Streaming events
 - [x] `ErrorStreamingEvent` mapped and validated.
