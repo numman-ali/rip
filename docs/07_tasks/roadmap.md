@@ -18,9 +18,9 @@ Now
   - Ready: coverage inventory complete; spec MDX reviewed
   - Done: every OpenResponses feature is mapped to capability ids; capability matrix updated for surface parity; roadmap reflects missing capability work
 - Capability validation pass (parity + headless schema + tool conformance + server smoke) [needs work]
-  - Refs: `docs/05_quality/tests.md`, `docs/05_quality/surface-parity.md`, `docs/03_contracts/event_frames.md`, `docs/03_contracts/capability_registry.md`, `docs/07_tasks/phase-1/03_tool_runtime.md`, `docs/04_execution/cli.md`, `docs/04_execution/server.md`
+  - Refs: `docs/05_quality/tests.md`, `docs/05_quality/surface-parity.md`, `docs/03_contracts/event_frames.md`, `docs/03_contracts/capability_registry.md`, `docs/03_contracts/openresponses_capability_map.md`, `temp/openresponses/src/pages/specification.mdx`, `docs/07_tasks/phase-1/03_tool_runtime.md`, `docs/04_execution/cli.md`, `docs/04_execution/server.md`
   - Ready: event frame schema stable; tool runtime emits structured tool events; server session API stable
-  - Done: parity matrix + gap list enforced in CI; headless JSON schema validation; tool runtime conformance tests (read/write/grep/ls + limits + line ranges); server API smoke tests (sessions + SSE ordering)
+  - Done: parity matrix + gap list enforced in CI; headless JSON schema validation; tool runtime conformance tests (read/write/grep/ls + limits + line ranges); OpenResponses invariant tests (event==type, stream sequencing, allowed_tools/tool_choice, truncation, previous_response_id); server API smoke tests (sessions + SSE ordering)
 - CLI interactive streaming renderer (minimal UI) [needs work]
   - Refs: `docs/07_tasks/phase-1/06_cli.md`, `docs/03_contracts/modules/phase-1/05_cli.md`, `docs/04_execution/cli.md`
   - Ready: event frame schema final; interactive input/controls scope confirmed
