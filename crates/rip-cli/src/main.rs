@@ -61,10 +61,11 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             headless,
             view,
         } => {
-            if !headless {
-                eprintln!("interactive mode not implemented; falling back to headless");
+            if headless {
+                run_headless(prompt, server, view).await?;
+            } else {
+                run_interactive(prompt, server, view).await?;
             }
-            run_headless(prompt, server, view).await?;
         }
     }
 
@@ -72,6 +73,14 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
 }
 
 async fn run_headless(prompt: String, server: String, view: OutputView) -> anyhow::Result<()> {
+    let client = Client::new();
+    let session_id = create_session(&client, &server).await?;
+    send_input(&client, &server, &session_id, &prompt).await?;
+    stream_events(&client, &server, &session_id, view).await?;
+    Ok(())
+}
+
+async fn run_interactive(prompt: String, server: String, view: OutputView) -> anyhow::Result<()> {
     let client = Client::new();
     let session_id = create_session(&client, &server).await?;
     send_input(&client, &server, &session_id, &prompt).await?;
@@ -120,11 +129,19 @@ async fn stream_events(
     let stdout = io::stdout();
     let mut handle = stdout.lock();
 
+    stream_events_with_writer(&mut stream, view, &mut handle).await
+}
+
+async fn stream_events_with_writer(
+    stream: &mut (impl futures_util::Stream<Item = Result<Event, EventSourceError>> + Unpin),
+    view: OutputView,
+    out: &mut dyn Write,
+) -> anyhow::Result<()> {
     while let Some(next) = stream.next().await {
         match next {
             Ok(Event::Open) => {}
             Ok(Event::Message(msg)) => {
-                render_message(view, &msg.data, &mut handle)?;
+                render_message(view, &msg.data, out)?;
             }
             Err(EventSourceError::StreamEnded) => break,
             Err(err) => return Err(err.into()),
@@ -236,6 +253,78 @@ mod tests {
         let client = Client::new();
         let result = stream_events(&client, &server.base_url(), "s1", OutputView::Raw).await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn stream_events_renders_output_view() {
+        let server = MockServer::start();
+        let output_payload = serde_json::json!({
+            "id": "e1",
+            "session_id": "s1",
+            "timestamp_ms": 0,
+            "seq": 0,
+            "type": "provider_event",
+            "provider": "openresponses",
+            "status": "event",
+            "event_name": "response.output_text.delta",
+            "data": {"type": "response.output_text.delta", "delta": "hi"},
+            "raw": null,
+            "errors": [],
+            "response_errors": []
+        })
+        .to_string();
+        let reasoning_payload = serde_json::json!({
+            "id": "e2",
+            "session_id": "s1",
+            "timestamp_ms": 0,
+            "seq": 1,
+            "type": "provider_event",
+            "provider": "openresponses",
+            "status": "event",
+            "event_name": "response.reasoning.delta",
+            "data": {"type": "response.reasoning.delta", "delta": "step"},
+            "raw": null,
+            "errors": [],
+            "response_errors": []
+        })
+        .to_string();
+        let tool_payload = serde_json::json!({
+            "id": "e3",
+            "session_id": "s1",
+            "timestamp_ms": 0,
+            "seq": 2,
+            "type": "provider_event",
+            "provider": "openresponses",
+            "status": "event",
+            "event_name": "response.function_call_arguments.delta",
+            "data": {"type": "response.function_call_arguments.delta", "delta": "{\"arg\":1}"},
+            "raw": null,
+            "errors": [],
+            "response_errors": []
+        })
+        .to_string();
+        let body = format!(
+            "data: {output_payload}\n\ndata: {reasoning_payload}\n\ndata: {tool_payload}\n\n"
+        );
+        let _mock = server.mock(|when, then| {
+            when.method(GET).path("/sessions/s1/events");
+            then.status(200)
+                .header("content-type", "text/event-stream")
+                .body(body);
+        });
+
+        let client = Client::new();
+        let url = format!("{}/sessions/s1/events", server.base_url());
+        let mut stream = client.get(url).eventsource().unwrap();
+        let mut buffer = Vec::new();
+        stream_events_with_writer(&mut stream, OutputView::Output, &mut buffer)
+            .await
+            .unwrap();
+        let rendered = String::from_utf8(buffer).expect("utf8");
+        assert_eq!(
+            rendered.trim_end(),
+            "hi\nreasoning: step\ntool: {\"arg\":1}"
+        );
     }
 
     #[tokio::test]
