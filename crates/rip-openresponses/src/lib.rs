@@ -1054,6 +1054,109 @@ mod tests {
     }
 
     #[test]
+    fn validate_file_search_and_status_schemas() {
+        let errors = schema_errors("RankerVersionType.json", serde_json::json!("auto"));
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "HybridSearchOptionsParam.json",
+            serde_json::json!({ "embedding_weight": 0.4, "text_weight": 0.6 }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "HybridSearchOptions.json",
+            serde_json::json!({ "embedding_weight": 0.4, "text_weight": 0.6 }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "FileSearchRankingOptionsParam.json",
+            serde_json::json!({
+                "ranker": "auto",
+                "score_threshold": 0.2,
+                "hybrid_search": { "embedding_weight": 0.4, "text_weight": 0.6 }
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "FileSearchRetrievedChunksParam.json",
+            serde_json::json!({
+                "file_id": "file_1",
+                "filename": "notes.txt",
+                "text": "chunk",
+                "attributes": {},
+                "score": 0.1,
+                "vector_store_id": null
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "FileSearchResult.json",
+            serde_json::json!({
+                "file_id": "file_1",
+                "filename": "notes.txt",
+                "text": "chunk",
+                "attributes": {},
+                "score": 0.1,
+                "vector_store_id": null
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "FileSearchToolCallStatusEnum.json",
+            serde_json::json!("completed"),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors("FunctionCallStatus.json", serde_json::json!("completed"));
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "FunctionCallOutputStatusEnum.json",
+            serde_json::json!("completed"),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "FunctionCallItemStatus.json",
+            serde_json::json!("completed"),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "FunctionShellCallItemStatus.json",
+            serde_json::json!("completed"),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "FunctionShellCallOutputExitOutcome.json",
+            serde_json::json!({ "type": "exit", "exit_code": 0 }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "FunctionShellCallOutputTimeoutOutcome.json",
+            serde_json::json!({ "type": "timeout" }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+
+        let errors = schema_errors(
+            "FunctionShellCallOutputContent.json",
+            serde_json::json!({
+                "stdout": "",
+                "stderr": "",
+                "outcome": { "type": "exit", "exit_code": 0 }
+            }),
+        );
+        assert!(errors.is_empty(), "errors: {errors:?}");
+    }
+
+    #[test]
     fn validate_response_resource_accepts_search_and_tool_calls() {
         let file_search = serde_json::json!({
             "type": "file_search_call",

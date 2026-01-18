@@ -21,8 +21,10 @@ Upstream layout (authoritative)
 Vendored artifacts
 - `schemas/openresponses/openapi.json`
 - `schemas/openresponses/streaming_event_types.json` (58 events)
+- `schemas/openresponses/streaming_event_type_map.json` (schema -> event)
 - `schemas/openresponses/split_components.json` (412 components)
 - `schemas/openresponses/paths_responses.json`
+- `schemas/openresponses/schema_inventory.json`
 - `crates/rip-provider-openresponses/fixtures/openresponses/stream_all.jsonl`
 - `crates/rip-provider-openresponses/fixtures/openresponses/stream_all.sse`
 
@@ -34,11 +36,13 @@ Sync procedure (standard)
 4. Copy `temp/openresponses/schema/paths/responses.json` to
    `schemas/openresponses/paths_responses.json`, then regenerate
    `schemas/openresponses/streaming_event_types.json` from the split paths.
-5. Run `scripts/generate-openresponses-fixtures.py` to refresh stream fixtures.
-6. Commit with the updated snapshot metadata.
+5. Regenerate `schemas/openresponses/schema_inventory.json` and
+   `schemas/openresponses/streaming_event_type_map.json` from the split schemas/paths.
+6. Run `scripts/generate-openresponses-fixtures.py` to refresh stream fixtures.
+7. Commit with the updated snapshot metadata.
 
 Diff procedure (quick)
 - `git diff schemas/openresponses/`
 - `git diff crates/rip-provider-openresponses/fixtures/openresponses/`
-- Compare counts in `temp/docs/openresponses/schema_inventory.json` and
-  `temp/docs/openresponses/event_types.json` after refresh (optional).
+- Compare counts in `schemas/openresponses/schema_inventory.json` and
+  `schemas/openresponses/streaming_event_type_map.json` after refresh (optional).

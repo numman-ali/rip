@@ -9,7 +9,7 @@ Summary
 - Streaming event schemas: 58 (from `temp/openresponses/schema/paths/responses.json`).
 - Input item variants: 25 (from `ItemParam.json`).
 - Output item variants: 23 (from `ItemField.json`).
-- Inventory artifacts: `temp/docs/openresponses/schema_inventory.json` (full schema + variant counts) and `temp/docs/openresponses/event_types.json` (SSE event type map).
+- Inventory artifacts: `schemas/openresponses/schema_inventory.json` (full schema + variant counts) and `schemas/openresponses/streaming_event_type_map.json` (SSE event type map).
 
 Sources reviewed
 - `temp/openresponses/README.md`
@@ -25,8 +25,8 @@ Sources reviewed
 - `temp/openresponses/schema/openapi_filter_manifest.yaml`
 - `temp/openresponses/schema/paths/responses.json`
 - `temp/openresponses/schema/components/schemas/*.json`
-- `temp/docs/openresponses/schema_inventory.json` (generated)
-- `temp/docs/openresponses/event_types.json` (generated)
+- `schemas/openresponses/schema_inventory.json` (generated)
+- `schemas/openresponses/streaming_event_type_map.json` (generated)
 
 Mapping rules (Phase 1)
 - All OpenResponses SSE events map to `provider_event` frames with full payload fidelity.
@@ -44,7 +44,7 @@ Implementation status (current)
 - Split component schemas are vendored in `schemas/openresponses/split_components.json`; split paths schema is vendored in `schemas/openresponses/paths_responses.json`.
 - Input item variants are mapped via `ItemParam` constructors in the provider request builder; runtime request-frame integration remains pending.
 - ItemParam validation covers all input variants using required-field checks (message role/item reference handling included); runtime mapping remains pending.
-- Split schema inventory and SSE event type map captured in `temp/docs/openresponses/` and reflected in the tables below.
+- Split schema inventory and SSE event type map captured in `schemas/openresponses/` and reflected in the tables below.
 - Requests are JSON-only per spec; form-encoded bodies are not supported (ADR-0002).
 - Bundled OpenAPI schema currently includes 102 component schemas; the split OpenResponses schema defines 412 component schemas. Missing schemas are tracked in the checklist.
 - Split schemas + additive patches are authoritative; the filter manifest represents a reduced allowlist and is not a compliance target.
@@ -515,34 +515,34 @@ Legend
 | `FileCitationBody` | no | yes | provider_event (validated) |
 | `FileCitationParam` | no | yes | provider_request (validated) |
 | `FileSearchCall` | no | yes | provider_event (validated) |
-| `FileSearchRankingOptionsParam` | no | no | pending |
-| `FileSearchResult` | no | yes | pending |
-| `FileSearchRetrievedChunksParam` | no | no | pending |
-| `FileSearchToolCallStatusEnum` | no | yes | pending |
+| `FileSearchRankingOptionsParam` | no | yes | provider_request (validated) |
+| `FileSearchResult` | no | yes | provider_event (validated) |
+| `FileSearchRetrievedChunksParam` | no | yes | provider_request (validated) |
+| `FileSearchToolCallStatusEnum` | no | yes | provider_event (validated) |
 | `Filters` | no | yes | provider_event (validated) |
 | `FunctionCall` | yes | yes | provider_event (validated) |
-| `FunctionCallItemStatus` | yes | no | pending |
+| `FunctionCallItemStatus` | yes | yes | provider_request (validated) |
 | `FunctionCallOutput` | yes | yes | provider_event (validated) |
-| `FunctionCallOutputStatusEnum` | yes | yes | pending |
-| `FunctionCallStatus` | yes | yes | pending |
+| `FunctionCallOutputStatusEnum` | yes | yes | provider_event (validated) |
+| `FunctionCallStatus` | yes | yes | provider_event (validated) |
 | `FunctionShellAction` | no | yes | pending |
 | `FunctionShellActionParam` | no | no | pending |
 | `FunctionShellCall` | no | yes | provider_event (validated) |
-| `FunctionShellCallItemStatus` | no | no | pending |
+| `FunctionShellCallItemStatus` | no | yes | provider_request (validated) |
 | `FunctionShellCallOutput` | no | yes | provider_event (validated) |
-| `FunctionShellCallOutputContent` | no | yes | pending |
-| `FunctionShellCallOutputContentParam` | no | no | pending |
-| `FunctionShellCallOutputExitOutcome` | no | yes | pending |
-| `FunctionShellCallOutputExitOutcomeParam` | no | no | pending |
-| `FunctionShellCallOutputOutcomeParam` | no | no | pending |
-| `FunctionShellCallOutputTimeoutOutcome` | no | yes | pending |
-| `FunctionShellCallOutputTimeoutOutcomeParam` | no | no | pending |
+| `FunctionShellCallOutputContent` | no | yes | provider_event (validated) |
+| `FunctionShellCallOutputContentParam` | no | yes | provider_request (validated) |
+| `FunctionShellCallOutputExitOutcome` | no | yes | provider_event (validated) |
+| `FunctionShellCallOutputExitOutcomeParam` | no | yes | provider_request (validated) |
+| `FunctionShellCallOutputOutcomeParam` | no | yes | provider_request (validated) |
+| `FunctionShellCallOutputTimeoutOutcome` | no | yes | provider_event (validated) |
+| `FunctionShellCallOutputTimeoutOutcomeParam` | no | yes | provider_request (validated) |
 | `GenerationsBodyDallE2Param` | no | no | pending |
 | `GenerationsBodyDallE3Param` | no | no | pending |
 | `GrammarSyntax` | no | no | pending |
 | `GrammarSyntax1` | no | yes | pending |
-| `HybridSearchOptions` | no | yes | pending |
-| `HybridSearchOptionsParam` | no | no | pending |
+| `HybridSearchOptions` | no | yes | provider_event (validated) |
+| `HybridSearchOptionsParam` | no | yes | provider_request (validated) |
 | `Image` | no | no | pending |
 | `ImageBackground` | no | yes | pending |
 | `ImageDetail` | yes | yes | pending |
@@ -617,7 +617,7 @@ Legend
 | `Payer` | no | yes | provider_event (validated) |
 | `PromptCacheRetentionEnum` | no | yes | pending |
 | `PromptInstructionMessage` | no | yes | pending |
-| `RankerVersionType` | no | yes | pending |
+| `RankerVersionType` | no | yes | provider_request (validated) |
 | `RankingOptions` | no | yes | pending |
 | `Reasoning` | yes | yes | pending |
 | `ReasoningBody` | yes | yes | provider_event (validated) |

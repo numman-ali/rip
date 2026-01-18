@@ -5,6 +5,7 @@ Summary
 - Each item should be marked complete only when mapped to internal frames and validated at the provider boundary.
 
 Progress log
+- 2026-01-17: Validated file search and status schemas (ranking options, retrieved chunks, results, ranker/hybrid options, tool call statuses, function call statuses); checklist updated.
 - 2026-01-17: Validated context/billing/location schemas (ApiSourceParam, Payer/Billing, Conversation + ConversationParam, ContextEdit + details, ApproximateLocation + param); checklist updated.
 - 2026-01-17: Validated computer action + screenshot schemas (environment, click/double-click/drag, coords, screenshot content/param, detail enum, empty action); checklist updated.
 - 2026-01-17: Validated filter schemas (Filters + comparison/compound field + param variants); checklist updated.
@@ -23,11 +24,11 @@ Progress log
 - 2026-01-17: Provider adapter emits `output_text_delta` frames for `response.output_text.delta` events; stream fixture/tests updated.
 - 2026-01-17: Checked bundled validation coverage for Error/ErrorPayload, CreateResponseBody, ResponseResource, and ItemField; aligned streaming-event schema-index statuses with validated vs pending coverage.
 - 2026-01-17: Marked bundled streaming events and output item schemas as mapped/validated in the checklist (remaining events/items pending split-schema validation).
-- 2026-01-17: Roadmap gate added (`docs/07_tasks/roadmap.md`). Tool/tool_choice request validation + builder support landed (commit `c8946dd`); split schema notes captured in `temp/docs/openresponses/`.
+- 2026-01-17: Roadmap gate added (`docs/07_tasks/roadmap.md`). Tool/tool_choice request validation + builder support landed (commit `c8946dd`); split schema notes captured in committed inventory artifacts.
 - 2026-01-17: Verified schema index covers all 412 split components; added additive patch schemas (`InputVideoContent`, `JsonSchemaResponseFormatParam`, `TextFormatParam`) to checklist.
 - 2026-01-17: Implemented full tool/tool_choice variant validation + builders; checked off related schemas in the task tracker.
 - 2026-01-17: Implemented manual validation for all input item variants (request-side); internal frame mapping still pending so checklist remains open for those items.
-- 2026-01-17: Generated split schema inventory + SSE event type map in `temp/docs/openresponses/` and reconciled compliance tables to match the split schema lists.
+- 2026-01-17: Generated split schema inventory + SSE event type map in `schemas/openresponses/` and reconciled compliance tables to match the split schema lists.
 
 ## Docs review checklist
 - [x] Review `temp/openresponses/README.md` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
@@ -184,16 +185,16 @@ Progress log
 - [x] `FileCitationBody` mapped and validated.
 - [x] `FileCitationParam` mapped and validated.
 - [x] `FileSearchCall` mapped and validated.
-- [ ] `FileSearchRankingOptionsParam` mapped and validated.
-- [ ] `FileSearchResult` mapped and validated.
-- [ ] `FileSearchRetrievedChunksParam` mapped and validated.
+- [x] `FileSearchRankingOptionsParam` mapped and validated.
+- [x] `FileSearchResult` mapped and validated.
+- [x] `FileSearchRetrievedChunksParam` mapped and validated.
 - [x] `FileSearchToolCallStatusEnum` mapped and validated.
 - [x] `Filters` mapped and validated.
 - [x] `FunctionCall` mapped and validated.
-- [ ] `FunctionCallItemStatus` mapped and validated.
+- [x] `FunctionCallItemStatus` mapped and validated.
 - [x] `FunctionCallOutput` mapped and validated.
-- [ ] `FunctionCallOutputStatusEnum` mapped and validated.
-- [ ] `FunctionCallStatus` mapped and validated.
+- [x] `FunctionCallOutputStatusEnum` mapped and validated.
+- [x] `FunctionCallStatus` mapped and validated.
 - [x] `FunctionShellAction` mapped and validated.
 - [x] `FunctionShellActionParam` mapped and validated.
 - [x] `FunctionShellCall` mapped and validated.
@@ -210,8 +211,8 @@ Progress log
 - [ ] `GenerationsBodyDallE3Param` mapped and validated.
 - [ ] `GrammarSyntax` mapped and validated.
 - [ ] `GrammarSyntax1` mapped and validated.
-- [ ] `HybridSearchOptions` mapped and validated.
-- [ ] `HybridSearchOptionsParam` mapped and validated.
+- [x] `HybridSearchOptions` mapped and validated.
+- [x] `HybridSearchOptionsParam` mapped and validated.
 - [ ] `Image` mapped and validated.
 - [ ] `ImageBackground` mapped and validated.
 - [ ] `ImageDetail` mapped and validated.
@@ -288,7 +289,7 @@ Progress log
 - [x] `Payer` mapped and validated.
 - [ ] `PromptCacheRetentionEnum` mapped and validated.
 - [ ] `PromptInstructionMessage` mapped and validated.
-- [ ] `RankerVersionType` mapped and validated.
+- [x] `RankerVersionType` mapped and validated.
 - [ ] `RankingOptions` mapped and validated.
 - [ ] `Reasoning` mapped and validated.
 - [x] `ReasoningBody` mapped and validated.
