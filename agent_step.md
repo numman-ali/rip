@@ -20,5 +20,5 @@ Active priorities
 - Ensure every OpenResponses feature appears in `docs/07_tasks/roadmap.md` with `[confirm spec]` or `[needs work]`.
 
 Next checkpoints
-- Finish spec MDX review mapping into capability/roadmap docs.
-- Track remaining schema elements with clear capability ownership (not just validation).
+- Update roadmap/gap notes if any new capability ids imply surface gaps.
+- Continue compliance checklist on remaining non-tool schemas or additive patches.

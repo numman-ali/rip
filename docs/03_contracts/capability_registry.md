@@ -32,6 +32,7 @@ Rules
 | session.stream_events | v1 | P1 | planned | supported | supported | planned | planned | planned | Stream session events. |
 | session.cancel | v1 | P1 | planned | supported | supported | planned | planned | planned | Cancel an active session. |
 | session.resume | v1 | P2 | planned | planned | planned | planned | planned | planned | Resume a prior session by id. |
+| session.previous_response | v1 | P2 | planned | planned | planned | planned | planned | planned | Continue from a prior response id (previous_response_id semantics). |
 | thread.branch | v1 | P2 | planned | planned | planned | planned | planned | planned | Branch/fork from a prior point. |
 | thread.handoff | v1 | P2 | planned | planned | planned | planned | planned | planned | Handoff work to a new thread with curated context. |
 | thread.reference | v1 | P2 | planned | planned | planned | planned | planned | planned | Reference another thread by id and extract context. |
@@ -73,6 +74,7 @@ Rules
 | config.json_schema | v1 | P2 | planned | planned | planned | planned | planned | planned | JSON/JSONC config + schema validation. |
 | config.env_overrides | v1 | P2 | planned | planned | planned | planned | planned | planned | Environment variable overrides. |
 | policy.permissions.rules | v1 | P2 | planned | planned | planned | planned | planned | planned | Permission rules with allow/ask/deny/delegate. |
+| policy.request_identifiers | v1 | P1 | planned | planned | planned | planned | planned | planned | User/safety identifiers for policy/audit contexts. |
 | policy.sandbox.profiles | v1 | P2 | planned | planned | planned | planned | planned | planned | Sandbox profiles and execution policies. |
 | config.output_style_defaults | v1 | P2 | planned | planned | planned | planned | planned | planned | Output style and model defaults by scope. |
 | config.extensions | v1 | P2 | planned | planned | planned | planned | planned | planned | Plugin/tool/subagent configuration. |
@@ -98,6 +100,7 @@ Rules
 | execution.interactive_tui | v1 | P2 | not_applicable | not_applicable | not_applicable | not_applicable | planned | not_applicable | Interactive TUI mode. |
 | execution.headless | v1 | P1 | not_applicable | supported | not_applicable | not_applicable | not_applicable | not_applicable | Headless execute mode. |
 | execution.json_stream | v1 | P1 | planned | supported | supported | planned | planned | planned | Streaming JSON output. |
+| execution.stream_options | v1 | P1 | planned | planned | planned | planned | planned | planned | Stream options for usage/extras emission. |
 | execution.json_schema | v1 | P1 | planned | planned | planned | planned | planned | planned | JSONL output schema validation. |
 | execution.print | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable | Formatted print mode. |
 | execution.rpc | v1 | P2 | not_applicable | not_applicable | planned | planned | not_applicable | not_applicable | RPC mode for machine commands. |
@@ -105,6 +108,20 @@ Rules
 | execution.resume_session | v1 | P2 | planned | planned | planned | planned | planned | planned | Resume sessions by id. |
 | execution.output_format | v1 | P2 | planned | planned | planned | planned | planned | planned | Output format control for text/JSON/streaming. |
 | execution.structured_output | v1 | P2 | planned | planned | planned | planned | planned | planned | Structured output using JSON Schema. |
+| execution.response_include | v1 | P1 | planned | planned | planned | planned | planned | planned | Response include/extras selection (logprobs/sources/tool outputs). |
+
+## OpenResponses Boundary
+| id | v | phase | cli_i | cli_h | server | sdk | tui | mcp | intent |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| openresponses.request_fidelity | v1 | P1 | planned | planned | planned | planned | planned | planned | Preserve full CreateResponseBody payloads at provider boundary. |
+| openresponses.response_fidelity | v1 | P1 | planned | planned | planned | planned | planned | planned | Preserve full ResponseResource payloads + items. |
+| openresponses.streaming_fidelity | v1 | P1 | planned | planned | planned | planned | planned | planned | SSE semantic events with event/type invariants + [DONE]. |
+| openresponses.item_lifecycle | v1 | P1 | planned | planned | planned | planned | planned | planned | Item required fields + lifecycle status semantics. |
+| openresponses.content_union | v1 | P1 | planned | planned | planned | planned | planned | planned | User/model content unions (multimodal input + output text/refusal/summary). |
+| openresponses.reasoning_items | v1 | P1 | planned | planned | planned | planned | planned | planned | Reasoning item content/encrypted/summary handling. |
+| openresponses.tools_union | v1 | P1 | planned | planned | planned | planned | planned | planned | Full OpenResponses tool union + tool call item variants. |
+| openresponses.errors | v1 | P1 | planned | planned | planned | planned | planned | planned | Error payloads + streaming failure events. |
+| openresponses.extensions | v1 | P2 | planned | planned | planned | planned | planned | planned | Vendor-prefixed items/events + schema extensions. |
 
 ## Tools & Tooling
 | id | v | phase | cli_i | cli_h | server | sdk | tui | mcp | intent |
@@ -119,6 +136,8 @@ Rules
 | tool.override | v1 | P2 | planned | planned | planned | planned | planned | planned | Override built-in tools with custom impls. |
 | tool.remote | v1 | P2 | planned | planned | planned | planned | planned | planned | Remote tool execution backend. |
 | tool.arg_rules | v1 | P2 | planned | planned | planned | planned | planned | planned | Per-tool argument rules. |
+| tool.choice | v1 | P1 | planned | planned | planned | planned | planned | planned | Tool choice policy (auto/required/none/force). |
+| tool.call_limits | v1 | P1 | planned | planned | planned | planned | planned | planned | Max tool calls + parallel tool call limits. |
 | tool.allowed_tools | v1 | P1 | planned | planned | planned | planned | planned | planned | Allowed-tools lists for noninteractive runs. |
 | tool.read_ranges | v1 | P1 | planned | planned | planned | planned | planned | planned | Read tools support line ranges. |
 | tool.lsp | v1 | P2 | planned | planned | planned | planned | planned | planned | LSP tool integration. |
@@ -129,6 +148,7 @@ Rules
 | compaction.auto | v1 | P2 | planned | planned | planned | planned | planned | planned | Auto-compaction when context exceeds threshold. |
 | compaction.manual | v1 | P2 | planned | planned | planned | planned | planned | planned | Manual compaction with instructions. |
 | compaction.split_turn | v1 | P2 | planned | planned | planned | planned | planned | planned | Split-turn handling for oversized turns. |
+| compaction.truncation_policy | v1 | P2 | planned | planned | planned | planned | planned | planned | Truncation policy controls (auto vs disabled). |
 | compaction.cut_points | v1 | P2 | planned | planned | planned | planned | planned | planned | Compaction cut-point rules. |
 | compaction.branch_summary | v1 | P2 | planned | planned | planned | planned | planned | planned | Branch summarization. |
 | compaction.file_ops | v1 | P2 | planned | planned | planned | planned | planned | planned | File-operation tracking in summaries. |
@@ -190,6 +210,11 @@ Rules
 ## Models & Providers
 | id | v | phase | cli_i | cli_h | server | sdk | tui | mcp | intent |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| model.sampling_params | v1 | P1 | planned | planned | planned | planned | planned | planned | Temperature/top_p/penalties/seed sampling controls. |
+| model.max_output_tokens | v1 | P1 | planned | planned | planned | planned | planned | planned | Max output tokens per response. |
+| model.logprobs | v1 | P1 | planned | planned | planned | planned | planned | planned | Logprob emission for output tokens. |
+| model.service_tier | v1 | P2 | planned | planned | planned | planned | planned | planned | Service tier hint for routing/priority. |
+| model.prompt_cache | v1 | P2 | planned | planned | planned | planned | planned | planned | Prompt cache key + retention controls. |
 | model.multi_provider | v1 | P2 | planned | planned | planned | planned | planned | planned | Multi-provider support. |
 | model.thinking_levels | v1 | P2 | planned | planned | planned | planned | planned | planned | Reasoning levels with budgets. |
 | model.registry | v1 | P2 | planned | planned | planned | planned | planned | planned | Custom model registry and auth. |
@@ -197,6 +222,11 @@ Rules
 | model.profiles | v1 | P2 | planned | planned | planned | planned | planned | planned | Agent mode profiles (fast vs deep). |
 | model.second_opinion | v1 | P2 | planned | planned | planned | planned | planned | planned | Second-opinion model/tool. |
 | model.overrides | v1 | P2 | planned | planned | planned | planned | planned | planned | Per-run overrides for model/sandbox/approval policy. |
+
+## Usage & Telemetry
+| id | v | phase | cli_i | cli_h | server | sdk | tui | mcp | intent |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| usage.token_counts | v1 | P1 | planned | planned | planned | planned | planned | planned | Usage + token counts in responses. |
 
 ## Output Styles
 | id | v | phase | cli_i | cli_h | server | sdk | tui | mcp | intent |

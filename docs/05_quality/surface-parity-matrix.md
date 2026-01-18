@@ -9,6 +9,7 @@ Generated from docs/03_contracts/capability_registry.md.
 | session.stream_events | planned | supported | supported | planned | planned | planned |
 | session.cancel | planned | supported | supported | planned | planned | planned |
 | session.resume | planned | planned | planned | planned | planned | planned |
+| session.previous_response | planned | planned | planned | planned | planned | planned |
 | thread.branch | planned | planned | planned | planned | planned | planned |
 | thread.handoff | planned | planned | planned | planned | planned | planned |
 | thread.reference | planned | planned | planned | planned | planned | planned |
@@ -38,6 +39,7 @@ Generated from docs/03_contracts/capability_registry.md.
 | config.json_schema | planned | planned | planned | planned | planned | planned |
 | config.env_overrides | planned | planned | planned | planned | planned | planned |
 | policy.permissions.rules | planned | planned | planned | planned | planned | planned |
+| policy.request_identifiers | planned | planned | planned | planned | planned | planned |
 | policy.sandbox.profiles | planned | planned | planned | planned | planned | planned |
 | config.output_style_defaults | planned | planned | planned | planned | planned | planned |
 | config.extensions | planned | planned | planned | planned | planned | planned |
@@ -55,6 +57,7 @@ Generated from docs/03_contracts/capability_registry.md.
 | execution.interactive_tui | not_applicable | not_applicable | not_applicable | not_applicable | planned | not_applicable |
 | execution.headless | not_applicable | supported | not_applicable | not_applicable | not_applicable | not_applicable |
 | execution.json_stream | planned | supported | supported | planned | planned | planned |
+| execution.stream_options | planned | planned | planned | planned | planned | planned |
 | execution.json_schema | planned | planned | planned | planned | planned | planned |
 | execution.print | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable |
 | execution.rpc | not_applicable | not_applicable | planned | planned | not_applicable | not_applicable |
@@ -62,6 +65,16 @@ Generated from docs/03_contracts/capability_registry.md.
 | execution.resume_session | planned | planned | planned | planned | planned | planned |
 | execution.output_format | planned | planned | planned | planned | planned | planned |
 | execution.structured_output | planned | planned | planned | planned | planned | planned |
+| execution.response_include | planned | planned | planned | planned | planned | planned |
+| openresponses.request_fidelity | planned | planned | planned | planned | planned | planned |
+| openresponses.response_fidelity | planned | planned | planned | planned | planned | planned |
+| openresponses.streaming_fidelity | planned | planned | planned | planned | planned | planned |
+| openresponses.item_lifecycle | planned | planned | planned | planned | planned | planned |
+| openresponses.content_union | planned | planned | planned | planned | planned | planned |
+| openresponses.reasoning_items | planned | planned | planned | planned | planned | planned |
+| openresponses.tools_union | planned | planned | planned | planned | planned | planned |
+| openresponses.errors | planned | planned | planned | planned | planned | planned |
+| openresponses.extensions | planned | planned | planned | planned | planned | planned |
 | tool.builtin_files | planned | planned | planned | planned | planned | planned |
 | tool.registry | planned | planned | planned | planned | planned | planned |
 | tool.toolbox | planned | planned | planned | planned | planned | planned |
@@ -72,12 +85,15 @@ Generated from docs/03_contracts/capability_registry.md.
 | tool.override | planned | planned | planned | planned | planned | planned |
 | tool.remote | planned | planned | planned | planned | planned | planned |
 | tool.arg_rules | planned | planned | planned | planned | planned | planned |
+| tool.choice | planned | planned | planned | planned | planned | planned |
+| tool.call_limits | planned | planned | planned | planned | planned | planned |
 | tool.allowed_tools | planned | planned | planned | planned | planned | planned |
 | tool.read_ranges | planned | planned | planned | planned | planned | planned |
 | tool.lsp | planned | planned | planned | planned | planned | planned |
 | compaction.auto | planned | planned | planned | planned | planned | planned |
 | compaction.manual | planned | planned | planned | planned | planned | planned |
 | compaction.split_turn | planned | planned | planned | planned | planned | planned |
+| compaction.truncation_policy | planned | planned | planned | planned | planned | planned |
 | compaction.cut_points | planned | planned | planned | planned | planned | planned |
 | compaction.branch_summary | planned | planned | planned | planned | planned | planned |
 | compaction.file_ops | planned | planned | planned | planned | planned | planned |
@@ -119,6 +135,11 @@ Generated from docs/03_contracts/capability_registry.md.
 | subagent.load | planned | planned | planned | planned | planned | planned |
 | subagent.runtime | planned | planned | planned | planned | planned | planned |
 | subagent.invoke | planned | planned | planned | planned | planned | planned |
+| model.sampling_params | planned | planned | planned | planned | planned | planned |
+| model.max_output_tokens | planned | planned | planned | planned | planned | planned |
+| model.logprobs | planned | planned | planned | planned | planned | planned |
+| model.service_tier | planned | planned | planned | planned | planned | planned |
+| model.prompt_cache | planned | planned | planned | planned | planned | planned |
 | model.multi_provider | planned | planned | planned | planned | planned | planned |
 | model.thinking_levels | planned | planned | planned | planned | planned | planned |
 | model.registry | planned | planned | planned | planned | planned | planned |
@@ -126,6 +147,7 @@ Generated from docs/03_contracts/capability_registry.md.
 | model.profiles | planned | planned | planned | planned | planned | planned |
 | model.second_opinion | planned | planned | planned | planned | planned | planned |
 | model.overrides | planned | planned | planned | planned | planned | planned |
+| usage.token_counts | planned | planned | planned | planned | planned | planned |
 | output.style | planned | planned | planned | planned | planned | planned |
 | output.style.load | planned | planned | planned | planned | planned | planned |
 | ui.palette | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable |
