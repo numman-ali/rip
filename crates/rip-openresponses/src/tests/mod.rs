@@ -68,5 +68,6 @@ mod schema_validation_content;
 mod schema_validation_filters;
 mod schema_validation_misc;
 mod schema_validation_tools;
+mod schema_validation_usage;
 mod smoke;
 mod streaming;

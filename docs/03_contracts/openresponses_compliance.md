@@ -576,7 +576,7 @@ Legend
 | `InputImageMaskContentParam` | no | no | pending |
 | `InputTextContent` | yes | yes | pending |
 | `InputTextContentParam` | yes | no | pending |
-| `InputTokensDetails` | yes | yes | pending |
+| `InputTokensDetails` | yes | yes | provider_event (validated) |
 | `ItemListResource` | no | no | pending |
 | `ItemReferenceParam` | yes | no | provider_request (validated) |
 | `JsonObjectResponseFormat` | yes | yes | pending |
@@ -591,7 +591,7 @@ Legend
 | `LocalShellCallStatus` | no | yes | pending |
 | `LocalShellExecAction` | no | yes | pending |
 | `LocalShellExecActionParam` | no | no | pending |
-| `LogProb` | yes | yes | pending |
+| `LogProb` | yes | yes | provider_event (validated) |
 | `MCPApprovalRequest` | no | yes | provider_event (validated) |
 | `MCPApprovalResponse` | no | yes | provider_event (validated) |
 | `MCPListTools` | no | yes | provider_event (validated) |
@@ -613,7 +613,7 @@ Legend
 | `OrderEnum` | no | no | pending |
 | `OutputTextContent` | yes | yes | pending |
 | `OutputTextContentParam` | yes | no | pending |
-| `OutputTokensDetails` | yes | yes | pending |
+| `OutputTokensDetails` | yes | yes | provider_event (validated) |
 | `Payer` | no | yes | provider_event (validated) |
 | `PromptCacheRetentionEnum` | no | yes | pending |
 | `PromptInstructionMessage` | no | yes | pending |
@@ -654,18 +654,18 @@ Legend
 | `TextField` | yes | yes | pending |
 | `TextParam` | yes | no | pending |
 | `TextResponseFormat` | yes | yes | pending |
-| `TokenCountsBody` | no | no | pending |
-| `TokenCountsResource` | no | no | pending |
+| `TokenCountsBody` | no | no | provider_request (validated) |
+| `TokenCountsResource` | no | no | provider_event (validated) |
 | `ToolChoiceParam` | yes | no | provider_request (validated) |
 | `ToolChoiceValueEnum` | yes | yes | provider_request (validated) |
-| `TopLogProb` | yes | yes | pending |
+| `TopLogProb` | yes | yes | provider_event (validated) |
 | `TruncationEnum` | yes | yes | pending |
 | `TypeAction` | no | yes | provider_event (validated) |
 | `TypeParam` | no | yes | provider_request (validated) |
 | `UrlCitationBody` | yes | yes | provider_event (validated) |
 | `UrlCitationParam` | yes | yes | provider_request (validated) |
 | `UrlSourceParam` | no | no | pending |
-| `Usage` | yes | yes | pending |
+| `Usage` | yes | yes | provider_event (validated) |
 | `VerbosityEnum` | yes | yes | pending |
 | `VideoContentVariant` | no | no | pending |
 | `VideoListResource` | no | no | pending |

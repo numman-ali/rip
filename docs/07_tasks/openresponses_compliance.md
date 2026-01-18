@@ -5,6 +5,7 @@ Summary
 - Each item should be marked complete only when mapped to internal frames and validated at the provider boundary.
 
 Progress log
+- 2026-01-18: Validated usage/token count/logprob schemas (Usage, Input/OutputTokensDetails, LogProb/TopLogProb, TokenCountsBody/Resource); checklist updated.
 - 2026-01-18: Validated additional computer action schemas (keypress/move/scroll/screenshot/type/wait) and SafetyCheck; checklist updated.
 - 2026-01-17: Validated file search and status schemas (ranking options, retrieved chunks, results, ranker/hybrid options, tool call statuses, function call statuses); checklist updated.
 - 2026-01-17: Validated context/billing/location schemas (ApiSourceParam, Payer/Billing, Conversation + ConversationParam, ContextEdit + details, ApproximateLocation + param); checklist updated.
@@ -247,7 +248,7 @@ Progress log
 - [x] `InputImageMaskContentParam` mapped and validated.
 - [x] `InputTextContent` mapped and validated.
 - [x] `InputTextContentParam` mapped and validated.
-- [ ] `InputTokensDetails` mapped and validated.
+- [x] `InputTokensDetails` mapped and validated.
 - [x] `InputVideoContent` mapped and validated.
 - [ ] `ItemListResource` mapped and validated.
 - [ ] `ItemReferenceParam` mapped and validated.
@@ -264,7 +265,7 @@ Progress log
 - [x] `LocalShellCallStatus` mapped and validated.
 - [x] `LocalShellExecAction` mapped and validated.
 - [x] `LocalShellExecActionParam` mapped and validated.
-- [ ] `LogProb` mapped and validated.
+- [x] `LogProb` mapped and validated.
 - [x] `MCPApprovalRequest` mapped and validated.
 - [x] `MCPApprovalResponse` mapped and validated.
 - [x] `MCPListTools` mapped and validated.
@@ -286,7 +287,7 @@ Progress log
 - [ ] `OrderEnum` mapped and validated.
 - [x] `OutputTextContent` mapped and validated.
 - [x] `OutputTextContentParam` mapped and validated.
-- [ ] `OutputTokensDetails` mapped and validated.
+- [x] `OutputTokensDetails` mapped and validated.
 - [x] `Payer` mapped and validated.
 - [ ] `PromptCacheRetentionEnum` mapped and validated.
 - [ ] `PromptInstructionMessage` mapped and validated.
@@ -328,18 +329,18 @@ Progress log
 - [ ] `TextParam` mapped and validated.
 - [x] `TextResponseFormat` mapped and validated.
 - [x] `TextFormatParam` mapped and validated.
-- [ ] `TokenCountsBody` mapped and validated.
-- [ ] `TokenCountsResource` mapped and validated.
+- [x] `TokenCountsBody` mapped and validated.
+- [x] `TokenCountsResource` mapped and validated.
 - [x] `ToolChoiceParam` mapped and validated.
 - [x] `ToolChoiceValueEnum` mapped and validated.
-- [ ] `TopLogProb` mapped and validated.
+- [x] `TopLogProb` mapped and validated.
 - [ ] `TruncationEnum` mapped and validated.
 - [x] `TypeAction` mapped and validated.
 - [x] `TypeParam` mapped and validated.
 - [x] `UrlCitationBody` mapped and validated.
 - [x] `UrlCitationParam` mapped and validated.
 - [ ] `UrlSourceParam` mapped and validated.
-- [ ] `Usage` mapped and validated.
+- [x] `Usage` mapped and validated.
 - [ ] `VerbosityEnum` mapped and validated.
 - [ ] `VideoContentVariant` mapped and validated.
 - [ ] `VideoListResource` mapped and validated.
