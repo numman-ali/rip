@@ -2,7 +2,7 @@
 
 Summary
 - Maps OpenResponses specification + schemas to internal capability ids and surface coverage.
-- Complements the schema-level compliance map in `docs/03_contracts/openresponses_compliance.md`.
+- Complements the exhaustive OpenResponses coverage inventory in `docs/03_contracts/openresponses_coverage.md`.
 - Drives updates to `docs/03_contracts/capability_registry.md`, `docs/02_architecture/capability_matrix.md`, and `docs/07_tasks/roadmap.md`.
 
 Sources (authoritative)
@@ -23,25 +23,26 @@ Mapping rules
 Capability alignment (expanded)
 | feature group | spec refs | schema refs | internal capability ids | surface impact | status |
 | --- | --- | --- | --- | --- | --- |
-| Transport + SSE invariants | spec: HTTP Requests/Responses/Streaming | `paths/responses.json` (streaming events) | `execution.json_stream`, `session.stream_events`, `openresponses.streaming_fidelity` | server + cli_h + cli_i + sdk | needs registry/matrix entry |
-| Response lifecycle + statuses | spec: State machines, Streaming | `ResponseResource`, `ResponseStatusEnum`, response state events | `openresponses.response_fidelity`, `openresponses.streaming_fidelity` | server + cli_h + cli_i + sdk | needs registry/matrix entry |
-| Items + required fields | spec: Items, Items are state machines | `ItemParam`, `ItemField`, `ItemStatusEnum`, `MessageRoleEnum` | `openresponses.item_lifecycle`, `openresponses.response_fidelity` | server + cli_h + cli_i + sdk | needs registry/matrix entry |
-| Item streaming sequence | spec: Items are streamable | `ResponseOutputItemAdded/Done`, `ResponseContentPart*`, `ResponseOutputText*`, `ResponseReasoning*` | `openresponses.streaming_fidelity`, `session.stream_events` | server + cli_h + cli_i + sdk | needs registry/matrix entry |
-| Content unions (user vs model) | spec: Content | `InputTextContent*`, `InputImageContent*`, `InputFileContent*`, `InputVideoContent`, `OutputTextContent*`, `RefusalContent*`, `SummaryTextContent*` | `openresponses.content_union` | server + cli_h + cli_i + sdk | needs registry/matrix entry |
-| Reasoning items | spec: Reasoning | `ReasoningItemParam`, `Reasoning`, `ReasoningTextContent`, `ReasoningSummaryContentParam` | `openresponses.reasoning_items`, `model.thinking_levels` | server + cli_h + cli_i + sdk | needs registry/matrix entry |
-| Errors + streaming failures | spec: Errors | `Error`, `ErrorPayload`, `ResponseFailedStreamingEvent` | `openresponses.errors`, `session.stream_events` | server + cli_h + cli_i + sdk | needs registry/matrix entry |
-| Tools (external + internal) | spec: Tools | `ResponsesToolParam`, `Tool`, tool call items (function/web/file/computer/mcp/image/etc.) | `tool.registry`, `tool.schema`, `openresponses.tools_union` | server + cli_h + cli_i + sdk | partially mapped; runtime semantics pending |
-| `tool_choice` + `allowed_tools` | spec: tool_choice + allowed_tools | `ToolChoiceParam`, `AllowedToolsParam`, `ToolChoiceValueEnum` | `tool.choice`, `tool.allowed_tools`, `tool.permissions` | server + cli_h + cli_i + sdk | needs registry/matrix entry |
-| Tool call limits | spec: (schema-only) | `max_tool_calls`, `parallel_tool_calls` | `tool.call_limits` | server + cli_h + cli_i + sdk | needs registry/matrix entry |
-| Conversation continuity | spec: previous_response_id | `previous_response_id`, `ResponsesConversationParam`, `Conversation` | `session.previous_response`, `thread.reference`, `context.compile` | server + cli_h + cli_i + sdk | needs registry/matrix entry |
-| Truncation policy | spec: truncation | `TruncationEnum` | `compaction.truncation_policy` | server + cli_h + cli_i + sdk | needs registry/matrix entry |
-| Service tier routing | spec: service_tier | `ServiceTierEnum` | `model.service_tier` | server + sdk | needs registry/matrix entry |
-| Sampling controls | spec: (schema-only) | `temperature`, `top_p`, `presence_penalty`, `frequency_penalty`, `max_output_tokens`, `seed` | `model.sampling_params`, `model.max_output_tokens` | server + cli_h + cli_i + sdk | needs registry/matrix entry |
-| Response format + verbosity | spec: (schema-only) | `TextParam`, `TextFormatParam`, `JsonSchemaResponseFormatParam`, `ResponseFormat*` | `execution.output_format`, `execution.structured_output` | server + cli_h + cli_i + sdk | mapped to existing ids; parity update pending |
-| Response include/extras | spec: (schema-only) | `IncludeEnum`, `top_logprobs` | `execution.response_include`, `model.logprobs` | server + cli_h + cli_i + sdk | needs registry/matrix entry |
-| Usage + token counts | spec: (implicit via schema) | `Usage`, `TokenCountsBody/Resource` | `usage.token_counts` | server + sdk | needs registry/matrix entry |
-| Request metadata + identity | spec: (schema-only) | `metadata`, `user`, `safety_identifier`, `prompt_cache_*`, `store`, `background` | `policy.request_identifiers`, `model.prompt_cache`, `openresponses.request_fidelity` | server + cli_h + cli_i + sdk | needs registry/matrix entry |
-| Extensions (items/events/schemas) | spec: Extending Open Responses | extension-prefixed items/events, schema extensions | `openresponses.extensions`, `extensions.*` | server + tui + mcp | needs registry/matrix entry |
+| Transport + SSE invariants | spec: HTTP Requests/Responses/Streaming | `paths/responses.json` (streaming events) | `execution.json_stream`, `session.stream_events`, `openresponses.streaming_fidelity` | server + cli_h + cli_i + sdk | registry: present; impl: partial (provider_event + output_text_delta) |
+| Response lifecycle + statuses | spec: State machines, Streaming | `ResponseResource`, `ResponseStatusEnum`, response state events | `openresponses.response_fidelity`, `openresponses.streaming_fidelity` | server + cli_h + cli_i + sdk | registry: present; impl: partial (payload preserved; promotion pending) |
+| Items + required fields | spec: Items, Items are state machines | `ItemParam`, `ItemField`, `ItemStatusEnum`, `MessageRoleEnum` | `openresponses.item_lifecycle`, `openresponses.response_fidelity` | server + cli_h + cli_i + sdk | registry: present; impl: partial (validation + passthrough) |
+| Item streaming sequence | spec: Items are streamable | `ResponseOutputItemAdded/Done`, `ResponseContentPart*`, `ResponseOutputText*`, `ResponseReasoning*` | `openresponses.streaming_fidelity`, `session.stream_events` | server + cli_h + cli_i + sdk | registry: present; impl: partial (provider_event passthrough) |
+| Content unions (user vs model) | spec: Content | `InputTextContent*`, `InputImageContent*`, `InputFileContent*`, `InputVideoContent`, `OutputTextContent*`, `RefusalContent*`, `SummaryTextContent*` | `openresponses.content_union` | server + cli_h + cli_i + sdk | registry: present; impl: partial (request builder + validation) |
+| Reasoning items | spec: Reasoning | `ReasoningItemParam`, `Reasoning`, `ReasoningTextContent`, `ReasoningSummaryContentParam` | `openresponses.reasoning_items`, `model.thinking_levels` | server + cli_h + cli_i + sdk | registry: present; impl: partial (passthrough + validation) |
+| Errors + streaming failures | spec: Errors | `Error`, `ErrorPayload`, `ResponseFailedStreamingEvent` | `openresponses.errors`, `session.stream_events` | server + cli_h + cli_i + sdk | registry: present; impl: partial (passthrough + validation) |
+| Tools (external + internal) | spec: Tools | `ResponsesToolParam`, `Tool`, tool call items (function/web/file/computer/mcp/image/etc.) | `tool.registry`, `tool.schema`, `openresponses.tools_union` | server + cli_h + cli_i + sdk | registry: present; impl: partial (validation + provider_event; tool runtime semantics pending) |
+| `tool_choice` + `allowed_tools` | spec: tool_choice + allowed_tools | `ToolChoiceParam`, `AllowedToolsParam`, `ToolChoiceValueEnum` | `tool.choice`, `tool.allowed_tools`, `tool.permissions` | server + cli_h + cli_i + sdk | registry: present; impl: partial (validation; enforcement pending) |
+| Tool call limits | spec: (schema-only) | `max_tool_calls`, `parallel_tool_calls` | `tool.call_limits` | server + cli_h + cli_i + sdk | registry: present; impl: pending |
+| Conversation continuity | spec: previous_response_id | `previous_response_id`, `ResponsesConversationParam`, `Conversation` | `session.previous_response`, `thread.reference`, `context.compile` | server + cli_h + cli_i + sdk | registry: present; impl: pending |
+| Truncation policy | spec: truncation | `TruncationEnum` | `compaction.truncation_policy` | server + cli_h + cli_i + sdk | registry: present; impl: pending |
+| Service tier routing | spec: service_tier | `ServiceTierEnum` | `model.service_tier` | server + sdk | registry: present; impl: pending |
+| Model selection | spec: (schema-only) | `model` | `model.select` | server + cli_h + cli_i + sdk | registry: present; impl: pending |
+| Sampling controls | spec: (schema-only) | `temperature`, `top_p`, `presence_penalty`, `frequency_penalty`, `max_output_tokens`, `seed` | `model.sampling_params`, `model.max_output_tokens` | server + cli_h + cli_i + sdk | registry: present; impl: pending |
+| Response format + verbosity | spec: (schema-only) | `TextParam`, `TextFormatParam`, `JsonSchemaResponseFormatParam`, `ResponseFormat*` | `execution.output_format`, `execution.structured_output` | server + cli_h + cli_i + sdk | registry: present; impl: partial (validation only) |
+| Response include/extras | spec: (schema-only) | `IncludeEnum`, `top_logprobs` | `execution.response_include`, `model.logprobs` | server + cli_h + cli_i + sdk | registry: present; impl: pending |
+| Usage + token counts | spec: (implicit via schema) | `Usage`, `TokenCountsBody/Resource` | `usage.token_counts` | server + sdk | registry: present; impl: partial (validation only) |
+| Request metadata + identity | spec: (schema-only) | `metadata`, `user`, `safety_identifier`, `prompt_cache_*`, `store`, `background` | `policy.request_identifiers`, `model.prompt_cache`, `openresponses.request_fidelity` | server + cli_h + cli_i + sdk | registry: present; impl: partial (passthrough + validation) |
+| Extensions (items/events/schemas) | spec: Extending Open Responses | extension-prefixed items/events, schema extensions | `openresponses.extensions`, `extensions.*` | server + tui + mcp | registry: present; impl: pending |
 
 Next steps
 - Add missing capability ids to `capability_registry.md` and update surface parity.

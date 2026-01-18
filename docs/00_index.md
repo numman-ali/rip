@@ -15,7 +15,7 @@ Navigation
 - Event frame schema: docs/03_contracts/event_frames.md
 - Capability contract + registry: docs/03_contracts/capabilities.md
 - Capability registry (source of truth): docs/03_contracts/capability_registry.md
-- OpenResponses compliance map: docs/03_contracts/openresponses_compliance.md
+- OpenResponses coverage map: docs/03_contracts/openresponses_coverage.md
 - OpenResponses capability map: docs/03_contracts/openresponses_capability_map.md
 - CLI and server usage model: docs/04_execution/
 - Quality gates (tests, benchmarks): docs/05_quality/
@@ -23,7 +23,7 @@ Navigation
 - Surface parity gates: docs/05_quality/surface-parity.md
 - Decision log (ADRs): docs/06_decisions/
 - Task cards by phase: docs/07_tasks/
-- OpenResponses compliance checklist: docs/07_tasks/openresponses_compliance.md
+- OpenResponses coverage checklist: docs/07_tasks/openresponses_coverage.md
 
 Status
 - Phase 1: foundation (kernel, adapters, tools, workspace, CLI, server, benchmarks)

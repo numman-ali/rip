@@ -1,4 +1,4 @@
-# OpenResponses Compliance Map
+# OpenResponses Coverage Map
 
 Summary
 - Source repo: `temp/openresponses` (local vendor).
@@ -10,6 +10,7 @@ Summary
 - Input item variants: 25 (from `ItemParam.json`).
 - Output item variants: 23 (from `ItemField.json`).
 - Inventory artifacts: `schemas/openresponses/schema_inventory.json` (full schema + variant counts) and `schemas/openresponses/streaming_event_type_map.json` (SSE event type map).
+- Product intent: treat OpenResponses as a full capability surface at the provider boundary; schema validation is evidence, but capability ownership + parity is the work product.
 
 Sources reviewed
 - `temp/openresponses/README.md`
@@ -33,7 +34,41 @@ Mapping rules (Phase 1)
 - Internal frames are emitted for a subset (session + text/tool deltas); all other events remain provider-only until explicitly promoted.
 - No OpenResponses fields/events are dropped at the provider boundary.
 
-Implementation status (current)
+## Capability ownership (canonical)
+
+This section is the product-level mapping: every OpenResponses concept must be owned by one or more internal capability ids (and surfaced or explicitly gap-tracked).
+
+Primary OpenResponses boundary capabilities
+- `openresponses.request_fidelity`: preserve/pass-through all `CreateResponseBody` fields.
+- `openresponses.response_fidelity`: preserve/pass-through full `ResponseResource` + output items.
+- `openresponses.streaming_fidelity`: preserve/pass-through full SSE event stream (`event` == payload `type`, `[DONE]`, ordering, unknown events safe).
+- `openresponses.item_lifecycle`: item required fields + status semantics (`in_progress`/`incomplete`/`completed`) and stream sequencing rules.
+- `openresponses.content_union`: user/model content unions (text/image/file/video/refusal/summary).
+- `openresponses.reasoning_items`: reasoning item payloads (`content`/`encrypted_content`/`summary`) and related stream events.
+- `openresponses.tools_union`: full tool/tool_choice unions and tool-call item variants.
+- `openresponses.errors`: error payloads + `response.failed`/`error` events.
+- `openresponses.extensions`: vendor-prefixed items/events + schema extensions (unknown-safe).
+
+Supporting (non-OpenResponses) capabilities referenced by the spec
+- `session.previous_response`: `previous_response_id` semantics and continuity.
+- `execution.json_stream`: streaming mode on/off + JSON streaming output.
+- `execution.stream_options`: stream options that control extra emissions.
+- `execution.response_include`: include/extras (logprobs, sources, tool outputs, etc.).
+- `execution.structured_output`: JSON Schema response formats.
+- `tool.choice`: `tool_choice` policy (`auto`/`required`/`none`/forced tool).
+- `tool.allowed_tools`: `allowed_tools` enforcement.
+- `tool.call_limits`: `max_tool_calls`/`parallel_tool_calls` limits.
+- `model.select`: provider model selection (`model` string).
+- `model.sampling_params`: `temperature`/`top_p`/penalties/seed controls.
+- `model.max_output_tokens`: `max_output_tokens`.
+- `model.logprobs`: `top_logprobs` + token logprobs.
+- `model.prompt_cache`: prompt cache key + retention.
+- `model.service_tier`: `service_tier` hint.
+- `usage.token_counts`: `usage` and token-count shapes.
+- `compaction.truncation_policy`: `truncation` policy.
+- `policy.request_identifiers`: `user` + `safety_identifier`.
+
+## Coverage evidence (current)
 - Provider adapter validates streaming events against the split `paths/responses.json` schema and embedded `response` objects against split component schemas.
 - Split schemas validate all 58 streaming event variants and 23 output item variants; bundled OpenAPI remains partial (24/58 streaming events, 4/23 output items).
 - Provider adapter emits `output_text_delta` frames for `response.output_text.delta` events alongside `provider_event` frames.
@@ -47,9 +82,9 @@ Implementation status (current)
 - Split schema inventory and SSE event type map captured in `schemas/openresponses/` and reflected in the tables below.
 - Requests are JSON-only per spec; form-encoded bodies are not supported (ADR-0002).
 - Bundled OpenAPI schema currently includes 102 component schemas; the split OpenResponses schema defines 412 component schemas. Missing schemas are tracked in the checklist.
-- Split schemas + additive patches are authoritative; the filter manifest represents a reduced allowlist and is not a compliance target.
+- Split schemas + additive patches are authoritative; the filter manifest represents a reduced allowlist and is not a coverage target.
 
-Doc review notes (normative requirements)
+Spec requirements (normative)
 
 Specification (`temp/openresponses/src/pages/specification.mdx`)
 - Requests MUST use HTTP with `Authorization` + `Content-Type` headers; request bodies MUST be `application/json`.
@@ -75,8 +110,8 @@ Specification (`temp/openresponses/src/pages/specification.mdx`)
 Reference (`temp/openresponses/src/pages/reference.mdx`)
 - `/v1/responses` request bodies are documented as JSON or form-encoded; response bodies as JSON or SSE.
 
-Compliance (`temp/openresponses/src/pages/compliance.mdx`)
-- Acceptance tests validate API responses against the OpenAPI schema.
+Upstream acceptance tests (`temp/openresponses/src/pages/compliance.mdx`)
+- The upstream project provides acceptance tests that validate API responses against the OpenAPI schema.
 
 README/index/changelog/governance
 - High-level positioning and project governance; no additional protocol requirements.
@@ -85,151 +120,151 @@ Doc discrepancies (resolved)
 - Spec says request bodies MUST be `application/json`, while reference allows `application/x-www-form-urlencoded`. Decision: enforce JSON-only (ADR-0002).
 
 ## Additive patch schemas
-| schema | purpose | mapping |
-| --- | --- | --- |
-| `InputVideoContent` | Adds `input_video` content blocks to message content unions. | validated (bundled OpenAPI) |
-| `JsonSchemaResponseFormatParam` | Adds JSON Schema response format support. | validated (bundled OpenAPI) |
-| `TextFormatParam` | Adds `json_schema` format option to text formats. | validated (bundled OpenAPI) |
+| schema | purpose | capability owner | coverage evidence |
+| --- | --- | --- | --- |
+| `InputVideoContent` | Adds `input_video` content blocks to message content unions. | `openresponses.content_union` | covered (bundled OpenAPI) |
+| `JsonSchemaResponseFormatParam` | Adds JSON Schema response format support. | `execution.structured_output` | covered (bundled OpenAPI) |
+| `TextFormatParam` | Adds `json_schema` format option to text formats. | `execution.output_format` | covered (bundled OpenAPI) |
 
 ## CreateResponseBody fields
-| field | required |
-| --- | --- |
-| `background` | no |
-| `conversation` | no |
-| `frequency_penalty` | no |
-| `include` | no |
-| `input` | no |
-| `instructions` | no |
-| `max_output_tokens` | no |
-| `max_tool_calls` | no |
-| `metadata` | no |
-| `model` | no |
-| `parallel_tool_calls` | no |
-| `presence_penalty` | no |
-| `previous_response_id` | no |
-| `prompt_cache_key` | no |
-| `prompt_cache_retention` | no |
-| `reasoning` | no |
-| `safety_identifier` | no |
-| `service_tier` | no |
-| `store` | no |
-| `stream` | no |
-| `stream_options` | no |
-| `temperature` | no |
-| `text` | no |
-| `tool_choice` | no |
-| `tools` | no |
-| `top_logprobs` | no |
-| `top_p` | no |
-| `truncation` | no |
-| `user` | no |
+| field | required | capability owner(s) |
+| --- | --- | --- |
+| `background` | no | `openresponses.request_fidelity` |
+| `conversation` | no | `thread.reference`, `openresponses.request_fidelity` |
+| `frequency_penalty` | no | `model.sampling_params` |
+| `include` | no | `execution.response_include` |
+| `input` | no | `openresponses.content_union`, `openresponses.request_fidelity` |
+| `instructions` | no | `context.compile`, `openresponses.request_fidelity` |
+| `max_output_tokens` | no | `model.max_output_tokens` |
+| `max_tool_calls` | no | `tool.call_limits` |
+| `metadata` | no | `openresponses.request_fidelity` |
+| `model` | no | `model.select` |
+| `parallel_tool_calls` | no | `tool.call_limits` |
+| `presence_penalty` | no | `model.sampling_params` |
+| `previous_response_id` | no | `session.previous_response` |
+| `prompt_cache_key` | no | `model.prompt_cache` |
+| `prompt_cache_retention` | no | `model.prompt_cache` |
+| `reasoning` | no | `model.thinking_levels`, `openresponses.reasoning_items` |
+| `safety_identifier` | no | `policy.request_identifiers` |
+| `service_tier` | no | `model.service_tier` |
+| `store` | no | `openresponses.request_fidelity` |
+| `stream` | no | `execution.json_stream` |
+| `stream_options` | no | `execution.stream_options` |
+| `temperature` | no | `model.sampling_params` |
+| `text` | no | `execution.output_format`, `execution.structured_output` |
+| `tool_choice` | no | `tool.choice`, `tool.allowed_tools` |
+| `tools` | no | `tool.registry`, `tool.schema`, `openresponses.tools_union` |
+| `top_logprobs` | no | `model.logprobs` |
+| `top_p` | no | `model.sampling_params` |
+| `truncation` | no | `compaction.truncation_policy` |
+| `user` | no | `policy.request_identifiers` |
 
 ## ResponseResource fields
-| field | required |
-| --- | --- |
-| `background` | yes |
-| `billing` | no |
-| `completed_at` | yes |
-| `context_edits` | no |
-| `conversation` | no |
-| `cost_token` | no |
-| `created_at` | yes |
-| `error` | yes |
-| `frequency_penalty` | yes |
-| `id` | yes |
-| `incomplete_details` | yes |
-| `input` | no |
-| `instructions` | yes |
-| `max_output_tokens` | yes |
-| `max_tool_calls` | yes |
-| `metadata` | yes |
-| `model` | yes |
-| `next_response_ids` | no |
-| `object` | yes |
-| `output` | yes |
-| `parallel_tool_calls` | yes |
-| `presence_penalty` | yes |
-| `previous_response_id` | yes |
-| `prompt_cache_key` | yes |
-| `prompt_cache_retention` | no |
-| `reasoning` | yes |
-| `safety_identifier` | yes |
-| `service_tier` | yes |
-| `status` | yes |
-| `store` | yes |
-| `temperature` | yes |
-| `text` | yes |
-| `tool_choice` | yes |
-| `tools` | yes |
-| `top_logprobs` | yes |
-| `top_p` | yes |
-| `truncation` | yes |
-| `usage` | yes |
-| `user` | yes |
+| field | required | capability owner(s) |
+| --- | --- | --- |
+| `background` | yes | `openresponses.response_fidelity` |
+| `billing` | no | `openresponses.response_fidelity` |
+| `completed_at` | yes | `openresponses.response_fidelity` |
+| `context_edits` | no | `context.compile`, `openresponses.response_fidelity` |
+| `conversation` | no | `thread.reference`, `openresponses.response_fidelity` |
+| `cost_token` | no | `openresponses.response_fidelity` |
+| `created_at` | yes | `openresponses.response_fidelity` |
+| `error` | yes | `openresponses.errors` |
+| `frequency_penalty` | yes | `model.sampling_params` |
+| `id` | yes | `openresponses.response_fidelity` |
+| `incomplete_details` | yes | `openresponses.item_lifecycle`, `openresponses.response_fidelity` |
+| `input` | no | `openresponses.response_fidelity` |
+| `instructions` | yes | `openresponses.response_fidelity` |
+| `max_output_tokens` | yes | `model.max_output_tokens` |
+| `max_tool_calls` | yes | `tool.call_limits` |
+| `metadata` | yes | `openresponses.response_fidelity` |
+| `model` | yes | `model.select` |
+| `next_response_ids` | no | `session.previous_response`, `openresponses.response_fidelity` |
+| `object` | yes | `openresponses.response_fidelity` |
+| `output` | yes | `openresponses.response_fidelity` |
+| `parallel_tool_calls` | yes | `tool.call_limits` |
+| `presence_penalty` | yes | `model.sampling_params` |
+| `previous_response_id` | yes | `session.previous_response` |
+| `prompt_cache_key` | yes | `model.prompt_cache` |
+| `prompt_cache_retention` | no | `model.prompt_cache` |
+| `reasoning` | yes | `model.thinking_levels`, `openresponses.reasoning_items` |
+| `safety_identifier` | yes | `policy.request_identifiers` |
+| `service_tier` | yes | `model.service_tier` |
+| `status` | yes | `openresponses.item_lifecycle`, `openresponses.response_fidelity` |
+| `store` | yes | `openresponses.response_fidelity` |
+| `temperature` | yes | `model.sampling_params` |
+| `text` | yes | `execution.output_format`, `execution.structured_output` |
+| `tool_choice` | yes | `tool.choice`, `tool.allowed_tools` |
+| `tools` | yes | `tool.registry`, `tool.schema`, `openresponses.tools_union` |
+| `top_logprobs` | yes | `model.logprobs` |
+| `top_p` | yes | `model.sampling_params` |
+| `truncation` | yes | `compaction.truncation_policy` |
+| `usage` | yes | `usage.token_counts` |
+| `user` | yes | `policy.request_identifiers` |
 
 ## Tool param variants (ResponsesToolParam)
-| tool type | schema | request validation |
-| --- | --- | --- |
-| `function` | `FunctionToolParam.json` | implemented |
-| `code_interpreter` | `CodeInterpreterToolParam.json` | implemented |
-| `custom` | `CustomToolParam.json` | implemented |
-| `web_search` | `WebSearchToolParam.json` | implemented |
-| `web_search_2025_08_26` | `WebSearchToolParam_2025_08_14Param.json` | implemented |
-| `web_search_ga` | `WebSearchGADeprecatedToolParam.json` | implemented |
-| `web_search_preview` | `WebSearchPreviewToolParam.json` | implemented |
-| `web_search_preview_2025_03_11` | `WebSearchPreviewToolParam_2025_03_11Param.json` | implemented |
-| `image_generation` | `ImageGenToolParam.json` | implemented |
-| `mcp` | `MCPToolParam.json` | implemented |
-| `file_search` | `FileSearchToolParam.json` | implemented |
-| `computer-preview` | `ComputerToolParam.json` | implemented |
-| `computer_use_preview` | `ComputerUsePreviewToolParam.json` | implemented |
-| `local_shell` | `LocalShellToolParam.json` | implemented |
-| `shell` | `FunctionShellToolParam.json` | implemented |
-| `apply_patch` | `ApplyPatchToolParam.json` | implemented |
+| tool type | schema | capability owner(s) | coverage evidence |
+| --- | --- | --- | --- |
+| `function` | `FunctionToolParam.json` | `openresponses.tools_union`, `tool.schema` | covered (request validation) |
+| `code_interpreter` | `CodeInterpreterToolParam.json` | `openresponses.tools_union`, `tool.schema` | covered (request validation) |
+| `custom` | `CustomToolParam.json` | `openresponses.tools_union`, `tool.schema` | covered (request validation) |
+| `web_search` | `WebSearchToolParam.json` | `openresponses.tools_union`, `tool.schema` | covered (request validation) |
+| `web_search_2025_08_26` | `WebSearchToolParam_2025_08_14Param.json` | `openresponses.tools_union`, `tool.schema` | covered (request validation) |
+| `web_search_ga` | `WebSearchGADeprecatedToolParam.json` | `openresponses.tools_union`, `tool.schema` | covered (request validation) |
+| `web_search_preview` | `WebSearchPreviewToolParam.json` | `openresponses.tools_union`, `tool.schema` | covered (request validation) |
+| `web_search_preview_2025_03_11` | `WebSearchPreviewToolParam_2025_03_11Param.json` | `openresponses.tools_union`, `tool.schema` | covered (request validation) |
+| `image_generation` | `ImageGenToolParam.json` | `openresponses.tools_union`, `tool.schema` | covered (request validation) |
+| `mcp` | `MCPToolParam.json` | `openresponses.tools_union`, `tool.schema` | covered (request validation) |
+| `file_search` | `FileSearchToolParam.json` | `openresponses.tools_union`, `tool.schema` | covered (request validation) |
+| `computer-preview` | `ComputerToolParam.json` | `openresponses.tools_union`, `tool.schema` | covered (request validation) |
+| `computer_use_preview` | `ComputerUsePreviewToolParam.json` | `openresponses.tools_union`, `tool.schema` | covered (request validation) |
+| `local_shell` | `LocalShellToolParam.json` | `openresponses.tools_union`, `tool.schema` | covered (request validation) |
+| `shell` | `FunctionShellToolParam.json` | `openresponses.tools_union`, `tool.schema` | covered (request validation) |
+| `apply_patch` | `ApplyPatchToolParam.json` | `openresponses.tools_union`, `tool.schema` | covered (request validation) |
 
 ### Tool param required fields
-| schema | required fields | notes |
-| --- | --- | --- |
-| `CodeInterpreterToolParam.json` | `type`, `container` | `container` is string or `AutoCodeInterpreterToolParam` |
-| `FunctionToolParam.json` | `type`, `name` |  |
-| `CustomToolParam.json` | `type`, `name` |  |
-| `WebSearchToolParam.json` | `type` |  |
-| `WebSearchToolParam_2025_08_14Param.json` | `type` |  |
-| `WebSearchGADeprecatedToolParam.json` | `type` |  |
-| `WebSearchPreviewToolParam.json` | `type` |  |
-| `WebSearchPreviewToolParam_2025_03_11Param.json` | `type` |  |
-| `ImageGenToolParam.json` | `type` |  |
-| `MCPToolParam.json` | `type`, `server_label` |  |
-| `FileSearchToolParam.json` | `type`, `vector_store_ids` |  |
-| `ComputerToolParam.json` | `type`, `display_width`, `display_height`, `environment` | `environment` is `ComputerEnvironment` |
-| `ComputerUsePreviewToolParam.json` | `type`, `display_width`, `display_height`, `environment` | `environment` is `ComputerEnvironment` |
-| `LocalShellToolParam.json` | `type` |  |
-| `FunctionShellToolParam.json` | `type` |  |
-| `ApplyPatchToolParam.json` | `type` |  |
+| schema | required fields | capability owner(s) | notes |
+| --- | --- | --- | --- |
+| `CodeInterpreterToolParam.json` | `type`, `container` | `openresponses.tools_union` | `container` is string or `AutoCodeInterpreterToolParam` |
+| `FunctionToolParam.json` | `type`, `name` | `openresponses.tools_union` |  |
+| `CustomToolParam.json` | `type`, `name` | `openresponses.tools_union` |  |
+| `WebSearchToolParam.json` | `type` | `openresponses.tools_union` |  |
+| `WebSearchToolParam_2025_08_14Param.json` | `type` | `openresponses.tools_union` |  |
+| `WebSearchGADeprecatedToolParam.json` | `type` | `openresponses.tools_union` |  |
+| `WebSearchPreviewToolParam.json` | `type` | `openresponses.tools_union` |  |
+| `WebSearchPreviewToolParam_2025_03_11Param.json` | `type` | `openresponses.tools_union` |  |
+| `ImageGenToolParam.json` | `type` | `openresponses.tools_union` |  |
+| `MCPToolParam.json` | `type`, `server_label` | `openresponses.tools_union` |  |
+| `FileSearchToolParam.json` | `type`, `vector_store_ids` | `openresponses.tools_union` |  |
+| `ComputerToolParam.json` | `type`, `display_width`, `display_height`, `environment` | `openresponses.tools_union` | `environment` is `ComputerEnvironment` |
+| `ComputerUsePreviewToolParam.json` | `type`, `display_width`, `display_height`, `environment` | `openresponses.tools_union` | `environment` is `ComputerEnvironment` |
+| `LocalShellToolParam.json` | `type` | `openresponses.tools_union` |  |
+| `FunctionShellToolParam.json` | `type` | `openresponses.tools_union` |  |
+| `ApplyPatchToolParam.json` | `type` | `openresponses.tools_union` |  |
 
 ## Tool choice variants
-| ToolChoiceParam variant | schema | status |
-| --- | --- | --- |
-| value enum | `ToolChoiceValueEnum.json` | implemented |
-| allowed tools | `AllowedToolsParam.json` | implemented |
-| specific tool | `SpecificToolChoiceParam.json` | implemented |
+| ToolChoiceParam variant | schema | capability owner(s) | coverage evidence |
+| --- | --- | --- | --- |
+| value enum | `ToolChoiceValueEnum.json` | `tool.choice` | covered (request validation) |
+| allowed tools | `AllowedToolsParam.json` | `tool.allowed_tools` | covered (request validation) |
+| specific tool | `SpecificToolChoiceParam.json` | `tool.choice` | covered (request validation) |
 
 ### Specific tool choices (SpecificToolChoiceParam)
-| tool type | schema | required fields | status |
-| --- | --- | --- | --- |
-| `file_search` | `SpecificFileSearchParam.json` | `type` | implemented |
-| `web_search` | `SpecificWebSearchParam.json` | `type` | implemented |
-| `web_search_preview` | `SpecificWebSearchPreviewParam.json` | `type` | implemented |
-| `image_generation` | `SpecificImageGenParam.json` | `type` | implemented |
-| `computer-preview` | `SpecificComputerParam.json` | `type` | implemented |
-| `computer_use_preview` | `SpecificComputerPreviewParam.json` | `type` | implemented |
-| `code_interpreter` | `SpecificCodeInterpreterParam.json` | `type` | implemented |
-| `function` | `SpecificFunctionParam.json` | `type`, `name` | implemented |
-| `mcp` | `SpecificMCPFunctionParam.json` | `type`, `server_label` | implemented |
-| `local_shell` | `SpecificLocalShellParam.json` | `type` | implemented |
-| `shell` | `SpecificFunctionShellParam.json` | `type` | implemented |
-| `custom` | `SpecificCustomToolParam.json` | `type`, `name` | implemented |
-| `apply_patch` | `SpecificApplyPatchParam.json` | `type` | implemented |
+| tool type | schema | required fields | capability owner(s) | coverage evidence |
+| --- | --- | --- | --- | --- |
+| `file_search` | `SpecificFileSearchParam.json` | `type` | `tool.choice` | covered (request validation) |
+| `web_search` | `SpecificWebSearchParam.json` | `type` | `tool.choice` | covered (request validation) |
+| `web_search_preview` | `SpecificWebSearchPreviewParam.json` | `type` | `tool.choice` | covered (request validation) |
+| `image_generation` | `SpecificImageGenParam.json` | `type` | `tool.choice` | covered (request validation) |
+| `computer-preview` | `SpecificComputerParam.json` | `type` | `tool.choice` | covered (request validation) |
+| `computer_use_preview` | `SpecificComputerPreviewParam.json` | `type` | `tool.choice` | covered (request validation) |
+| `code_interpreter` | `SpecificCodeInterpreterParam.json` | `type` | `tool.choice` | covered (request validation) |
+| `function` | `SpecificFunctionParam.json` | `type`, `name` | `tool.choice` | covered (request validation) |
+| `mcp` | `SpecificMCPFunctionParam.json` | `type`, `server_label` | `tool.choice` | covered (request validation) |
+| `local_shell` | `SpecificLocalShellParam.json` | `type` | `tool.choice` | covered (request validation) |
+| `shell` | `SpecificFunctionShellParam.json` | `type` | `tool.choice` | covered (request validation) |
+| `custom` | `SpecificCustomToolParam.json` | `type`, `name` | `tool.choice` | covered (request validation) |
+| `apply_patch` | `SpecificApplyPatchParam.json` | `type` | `tool.choice` | covered (request validation) |
 
 ## Error schemas
 | schema | required fields | notes |
@@ -241,68 +276,76 @@ Doc discrepancies (resolved)
 | `MCPToolExecutionError.json` | `type`, `content` | `type` enum: `mcp_tool_execution_error` |
 
 ## Streaming events (SSE)
-| event type | schema | mapping |
+Capability owner: `openresponses.streaming_fidelity`.
+
+Internal frames
+- Every SSE event is emitted as a `provider_event` frame (payload preserved, unknown-safe).
+- `response.output_text.delta` also emits a derived `output_text_delta` frame (no payload loss; full event remains in `provider_event`).
+
+| event type | schema | internal frames |
 | --- | --- | --- |
-| `error` | `ErrorStreamingEvent.json` | provider_event (validated) |
-| `image_edit.completed` | `ImageEditCompletedStreamingEvent.json` | provider_event (validated) |
-| `image_edit.partial_image` | `ImageEditPartialImageStreamingEvent.json` | provider_event (validated) |
-| `image_generation.completed` | `ImageGenerationCompletedStreamingEvent.json` | provider_event (validated) |
-| `image_generation.partial_image` | `ImageGenerationPartialImageStreamingEvent.json` | provider_event (validated) |
-| `response.apply_patch_call_operation_diff.delta` | `ResponseApplyPatchCallOperationDiffDeltaStreamingEvent.json` | provider_event (validated) |
-| `response.apply_patch_call_operation_diff.done` | `ResponseApplyPatchCallOperationDiffDoneStreamingEvent.json` | provider_event (validated) |
-| `response.code_interpreter_call.completed` | `ResponseCodeInterpreterCallCompletedStreamingEvent.json` | provider_event (validated) |
-| `response.code_interpreter_call.in_progress` | `ResponseCodeInterpreterCallInProgressStreamingEvent.json` | provider_event (validated) |
-| `response.code_interpreter_call.interpreting` | `ResponseCodeInterpreterCallInterpretingStreamingEvent.json` | provider_event (validated) |
-| `response.code_interpreter_call_code.delta` | `ResponseCodeInterpreterCallCodeDeltaStreamingEvent.json` | provider_event (validated) |
-| `response.code_interpreter_call_code.done` | `ResponseCodeInterpreterCallCodeDoneStreamingEvent.json` | provider_event (validated) |
-| `response.completed` | `ResponseCompletedStreamingEvent.json` | provider_event (validated) |
-| `response.content_part.added` | `ResponseContentPartAddedStreamingEvent.json` | provider_event (validated) |
-| `response.content_part.done` | `ResponseContentPartDoneStreamingEvent.json` | provider_event (validated) |
-| `response.created` | `ResponseCreatedStreamingEvent.json` | provider_event (validated) |
-| `response.custom_tool_call_input.delta` | `ResponseCustomToolCallInputDeltaStreamingEvent.json` | provider_event (validated) |
-| `response.custom_tool_call_input.done` | `ResponseCustomToolCallInputDoneStreamingEvent.json` | provider_event (validated) |
-| `response.failed` | `ResponseFailedStreamingEvent.json` | provider_event (validated) |
-| `response.file_search_call.completed` | `ResponseFileSearchCallCompletedStreamingEvent.json` | provider_event (validated) |
-| `response.file_search_call.in_progress` | `ResponseFileSearchCallInProgressStreamingEvent.json` | provider_event (validated) |
-| `response.file_search_call.searching` | `ResponseFileSearchCallSearchingStreamingEvent.json` | provider_event (validated) |
-| `response.function_call_arguments.delta` | `ResponseFunctionCallArgumentsDeltaStreamingEvent.json` | provider_event (validated) |
-| `response.function_call_arguments.done` | `ResponseFunctionCallArgumentsDoneStreamingEvent.json` | provider_event (validated) |
-| `response.image_generation_call.completed` | `ResponseImageGenCallCompletedStreamingEvent.json` | provider_event (validated) |
-| `response.image_generation_call.generating` | `ResponseImageGenCallGeneratingStreamingEvent.json` | provider_event (validated) |
-| `response.image_generation_call.in_progress` | `ResponseImageGenCallInProgressStreamingEvent.json` | provider_event (validated) |
-| `response.image_generation_call.partial_image` | `ResponseImageGenCallPartialImageStreamingEvent.json` | provider_event (validated) |
-| `response.in_progress` | `ResponseInProgressStreamingEvent.json` | provider_event (validated) |
-| `response.incomplete` | `ResponseIncompleteStreamingEvent.json` | provider_event (validated) |
-| `response.mcp_call.completed` | `ResponseMCPCallCompletedStreamingEvent.json` | provider_event (validated) |
-| `response.mcp_call.failed` | `ResponseMCPCallFailedStreamingEvent.json` | provider_event (validated) |
-| `response.mcp_call.in_progress` | `ResponseMCPCallInProgressStreamingEvent.json` | provider_event (validated) |
-| `response.mcp_call_arguments.delta` | `ResponseMCPCallArgumentsDeltaStreamingEvent.json` | provider_event (validated) |
-| `response.mcp_call_arguments.done` | `ResponseMCPCallArgumentsDoneStreamingEvent.json` | provider_event (validated) |
-| `response.mcp_list_tools.completed` | `ResponseMCPListToolsCompletedStreamingEvent.json` | provider_event (validated) |
-| `response.mcp_list_tools.failed` | `ResponseMCPListToolsFailedStreamingEvent.json` | provider_event (validated) |
-| `response.mcp_list_tools.in_progress` | `ResponseMCPListToolsInProgressStreamingEvent.json` | provider_event (validated) |
-| `response.output_item.added` | `ResponseOutputItemAddedStreamingEvent.json` | provider_event (validated) |
-| `response.output_item.done` | `ResponseOutputItemDoneStreamingEvent.json` | provider_event (validated) |
-| `response.output_text.annotation.added` | `ResponseOutputTextAnnotationAddedStreamingEvent.json` | provider_event (validated) |
-| `response.output_text.delta` | `ResponseOutputTextDeltaStreamingEvent.json` | provider_event (validated) |
-| `response.output_text.done` | `ResponseOutputTextDoneStreamingEvent.json` | provider_event (validated) |
-| `response.queued` | `ResponseQueuedStreamingEvent.json` | provider_event (validated) |
-| `response.reasoning.delta` | `ResponseReasoningDeltaStreamingEvent.json` | provider_event (validated) |
-| `response.reasoning.done` | `ResponseReasoningDoneStreamingEvent.json` | provider_event (validated) |
-| `response.reasoning_summary_part.added` | `ResponseReasoningSummaryPartAddedStreamingEvent.json` | provider_event (validated) |
-| `response.reasoning_summary_part.done` | `ResponseReasoningSummaryPartDoneStreamingEvent.json` | provider_event (validated) |
-| `response.reasoning_summary_text.delta` | `ResponseReasoningSummaryDeltaStreamingEvent.json` | provider_event (validated) |
-| `response.reasoning_summary_text.done` | `ResponseReasoningSummaryDoneStreamingEvent.json` | provider_event (validated) |
-| `response.refusal.delta` | `ResponseRefusalDeltaStreamingEvent.json` | provider_event (validated) |
-| `response.refusal.done` | `ResponseRefusalDoneStreamingEvent.json` | provider_event (validated) |
-| `response.shell_call_command.added` | `ResponseShellCallCommandAddedStreamingEvent.json` | provider_event (validated) |
-| `response.shell_call_command.delta` | `ResponseShellCallCommandDeltaStreamingEvent.json` | provider_event (validated) |
-| `response.shell_call_command.done` | `ResponseShellCallCommandDoneStreamingEvent.json` | provider_event (validated) |
-| `response.web_search_call.completed` | `ResponseWebSearchCallCompletedStreamingEvent.json` | provider_event (validated) |
-| `response.web_search_call.in_progress` | `ResponseWebSearchCallInProgressStreamingEvent.json` | provider_event (validated) |
-| `response.web_search_call.searching` | `ResponseWebSearchCallSearchingStreamingEvent.json` | provider_event (validated) |
+| `error` | `ErrorStreamingEvent.json` | provider_event |
+| `image_edit.completed` | `ImageEditCompletedStreamingEvent.json` | provider_event |
+| `image_edit.partial_image` | `ImageEditPartialImageStreamingEvent.json` | provider_event |
+| `image_generation.completed` | `ImageGenerationCompletedStreamingEvent.json` | provider_event |
+| `image_generation.partial_image` | `ImageGenerationPartialImageStreamingEvent.json` | provider_event |
+| `response.apply_patch_call_operation_diff.delta` | `ResponseApplyPatchCallOperationDiffDeltaStreamingEvent.json` | provider_event |
+| `response.apply_patch_call_operation_diff.done` | `ResponseApplyPatchCallOperationDiffDoneStreamingEvent.json` | provider_event |
+| `response.code_interpreter_call.completed` | `ResponseCodeInterpreterCallCompletedStreamingEvent.json` | provider_event |
+| `response.code_interpreter_call.in_progress` | `ResponseCodeInterpreterCallInProgressStreamingEvent.json` | provider_event |
+| `response.code_interpreter_call.interpreting` | `ResponseCodeInterpreterCallInterpretingStreamingEvent.json` | provider_event |
+| `response.code_interpreter_call_code.delta` | `ResponseCodeInterpreterCallCodeDeltaStreamingEvent.json` | provider_event |
+| `response.code_interpreter_call_code.done` | `ResponseCodeInterpreterCallCodeDoneStreamingEvent.json` | provider_event |
+| `response.completed` | `ResponseCompletedStreamingEvent.json` | provider_event |
+| `response.content_part.added` | `ResponseContentPartAddedStreamingEvent.json` | provider_event |
+| `response.content_part.done` | `ResponseContentPartDoneStreamingEvent.json` | provider_event |
+| `response.created` | `ResponseCreatedStreamingEvent.json` | provider_event |
+| `response.custom_tool_call_input.delta` | `ResponseCustomToolCallInputDeltaStreamingEvent.json` | provider_event |
+| `response.custom_tool_call_input.done` | `ResponseCustomToolCallInputDoneStreamingEvent.json` | provider_event |
+| `response.failed` | `ResponseFailedStreamingEvent.json` | provider_event |
+| `response.file_search_call.completed` | `ResponseFileSearchCallCompletedStreamingEvent.json` | provider_event |
+| `response.file_search_call.in_progress` | `ResponseFileSearchCallInProgressStreamingEvent.json` | provider_event |
+| `response.file_search_call.searching` | `ResponseFileSearchCallSearchingStreamingEvent.json` | provider_event |
+| `response.function_call_arguments.delta` | `ResponseFunctionCallArgumentsDeltaStreamingEvent.json` | provider_event |
+| `response.function_call_arguments.done` | `ResponseFunctionCallArgumentsDoneStreamingEvent.json` | provider_event |
+| `response.image_generation_call.completed` | `ResponseImageGenCallCompletedStreamingEvent.json` | provider_event |
+| `response.image_generation_call.generating` | `ResponseImageGenCallGeneratingStreamingEvent.json` | provider_event |
+| `response.image_generation_call.in_progress` | `ResponseImageGenCallInProgressStreamingEvent.json` | provider_event |
+| `response.image_generation_call.partial_image` | `ResponseImageGenCallPartialImageStreamingEvent.json` | provider_event |
+| `response.in_progress` | `ResponseInProgressStreamingEvent.json` | provider_event |
+| `response.incomplete` | `ResponseIncompleteStreamingEvent.json` | provider_event |
+| `response.mcp_call.completed` | `ResponseMCPCallCompletedStreamingEvent.json` | provider_event |
+| `response.mcp_call.failed` | `ResponseMCPCallFailedStreamingEvent.json` | provider_event |
+| `response.mcp_call.in_progress` | `ResponseMCPCallInProgressStreamingEvent.json` | provider_event |
+| `response.mcp_call_arguments.delta` | `ResponseMCPCallArgumentsDeltaStreamingEvent.json` | provider_event |
+| `response.mcp_call_arguments.done` | `ResponseMCPCallArgumentsDoneStreamingEvent.json` | provider_event |
+| `response.mcp_list_tools.completed` | `ResponseMCPListToolsCompletedStreamingEvent.json` | provider_event |
+| `response.mcp_list_tools.failed` | `ResponseMCPListToolsFailedStreamingEvent.json` | provider_event |
+| `response.mcp_list_tools.in_progress` | `ResponseMCPListToolsInProgressStreamingEvent.json` | provider_event |
+| `response.output_item.added` | `ResponseOutputItemAddedStreamingEvent.json` | provider_event |
+| `response.output_item.done` | `ResponseOutputItemDoneStreamingEvent.json` | provider_event |
+| `response.output_text.annotation.added` | `ResponseOutputTextAnnotationAddedStreamingEvent.json` | provider_event |
+| `response.output_text.delta` | `ResponseOutputTextDeltaStreamingEvent.json` | provider_event + output_text_delta |
+| `response.output_text.done` | `ResponseOutputTextDoneStreamingEvent.json` | provider_event |
+| `response.queued` | `ResponseQueuedStreamingEvent.json` | provider_event |
+| `response.reasoning.delta` | `ResponseReasoningDeltaStreamingEvent.json` | provider_event |
+| `response.reasoning.done` | `ResponseReasoningDoneStreamingEvent.json` | provider_event |
+| `response.reasoning_summary_part.added` | `ResponseReasoningSummaryPartAddedStreamingEvent.json` | provider_event |
+| `response.reasoning_summary_part.done` | `ResponseReasoningSummaryPartDoneStreamingEvent.json` | provider_event |
+| `response.reasoning_summary_text.delta` | `ResponseReasoningSummaryDeltaStreamingEvent.json` | provider_event |
+| `response.reasoning_summary_text.done` | `ResponseReasoningSummaryDoneStreamingEvent.json` | provider_event |
+| `response.refusal.delta` | `ResponseRefusalDeltaStreamingEvent.json` | provider_event |
+| `response.refusal.done` | `ResponseRefusalDoneStreamingEvent.json` | provider_event |
+| `response.shell_call_command.added` | `ResponseShellCallCommandAddedStreamingEvent.json` | provider_event |
+| `response.shell_call_command.delta` | `ResponseShellCallCommandDeltaStreamingEvent.json` | provider_event |
+| `response.shell_call_command.done` | `ResponseShellCallCommandDoneStreamingEvent.json` | provider_event |
+| `response.web_search_call.completed` | `ResponseWebSearchCallCompletedStreamingEvent.json` | provider_event |
+| `response.web_search_call.in_progress` | `ResponseWebSearchCallInProgressStreamingEvent.json` | provider_event |
+| `response.web_search_call.searching` | `ResponseWebSearchCallSearchingStreamingEvent.json` | provider_event |
 
 ## Input item variants
+Capability owner: `openresponses.request_fidelity` + `openresponses.content_union` + `openresponses.tools_union`.
+
 | item type | schema | mapping |
 | --- | --- | --- |
 | `apply_patch_call` | `ApplyPatchToolCallItemParam.json` | provider_request (mapped; runtime mapping pending) |
@@ -332,43 +375,45 @@ Doc discrepancies (resolved)
 | `web_search_call` | `WebSearchCallItemParam.json` | provider_request (mapped; runtime mapping pending) |
 
 ## Output item variants
+Capability owner: `openresponses.response_fidelity` + `openresponses.item_lifecycle` + `openresponses.tools_union`.
+
 | item type | schema | mapping |
 | --- | --- | --- |
-| `apply_patch_call` | `ApplyPatchToolCall.json` | provider_event (validated) |
-| `apply_patch_call_output` | `ApplyPatchToolCallOutput.json` | provider_event (validated) |
-| `code_interpreter_call` | `CodeInterpreterCall.json` | provider_event (validated) |
-| `compaction` | `CompactionBody.json` | provider_event (validated) |
-| `computer_call` | `ComputerCall.json` | provider_event (validated) |
-| `computer_call_output` | `ComputerCallOutput.json` | provider_event (validated) |
-| `custom_tool_call` | `CustomToolCall.json` | provider_event (validated) |
-| `custom_tool_call_output` | `CustomToolCallOutput.json` | provider_event (validated) |
-| `file_search_call` | `FileSearchCall.json` | provider_event (validated) |
-| `function_call` | `FunctionCall.json` | provider_event (validated) |
-| `function_call_output` | `FunctionCallOutput.json` | provider_event (validated) |
-| `image_generation_call` | `ImageGenCall.json` | provider_event (validated) |
-| `local_shell_call` | `LocalShellCall.json` | provider_event (validated) |
-| `local_shell_call_output` | `LocalShellCallOutput.json` | provider_event (validated) |
-| `mcp_approval_request` | `MCPApprovalRequest.json` | provider_event (validated) |
-| `mcp_approval_response` | `MCPApprovalResponse.json` | provider_event (validated) |
-| `mcp_call` | `MCPToolCall.json` | provider_event (validated) |
-| `mcp_list_tools` | `MCPListTools.json` | provider_event (validated) |
-| `message` | `Message.json` | provider_event (validated) |
-| `reasoning` | `ReasoningBody.json` | provider_event (validated) |
-| `shell_call` | `FunctionShellCall.json` | provider_event (validated) |
-| `shell_call_output` | `FunctionShellCallOutput.json` | provider_event (validated) |
-| `web_search_call` | `WebSearchCall.json` | provider_event (validated) |
+| `apply_patch_call` | `ApplyPatchToolCall.json` | provider_event |
+| `apply_patch_call_output` | `ApplyPatchToolCallOutput.json` | provider_event |
+| `code_interpreter_call` | `CodeInterpreterCall.json` | provider_event |
+| `compaction` | `CompactionBody.json` | provider_event |
+| `computer_call` | `ComputerCall.json` | provider_event |
+| `computer_call_output` | `ComputerCallOutput.json` | provider_event |
+| `custom_tool_call` | `CustomToolCall.json` | provider_event |
+| `custom_tool_call_output` | `CustomToolCallOutput.json` | provider_event |
+| `file_search_call` | `FileSearchCall.json` | provider_event |
+| `function_call` | `FunctionCall.json` | provider_event |
+| `function_call_output` | `FunctionCallOutput.json` | provider_event |
+| `image_generation_call` | `ImageGenCall.json` | provider_event |
+| `local_shell_call` | `LocalShellCall.json` | provider_event |
+| `local_shell_call_output` | `LocalShellCallOutput.json` | provider_event |
+| `mcp_approval_request` | `MCPApprovalRequest.json` | provider_event |
+| `mcp_approval_response` | `MCPApprovalResponse.json` | provider_event |
+| `mcp_call` | `MCPToolCall.json` | provider_event |
+| `mcp_list_tools` | `MCPListTools.json` | provider_event |
+| `message` | `Message.json` | provider_event |
+| `reasoning` | `ReasoningBody.json` | provider_event |
+| `shell_call` | `FunctionShellCall.json` | provider_event |
+| `shell_call_output` | `FunctionShellCallOutput.json` | provider_event |
+| `web_search_call` | `WebSearchCall.json` | provider_event |
 
-## Schema index (all components)
+## Schema index (quality-gate coverage)
 
-This list is exhaustive and drives the task tracker in `docs/07_tasks/openresponses_compliance.md`.
+This list is exhaustive and drives the task tracker in `docs/07_tasks/openresponses_coverage.md`.
 
 Legend
 - `bundled`: schema is present in `schemas/openresponses/openapi.json`.
-- `validated`: schema is reachable from split streaming-event or ResponseResource validation (request validation is noted in `status`).
+- `covered`: schema is reachable from split streaming-event or ResponseResource validation (request-side coverage is noted in `status`).
 - `status`: mapping status in current codebase.
 
 ### Error schemas
-| schema | bundled | validated | status |
+| schema | bundled | covered | status |
 | --- | --- | --- | --- |
 | `Error` | yes | yes | provider_event |
 | `ErrorPayload` | yes | yes | provider_event |
@@ -377,7 +422,7 @@ Legend
 | `MCPToolExecutionError` | no | yes | pending |
 
 ### Input item params
-| schema | bundled | validated | status |
+| schema | bundled | covered | status |
 | --- | --- | --- | --- |
 | `ApplyPatchToolCallItemParam` | no | no | provider_request (validated) |
 | `ApplyPatchToolCallOutputItemParam` | no | no | provider_request (validated) |
@@ -406,7 +451,7 @@ Legend
 | `WebSearchCallItemParam` | no | no | provider_request (validated) |
 
 ### Other schemas
-| schema | bundled | validated | status |
+| schema | bundled | covered | status |
 | --- | --- | --- | --- |
 | `AllowedToolsParam` | yes | no | provider_request (validated) |
 | `Annotation` | yes | yes | provider_event (validated) |
@@ -688,24 +733,24 @@ Legend
 | `WebSearchToolParam_2025_08_14Param` | no | no | provider_request (validated) |
 
 ### Output item fields
-| schema | bundled | validated | status |
+| schema | bundled | covered | status |
 | --- | --- | --- | --- |
 | `ItemField` | yes | yes | provider_event |
 
 ### Request-related schemas
-| schema | bundled | validated | status |
+| schema | bundled | covered | status |
 | --- | --- | --- | --- |
 | `CreateResponseBody` | yes | no | provider_request (validated) |
 
 ### Response-related schemas
-| schema | bundled | validated | status |
+| schema | bundled | covered | status |
 | --- | --- | --- | --- |
 | `ResponseFormatDallE` | no | no | pending |
 | `ResponseResource` | yes | yes | provider_event |
 | `ResponsesConversationParam` | no | no | pending |
 
 ### Streaming events
-| schema | bundled | validated | status |
+| schema | bundled | covered | status |
 | --- | --- | --- | --- |
 | `ErrorStreamingEvent` | yes | yes | provider_event (validated) |
 | `ImageEditCompletedStreamingEvent` | no | yes | provider_event (validated) |
@@ -767,7 +812,7 @@ Legend
 | `ResponseWebSearchCallSearchingStreamingEvent` | no | yes | provider_event (validated) |
 
 ### Tool schemas
-| schema | bundled | validated | status |
+| schema | bundled | covered | status |
 | --- | --- | --- | --- |
 | `AllowedToolChoice` | yes | yes | pending |
 | `ApplyPatchTool` | no | yes | pending |

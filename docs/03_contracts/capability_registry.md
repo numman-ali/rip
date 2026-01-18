@@ -210,6 +210,7 @@ Rules
 ## Models & Providers
 | id | v | phase | cli_i | cli_h | server | sdk | tui | mcp | intent |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| model.select | v1 | P1 | planned | planned | planned | planned | planned | planned | Select the upstream provider model id/string. |
 | model.sampling_params | v1 | P1 | planned | planned | planned | planned | planned | planned | Temperature/top_p/penalties/seed sampling controls. |
 | model.max_output_tokens | v1 | P1 | planned | planned | planned | planned | planned | planned | Max output tokens per response. |
 | model.logprobs | v1 | P1 | planned | planned | planned | planned | planned | planned | Logprob emission for output tokens. |

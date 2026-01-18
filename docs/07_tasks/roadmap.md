@@ -13,14 +13,14 @@ How to use
 - Date-stamp moves between Now/Next/Later to preserve intent over time.
 
 Now
-- OpenResponses compliance map + exhaustive checklist [confirm spec]
-  - Refs: `docs/03_contracts/openresponses_compliance.md`, `docs/07_tasks/openresponses_compliance.md`, `temp/openresponses/schema/`, `docs/03_contracts/modules/phase-1/02_provider_adapters.md`
+- OpenResponses capability coverage inventory + exhaustive checklist [confirm spec]
+  - Refs: `docs/03_contracts/openresponses_coverage.md`, `docs/07_tasks/openresponses_coverage.md`, `temp/openresponses/schema/`, `temp/openresponses/src/pages/specification.mdx`, `docs/03_contracts/modules/phase-1/02_provider_adapters.md`
   - Ready: OpenResponses schema repo present in `temp/openresponses`
-  - Gate: no provider-logic changes until compliance map + checklist are complete
-  - Done: compliance map enumerates every schema/event/item; checklist covers all schema components; roadmap references map for future phases
+  - Gate: no provider-logic changes until coverage inventory + checklist are complete
+  - Done: coverage inventory enumerates every spec feature + schema/event/item; checklist covers all schema components; roadmap references coverage for future phases
 - OpenResponses capability alignment (spec + schemas -> capability registry/matrix/roadmap) [confirm spec]
   - Refs: `docs/03_contracts/openresponses_capability_map.md`, `docs/03_contracts/capability_registry.md`, `docs/02_architecture/capability_matrix.md`, `temp/openresponses/src/pages/specification.mdx`, `temp/openresponses/src/pages/reference.mdx`
-  - Ready: compliance map and schema inventory available; spec MDX reviewed
+  - Ready: coverage inventory and schema inventory available; spec MDX reviewed
   - Done: every OpenResponses feature is mapped to capability ids; capability matrix updated for surface parity; roadmap reflects missing capability work
 - Capability validation pass (parity + headless schema + tool conformance + server smoke) [needs work]
   - Refs: `docs/05_quality/tests.md`, `docs/05_quality/surface-parity.md`, `docs/03_contracts/event_frames.md`, `docs/03_contracts/capability_registry.md`, `docs/07_tasks/phase-1/03_tool_runtime.md`, `docs/04_execution/cli.md`, `docs/04_execution/server.md`

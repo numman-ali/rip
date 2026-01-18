@@ -135,6 +135,7 @@ Generated from docs/03_contracts/capability_registry.md.
 | subagent.load | planned | planned | planned | planned | planned | planned |
 | subagent.runtime | planned | planned | planned | planned | planned | planned |
 | subagent.invoke | planned | planned | planned | planned | planned | planned |
+| model.select | planned | planned | planned | planned | planned | planned |
 | model.sampling_params | planned | planned | planned | planned | planned | planned |
 | model.max_output_tokens | planned | planned | planned | planned | planned | planned |
 | model.logprobs | planned | planned | planned | planned | planned | planned |

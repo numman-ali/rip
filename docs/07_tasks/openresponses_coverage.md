@@ -1,46 +1,49 @@
-# OpenResponses Compliance Tasks
+# OpenResponses Coverage Tasks
 
 Summary
 - Exhaustive checklist for every OpenResponses doc and schema element.
-- Each item should be marked complete only when mapped to internal frames and validated at the provider boundary.
+- Each item should be marked complete only when:
+  - it is owned by an internal capability id (product coverage),
+  - provider-boundary payload fidelity is preserved (no drops),
+  - and validation/fixtures exist as a quality gate.
 
 Progress log
-- 2026-01-18: Validated request/response enums and metadata schemas (MessageRole/Status, MetadataParam, include/exclude/order/truncation/service tier/verbosity/prompt cache); checklist updated.
-- 2026-01-18: Validated usage/token count/logprob schemas (Usage, Input/OutputTokensDetails, LogProb/TopLogProb, TokenCountsBody/Resource); checklist updated.
-- 2026-01-18: Validated additional computer action schemas (keypress/move/scroll/screenshot/type/wait) and SafetyCheck; checklist updated.
-- 2026-01-17: Validated file search and status schemas (ranking options, retrieved chunks, results, ranker/hybrid options, tool call statuses, function call statuses); checklist updated.
-- 2026-01-17: Validated context/billing/location schemas (ApiSourceParam, Payer/Billing, Conversation + ConversationParam, ContextEdit + details, ApproximateLocation + param); checklist updated.
-- 2026-01-17: Validated computer action + screenshot schemas (environment, click/double-click/drag, coords, screenshot content/param, detail enum, empty action); checklist updated.
-- 2026-01-17: Validated filter schemas (Filters + comparison/compound field + param variants); checklist updated.
-- 2026-01-17: Validated annotation + citation schemas (Annotation, file/url/container citations + params); checklist updated.
-- 2026-01-17: Validated content block and response format schemas (input/output text, image, file, summary/refusal/reasoning text, response formats, additive patch schemas); checklist updated.
-- 2026-01-17: Validated code interpreter call/output schemas and output params; checklist updated.
-- 2026-01-17: Validated file/web search, computer, image gen, and apply_patch tool call schemas and outputs; checklist updated.
+- 2026-01-18: Covered request/response enums and metadata schemas (MessageRole/Status, MetadataParam, include/exclude/order/truncation/service tier/verbosity/prompt cache); checklist updated.
+- 2026-01-18: Covered usage/token count/logprob schemas (Usage, Input/OutputTokensDetails, LogProb/TopLogProb, TokenCountsBody/Resource); checklist updated.
+- 2026-01-18: Covered additional computer action schemas (keypress/move/scroll/screenshot/type/wait) and SafetyCheck; checklist updated.
+- 2026-01-17: Covered file search and status schemas (ranking options, retrieved chunks, results, ranker/hybrid options, tool call statuses, function call statuses); checklist updated.
+- 2026-01-17: Covered context/billing/location schemas (ApiSourceParam, Payer/Billing, Conversation + ConversationParam, ContextEdit + details, ApproximateLocation + param); checklist updated.
+- 2026-01-17: Covered computer action + screenshot schemas (environment, click/double-click/drag, coords, screenshot content/param, detail enum, empty action); checklist updated.
+- 2026-01-17: Covered filter schemas (Filters + comparison/compound field + param variants); checklist updated.
+- 2026-01-17: Covered annotation + citation schemas (Annotation, file/url/container citations + params); checklist updated.
+- 2026-01-17: Covered content block and response format schemas (input/output text, image, file, summary/refusal/reasoning text, response formats, additive patch schemas); checklist updated.
+- 2026-01-17: Covered code interpreter call/output schemas and output params; checklist updated.
+- 2026-01-17: Covered file/web search, computer, image gen, and apply_patch tool call schemas and outputs; checklist updated.
 - 2026-01-17: Added local/function shell output item validation plus shell param schema tests; checklist updated.
 - 2026-01-17: Added MCP approval/tool-call output validation plus MCP filter/approval/error schema tests; checklist updated.
 - 2026-01-17: Added MCPListTools output item validation and MemoryToolParam schema test; checklist updated.
 - 2026-01-17: Added response tool_choice/tool validation tests (fixture-based) plus auto code-interpreter tool param coverage; checklist updated.
 - 2026-01-17: Added ItemParam constructors for all input item variants in the provider request builder; checklist updated.
 - 2026-01-17: Added committed OpenResponses traceability record (`docs/03_contracts/openresponses_traceability.md`) to track upstream snapshot and sync steps.
-- 2026-01-17: Validated streaming events and ResponseResource output items against split schemas (paths + components); updated fixtures/event type list to 58 events.
-- 2026-01-17: Switched tool/tool_choice validation to split-schema JSONSchema (optional fields + nested structures validated); vendored split components in `schemas/openresponses/split_components.json`.
+- 2026-01-17: Covered streaming events and ResponseResource output items against split schemas (paths + components); updated fixtures/event type list to 58 events.
+- 2026-01-17: Switched tool/tool_choice validation to split-schema JSONSchema (optional fields + nested structures covered); vendored split components in `schemas/openresponses/split_components.json`.
 - 2026-01-17: Provider adapter emits `output_text_delta` frames for `response.output_text.delta` events; stream fixture/tests updated.
-- 2026-01-17: Checked bundled validation coverage for Error/ErrorPayload, CreateResponseBody, ResponseResource, and ItemField; aligned streaming-event schema-index statuses with validated vs pending coverage.
-- 2026-01-17: Marked bundled streaming events and output item schemas as mapped/validated in the checklist (remaining events/items pending split-schema validation).
+- 2026-01-17: Checked bundled coverage for Error/ErrorPayload, CreateResponseBody, ResponseResource, and ItemField; aligned streaming-event schema-index statuses with covered vs pending coverage.
+- 2026-01-17: Marked bundled streaming events and output item schemas as mapped/covered in the checklist (remaining events/items pending split-schema coverage).
 - 2026-01-17: Roadmap gate added (`docs/07_tasks/roadmap.md`). Tool/tool_choice request validation + builder support landed (commit `c8946dd`); split schema notes captured in committed inventory artifacts.
 - 2026-01-17: Verified schema index covers all 412 split components; added additive patch schemas (`InputVideoContent`, `JsonSchemaResponseFormatParam`, `TextFormatParam`) to checklist.
 - 2026-01-17: Implemented full tool/tool_choice variant validation + builders; checked off related schemas in the task tracker.
 - 2026-01-17: Implemented manual validation for all input item variants (request-side); internal frame mapping still pending so checklist remains open for those items.
-- 2026-01-17: Generated split schema inventory + SSE event type map in `schemas/openresponses/` and reconciled compliance tables to match the split schema lists.
+- 2026-01-17: Generated split schema inventory + SSE event type map in `schemas/openresponses/` and reconciled coverage tables to match the split schema lists.
 
 ## Docs review checklist
-- [x] Review `temp/openresponses/README.md` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
-- [x] Review `temp/openresponses/src/pages/index.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
-- [x] Review `temp/openresponses/src/pages/specification.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
-- [x] Review `temp/openresponses/src/pages/reference.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
-- [x] Review `temp/openresponses/src/pages/compliance.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
-- [x] Review `temp/openresponses/src/pages/changelog.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
-- [x] Review `temp/openresponses/src/pages/governance.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_compliance.md`.
+- [x] Review `temp/openresponses/README.md` and capture any mapping requirements in `docs/03_contracts/openresponses_coverage.md`.
+- [x] Review `temp/openresponses/src/pages/index.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_coverage.md`.
+- [x] Review `temp/openresponses/src/pages/specification.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_coverage.md`.
+- [x] Review `temp/openresponses/src/pages/reference.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_coverage.md`.
+- [x] Review `temp/openresponses/src/pages/compliance.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_coverage.md`.
+- [x] Review `temp/openresponses/src/pages/changelog.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_coverage.md`.
+- [x] Review `temp/openresponses/src/pages/governance.mdx` and capture any mapping requirements in `docs/03_contracts/openresponses_coverage.md`.
 
 ## Open issues
 - [x] Resolve request body content-type conflict (`application/json` MUST vs `application/x-www-form-urlencoded` allowed). Decision: JSON-only (ADR-0002).
