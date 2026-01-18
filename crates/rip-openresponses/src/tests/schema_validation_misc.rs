@@ -78,6 +78,90 @@ fn validate_computer_action_schemas() {
     );
     assert!(errors.is_empty(), "errors: {errors:?}");
 
+    let errors = schema_errors(
+        "KeyPressAction.json",
+        serde_json::json!({ "type": "keypress", "keys": ["Enter"] }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "KeyPressParam.json",
+        serde_json::json!({ "type": "keypress", "keys": ["Enter"] }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "MoveAction.json",
+        serde_json::json!({ "type": "move", "x": 10, "y": 20 }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "MoveParam.json",
+        serde_json::json!({ "type": "move", "x": 10, "y": 20 }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "ScrollAction.json",
+        serde_json::json!({
+            "type": "scroll",
+            "x": 10,
+            "y": 20,
+            "scroll_x": 0,
+            "scroll_y": 200
+        }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "ScrollParam.json",
+        serde_json::json!({
+            "type": "scroll",
+            "x": 10,
+            "y": 20,
+            "scroll_x": 0,
+            "scroll_y": 200
+        }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "ScreenshotAction.json",
+        serde_json::json!({ "type": "screenshot" }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "ScreenshotParam.json",
+        serde_json::json!({ "type": "screenshot" }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "TypeAction.json",
+        serde_json::json!({ "type": "type", "text": "hello" }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "TypeParam.json",
+        serde_json::json!({ "type": "type", "text": "hello" }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors("WaitAction.json", serde_json::json!({ "type": "wait" }));
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors("WaitParam.json", serde_json::json!({ "type": "wait" }));
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let errors = schema_errors(
+        "SafetyCheck.json",
+        serde_json::json!({ "id": "sc_1", "code": "safe", "message": "ok" }),
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
     let errors = schema_errors("EmptyAction.json", serde_json::json!({}));
     assert!(errors.is_empty(), "errors: {errors:?}");
 }

@@ -5,6 +5,7 @@ Summary
 - Each item should be marked complete only when mapped to internal frames and validated at the provider boundary.
 
 Progress log
+- 2026-01-18: Validated additional computer action schemas (keypress/move/scroll/screenshot/type/wait) and SafetyCheck; checklist updated.
 - 2026-01-17: Validated file search and status schemas (ranking options, retrieved chunks, results, ranker/hybrid options, tool call statuses, function call statuses); checklist updated.
 - 2026-01-17: Validated context/billing/location schemas (ApiSourceParam, Payer/Billing, Conversation + ConversationParam, ContextEdit + details, ApproximateLocation + param); checklist updated.
 - 2026-01-17: Validated computer action + screenshot schemas (environment, click/double-click/drag, coords, screenshot content/param, detail enum, empty action); checklist updated.
@@ -253,8 +254,8 @@ Progress log
 - [x] `JsonObjectResponseFormat` mapped and validated.
 - [x] `JsonSchemaResponseFormatParam` mapped and validated.
 - [x] `JsonSchemaResponseFormat` mapped and validated.
-- [ ] `KeyPressAction` mapped and validated.
-- [ ] `KeyPressParam` mapped and validated.
+- [x] `KeyPressAction` mapped and validated.
+- [x] `KeyPressParam` mapped and validated.
 - [ ] `LocalFileEnvironmentParam` mapped and validated.
 - [x] `LocalShellCall` mapped and validated.
 - [x] `LocalShellCallItemStatus` mapped and validated.
@@ -280,8 +281,8 @@ Progress log
 - [ ] `MessageRole1` mapped and validated.
 - [ ] `MessageStatus` mapped and validated.
 - [ ] `MetadataParam` mapped and validated.
-- [ ] `MoveAction` mapped and validated.
-- [ ] `MoveParam` mapped and validated.
+- [x] `MoveAction` mapped and validated.
+- [x] `MoveParam` mapped and validated.
 - [ ] `OrderEnum` mapped and validated.
 - [x] `OutputTextContent` mapped and validated.
 - [x] `OutputTextContentParam` mapped and validated.
@@ -300,11 +301,11 @@ Progress log
 - [x] `ReasoningTextContent` mapped and validated.
 - [x] `RefusalContent` mapped and validated.
 - [ ] `RefusalContentParam` mapped and validated.
-- [ ] `SafetyCheck` mapped and validated.
-- [ ] `ScreenshotAction` mapped and validated.
-- [ ] `ScreenshotParam` mapped and validated.
-- [ ] `ScrollAction` mapped and validated.
-- [ ] `ScrollParam` mapped and validated.
+- [x] `SafetyCheck` mapped and validated.
+- [x] `ScreenshotAction` mapped and validated.
+- [x] `ScreenshotParam` mapped and validated.
+- [x] `ScrollAction` mapped and validated.
+- [x] `ScrollParam` mapped and validated.
 - [ ] `SearchContextSize` mapped and validated.
 - [ ] `ServiceTierEnum` mapped and validated.
 - [x] `SpecificApplyPatchParam` mapped and validated.
@@ -333,8 +334,8 @@ Progress log
 - [x] `ToolChoiceValueEnum` mapped and validated.
 - [ ] `TopLogProb` mapped and validated.
 - [ ] `TruncationEnum` mapped and validated.
-- [ ] `TypeAction` mapped and validated.
-- [ ] `TypeParam` mapped and validated.
+- [x] `TypeAction` mapped and validated.
+- [x] `TypeParam` mapped and validated.
 - [x] `UrlCitationBody` mapped and validated.
 - [x] `UrlCitationParam` mapped and validated.
 - [ ] `UrlSourceParam` mapped and validated.
@@ -347,8 +348,8 @@ Progress log
 - [ ] `VideoSeconds` mapped and validated.
 - [ ] `VideoSize` mapped and validated.
 - [ ] `VideoStatus` mapped and validated.
-- [ ] `WaitAction` mapped and validated.
-- [ ] `WaitParam` mapped and validated.
+- [x] `WaitAction` mapped and validated.
+- [x] `WaitParam` mapped and validated.
 - [x] `WebSearchCall` mapped and validated.
 - [x] `WebSearchCallActionFindInPage` mapped and validated.
 - [x] `WebSearchCallActionFindInPageParam` mapped and validated.

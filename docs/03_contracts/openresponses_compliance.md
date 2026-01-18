@@ -470,7 +470,7 @@ Legend
 | `ComputerCall` | no | yes | provider_event (validated) |
 | `ComputerCallOutput` | no | yes | provider_event (validated) |
 | `ComputerCallOutputStatus` | no | yes | pending |
-| `ComputerCallSafetyCheckParam` | no | no | pending |
+| `ComputerCallSafetyCheckParam` | no | yes | provider_request (validated) |
 | `ComputerEnvironment` | no | yes | provider_request (validated) |
 | `ComputerEnvironment1` | no | yes | provider_event (validated) |
 | `ComputerScreenshotContent` | no | yes | provider_event (validated) |
@@ -581,8 +581,8 @@ Legend
 | `ItemReferenceParam` | yes | no | provider_request (validated) |
 | `JsonObjectResponseFormat` | yes | yes | pending |
 | `JsonSchemaResponseFormat` | yes | yes | pending |
-| `KeyPressAction` | no | yes | pending |
-| `KeyPressParam` | no | no | pending |
+| `KeyPressAction` | no | yes | provider_event (validated) |
+| `KeyPressParam` | no | yes | provider_request (validated) |
 | `LocalFileEnvironmentParam` | no | no | pending |
 | `LocalShellCall` | no | yes | provider_event (validated) |
 | `LocalShellCallItemStatus` | no | no | pending |
@@ -608,8 +608,8 @@ Legend
 | `MessageRole1` | no | no | pending |
 | `MessageStatus` | yes | yes | pending |
 | `MetadataParam` | yes | no | pending |
-| `MoveAction` | no | yes | pending |
-| `MoveParam` | no | no | pending |
+| `MoveAction` | no | yes | provider_event (validated) |
+| `MoveParam` | no | yes | provider_request (validated) |
 | `OrderEnum` | no | no | pending |
 | `OutputTextContent` | yes | yes | pending |
 | `OutputTextContentParam` | yes | no | pending |
@@ -628,11 +628,11 @@ Legend
 | `ReasoningTextContent` | yes | yes | pending |
 | `RefusalContent` | yes | yes | pending |
 | `RefusalContentParam` | yes | no | pending |
-| `SafetyCheck` | no | yes | pending |
-| `ScreenshotAction` | no | yes | pending |
-| `ScreenshotParam` | no | no | pending |
-| `ScrollAction` | no | yes | pending |
-| `ScrollParam` | no | no | pending |
+| `SafetyCheck` | no | yes | provider_event (validated) |
+| `ScreenshotAction` | no | yes | provider_event (validated) |
+| `ScreenshotParam` | no | yes | provider_request (validated) |
+| `ScrollAction` | no | yes | provider_event (validated) |
+| `ScrollParam` | no | yes | provider_request (validated) |
 | `SearchContextSize` | no | yes | pending |
 | `ServiceTierEnum` | yes | no | pending |
 | `SpecificApplyPatchParam` | no | no | provider_request (validated) |
@@ -660,8 +660,8 @@ Legend
 | `ToolChoiceValueEnum` | yes | yes | provider_request (validated) |
 | `TopLogProb` | yes | yes | pending |
 | `TruncationEnum` | yes | yes | pending |
-| `TypeAction` | no | yes | pending |
-| `TypeParam` | no | no | pending |
+| `TypeAction` | no | yes | provider_event (validated) |
+| `TypeParam` | no | yes | provider_request (validated) |
 | `UrlCitationBody` | yes | yes | provider_event (validated) |
 | `UrlCitationParam` | yes | yes | provider_request (validated) |
 | `UrlSourceParam` | no | no | pending |
@@ -674,8 +674,8 @@ Legend
 | `VideoSeconds` | no | no | pending |
 | `VideoSize` | no | no | pending |
 | `VideoStatus` | no | no | pending |
-| `WaitAction` | no | yes | pending |
-| `WaitParam` | no | no | pending |
+| `WaitAction` | no | yes | provider_event (validated) |
+| `WaitParam` | no | yes | provider_request (validated) |
 | `WebSearchCall` | no | yes | provider_event (validated) |
 | `WebSearchCallActionFindInPage` | no | yes | pending |
 | `WebSearchCallActionFindInPageParam` | no | no | pending |
