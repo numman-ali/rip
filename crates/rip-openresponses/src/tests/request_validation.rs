@@ -192,6 +192,38 @@ fn validate_tool_choice_param_accepts_allowed_tools() {
 }
 
 #[test]
+fn validate_tool_choice_param_rejects_allowed_tools_empty() {
+    let value = serde_json::json!({
+        "type": "allowed_tools",
+        "tools": []
+    });
+    assert!(validate_tool_choice_param(&value).is_err());
+}
+
+#[test]
+fn validate_tool_choice_param_rejects_allowed_tools_invalid_tool() {
+    let value = serde_json::json!({
+        "type": "allowed_tools",
+        "tools": [
+            { "type": "function" }
+        ]
+    });
+    assert!(validate_tool_choice_param(&value).is_err());
+}
+
+#[test]
+fn validate_tool_choice_param_rejects_allowed_tools_invalid_mode() {
+    let value = serde_json::json!({
+        "type": "allowed_tools",
+        "mode": "invalid",
+        "tools": [
+            { "type": "function", "name": "echo" }
+        ]
+    });
+    assert!(validate_tool_choice_param(&value).is_err());
+}
+
+#[test]
 fn validate_tool_choice_param_rejects_invalid() {
     let value = serde_json::json!(false);
     assert!(validate_tool_choice_param(&value).is_err());
