@@ -18,6 +18,10 @@ Now
   - Ready: OpenResponses schema repo present in `temp/openresponses`
   - Gate: no provider-logic changes until compliance map + checklist are complete
   - Done: compliance map enumerates every schema/event/item; checklist covers all schema components; roadmap references map for future phases
+- OpenResponses capability alignment (spec + schemas -> capability registry/matrix/roadmap) [confirm spec]
+  - Refs: `docs/03_contracts/openresponses_capability_map.md`, `docs/03_contracts/capability_registry.md`, `docs/02_architecture/capability_matrix.md`, `temp/openresponses/src/pages/specification.mdx`, `temp/openresponses/src/pages/reference.mdx`
+  - Ready: compliance map and schema inventory available; spec MDX reviewed
+  - Done: every OpenResponses feature is mapped to capability ids; capability matrix updated for surface parity; roadmap reflects missing capability work
 - Capability validation pass (parity + headless schema + tool conformance + server smoke) [needs work]
   - Refs: `docs/05_quality/tests.md`, `docs/05_quality/surface-parity.md`, `docs/03_contracts/event_frames.md`, `docs/03_contracts/capability_registry.md`, `docs/07_tasks/phase-1/03_tool_runtime.md`, `docs/04_execution/cli.md`, `docs/04_execution/server.md`
   - Ready: event frame schema stable; tool runtime emits structured tool events; server session API stable

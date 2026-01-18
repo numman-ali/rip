@@ -11,6 +11,7 @@ Reorientation (read in order after compaction)
 - `docs/01_north_star.md`
 - `docs/07_tasks/roadmap.md`
 - `docs/03_contracts/openresponses_compliance.md`
+- `docs/03_contracts/openresponses_capability_map.md`
 - `docs/07_tasks/openresponses_compliance.md`
 
 Active priorities

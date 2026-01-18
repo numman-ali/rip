@@ -16,6 +16,7 @@ Navigation
 - Capability contract + registry: docs/03_contracts/capabilities.md
 - Capability registry (source of truth): docs/03_contracts/capability_registry.md
 - OpenResponses compliance map: docs/03_contracts/openresponses_compliance.md
+- OpenResponses capability map: docs/03_contracts/openresponses_capability_map.md
 - CLI and server usage model: docs/04_execution/
 - Quality gates (tests, benchmarks): docs/05_quality/
 - Source-of-truth policy: docs/05_quality/source-policy.md
