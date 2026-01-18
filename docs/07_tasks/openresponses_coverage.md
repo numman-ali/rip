@@ -8,6 +8,7 @@ Summary
   - and validation/fixtures exist as a quality gate.
 
 Progress log
+- 2026-01-18: Covered remaining image/video schemas + EmptyModelParam; reconciled coverage map statuses; checklist completed.
 - 2026-01-18: Covered compaction/stream options/reasoning/list/custom format schemas (compact endpoint resources, reasoning config, stream options, custom tool formats); checklist updated.
 - 2026-01-18: Covered request/response enums and metadata schemas (MessageRole/Status, MetadataParam, include/exclude/order/truncation/service tier/verbosity/prompt cache); checklist updated.
 - 2026-01-18: Covered usage/token count/logprob schemas (Usage, Input/OutputTokensDetails, LogProb/TopLogProb, TokenCountsBody/Resource); checklist updated.
@@ -160,12 +161,12 @@ Progress log
 - [x] `Conversation` mapped and validated.
 - [x] `ConversationParam` mapped and validated.
 - [x] `CoordParam` mapped and validated.
-- [ ] `CreateImageBody15Param` mapped and validated.
-- [ ] `CreateImageBody1MiniParam` mapped and validated.
-- [ ] `CreateImageBody1Param` mapped and validated.
-- [ ] `CreateImageBodyChatGPTImageLatestParam` mapped and validated.
-- [ ] `CreateVideoBody` mapped and validated.
-- [ ] `CreateVideoRemixBody` mapped and validated.
+- [x] `CreateImageBody15Param` mapped and validated.
+- [x] `CreateImageBody1MiniParam` mapped and validated.
+- [x] `CreateImageBody1Param` mapped and validated.
+- [x] `CreateImageBodyChatGPTImageLatestParam` mapped and validated.
+- [x] `CreateVideoBody` mapped and validated.
+- [x] `CreateVideoRemixBody` mapped and validated.
 - [x] `CustomGrammarFormatField` mapped and validated.
 - [x] `CustomGrammarFormatParam` mapped and validated.
 - [x] `CustomTextFormatField` mapped and validated.
@@ -174,20 +175,20 @@ Progress log
 - [x] `CustomToolCallOutput` mapped and validated.
 - [x] `CustomToolFormat` mapped and validated.
 - [x] `DeletedResponseResource` mapped and validated.
-- [ ] `DeletedVideoResource` mapped and validated.
+- [x] `DeletedVideoResource` mapped and validated.
 - [x] `DetailEnum` mapped and validated.
 - [x] `DoubleClickAction` mapped and validated.
 - [x] `DoubleClickParam` mapped and validated.
 - [x] `DragAction` mapped and validated.
 - [x] `DragParam` mapped and validated.
 - [x] `DragPoint` mapped and validated.
-- [ ] `EditImageBody15Param` mapped and validated.
-- [ ] `EditImageBody1MiniParam` mapped and validated.
-- [ ] `EditImageBody1Param` mapped and validated.
-- [ ] `EditImageBodyChatGPTImageLatestParam` mapped and validated.
-- [ ] `EditsBodyDallE2Param` mapped and validated.
+- [x] `EditImageBody15Param` mapped and validated.
+- [x] `EditImageBody1MiniParam` mapped and validated.
+- [x] `EditImageBody1Param` mapped and validated.
+- [x] `EditImageBodyChatGPTImageLatestParam` mapped and validated.
+- [x] `EditsBodyDallE2Param` mapped and validated.
 - [x] `EmptyAction` mapped and validated.
-- [ ] `EmptyModelParam` mapped and validated.
+- [x] `EmptyModelParam` mapped and validated.
 - [x] `ExcludeEnum` mapped and validated.
 - [x] `FileCitationBody` mapped and validated.
 - [x] `FileCitationParam` mapped and validated.
@@ -214,35 +215,35 @@ Progress log
 - [x] `FunctionShellCallOutputOutcomeParam` mapped and validated.
 - [x] `FunctionShellCallOutputTimeoutOutcome` mapped and validated.
 - [x] `FunctionShellCallOutputTimeoutOutcomeParam` mapped and validated.
-- [ ] `GenerationsBodyDallE2Param` mapped and validated.
-- [ ] `GenerationsBodyDallE3Param` mapped and validated.
+- [x] `GenerationsBodyDallE2Param` mapped and validated.
+- [x] `GenerationsBodyDallE3Param` mapped and validated.
 - [x] `GrammarSyntax` mapped and validated.
 - [x] `GrammarSyntax1` mapped and validated.
 - [x] `HybridSearchOptions` mapped and validated.
 - [x] `HybridSearchOptionsParam` mapped and validated.
-- [ ] `Image` mapped and validated.
-- [ ] `ImageBackground` mapped and validated.
-- [ ] `ImageDetail` mapped and validated.
+- [x] `Image` mapped and validated.
+- [x] `ImageBackground` mapped and validated.
+- [x] `ImageDetail` mapped and validated.
 - [x] `ImageGenAction` mapped and validated.
 - [x] `ImageGenActionEnum` mapped and validated.
 - [x] `ImageGenCall` mapped and validated.
 - [x] `ImageGenCallStatus` mapped and validated.
-- [ ] `ImageGenInputUsageDetails` mapped and validated.
-- [ ] `ImageGenOutputTokensDetails` mapped and validated.
-- [ ] `ImageGenToolModel` mapped and validated.
-- [ ] `ImageGenUsage` mapped and validated.
-- [ ] `ImageModeration` mapped and validated.
-- [ ] `ImageOutputFormat` mapped and validated.
-- [ ] `ImageQuality` mapped and validated.
-- [ ] `ImageQualityDallE` mapped and validated.
-- [ ] `ImageResource` mapped and validated.
-- [ ] `ImageSize` mapped and validated.
-- [ ] `ImageSizeDallE2` mapped and validated.
-- [ ] `ImageSizeDallE3` mapped and validated.
-- [ ] `ImageStyleDallE` mapped and validated.
-- [ ] `ImageUsage` mapped and validated.
-- [ ] `ImageUsageInputTokensDetails` mapped and validated.
-- [ ] `ImageUsageOutputTokensDetails` mapped and validated.
+- [x] `ImageGenInputUsageDetails` mapped and validated.
+- [x] `ImageGenOutputTokensDetails` mapped and validated.
+- [x] `ImageGenToolModel` mapped and validated.
+- [x] `ImageGenUsage` mapped and validated.
+- [x] `ImageModeration` mapped and validated.
+- [x] `ImageOutputFormat` mapped and validated.
+- [x] `ImageQuality` mapped and validated.
+- [x] `ImageQualityDallE` mapped and validated.
+- [x] `ImageResource` mapped and validated.
+- [x] `ImageSize` mapped and validated.
+- [x] `ImageSizeDallE2` mapped and validated.
+- [x] `ImageSizeDallE3` mapped and validated.
+- [x] `ImageStyleDallE` mapped and validated.
+- [x] `ImageUsage` mapped and validated.
+- [x] `ImageUsageInputTokensDetails` mapped and validated.
+- [x] `ImageUsageOutputTokensDetails` mapped and validated.
 - [x] `IncludeEnum` mapped and validated.
 - [x] `IncompleteDetails` mapped and validated.
 - [x] `InputFidelity` mapped and validated.
@@ -347,13 +348,13 @@ Progress log
 - [x] `UrlSourceParam` mapped and validated.
 - [x] `Usage` mapped and validated.
 - [x] `VerbosityEnum` mapped and validated.
-- [ ] `VideoContentVariant` mapped and validated.
-- [ ] `VideoListResource` mapped and validated.
-- [ ] `VideoModel` mapped and validated.
-- [ ] `VideoResource` mapped and validated.
-- [ ] `VideoSeconds` mapped and validated.
-- [ ] `VideoSize` mapped and validated.
-- [ ] `VideoStatus` mapped and validated.
+- [x] `VideoContentVariant` mapped and validated.
+- [x] `VideoListResource` mapped and validated.
+- [x] `VideoModel` mapped and validated.
+- [x] `VideoResource` mapped and validated.
+- [x] `VideoSeconds` mapped and validated.
+- [x] `VideoSize` mapped and validated.
+- [x] `VideoStatus` mapped and validated.
 - [x] `WaitAction` mapped and validated.
 - [x] `WaitParam` mapped and validated.
 - [x] `WebSearchCall` mapped and validated.

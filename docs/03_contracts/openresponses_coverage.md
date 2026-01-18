@@ -417,9 +417,9 @@ Legend
 | --- | --- | --- | --- |
 | `Error` | yes | yes | provider_event |
 | `ErrorPayload` | yes | yes | provider_event |
-| `HTTPError` | no | yes | pending |
-| `MCPProtocolError` | no | yes | pending |
-| `MCPToolExecutionError` | no | yes | pending |
+| `HTTPError` | no | yes | provider_event (validated) |
+| `MCPProtocolError` | no | yes | provider_event (validated) |
+| `MCPToolExecutionError` | no | yes | provider_event (validated) |
 
 ### Input item params
 | schema | bundled | covered | status |
@@ -456,19 +456,19 @@ Legend
 | `AllowedToolsParam` | yes | no | provider_request (validated) |
 | `Annotation` | yes | yes | provider_event (validated) |
 | `ApiSourceParam` | no | yes | provider_request (validated) |
-| `ApplyPatchCallOutputStatus` | no | yes | pending |
-| `ApplyPatchCallOutputStatusParam` | no | no | pending |
-| `ApplyPatchCallStatus` | no | yes | pending |
-| `ApplyPatchCallStatusParam` | no | no | pending |
-| `ApplyPatchCreateFileOperation` | no | yes | pending |
-| `ApplyPatchCreateFileOperationParam` | no | no | pending |
-| `ApplyPatchDeleteFileOperation` | no | yes | pending |
-| `ApplyPatchDeleteFileOperationParam` | no | no | pending |
-| `ApplyPatchOperationParam` | no | no | pending |
+| `ApplyPatchCallOutputStatus` | no | yes | provider_event (validated) |
+| `ApplyPatchCallOutputStatusParam` | no | no | provider_request (validated) |
+| `ApplyPatchCallStatus` | no | yes | provider_event (validated) |
+| `ApplyPatchCallStatusParam` | no | no | provider_request (validated) |
+| `ApplyPatchCreateFileOperation` | no | yes | provider_event (validated) |
+| `ApplyPatchCreateFileOperationParam` | no | no | provider_request (validated) |
+| `ApplyPatchDeleteFileOperation` | no | yes | provider_event (validated) |
+| `ApplyPatchDeleteFileOperationParam` | no | no | provider_request (validated) |
+| `ApplyPatchOperationParam` | no | no | provider_request (validated) |
 | `ApplyPatchToolCall` | no | yes | provider_event (validated) |
 | `ApplyPatchToolCallOutput` | no | yes | provider_event (validated) |
-| `ApplyPatchUpdateFileOperation` | no | yes | pending |
-| `ApplyPatchUpdateFileOperationParam` | no | no | pending |
+| `ApplyPatchUpdateFileOperation` | no | yes | provider_event (validated) |
+| `ApplyPatchUpdateFileOperationParam` | no | no | provider_request (validated) |
 | `ApproximateLocation` | no | yes | provider_event (validated) |
 | `ApproximateLocationParam` | no | yes | provider_request (validated) |
 | `Billing` | no | yes | provider_event (validated) |
@@ -476,11 +476,11 @@ Legend
 | `ClickButtonType` | no | yes | provider_request (validated) |
 | `ClickParam` | no | yes | provider_request (validated) |
 | `CodeInterpreterCall` | no | yes | provider_event (validated) |
-| `CodeInterpreterCallStatus` | no | yes | pending |
-| `CodeInterpreterOutputImage` | no | yes | pending |
-| `CodeInterpreterOutputLogs` | no | yes | pending |
-| `CodeInterpreterToolCallOutputImageParam` | no | no | pending |
-| `CodeInterpreterToolCallOutputLogsParam` | no | no | pending |
+| `CodeInterpreterCallStatus` | no | yes | provider_event (validated) |
+| `CodeInterpreterOutputImage` | no | yes | provider_event (validated) |
+| `CodeInterpreterOutputLogs` | no | yes | provider_event (validated) |
+| `CodeInterpreterToolCallOutputImageParam` | no | no | provider_request (validated) |
+| `CodeInterpreterToolCallOutputLogsParam` | no | no | provider_request (validated) |
 | `CompactResource` | no | no | provider_event (validated) |
 | `CompactResponseMethodPublicBody` | no | no | provider_request (validated) |
 | `CompactionBody` | no | yes | provider_event (validated) |
@@ -514,7 +514,7 @@ Legend
 | `CompoundFilterParamOrParam` | no | yes | provider_request (validated) |
 | `ComputerCall` | no | yes | provider_event (validated) |
 | `ComputerCallOutput` | no | yes | provider_event (validated) |
-| `ComputerCallOutputStatus` | no | yes | pending |
+| `ComputerCallOutputStatus` | no | yes | provider_event (validated) |
 | `ComputerCallSafetyCheckParam` | no | yes | provider_request (validated) |
 | `ComputerEnvironment` | no | yes | provider_request (validated) |
 | `ComputerEnvironment1` | no | yes | provider_event (validated) |
@@ -528,12 +528,12 @@ Legend
 | `Conversation` | no | yes | provider_event (validated) |
 | `ConversationParam` | no | yes | provider_request (validated) |
 | `CoordParam` | no | yes | provider_request (validated) |
-| `CreateImageBody15Param` | no | no | pending |
-| `CreateImageBody1MiniParam` | no | no | pending |
-| `CreateImageBody1Param` | no | no | pending |
-| `CreateImageBodyChatGPTImageLatestParam` | no | no | pending |
-| `CreateVideoBody` | no | no | pending |
-| `CreateVideoRemixBody` | no | no | pending |
+| `CreateImageBody15Param` | no | no | provider_request (validated) |
+| `CreateImageBody1MiniParam` | no | no | provider_request (validated) |
+| `CreateImageBody1Param` | no | no | provider_request (validated) |
+| `CreateImageBodyChatGPTImageLatestParam` | no | no | provider_request (validated) |
+| `CreateVideoBody` | no | no | provider_request (validated) |
+| `CreateVideoRemixBody` | no | no | provider_request (validated) |
 | `CustomGrammarFormatField` | no | yes | provider_request (validated) |
 | `CustomGrammarFormatParam` | no | no | provider_request (validated) |
 | `CustomTextFormatField` | no | yes | provider_request (validated) |
@@ -542,20 +542,20 @@ Legend
 | `CustomToolCallOutput` | no | yes | provider_event (validated) |
 | `CustomToolFormat` | no | yes | provider_request (validated) |
 | `DeletedResponseResource` | no | no | provider_event (validated) |
-| `DeletedVideoResource` | no | no | pending |
+| `DeletedVideoResource` | no | no | provider_event (validated) |
 | `DetailEnum` | yes | yes | provider_request (validated) |
 | `DoubleClickAction` | no | yes | provider_event (validated) |
 | `DoubleClickParam` | no | yes | provider_request (validated) |
 | `DragAction` | no | yes | provider_event (validated) |
 | `DragParam` | no | yes | provider_request (validated) |
 | `DragPoint` | no | yes | provider_event (validated) |
-| `EditImageBody15Param` | no | no | pending |
-| `EditImageBody1MiniParam` | no | no | pending |
-| `EditImageBody1Param` | no | no | pending |
-| `EditImageBodyChatGPTImageLatestParam` | no | no | pending |
-| `EditsBodyDallE2Param` | no | no | pending |
+| `EditImageBody15Param` | no | no | provider_request (validated) |
+| `EditImageBody1MiniParam` | no | no | provider_request (validated) |
+| `EditImageBody1Param` | no | no | provider_request (validated) |
+| `EditImageBodyChatGPTImageLatestParam` | no | no | provider_request (validated) |
+| `EditsBodyDallE2Param` | no | no | provider_request (validated) |
 | `EmptyAction` | no | yes | provider_event (validated) |
-| `EmptyModelParam` | yes | no | pending |
+| `EmptyModelParam` | yes | no | provider_request (validated) |
 | `ExcludeEnum` | no | no | provider_request (validated) |
 | `FileCitationBody` | no | yes | provider_event (validated) |
 | `FileCitationParam` | no | yes | provider_request (validated) |
@@ -570,8 +570,8 @@ Legend
 | `FunctionCallOutput` | yes | yes | provider_event (validated) |
 | `FunctionCallOutputStatusEnum` | yes | yes | provider_event (validated) |
 | `FunctionCallStatus` | yes | yes | provider_event (validated) |
-| `FunctionShellAction` | no | yes | pending |
-| `FunctionShellActionParam` | no | no | pending |
+| `FunctionShellAction` | no | yes | provider_event (validated) |
+| `FunctionShellActionParam` | no | no | provider_request (validated) |
 | `FunctionShellCall` | no | yes | provider_event (validated) |
 | `FunctionShellCallItemStatus` | no | yes | provider_request (validated) |
 | `FunctionShellCallOutput` | no | yes | provider_event (validated) |
@@ -582,72 +582,72 @@ Legend
 | `FunctionShellCallOutputOutcomeParam` | no | yes | provider_request (validated) |
 | `FunctionShellCallOutputTimeoutOutcome` | no | yes | provider_event (validated) |
 | `FunctionShellCallOutputTimeoutOutcomeParam` | no | yes | provider_request (validated) |
-| `GenerationsBodyDallE2Param` | no | no | pending |
-| `GenerationsBodyDallE3Param` | no | no | pending |
+| `GenerationsBodyDallE2Param` | no | no | provider_request (validated) |
+| `GenerationsBodyDallE3Param` | no | no | provider_request (validated) |
 | `GrammarSyntax` | no | no | provider_request (validated) |
 | `GrammarSyntax1` | no | yes | provider_request (validated) |
 | `HybridSearchOptions` | no | yes | provider_event (validated) |
 | `HybridSearchOptionsParam` | no | yes | provider_request (validated) |
-| `Image` | no | no | pending |
-| `ImageBackground` | no | yes | pending |
-| `ImageDetail` | yes | yes | pending |
+| `Image` | no | no | provider_event (validated) |
+| `ImageBackground` | no | yes | provider_request (validated) |
+| `ImageDetail` | yes | yes | provider_request (validated) |
 | `ImageGenAction` | no | yes | provider_request (validated) |
 | `ImageGenActionEnum` | no | no | provider_request (validated) |
 | `ImageGenCall` | no | yes | provider_event (validated) |
-| `ImageGenCallStatus` | no | yes | pending |
-| `ImageGenInputUsageDetails` | no | no | pending |
-| `ImageGenOutputTokensDetails` | no | no | pending |
-| `ImageGenToolModel` | no | yes | pending |
-| `ImageGenUsage` | no | no | pending |
-| `ImageModeration` | no | yes | pending |
-| `ImageOutputFormat` | no | yes | pending |
-| `ImageQuality` | no | yes | pending |
-| `ImageQualityDallE` | no | no | pending |
-| `ImageResource` | no | no | pending |
-| `ImageSize` | no | yes | pending |
-| `ImageSizeDallE2` | no | no | pending |
-| `ImageSizeDallE3` | no | no | pending |
-| `ImageStyleDallE` | no | no | pending |
-| `ImageUsage` | no | yes | pending |
-| `ImageUsageInputTokensDetails` | no | yes | pending |
-| `ImageUsageOutputTokensDetails` | no | yes | pending |
+| `ImageGenCallStatus` | no | yes | provider_event (validated) |
+| `ImageGenInputUsageDetails` | no | no | provider_event (validated) |
+| `ImageGenOutputTokensDetails` | no | no | provider_event (validated) |
+| `ImageGenToolModel` | no | yes | provider_request (validated) |
+| `ImageGenUsage` | no | no | provider_event (validated) |
+| `ImageModeration` | no | yes | provider_request (validated) |
+| `ImageOutputFormat` | no | yes | provider_request (validated) |
+| `ImageQuality` | no | yes | provider_request (validated) |
+| `ImageQualityDallE` | no | no | provider_request (validated) |
+| `ImageResource` | no | no | provider_event (validated) |
+| `ImageSize` | no | yes | provider_request (validated) |
+| `ImageSizeDallE2` | no | no | provider_request (validated) |
+| `ImageSizeDallE3` | no | no | provider_request (validated) |
+| `ImageStyleDallE` | no | no | provider_request (validated) |
+| `ImageUsage` | no | yes | provider_event (validated) |
+| `ImageUsageInputTokensDetails` | no | yes | provider_event (validated) |
+| `ImageUsageOutputTokensDetails` | no | yes | provider_event (validated) |
 | `IncludeEnum` | yes | no | provider_request (validated) |
 | `IncompleteDetails` | yes | yes | provider_event (validated) |
 | `InputFidelity` | no | no | provider_request (validated) |
-| `InputFileContent` | yes | yes | pending |
-| `InputFileContentParam` | yes | no | pending |
-| `InputImageContent` | yes | yes | pending |
-| `InputImageContentParamAutoParam` | yes | no | pending |
-| `InputImageMaskContentParam` | no | no | pending |
-| `InputTextContent` | yes | yes | pending |
-| `InputTextContentParam` | yes | no | pending |
+| `InputFileContent` | yes | yes | provider_event (validated) |
+| `InputFileContentParam` | yes | no | provider_request (validated) |
+| `InputImageContent` | yes | yes | provider_event (validated) |
+| `InputImageContentParamAutoParam` | yes | no | provider_request (validated) |
+| `InputImageMaskContentParam` | no | no | provider_request (validated) |
+| `InputTextContent` | yes | yes | provider_event (validated) |
+| `InputTextContentParam` | yes | no | provider_request (validated) |
 | `InputTokensDetails` | yes | yes | provider_event (validated) |
 | `ItemListResource` | no | no | provider_event (validated) |
 | `ItemReferenceParam` | yes | no | provider_request (validated) |
-| `JsonObjectResponseFormat` | yes | yes | pending |
-| `JsonSchemaResponseFormat` | yes | yes | pending |
+| `JsonObjectResponseFormat` | yes | yes | provider_event (validated) |
+| `JsonSchemaResponseFormat` | yes | yes | provider_event (validated) |
 | `KeyPressAction` | no | yes | provider_event (validated) |
 | `KeyPressParam` | no | yes | provider_request (validated) |
 | `LocalFileEnvironmentParam` | no | no | provider_request (validated) |
 | `LocalShellCall` | no | yes | provider_event (validated) |
-| `LocalShellCallItemStatus` | no | no | pending |
+| `LocalShellCallItemStatus` | no | no | provider_event (validated) |
 | `LocalShellCallOutput` | no | yes | provider_event (validated) |
-| `LocalShellCallOutputStatusEnum` | no | yes | pending |
-| `LocalShellCallStatus` | no | yes | pending |
-| `LocalShellExecAction` | no | yes | pending |
-| `LocalShellExecActionParam` | no | no | pending |
+| `LocalShellCallOutputStatusEnum` | no | yes | provider_event (validated) |
+| `LocalShellCallStatus` | no | yes | provider_event (validated) |
+| `LocalShellExecAction` | no | yes | provider_event (validated) |
+| `LocalShellExecActionParam` | no | no | provider_request (validated) |
 | `LogProb` | yes | yes | provider_event (validated) |
 | `MCPApprovalRequest` | no | yes | provider_event (validated) |
 | `MCPApprovalResponse` | no | yes | provider_event (validated) |
 | `MCPListTools` | no | yes | provider_event (validated) |
-| `MCPRequireApprovalApiEnum` | no | no | pending |
-| `MCPRequireApprovalFieldEnum` | no | yes | pending |
-| `MCPRequireApprovalFilterField` | no | yes | pending |
-| `MCPRequireApprovalFilterParam` | no | no | pending |
+| `MCPRequireApprovalApiEnum` | no | no | provider_request (validated) |
+| `MCPRequireApprovalFieldEnum` | no | yes | provider_event (validated) |
+| `MCPRequireApprovalFilterField` | no | yes | provider_event (validated) |
+| `MCPRequireApprovalFilterParam` | no | no | provider_request (validated) |
 | `MCPToolCall` | no | yes | provider_event (validated) |
-| `MCPToolCallStatus` | no | yes | pending |
-| `MCPToolFilterField` | no | yes | pending |
-| `MCPToolFilterParam` | no | no | pending |
+| `MCPToolCallStatus` | no | yes | provider_event (validated) |
+| `MCPToolFilterField` | no | yes | provider_event (validated) |
+| `MCPToolFilterParam` | no | no | provider_request (validated) |
 | `Message` | yes | yes | provider_event (validated) |
 | `MessageRole` | yes | yes | provider_event (validated) |
 | `MessageRole1` | no | no | provider_event (validated) |
@@ -656,8 +656,8 @@ Legend
 | `MoveAction` | no | yes | provider_event (validated) |
 | `MoveParam` | no | yes | provider_request (validated) |
 | `OrderEnum` | no | no | provider_request (validated) |
-| `OutputTextContent` | yes | yes | pending |
-| `OutputTextContentParam` | yes | no | pending |
+| `OutputTextContent` | yes | yes | provider_event (validated) |
+| `OutputTextContentParam` | yes | no | provider_request (validated) |
 | `OutputTokensDetails` | yes | yes | provider_event (validated) |
 | `Payer` | no | yes | provider_event (validated) |
 | `PromptCacheRetentionEnum` | no | yes | provider_request (validated) |
@@ -668,10 +668,10 @@ Legend
 | `ReasoningBody` | yes | yes | provider_event (validated) |
 | `ReasoningEffortEnum` | yes | yes | provider_request (validated) |
 | `ReasoningParam` | yes | no | provider_request (validated) |
-| `ReasoningSummaryContentParam` | yes | no | pending |
+| `ReasoningSummaryContentParam` | yes | no | provider_request (validated) |
 | `ReasoningSummaryEnum` | yes | yes | provider_request (validated) |
-| `ReasoningTextContent` | yes | yes | pending |
-| `RefusalContent` | yes | yes | pending |
+| `ReasoningTextContent` | yes | yes | provider_event (validated) |
+| `RefusalContent` | yes | yes | provider_event (validated) |
 | `RefusalContentParam` | yes | no | provider_request (validated) |
 | `SafetyCheck` | no | yes | provider_event (validated) |
 | `ScreenshotAction` | no | yes | provider_event (validated) |
@@ -685,7 +685,7 @@ Legend
 | `SpecificComputerParam` | no | no | provider_request (validated) |
 | `SpecificComputerPreviewParam` | no | no | provider_request (validated) |
 | `SpecificFileSearchParam` | no | no | provider_request (validated) |
-| `SpecificFunctionParam` | yes | no | pending |
+| `SpecificFunctionParam` | yes | no | provider_request (validated) |
 | `SpecificFunctionShellParam` | no | no | provider_request (validated) |
 | `SpecificImageGenParam` | no | no | provider_request (validated) |
 | `SpecificLocalShellParam` | no | no | provider_request (validated) |
@@ -694,11 +694,11 @@ Legend
 | `SpecificWebSearchParam` | no | no | provider_request (validated) |
 | `SpecificWebSearchPreviewParam` | no | no | provider_request (validated) |
 | `StreamOptionsParam` | yes | no | provider_request (validated) |
-| `SummaryTextContent` | yes | yes | pending |
-| `TextContent` | yes | yes | pending |
+| `SummaryTextContent` | yes | yes | provider_event (validated) |
+| `TextContent` | yes | yes | provider_event (validated) |
 | `TextField` | yes | yes | provider_event (validated) |
 | `TextParam` | yes | no | provider_request (validated) |
-| `TextResponseFormat` | yes | yes | pending |
+| `TextResponseFormat` | yes | yes | provider_event (validated) |
 | `TokenCountsBody` | no | no | provider_request (validated) |
 | `TokenCountsResource` | no | no | provider_event (validated) |
 | `ToolChoiceParam` | yes | no | provider_request (validated) |
@@ -712,23 +712,23 @@ Legend
 | `UrlSourceParam` | no | no | provider_request (validated) |
 | `Usage` | yes | yes | provider_event (validated) |
 | `VerbosityEnum` | yes | yes | provider_request (validated) |
-| `VideoContentVariant` | no | no | pending |
-| `VideoListResource` | no | no | pending |
-| `VideoModel` | no | no | pending |
-| `VideoResource` | no | no | pending |
-| `VideoSeconds` | no | no | pending |
-| `VideoSize` | no | no | pending |
-| `VideoStatus` | no | no | pending |
+| `VideoContentVariant` | no | no | provider_event (validated) |
+| `VideoListResource` | no | no | provider_event (validated) |
+| `VideoModel` | no | no | provider_request (validated) |
+| `VideoResource` | no | no | provider_event (validated) |
+| `VideoSeconds` | no | no | provider_request (validated) |
+| `VideoSize` | no | no | provider_request (validated) |
+| `VideoStatus` | no | no | provider_event (validated) |
 | `WaitAction` | no | yes | provider_event (validated) |
 | `WaitParam` | no | yes | provider_request (validated) |
 | `WebSearchCall` | no | yes | provider_event (validated) |
-| `WebSearchCallActionFindInPage` | no | yes | pending |
-| `WebSearchCallActionFindInPageParam` | no | no | pending |
-| `WebSearchCallActionOpenPage` | no | yes | pending |
-| `WebSearchCallActionOpenPageParam` | no | no | pending |
-| `WebSearchCallActionSearch` | no | yes | pending |
-| `WebSearchCallActionSearchParam` | no | no | pending |
-| `WebSearchCallStatus` | no | yes | pending |
+| `WebSearchCallActionFindInPage` | no | yes | provider_event (validated) |
+| `WebSearchCallActionFindInPageParam` | no | no | provider_request (validated) |
+| `WebSearchCallActionOpenPage` | no | yes | provider_event (validated) |
+| `WebSearchCallActionOpenPageParam` | no | no | provider_request (validated) |
+| `WebSearchCallActionSearch` | no | yes | provider_event (validated) |
+| `WebSearchCallActionSearchParam` | no | no | provider_request (validated) |
+| `WebSearchCallStatus` | no | yes | provider_event (validated) |
 | `WebSearchPreviewToolParam_2025_03_11Param` | no | no | provider_request (validated) |
 | `WebSearchToolParam_2025_08_14Param` | no | no | provider_request (validated) |
 
@@ -814,44 +814,44 @@ Legend
 ### Tool schemas
 | schema | bundled | covered | status |
 | --- | --- | --- | --- |
-| `AllowedToolChoice` | yes | yes | pending |
-| `ApplyPatchTool` | no | yes | pending |
-| `ApplyPatchToolChoice` | no | yes | pending |
+| `AllowedToolChoice` | yes | yes | provider_request (validated) |
+| `ApplyPatchTool` | no | yes | provider_request (validated) |
+| `ApplyPatchToolChoice` | no | yes | provider_request (validated) |
 | `ApplyPatchToolParam` | no | no | provider_request (validated) |
-| `AutoCodeInterpreterToolParam` | no | no | pending |
-| `CodeInterpreterToolChoice` | no | yes | pending |
+| `AutoCodeInterpreterToolParam` | no | no | provider_request (validated) |
+| `CodeInterpreterToolChoice` | no | yes | provider_request (validated) |
 | `CodeInterpreterToolParam` | no | no | provider_request (validated) |
-| `ComputerToolChoice` | no | yes | pending |
+| `ComputerToolChoice` | no | yes | provider_request (validated) |
 | `ComputerToolParam` | no | no | provider_request (validated) |
-| `ComputerUsePreviewTool` | no | yes | pending |
+| `ComputerUsePreviewTool` | no | yes | provider_request (validated) |
 | `ComputerUsePreviewToolParam` | no | no | provider_request (validated) |
-| `CustomTool` | no | yes | pending |
-| `CustomToolChoice` | no | yes | pending |
+| `CustomTool` | no | yes | provider_request (validated) |
+| `CustomToolChoice` | no | yes | provider_request (validated) |
 | `CustomToolParam` | no | no | provider_request (validated) |
-| `FileSearchTool` | no | yes | pending |
-| `FileSearchToolChoice` | no | yes | pending |
+| `FileSearchTool` | no | yes | provider_request (validated) |
+| `FileSearchToolChoice` | no | yes | provider_request (validated) |
 | `FileSearchToolParam` | no | no | provider_request (validated) |
-| `FunctionShellTool` | no | yes | pending |
-| `FunctionShellToolChoice` | no | yes | pending |
+| `FunctionShellTool` | no | yes | provider_request (validated) |
+| `FunctionShellToolChoice` | no | yes | provider_request (validated) |
 | `FunctionShellToolParam` | no | no | provider_request (validated) |
-| `FunctionTool` | yes | yes | pending |
-| `FunctionToolChoice` | yes | yes | pending |
+| `FunctionTool` | yes | yes | provider_request (validated) |
+| `FunctionToolChoice` | yes | yes | provider_request (validated) |
 | `FunctionToolParam` | yes | no | provider_request (validated) |
-| `ImageGenTool` | no | yes | pending |
-| `ImageGenToolChoice` | no | yes | pending |
+| `ImageGenTool` | no | yes | provider_request (validated) |
+| `ImageGenToolChoice` | no | yes | provider_request (validated) |
 | `ImageGenToolParam` | no | no | provider_request (validated) |
-| `LocalShellToolChoice` | no | yes | pending |
+| `LocalShellToolChoice` | no | yes | provider_request (validated) |
 | `LocalShellToolParam` | no | no | provider_request (validated) |
-| `MCPListToolsTool` | no | yes | pending |
-| `MCPTool` | no | yes | pending |
-| `MCPToolChoice` | no | yes | pending |
+| `MCPListToolsTool` | no | yes | provider_request (validated) |
+| `MCPTool` | no | yes | provider_request (validated) |
+| `MCPToolChoice` | no | yes | provider_request (validated) |
 | `MCPToolParam` | no | no | provider_request (validated) |
-| `MemoryToolParam` | no | no | pending |
+| `MemoryToolParam` | no | no | provider_request (validated) |
 | `ResponsesToolParam` | yes | no | provider_request (validated) |
 | `SpecificCustomToolParam` | no | no | provider_request (validated) |
-| `Tool` | yes | yes | pending |
+| `Tool` | yes | yes | provider_request (validated) |
 | `WebSearchGADeprecatedToolParam` | no | no | provider_request (validated) |
-| `WebSearchPreviewTool` | no | yes | pending |
+| `WebSearchPreviewTool` | no | yes | provider_request (validated) |
 | `WebSearchPreviewToolParam` | no | no | provider_request (validated) |
-| `WebSearchToolChoice` | no | yes | pending |
+| `WebSearchToolChoice` | no | yes | provider_request (validated) |
 | `WebSearchToolParam` | no | no | provider_request (validated) |

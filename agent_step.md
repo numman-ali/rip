@@ -2,7 +2,7 @@
 
 Current focus
 - OpenResponses capability inventory and roadmap alignment (spec MDX + schemas -> capability registry/matrix + roadmap).
-- Provider-boundary validation stays in place, but prioritize product-capability mapping + surface parity.
+- Coverage checklist is complete; focus now on capability mapping + surface parity alignment.
 
 Reorientation (read in order after compaction)
 - `AGENTS.md`
@@ -22,4 +22,4 @@ Active priorities
 
 Next checkpoints
 - Update roadmap/gap notes if any new capability ids imply surface gaps.
-- Continue OpenResponses coverage checklist on remaining non-tool schemas or additive patches.
+- Reconcile capability registry + matrix with OpenResponses capability map.
