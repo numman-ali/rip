@@ -6,6 +6,7 @@ Generated from docs/03_contracts/capability_registry.md.
 | --- | --- | --- | --- | --- | --- | --- |
 | session.create | planned | supported | supported | planned | planned | planned |
 | session.send_input | planned | supported | supported | planned | planned | planned |
+| session.set_model | planned | planned | planned | planned | planned | planned |
 | session.stream_events | planned | supported | supported | planned | planned | planned |
 | session.cancel | planned | supported | supported | planned | planned | planned |
 | session.resume | planned | planned | planned | planned | planned | planned |
@@ -142,6 +143,8 @@ Generated from docs/03_contracts/capability_registry.md.
 | model.service_tier | planned | planned | planned | planned | planned | planned |
 | model.prompt_cache | planned | planned | planned | planned | planned | planned |
 | model.multi_provider | planned | planned | planned | planned | planned | planned |
+| model.catalog | planned | planned | planned | planned | planned | planned |
+| model.routing | planned | planned | planned | planned | planned | planned |
 | model.thinking_levels | planned | planned | planned | planned | planned | planned |
 | model.registry | planned | planned | planned | planned | planned | planned |
 | model.cycle | planned | planned | planned | planned | planned | planned |

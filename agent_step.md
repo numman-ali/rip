@@ -8,6 +8,7 @@ Reorientation (read in order after compaction)
 - `AGENTS.md`
 - `agent_step.md`
 - `docs/00_index.md`
+- `docs/00_doc_map.md`
 - `docs/01_north_star.md`
 - `docs/07_tasks/roadmap.md`
 - `docs/03_contracts/openresponses_coverage.md`
@@ -21,4 +22,4 @@ Active priorities
 
 Next checkpoints
 - Update roadmap/gap notes if any new capability ids imply surface gaps.
-- Continue compliance checklist on remaining non-tool schemas or additive patches.
+- Continue OpenResponses coverage checklist on remaining non-tool schemas or additive patches.

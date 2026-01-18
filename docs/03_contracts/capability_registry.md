@@ -29,6 +29,7 @@ Rules
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | session.create | v1 | P1 | planned | supported | supported | planned | planned | planned | Start a new session. |
 | session.send_input | v1 | P1 | planned | supported | supported | planned | planned | planned | Send input to an active session. |
+| session.set_model | v1 | P2 | planned | planned | planned | planned | planned | planned | Change the active session's provider/model selection (applies forward only). |
 | session.stream_events | v1 | P1 | planned | supported | supported | planned | planned | planned | Stream session events. |
 | session.cancel | v1 | P1 | planned | supported | supported | planned | planned | planned | Cancel an active session. |
 | session.resume | v1 | P2 | planned | planned | planned | planned | planned | planned | Resume a prior session by id. |
@@ -217,6 +218,8 @@ Rules
 | model.service_tier | v1 | P2 | planned | planned | planned | planned | planned | planned | Service tier hint for routing/priority. |
 | model.prompt_cache | v1 | P2 | planned | planned | planned | planned | planned | planned | Prompt cache key + retention controls. |
 | model.multi_provider | v1 | P2 | planned | planned | planned | planned | planned | planned | Multi-provider support. |
+| model.catalog | v1 | P2 | planned | planned | planned | planned | planned | planned | Model catalog load + optional refresh hooks (versioned). |
+| model.routing | v1 | P2 | planned | planned | planned | planned | planned | planned | Routing policy engine (advisory/authoritative) with recorded decisions. |
 | model.thinking_levels | v1 | P2 | planned | planned | planned | planned | planned | planned | Reasoning levels with budgets. |
 | model.registry | v1 | P2 | planned | planned | planned | planned | planned | planned | Custom model registry and auth. |
 | model.cycle | v1 | P2 | planned | planned | planned | planned | planned | planned | Runtime model cycling and availability queries. |

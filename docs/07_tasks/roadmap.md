@@ -38,6 +38,10 @@ Next
   - Done: runtime integration + rewind behavior tests
 
 Later
+- Models & providers: multi-provider + routing + catalogs (Phase 2) [needs work]
+  - Refs: `docs/03_contracts/modules/phase-2/01_model_routing.md`, `docs/03_contracts/capability_registry.md`, `docs/02_architecture/capability_matrix.md`, `docs/03_contracts/event_frames.md`
+  - Ready: OpenResponses boundary stable; routing decisions can be logged as event frames
+  - Done: multi-provider configs + versioned model catalogs; per-turn `{provider_id, model_id}` switching; routing policy (advisory/authoritative) with replayable recorded decisions
 - TUI surface (`rip-tui`) plan + MVP renderer [needs work]
   - Refs: `docs/02_architecture/surfaces.md`, `docs/02_architecture/capability_matrix.md`, `temp/docs/ratatui/notes.md`
   - Ready: confirm TUI stack + input model; define surface-specific capabilities

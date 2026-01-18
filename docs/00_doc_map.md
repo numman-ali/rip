@@ -1,0 +1,51 @@
+# Doc Map
+
+Purpose
+- Fast navigation for agents (treat as a code map for the docs).
+- Every “product requirement” must land as a capability id + roadmap item; this map makes the path obvious.
+
+Entry points (read order for reorientation)
+- `docs/01_north_star.md` (why + constraints)
+- `docs/07_tasks/roadmap.md` (now/next/later, with confidence tags)
+- `docs/03_contracts/capability_registry.md` (canonical capability ids + surface support)
+- `docs/02_architecture/capability_matrix.md` (phase placement + hook points)
+- `docs/03_contracts/event_frames.md` (internal event schema)
+- OpenResponses boundary:
+  - `docs/03_contracts/openresponses_coverage.md` (exhaustive spec/schema coverage + capability ownership)
+  - `docs/03_contracts/openresponses_capability_map.md` (feature-group → capability ids)
+  - `docs/03_contracts/openresponses_traceability.md` (upstream snapshot + diff procedure)
+
+How we keep product/UX aligned
+- Capability ids are the canonical interface contract (not provider schemas).
+- Roadmap items must reference capability ids and the docs that define them.
+- Provider/OpenResponses schema validation is evidence; capability ownership + parity is the deliverable.
+
+Doc taxonomy (where things go)
+- `docs/01_*`: north star / product posture
+- `docs/02_architecture/*`: component map, surfaces, capability matrix
+- `docs/03_contracts/*`: capability contract/registry, event frames, module contracts
+  - `docs/03_contracts/modules/phase-1/*`: Phase 1 module contracts
+  - `docs/03_contracts/modules/phase-2/*`: Phase 2 module contracts
+- `docs/04_execution/*`: how to run/operate (CLI/server)
+- `docs/05_quality/*`: CI gates, parity, benchmarks, tests
+- `docs/06_decisions/*`: ADRs (material decisions only)
+- `docs/07_tasks/*`: roadmap + task cards (per phase)
+
+Doc index (authoritative docs only)
+| area | doc | what it answers |
+| --- | --- | --- |
+| north star | `docs/01_north_star.md` | What we’re building and why. |
+| roadmap | `docs/07_tasks/roadmap.md` | What’s next and what “done” means. |
+| capabilities | `docs/03_contracts/capabilities.md` | What a capability contract contains. |
+| capability registry | `docs/03_contracts/capability_registry.md` | Full capability id list + surface statuses. |
+| capability matrix | `docs/02_architecture/capability_matrix.md` | Phases + hook points by capability group. |
+| surfaces | `docs/02_architecture/surfaces.md` | Surface roles and parity expectations. |
+| event frames | `docs/03_contracts/event_frames.md` | Internal event schema; what all surfaces consume. |
+| OpenResponses coverage | `docs/03_contracts/openresponses_coverage.md` | Exhaustive OpenResponses spec/schema coverage + ownership. |
+| OpenResponses capability map | `docs/03_contracts/openresponses_capability_map.md` | Feature groups → internal capability ids. |
+| OpenResponses traceability | `docs/03_contracts/openresponses_traceability.md` | Upstream snapshot + sync/diff procedure. |
+| model routing (Phase 2) | `docs/03_contracts/modules/phase-2/01_model_routing.md` | Model switching, routing policies, catalogs, determinism. |
+| provider adapters | `docs/03_contracts/modules/phase-1/02_provider_adapters.md` | OpenResponses boundary invariants and tests. |
+| tool runtime | `docs/03_contracts/modules/phase-1/03_tool_runtime.md` | Built-in tools and tool dispatch contract. |
+| server | `docs/03_contracts/modules/phase-1/06_server.md` | Session API surface contract. |
+| CLI | `docs/03_contracts/modules/phase-1/05_cli.md` | CLI surface contract (interactive + headless). |
