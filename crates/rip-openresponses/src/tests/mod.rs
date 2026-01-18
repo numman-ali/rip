@@ -65,6 +65,7 @@ mod item_param;
 mod request_validation;
 mod response_resource;
 mod schema_validation_content;
+mod schema_validation_enums;
 mod schema_validation_filters;
 mod schema_validation_misc;
 mod schema_validation_tools;

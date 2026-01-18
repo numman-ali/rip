@@ -511,7 +511,7 @@ Legend
 | `EditsBodyDallE2Param` | no | no | pending |
 | `EmptyAction` | no | yes | provider_event (validated) |
 | `EmptyModelParam` | yes | no | pending |
-| `ExcludeEnum` | no | no | pending |
+| `ExcludeEnum` | no | no | provider_request (validated) |
 | `FileCitationBody` | no | yes | provider_event (validated) |
 | `FileCitationParam` | no | yes | provider_request (validated) |
 | `FileSearchCall` | no | yes | provider_event (validated) |
@@ -566,7 +566,7 @@ Legend
 | `ImageUsage` | no | yes | pending |
 | `ImageUsageInputTokensDetails` | no | yes | pending |
 | `ImageUsageOutputTokensDetails` | no | yes | pending |
-| `IncludeEnum` | yes | no | pending |
+| `IncludeEnum` | yes | no | provider_request (validated) |
 | `IncompleteDetails` | yes | yes | pending |
 | `InputFidelity` | no | no | pending |
 | `InputFileContent` | yes | yes | pending |
@@ -604,18 +604,18 @@ Legend
 | `MCPToolFilterField` | no | yes | pending |
 | `MCPToolFilterParam` | no | no | pending |
 | `Message` | yes | yes | provider_event (validated) |
-| `MessageRole` | yes | yes | pending |
-| `MessageRole1` | no | no | pending |
-| `MessageStatus` | yes | yes | pending |
-| `MetadataParam` | yes | no | pending |
+| `MessageRole` | yes | yes | provider_event (validated) |
+| `MessageRole1` | no | no | provider_event (validated) |
+| `MessageStatus` | yes | yes | provider_event (validated) |
+| `MetadataParam` | yes | no | provider_request (validated) |
 | `MoveAction` | no | yes | provider_event (validated) |
 | `MoveParam` | no | yes | provider_request (validated) |
-| `OrderEnum` | no | no | pending |
+| `OrderEnum` | no | no | provider_request (validated) |
 | `OutputTextContent` | yes | yes | pending |
 | `OutputTextContentParam` | yes | no | pending |
 | `OutputTokensDetails` | yes | yes | provider_event (validated) |
 | `Payer` | no | yes | provider_event (validated) |
-| `PromptCacheRetentionEnum` | no | yes | pending |
+| `PromptCacheRetentionEnum` | no | yes | provider_request (validated) |
 | `PromptInstructionMessage` | no | yes | pending |
 | `RankerVersionType` | no | yes | provider_request (validated) |
 | `RankingOptions` | no | yes | pending |
@@ -634,7 +634,7 @@ Legend
 | `ScrollAction` | no | yes | provider_event (validated) |
 | `ScrollParam` | no | yes | provider_request (validated) |
 | `SearchContextSize` | no | yes | pending |
-| `ServiceTierEnum` | yes | no | pending |
+| `ServiceTierEnum` | yes | no | provider_request (validated) |
 | `SpecificApplyPatchParam` | no | no | provider_request (validated) |
 | `SpecificCodeInterpreterParam` | no | no | provider_request (validated) |
 | `SpecificComputerParam` | no | no | provider_request (validated) |
@@ -659,14 +659,14 @@ Legend
 | `ToolChoiceParam` | yes | no | provider_request (validated) |
 | `ToolChoiceValueEnum` | yes | yes | provider_request (validated) |
 | `TopLogProb` | yes | yes | provider_event (validated) |
-| `TruncationEnum` | yes | yes | pending |
+| `TruncationEnum` | yes | yes | provider_request (validated) |
 | `TypeAction` | no | yes | provider_event (validated) |
 | `TypeParam` | no | yes | provider_request (validated) |
 | `UrlCitationBody` | yes | yes | provider_event (validated) |
 | `UrlCitationParam` | yes | yes | provider_request (validated) |
 | `UrlSourceParam` | no | no | pending |
 | `Usage` | yes | yes | provider_event (validated) |
-| `VerbosityEnum` | yes | yes | pending |
+| `VerbosityEnum` | yes | yes | provider_request (validated) |
 | `VideoContentVariant` | no | no | pending |
 | `VideoListResource` | no | no | pending |
 | `VideoModel` | no | no | pending |

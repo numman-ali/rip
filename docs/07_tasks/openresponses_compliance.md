@@ -5,6 +5,7 @@ Summary
 - Each item should be marked complete only when mapped to internal frames and validated at the provider boundary.
 
 Progress log
+- 2026-01-18: Validated request/response enums and metadata schemas (MessageRole/Status, MetadataParam, include/exclude/order/truncation/service tier/verbosity/prompt cache); checklist updated.
 - 2026-01-18: Validated usage/token count/logprob schemas (Usage, Input/OutputTokensDetails, LogProb/TopLogProb, TokenCountsBody/Resource); checklist updated.
 - 2026-01-18: Validated additional computer action schemas (keypress/move/scroll/screenshot/type/wait) and SafetyCheck; checklist updated.
 - 2026-01-17: Validated file search and status schemas (ranking options, retrieved chunks, results, ranker/hybrid options, tool call statuses, function call statuses); checklist updated.
@@ -183,7 +184,7 @@ Progress log
 - [ ] `EditsBodyDallE2Param` mapped and validated.
 - [x] `EmptyAction` mapped and validated.
 - [ ] `EmptyModelParam` mapped and validated.
-- [ ] `ExcludeEnum` mapped and validated.
+- [x] `ExcludeEnum` mapped and validated.
 - [x] `FileCitationBody` mapped and validated.
 - [x] `FileCitationParam` mapped and validated.
 - [x] `FileSearchCall` mapped and validated.
@@ -238,7 +239,7 @@ Progress log
 - [ ] `ImageUsage` mapped and validated.
 - [ ] `ImageUsageInputTokensDetails` mapped and validated.
 - [ ] `ImageUsageOutputTokensDetails` mapped and validated.
-- [ ] `IncludeEnum` mapped and validated.
+- [x] `IncludeEnum` mapped and validated.
 - [ ] `IncompleteDetails` mapped and validated.
 - [ ] `InputFidelity` mapped and validated.
 - [x] `InputFileContent` mapped and validated.
@@ -278,18 +279,18 @@ Progress log
 - [x] `MCPToolFilterField` mapped and validated.
 - [x] `MCPToolFilterParam` mapped and validated.
 - [x] `Message` mapped and validated.
-- [ ] `MessageRole` mapped and validated.
-- [ ] `MessageRole1` mapped and validated.
-- [ ] `MessageStatus` mapped and validated.
-- [ ] `MetadataParam` mapped and validated.
+- [x] `MessageRole` mapped and validated.
+- [x] `MessageRole1` mapped and validated.
+- [x] `MessageStatus` mapped and validated.
+- [x] `MetadataParam` mapped and validated.
 - [x] `MoveAction` mapped and validated.
 - [x] `MoveParam` mapped and validated.
-- [ ] `OrderEnum` mapped and validated.
+- [x] `OrderEnum` mapped and validated.
 - [x] `OutputTextContent` mapped and validated.
 - [x] `OutputTextContentParam` mapped and validated.
 - [x] `OutputTokensDetails` mapped and validated.
 - [x] `Payer` mapped and validated.
-- [ ] `PromptCacheRetentionEnum` mapped and validated.
+- [x] `PromptCacheRetentionEnum` mapped and validated.
 - [ ] `PromptInstructionMessage` mapped and validated.
 - [x] `RankerVersionType` mapped and validated.
 - [ ] `RankingOptions` mapped and validated.
@@ -308,7 +309,7 @@ Progress log
 - [x] `ScrollAction` mapped and validated.
 - [x] `ScrollParam` mapped and validated.
 - [ ] `SearchContextSize` mapped and validated.
-- [ ] `ServiceTierEnum` mapped and validated.
+- [x] `ServiceTierEnum` mapped and validated.
 - [x] `SpecificApplyPatchParam` mapped and validated.
 - [x] `SpecificCodeInterpreterParam` mapped and validated.
 - [x] `SpecificComputerParam` mapped and validated.
@@ -334,14 +335,14 @@ Progress log
 - [x] `ToolChoiceParam` mapped and validated.
 - [x] `ToolChoiceValueEnum` mapped and validated.
 - [x] `TopLogProb` mapped and validated.
-- [ ] `TruncationEnum` mapped and validated.
+- [x] `TruncationEnum` mapped and validated.
 - [x] `TypeAction` mapped and validated.
 - [x] `TypeParam` mapped and validated.
 - [x] `UrlCitationBody` mapped and validated.
 - [x] `UrlCitationParam` mapped and validated.
 - [ ] `UrlSourceParam` mapped and validated.
 - [x] `Usage` mapped and validated.
-- [ ] `VerbosityEnum` mapped and validated.
+- [x] `VerbosityEnum` mapped and validated.
 - [ ] `VideoContentVariant` mapped and validated.
 - [ ] `VideoListResource` mapped and validated.
 - [ ] `VideoModel` mapped and validated.
