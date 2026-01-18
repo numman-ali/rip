@@ -1,17 +1,23 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use futures_util::StreamExt;
-use rip_kernel::{Event, Runtime};
+use rip_kernel::{Event, EventKind, Runtime};
 use rip_log::{write_snapshot, EventLog};
-use rip_provider_openresponses::{EventFrameMapper, ParsedEventKind, SseDecoder};
+use rip_provider_openresponses::{
+    CreateResponsePayload, EventFrameMapper, ItemParam, ParsedEvent, ParsedEventKind, SseDecoder,
+};
 use rip_tools::{ToolInvocation, ToolRunner};
 use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::{broadcast, Mutex};
 use uuid::Uuid;
 
-use crate::provider_openresponses::{build_streaming_request, OpenResponsesConfig};
+use crate::provider_openresponses::{
+    build_streaming_followup_request, build_streaming_request, OpenResponsesConfig,
+    DEFAULT_MAX_TOOL_CALLS,
+};
 
 #[derive(Deserialize)]
 struct ToolCommand {
@@ -115,9 +121,10 @@ pub async fn run_session(context: SessionContext) {
                     buffer: &events,
                     event_log: event_log.as_ref(),
                 };
-                let reason = stream_openresponses_prompt(
+                let reason = run_openresponses_agent_loop(
                     &http_client,
                     config,
+                    tool_runner.as_ref(),
                     &runtime_session_id,
                     &input,
                     &mut seq,
@@ -176,10 +183,16 @@ struct OpenResponsesSsePipe<'a> {
     seq_offset: u64,
     seq: &'a mut u64,
     sink: EventSink<'a>,
+    collector: Option<&'a mut ToolCallCollector>,
 }
 
 impl<'a> OpenResponsesSsePipe<'a> {
-    fn new(session_id: &str, seq: &'a mut u64, sink: EventSink<'a>) -> Self {
+    fn new(
+        session_id: &str,
+        seq: &'a mut u64,
+        sink: EventSink<'a>,
+        collector: Option<&'a mut ToolCallCollector>,
+    ) -> Self {
         Self {
             session_id: session_id.to_string(),
             decoder: SseDecoder::new(),
@@ -187,6 +200,7 @@ impl<'a> OpenResponsesSsePipe<'a> {
             seq_offset: *seq,
             seq,
             sink,
+            collector,
         }
     }
 
@@ -219,6 +233,9 @@ impl<'a> OpenResponsesSsePipe<'a> {
 
         let mut frames = Vec::new();
         for event in &parsed {
+            if let Some(collector) = self.collector.as_deref_mut() {
+                collector.observe(event);
+            }
             frames.extend(self.mapper.map(event));
         }
         for frame in &mut frames {
@@ -297,6 +314,9 @@ impl<'a> OpenResponsesSsePipe<'a> {
 
         let mut frames = Vec::new();
         for event in &parsed {
+            if let Some(collector) = self.collector.as_deref_mut() {
+                collector.observe(event);
+            }
             frames.extend(self.mapper.map(event));
         }
         for frame in &mut frames {
@@ -314,15 +334,321 @@ impl<'a> OpenResponsesSsePipe<'a> {
     }
 }
 
-async fn stream_openresponses_prompt(
+#[derive(Debug, Clone)]
+struct FunctionCallItem {
+    output_index: u64,
+    call_id: String,
+    name: String,
+    arguments: String,
+}
+
+#[derive(Debug, Clone, Default)]
+struct FunctionCallBuffer {
+    output_index: u64,
+    call_id: Option<String>,
+    name: Option<String>,
+    arguments: String,
+}
+
+#[derive(Debug, Default)]
+struct ToolCallCollector {
+    response_id: Option<String>,
+    function_call_by_item_id: HashMap<String, FunctionCallBuffer>,
+    completed_function_calls: Vec<FunctionCallItem>,
+}
+
+impl ToolCallCollector {
+    fn observe(&mut self, parsed: &ParsedEvent) {
+        if parsed.kind != ParsedEventKind::Event {
+            return;
+        }
+        let Some(data) = parsed.data.as_ref() else {
+            return;
+        };
+        let Some(obj) = data.as_object() else {
+            return;
+        };
+
+        if let Some(id) = obj
+            .get("response")
+            .and_then(|value| value.get("id"))
+            .and_then(|value| value.as_str())
+        {
+            if !id.is_empty() {
+                self.response_id = Some(id.to_string());
+            }
+        }
+
+        let Some(event_type) = obj.get("type").and_then(|value| value.as_str()) else {
+            return;
+        };
+
+        match event_type {
+            "response.output_item.added" | "response.output_item.done" => {
+                let output_index = obj
+                    .get("output_index")
+                    .and_then(|value| value.as_u64())
+                    .unwrap_or(0);
+                let Some(item) = obj.get("item").and_then(|value| value.as_object()) else {
+                    return;
+                };
+                if item.get("type").and_then(|value| value.as_str()) != Some("function_call") {
+                    return;
+                }
+
+                let item_id = item
+                    .get("id")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                if item_id.is_empty() {
+                    return;
+                }
+
+                let entry = self
+                    .function_call_by_item_id
+                    .entry(item_id.clone())
+                    .or_default();
+                entry.output_index = output_index;
+                entry.call_id = item
+                    .get("call_id")
+                    .and_then(|value| value.as_str())
+                    .map(|value| value.to_string())
+                    .or(entry.call_id.take());
+                entry.name = item
+                    .get("name")
+                    .and_then(|value| value.as_str())
+                    .map(|value| value.to_string())
+                    .or(entry.name.take());
+                if let Some(arguments) = item.get("arguments").and_then(|value| value.as_str()) {
+                    if !arguments.is_empty() {
+                        entry.arguments = arguments.to_string();
+                    }
+                }
+
+                if event_type == "response.output_item.done" {
+                    let buffer = self.function_call_by_item_id.remove(&item_id);
+                    let call_id = item
+                        .get("call_id")
+                        .and_then(|value| value.as_str())
+                        .map(|value| value.to_string())
+                        .or_else(|| buffer.as_ref().and_then(|buffer| buffer.call_id.clone()));
+                    let name = item
+                        .get("name")
+                        .and_then(|value| value.as_str())
+                        .map(|value| value.to_string())
+                        .or_else(|| buffer.as_ref().and_then(|buffer| buffer.name.clone()));
+                    let arguments = item
+                        .get("arguments")
+                        .and_then(|value| value.as_str())
+                        .filter(|value| !value.is_empty())
+                        .map(|value| value.to_string())
+                        .or_else(|| buffer.as_ref().map(|buffer| buffer.arguments.clone()))
+                        .unwrap_or_default();
+
+                    if let (Some(call_id), Some(name)) = (call_id, name) {
+                        self.completed_function_calls.push(FunctionCallItem {
+                            output_index,
+                            call_id,
+                            name,
+                            arguments,
+                        });
+                    }
+                }
+            }
+            "response.function_call_arguments.delta" => {
+                let Some(item_id) = obj.get("item_id").and_then(|value| value.as_str()) else {
+                    return;
+                };
+                let output_index = obj
+                    .get("output_index")
+                    .and_then(|value| value.as_u64())
+                    .unwrap_or(0);
+                let delta = obj
+                    .get("delta")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("");
+
+                let entry = self
+                    .function_call_by_item_id
+                    .entry(item_id.to_string())
+                    .or_default();
+                entry.output_index = output_index;
+                entry.arguments.push_str(delta);
+            }
+            "response.function_call_arguments.done" => {
+                let Some(item_id) = obj.get("item_id").and_then(|value| value.as_str()) else {
+                    return;
+                };
+                let output_index = obj
+                    .get("output_index")
+                    .and_then(|value| value.as_u64())
+                    .unwrap_or(0);
+                let arguments = obj
+                    .get("arguments")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("");
+
+                let entry = self
+                    .function_call_by_item_id
+                    .entry(item_id.to_string())
+                    .or_default();
+                entry.output_index = output_index;
+                entry.arguments = arguments.to_string();
+            }
+            _ => {}
+        }
+    }
+
+    fn drain_function_calls(&mut self) -> Vec<FunctionCallItem> {
+        let mut calls = std::mem::take(&mut self.completed_function_calls);
+        calls.sort_by_key(|call| call.output_index);
+        calls
+    }
+}
+
+fn tool_events_to_function_call_output(tool_name: &str, events: &[Event]) -> Value {
+    let mut stdout = String::new();
+    let mut stderr = String::new();
+    let mut exit_code: i32 = 1;
+    let mut artifacts: Option<Value> = None;
+    let mut tool_error: Option<String> = None;
+
+    for event in events {
+        match &event.kind {
+            EventKind::ToolStdout { chunk, .. } => stdout.push_str(chunk),
+            EventKind::ToolStderr { chunk, .. } => stderr.push_str(chunk),
+            EventKind::ToolEnded {
+                exit_code: code,
+                artifacts: tool_artifacts,
+                ..
+            } => {
+                exit_code = *code;
+                artifacts = tool_artifacts.clone();
+            }
+            EventKind::ToolFailed { error, .. } => tool_error = Some(error.clone()),
+            _ => {}
+        }
+    }
+
+    let ok = exit_code == 0 && tool_error.is_none();
+    let mut obj = serde_json::Map::new();
+    obj.insert("tool".to_string(), Value::String(tool_name.to_string()));
+    obj.insert("ok".to_string(), Value::Bool(ok));
+    obj.insert(
+        "exit_code".to_string(),
+        Value::Number(serde_json::Number::from(exit_code as i64)),
+    );
+    obj.insert("stdout".to_string(), Value::String(stdout));
+    obj.insert("stderr".to_string(), Value::String(stderr));
+    if let Some(artifacts) = artifacts {
+        obj.insert("artifacts".to_string(), artifacts);
+    }
+    if let Some(error) = tool_error {
+        obj.insert("error".to_string(), Value::String(error));
+    }
+    Value::Object(obj)
+}
+
+async fn run_openresponses_agent_loop(
     http: &reqwest::Client,
     config: &OpenResponsesConfig,
+    tool_runner: &ToolRunner,
     session_id: &str,
     prompt: &str,
     seq: &mut u64,
     sink: EventSink<'_>,
 ) -> String {
-    let payload = build_streaming_request(config, prompt);
+    let mut previous_response_id: Option<String> = None;
+    let mut followup_tool_outputs: Option<Vec<ItemParam>> = None;
+    let mut tool_call_count: u64 = 0;
+
+    loop {
+        if tool_call_count >= DEFAULT_MAX_TOOL_CALLS {
+            return "max_tool_calls_exceeded".to_string();
+        }
+
+        let payload = if let Some(tool_outputs) = followup_tool_outputs.take() {
+            let Some(prev) = previous_response_id.as_deref() else {
+                return "provider_error".to_string();
+            };
+            build_streaming_followup_request(config, prev, tool_outputs)
+        } else {
+            build_streaming_request(config, prompt)
+        };
+
+        let mut collector = ToolCallCollector::default();
+        let stream_result = stream_openresponses_request(
+            http,
+            config,
+            session_id,
+            payload,
+            seq,
+            sink,
+            &mut collector,
+        )
+        .await;
+        if let Err(reason) = stream_result {
+            return reason;
+        }
+
+        if let Some(id) = collector.response_id.clone() {
+            previous_response_id = Some(id);
+        }
+
+        let tool_calls = collector.drain_function_calls();
+        if tool_calls.is_empty() {
+            return "completed".to_string();
+        }
+        if previous_response_id.is_none() {
+            return "provider_error".to_string();
+        }
+
+        let mut tool_outputs = Vec::new();
+        for call in tool_calls {
+            if tool_call_count >= DEFAULT_MAX_TOOL_CALLS {
+                return "max_tool_calls_exceeded".to_string();
+            }
+            tool_call_count += 1;
+            let args_value = match serde_json::from_str::<Value>(&call.arguments) {
+                Ok(value) => value,
+                Err(_) => Value::String(call.arguments.clone()),
+            };
+            let tool_events = tool_runner
+                .run(
+                    session_id,
+                    seq,
+                    ToolInvocation {
+                        name: call.name.clone(),
+                        args: args_value,
+                        timeout_ms: None,
+                    },
+                )
+                .await;
+            sink.emit_all(tool_events.clone()).await;
+
+            let output_value = tool_events_to_function_call_output(&call.name, &tool_events);
+            let output_json = serde_json::to_string(&output_value)
+                .unwrap_or_else(|_| "{\"ok\":false}".to_string());
+            tool_outputs.push(ItemParam::function_call_output(
+                call.call_id,
+                Value::String(output_json),
+            ));
+        }
+
+        followup_tool_outputs = Some(tool_outputs);
+    }
+}
+
+async fn stream_openresponses_request<'a>(
+    http: &reqwest::Client,
+    config: &OpenResponsesConfig,
+    session_id: &str,
+    payload: CreateResponsePayload,
+    seq: &'a mut u64,
+    sink: EventSink<'a>,
+    collector: &mut ToolCallCollector,
+) -> Result<(), String> {
     if !payload.errors().is_empty() {
         sink.emit(Event {
             id: Uuid::new_v4().to_string(),
@@ -341,7 +667,7 @@ async fn stream_openresponses_prompt(
         })
         .await;
         *seq += 1;
-        return "invalid_request".to_string();
+        return Err("invalid_request".to_string());
     }
 
     let mut request = http.post(&config.endpoint).json(payload.body());
@@ -352,23 +678,23 @@ async fn stream_openresponses_prompt(
     let response = match request.send().await {
         Ok(response) => response,
         Err(err) => {
-            let mut pipe = OpenResponsesSsePipe::new(session_id, seq, sink);
+            let mut pipe = OpenResponsesSsePipe::new(session_id, seq, sink, None);
             pipe.emit_transport_error(err.to_string()).await;
-            return "provider_error".to_string();
+            return Err("provider_error".to_string());
         }
     };
 
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        let mut pipe = OpenResponsesSsePipe::new(session_id, seq, sink);
+        let mut pipe = OpenResponsesSsePipe::new(session_id, seq, sink, None);
         pipe.emit_transport_error(format!("provider http error: {status}: {body}"))
             .await;
-        return "provider_error".to_string();
+        return Err("provider_error".to_string());
     }
 
     let mut utf8_buf = Vec::new();
-    let mut pipe = OpenResponsesSsePipe::new(session_id, seq, sink);
+    let mut pipe = OpenResponsesSsePipe::new(session_id, seq, sink, Some(collector));
     let mut saw_done = false;
 
     let mut stream = response.bytes_stream();
@@ -377,7 +703,7 @@ async fn stream_openresponses_prompt(
             Ok(chunk) => chunk,
             Err(err) => {
                 pipe.emit_transport_error(err.to_string()).await;
-                return "provider_error".to_string();
+                return Err("provider_error".to_string());
             }
         };
         saw_done = pipe.push_bytes(&mut utf8_buf, &chunk).await;
@@ -390,7 +716,7 @@ async fn stream_openresponses_prompt(
         let _ = pipe.finish().await;
     }
 
-    "completed".to_string()
+    Ok(())
 }
 
 fn now_ms() -> u64 {

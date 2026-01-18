@@ -3,7 +3,7 @@
 Current focus
 - Phase 1: keep CI/bench gates green and ratchet budgets.
 - Ratchet TTFT + end-to-end loop benchmark budgets.
-- Design/track the agent tool-call loop (provider tool calls -> ToolRunner -> follow-up requests).
+- Build replayable full agent-loop fixtures (provider stream -> tool -> follow-up -> done).
 
 Reorientation (read in order after compaction)
 - `AGENTS.md`
@@ -25,3 +25,4 @@ Next checkpoints
 - CI runs `scripts/check-fast` on push/PR.
 - Bench harness includes TTFT + end-to-end loop and is CI-gated (`scripts/bench`).
 - Provider streaming emits `provider_event` frames from an OpenResponses endpoint (`RIP_OPENRESPONSES_ENDPOINT`).
+- Provider tool loop executes `function_call` items and continues via `previous_response_id` follow-ups (integration-tested).

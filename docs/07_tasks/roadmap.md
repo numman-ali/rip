@@ -14,25 +14,19 @@ How to use
 
 Now
 
-## Agent loop: provider tool calls -> tools -> follow-up requests [needs work]
-- Refs: `docs/03_contracts/modules/phase-1/01_ripd_core.md`, `docs/03_contracts/modules/phase-1/02_provider_adapters.md`, `docs/03_contracts/modules/phase-1/03_tool_runtime.md`, `docs/03_contracts/event_frames.md`, `docs/03_contracts/openresponses_capability_map.md`
-- Ready:
-  - Confirm which OpenResponses tool-call item/events are “promoted” to first-class internal tool frames vs provider-only frames.
-  - Confirm continuity mechanism for follow-ups (`previous_response_id` vs re-sending full context).
-  - Confirm enforcement semantics for `tool_choice` + `allowed_tools` + tool call limits (`max_tool_calls`, `parallel_tool_calls`).
-- Done:
-  - ripd can execute provider-requested tool calls via ToolRunner and stream tool frames.
-  - ripd sends follow-up CreateResponse requests after tool completion and continues streaming.
-  - Replayable fixtures cover the full loop (provider stream -> tool -> patch -> follow-up -> done).
-
-Next
-
 ## Bench budgets: ratchet TTFT + end-to-end loop [confirm spec]
 - Refs: `docs/05_quality/benchmarks.md`, `docs/05_quality/benchmarks_budgets.json`, `scripts/bench`
 - Ready:
   - Capture CI baselines for `ttft_overhead_us` and `e2e_loop_us` (multiple runs).
 - Done:
   - Budgets tightened with explicit headroom; regressions fail CI.
+
+Next
+
+## Fixtures: deterministic tool outputs + replayable logs [needs work]
+- Refs: `docs/07_tasks/phase-1/09_fixtures.md`
+- Ready: tool runtime emits deterministic frames
+- Done: fixture repos + replay tests in CI
 
 Later
 - Models & providers: multi-provider + routing + catalogs (Phase 2) [needs work]
@@ -57,10 +51,6 @@ Later
   - Refs: `docs/02_architecture/surfaces.md`, `docs/02_architecture/capability_matrix.md`
   - Ready: server capability registry expanded; MCP protocol mapping defined
   - Done: MCP server exposes core capabilities + session lifecycle
-- Fixtures: deterministic tool outputs + replayable logs [needs work]
-  - Refs: `docs/07_tasks/phase-1/09_fixtures.md`
-  - Ready: tool runtime emits deterministic frames
-  - Done: fixture repos + replay tests in CI
 - SDK surface parity (TypeScript first) [needs work]
   - Refs: `docs/02_architecture/component_map.md`, `docs/02_architecture/capability_matrix.md`
   - Ready: session API + event frames stable
@@ -106,7 +96,8 @@ Done (recent)
 - 2026-01-18: Decision: plugin architecture is WASM-first with optional out-of-process services (ADR-0004).
 - 2026-01-18: Phase 1 hygiene: tests use temp workspace roots (no writes under `crates/*`).
 - 2026-01-18: Benchmarks: added TTFT (`ttft_overhead_us`) + end-to-end loop (`e2e_loop_us`) CI gates.
-- 2026-01-18: Provider integration MVP wired (OpenResponses SSE -> `provider_event` + derived deltas in `ripd`, env-configured, local integration test).
+- 2026-01-18: Provider integration wired (OpenResponses SSE -> `provider_event` + derived deltas + tool loop in `ripd`, env-configured, integration tests).
+- 2026-01-18: Agent loop: provider `function_call` -> ToolRunner -> `previous_response_id` follow-ups (ADR-0005 + integration test).
 - 2026-01-18: Workspace checkpoint hooks wired into ripd session execution (tool + checkpoint envelopes, tests).
 - 2026-01-18: CLI interactive streaming renderer complete (minimal UI + golden render test).
 - 2026-01-18: Capability validation pass complete (parity + headless schema + tool conformance + OpenResponses invariants + server smoke).

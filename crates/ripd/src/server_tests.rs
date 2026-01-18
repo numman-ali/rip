@@ -580,6 +580,287 @@ async fn prompt_uses_openresponses_provider_when_configured() {
 }
 
 #[tokio::test]
+async fn prompt_openresponses_executes_function_tools_and_sends_followup() {
+    use axum::extract::State;
+    use axum::http::header::CONTENT_TYPE;
+    use axum::routing::post;
+    use axum::{response::IntoResponse, Json, Router as AxumRouter};
+    use serde_json::{json, Value};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+    use tokio::net::TcpListener;
+
+    fn response_resource(id: &str) -> Value {
+        json!({
+            "background": false,
+            "completed_at": null,
+            "created_at": 0,
+            "error": null,
+            "frequency_penalty": 0,
+            "id": id,
+            "incomplete_details": null,
+            "instructions": null,
+            "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
+            "model": "fixture-model",
+            "object": "response",
+            "output": [],
+            "parallel_tool_calls": false,
+            "presence_penalty": 0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "reasoning": null,
+            "safety_identifier": null,
+            "service_tier": "",
+            "status": "",
+            "store": false,
+            "temperature": 0,
+            "text": { "format": { "type": "text" } },
+            "tool_choice": "auto",
+            "tools": [],
+            "top_logprobs": 0,
+            "top_p": 0,
+            "truncation": "auto",
+            "usage": null,
+            "user": null,
+        })
+    }
+
+    fn sse_event(event: &str, payload: Value) -> String {
+        format!("event: {event}\ndata: {payload}\n\n")
+    }
+
+    let first_sse = {
+        let mut sse = String::new();
+        sse.push_str(&sse_event(
+            "response.created",
+            json!({
+                "type": "response.created",
+                "sequence_number": 1,
+                "response": response_resource("resp_1"),
+            }),
+        ));
+        sse.push_str(&sse_event(
+            "response.output_item.added",
+            json!({
+                "type": "response.output_item.added",
+                "sequence_number": 2,
+                "output_index": 0,
+                "item": {
+                    "type": "function_call",
+                    "id": "fc_item_1",
+                    "call_id": "call_1",
+                    "name": "write",
+                    "arguments": "",
+                    "status": "in_progress"
+                }
+            }),
+        ));
+        sse.push_str(&sse_event(
+            "response.function_call_arguments.done",
+            json!({
+                "type": "response.function_call_arguments.done",
+                "sequence_number": 3,
+                "item_id": "fc_item_1",
+                "output_index": 0,
+                "arguments": "{\"path\":\"a.txt\",\"content\":\"hello\"}",
+            }),
+        ));
+        sse.push_str(&sse_event(
+            "response.output_item.done",
+            json!({
+                "type": "response.output_item.done",
+                "sequence_number": 4,
+                "output_index": 0,
+                "item": {
+                    "type": "function_call",
+                    "id": "fc_item_1",
+                    "call_id": "call_1",
+                    "name": "write",
+                    "arguments": "{\"path\":\"a.txt\",\"content\":\"hello\"}",
+                    "status": "completed"
+                }
+            }),
+        ));
+        sse.push_str("data: [DONE]\n\n");
+        sse
+    };
+
+    let second_sse = {
+        let mut sse = String::new();
+        sse.push_str(&sse_event(
+            "response.created",
+            json!({
+                "type": "response.created",
+                "sequence_number": 1,
+                "response": response_resource("resp_2"),
+            }),
+        ));
+        sse.push_str(&sse_event(
+            "response.output_text.delta",
+            json!({
+                "type": "response.output_text.delta",
+                "sequence_number": 2,
+                "item_id": "msg_1",
+                "output_index": 0,
+                "content_index": 0,
+                "delta": "done",
+                "logprobs": [],
+            }),
+        ));
+        sse.push_str("data: [DONE]\n\n");
+        sse
+    };
+
+    #[derive(Clone)]
+    struct ProviderState {
+        requests: Arc<Mutex<Vec<Value>>>,
+        call_count: Arc<AtomicUsize>,
+        first_sse: String,
+        second_sse: String,
+    }
+
+    let state = ProviderState {
+        requests: Arc::new(Mutex::new(Vec::new())),
+        call_count: Arc::new(AtomicUsize::new(0)),
+        first_sse: first_sse.clone(),
+        second_sse: second_sse.clone(),
+    };
+
+    let provider_app = AxumRouter::new()
+        .route(
+            "/v1/responses",
+            post(
+                |State(state): State<ProviderState>, Json(body): Json<Value>| async move {
+                    state.requests.lock().expect("requests").push(body);
+                    let idx = state.call_count.fetch_add(1, Ordering::SeqCst);
+                    let sse_body = if idx == 0 {
+                        state.first_sse.clone()
+                    } else {
+                        state.second_sse.clone()
+                    };
+                    ([(CONTENT_TYPE, "text/event-stream")], sse_body).into_response()
+                },
+            ),
+        )
+        .with_state(state.clone());
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    tokio::spawn(async move {
+        axum::serve(listener, provider_app).await.expect("serve");
+    });
+    let endpoint = format!("http://{addr}/v1/responses");
+
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app_with_openresponses_provider(&dir, endpoint);
+    let session_id = create_session_id(&app).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/sessions/{session_id}/events"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let mut reader = TestSseReader::new(response.into_body());
+
+    let send_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/sessions/{session_id}/input"))
+                .header("content-type", "application/json")
+                .body(Body::from("{\"input\":\"hi\"}"))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(send_response.status(), axum::http::StatusCode::ACCEPTED);
+
+    let mut saw_tool_started = false;
+    let mut saw_tool_ended = false;
+    let mut saw_session_ended = false;
+
+    timeout(Duration::from_secs(2), async {
+        while let Some(message) = reader.next_data_message().await {
+            if let Some(value) = extract_data_json(&message) {
+                match value.get("type").and_then(|value| value.as_str()) {
+                    Some("tool_started") => saw_tool_started = true,
+                    Some("tool_ended") => saw_tool_ended = true,
+                    Some("session_ended") => {
+                        saw_session_ended = true;
+                        break;
+                    }
+                    _ => {}
+                }
+                if saw_tool_started && saw_tool_ended && saw_session_ended {
+                    break;
+                }
+            }
+        }
+    })
+    .await
+    .expect("timeout");
+
+    assert!(saw_tool_started, "expected tool_started");
+    assert!(saw_tool_ended, "expected tool_ended");
+    assert!(saw_session_ended, "expected session_ended");
+
+    let written = dir.path().join("workspace").join("a.txt");
+    assert_eq!(std::fs::read_to_string(&written).expect("file"), "hello");
+
+    let requests = state.requests.lock().expect("requests").clone();
+    assert_eq!(requests.len(), 2, "expected two provider requests");
+    assert_eq!(
+        requests[0].get("input").and_then(|value| value.as_str()),
+        Some("hi")
+    );
+    assert_eq!(
+        requests[1]
+            .get("previous_response_id")
+            .and_then(|value| value.as_str()),
+        Some("resp_1")
+    );
+    let tool_output_item = requests[1]
+        .get("input")
+        .and_then(|value| value.as_array())
+        .and_then(|array| array.first())
+        .expect("tool output item");
+    assert_eq!(
+        tool_output_item
+            .get("type")
+            .and_then(|value| value.as_str()),
+        Some("function_call_output")
+    );
+    assert_eq!(
+        tool_output_item
+            .get("call_id")
+            .and_then(|value| value.as_str()),
+        Some("call_1")
+    );
+    let output = tool_output_item
+        .get("output")
+        .and_then(|value| value.as_str())
+        .expect("output");
+    let parsed: Value = serde_json::from_str(output).expect("output json");
+    assert_eq!(
+        parsed.get("tool").and_then(|value| value.as_str()),
+        Some("write")
+    );
+    assert_eq!(
+        parsed.get("ok").and_then(|value| value.as_bool()),
+        Some(true)
+    );
+}
+
+#[tokio::test]
 async fn prompt_openresponses_without_done_still_ends_session() {
     use axum::http::header::CONTENT_TYPE;
     use axum::routing::post;
