@@ -13,10 +13,6 @@ How to use
 - Date-stamp moves between Now/Next/Later to preserve intent over time.
 
 Now
-- OpenResponses capability alignment (spec + schemas -> capability registry/matrix/roadmap) [confirm spec]
-  - Refs: `docs/03_contracts/openresponses_capability_map.md`, `docs/03_contracts/capability_registry.md`, `docs/02_architecture/capability_matrix.md`, `temp/openresponses/src/pages/specification.mdx`, `temp/openresponses/src/pages/reference.mdx`
-  - Ready: coverage inventory complete; spec MDX reviewed
-  - Done: every OpenResponses feature is mapped to capability ids; capability matrix updated for surface parity; roadmap reflects missing capability work
 - Capability validation pass (parity + headless schema + tool conformance + server smoke) [needs work]
   - Refs: `docs/05_quality/tests.md`, `docs/05_quality/surface-parity.md`, `docs/03_contracts/event_frames.md`, `docs/03_contracts/capability_registry.md`, `docs/03_contracts/openresponses_capability_map.md`, `temp/openresponses/src/pages/specification.mdx`, `docs/07_tasks/phase-1/03_tool_runtime.md`, `docs/04_execution/cli.md`, `docs/04_execution/server.md`
   - Ready: event frame schema stable; tool runtime emits structured tool events; server session API stable
@@ -95,6 +91,7 @@ Open questions
 - (empty)
 
 Done (recent)
+- 2026-01-18: OpenResponses capability alignment complete (capability map + matrix updates + roadmap tracking).
 - 2026-01-18: OpenResponses coverage inventory + exhaustive checklist complete (schemas + spec MDX); coverage map reconciled.
 - 2026-01-16: Capability parity matrix + gap list enforcement added.
 - 2026-01-16: Headless CLI validates JSON event frames.
