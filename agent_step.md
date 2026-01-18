@@ -1,8 +1,8 @@
 # Agent Step
 
 Current focus
-- OpenResponses capability inventory and roadmap alignment (spec MDX + schemas -> capability registry/matrix + roadmap).
-- Coverage checklist is complete; focus now on capability mapping + surface parity alignment.
+- CLI interactive streaming renderer (minimal UI) planning + implementation.
+- Keep capability registry/matrix aligned as CLI surface work lands.
 
 Reorientation (read in order after compaction)
 - `AGENTS.md`
@@ -16,10 +16,10 @@ Reorientation (read in order after compaction)
 - `docs/07_tasks/openresponses_coverage.md`
 
 Active priorities
-- Group OpenResponses spec + schema elements into capability-level features.
-- Map each capability to `docs/03_contracts/capability_registry.md` and `docs/02_architecture/capability_matrix.md`.
-- Ensure every OpenResponses feature appears in `docs/07_tasks/roadmap.md` with `[confirm spec]` or `[needs work]`.
+- Confirm interactive input/controls scope and minimal UI behavior (Phase 1).
+- Implement streaming renderer that consumes event frames (no diffs/approvals in Phase 1).
+- Add golden render tests for interactive output.
 
 Next checkpoints
-- Update roadmap/gap notes if any new capability ids imply surface gaps.
-- Reconcile capability registry + matrix with OpenResponses capability map.
+- Update roadmap/gap notes if CLI surface capabilities shift.
+- Reconcile capability registry + matrix if UI/interaction surface adds scope.
