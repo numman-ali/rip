@@ -39,6 +39,16 @@ Later
   - Refs: `docs/03_contracts/modules/phase-2/01_model_routing.md`, `docs/03_contracts/capability_registry.md`, `docs/02_architecture/capability_matrix.md`, `docs/03_contracts/event_frames.md`
   - Ready: OpenResponses boundary stable; routing decisions can be logged as event frames
   - Done: multi-provider configs + versioned model catalogs; per-turn `{provider_id, model_id}` switching; routing policy (advisory/authoritative) with replayable recorded decisions
+- Extensions: plugin host (WASM-first + out-of-process services) (Phase 2) [confirm spec]
+  - Refs: `docs/03_contracts/modules/phase-2/02_extension_host.md`, `docs/06_decisions/ADR-0004-plugin-architecture.md`, `docs/03_contracts/capability_registry.md`, `docs/03_contracts/event_frames.md`
+  - Ready:
+    - Define plugin manifest + host interface versioning.
+    - Define canonical UI request/response frames (surface-agnostic; UI renders, headless streams).
+    - Define determinism + replay requirements for WASM and out-of-process plugins.
+  - Done:
+    - Load a WASM plugin that can intercept tool calls and emit deterministic frames.
+    - Provide at least one plugin-defined tool renderer (as render-hint frames).
+    - Replay fixture covers plugin decisions and reproduces identical snapshots.
 - TUI surface (`rip-tui`) plan + MVP renderer [needs work]
   - Refs: `docs/02_architecture/surfaces.md`, `docs/02_architecture/capability_matrix.md`, `temp/docs/ratatui/notes.md`
   - Ready: confirm TUI stack + input model; define surface-specific capabilities
@@ -93,6 +103,7 @@ Open questions
 
 Done (recent)
 - 2026-01-18: Phase 1 closeout: CI + fixtures + bench harness are CI-gated (plus baseline budgets).
+- 2026-01-18: Decision: plugin architecture is WASM-first with optional out-of-process services (ADR-0004).
 - 2026-01-18: Phase 1 hygiene: tests use temp workspace roots (no writes under `crates/*`).
 - 2026-01-18: Benchmarks: added TTFT (`ttft_overhead_us`) + end-to-end loop (`e2e_loop_us`) CI gates.
 - 2026-01-18: Provider integration MVP wired (OpenResponses SSE -> `provider_event` + derived deltas in `ripd`, env-configured, local integration test).

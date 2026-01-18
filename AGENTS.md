@@ -48,7 +48,7 @@ Capability contract
 
 Approval gates
 - Operational changes (dependencies, scripts/hooks, repo config, commits, pushes) require explicit operator approval.
-- If a non-obvious choice impacts implementation details or dependencies, request explicit approval before changes.
+- If a non-obvious choice impacts runtime behavior/public API, security posture, or introduces/changes dependencies or scripts/hooks, request explicit operator approval before changes.
 - Pre-approved: commits/pushes for docs, schema mappings, tests, and refactors that do NOT change runtime behavior or public API.
 
 Up-to-date sources rule
@@ -73,13 +73,13 @@ Working style
 Roadmap discipline
 - Maintain `docs/07_tasks/roadmap.md` as the single source for Now/Next/Later.
 - Every roadmap item must include a confidence tag: `[confirm spec]` or `[needs work]`.
-- If `[needs work]`, stop and ask for operator direction before implementation.
+- If `[needs work]`, write a decision packet and record the choice (roadmap note or ADR). Default: proceed with the recommendation unless an approval gate applies or the choice is hard to reverse.
 - Record deferrals and doc/impl gaps in the roadmap so "now vs later" is explicit.
 
 Communication expectations
 - Confirm understanding when requirements shift.
 - Surface risks and tradeoffs early.
-- Lead with a clear recommendation; ask for approval only when required by gates or ambiguity.
+- Lead with a clear recommendation; minimize questions; ask for approval only when required by gates.
 - Avoid offering multiple options unless explicitly requested.
 - Avoid long explanations unless explicitly requested.
 
