@@ -14,7 +14,33 @@ How to use
 
 Now
 
+## Phase 1 closeout: CI + fixtures + benchmarks [confirm spec]
+- Refs: `docs/07_tasks/phase-1/08_benchmarks.md`, `docs/07_tasks/phase-1/09_fixtures.md`, `docs/05_quality/benchmarks.md`, `scripts/check`, `scripts/check-fast`
+- Ready:
+  - Confirm CI provider (default: GitHub Actions).
+  - Confirm initial performance budgets are conservative (tighten later).
+- Done:
+  - CI runs `scripts/check-fast` on PRs/pushes.
+  - Bench harness exists and is CI-gated with explicit budgets.
+  - Fixture repos exist (small + medium) and benchmarks/tests run offline.
+
+## Phase 1 hygiene: tests must not write to repo workspace [confirm spec]
+- Refs: `docs/03_contracts/modules/phase-1/04_workspace_engine.md`, `docs/03_contracts/modules/phase-1/10_checkpointing.md`
+- Ready:
+  - Identify any tests using implicit `cwd` workspace roots.
+- Done:
+  - All tests use temp workspace roots (no `.rip/` or edited files created under `crates/*`).
+
 Next
+
+## Provider integration MVP (single OpenResponses endpoint) [needs work]
+- Refs: `docs/03_contracts/modules/phase-1/02_provider_adapters.md`, `docs/03_contracts/openresponses_coverage.md`, `docs/04_execution/server.md`, `docs/03_contracts/event_frames.md`
+- Ready:
+  - Confirm config/auth surface (env-first in Phase 1).
+  - Confirm dependency choice for HTTP streaming client (default: `reqwest`).
+- Done:
+  - ripd can stream provider SSE -> `provider_event` frames (no drops) from a real endpoint.
+  - Failures are surfaced as deterministic `provider_event` frames + terminal `session_ended`.
 
 Later
 - Models & providers: multi-provider + routing + catalogs (Phase 2) [needs work]
@@ -67,7 +93,8 @@ Capability coverage map (index)
 Doc/impl gaps
 - TUI surface is documented but not implemented (`rip-tui`).
 - MCP surface is documented but deferred to Phase 2 (`rip-mcp`).
-- Benchmarks are required by docs but no harness exists.
+- Bench harness exists, but TTFT and end-to-end loop benchmarks are not yet implemented.
+- Fixture repos exist (`fixtures/repo_small`, `fixtures/repo_medium`), but replayable “full agent loop” fixtures are still pending.
 
 Decisions
 - Event frames live in `rip-kernel`; schema documented at `docs/03_contracts/event_frames.md`.

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cargo run -p rip-bench --release -- --budgets docs/05_quality/benchmarks_budgets.json
+

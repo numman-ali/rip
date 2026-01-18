@@ -1909,6 +1909,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rip-bench"
+version = "0.1.0"
+dependencies = [
+ "rip-provider-openresponses",
+ "rip-tools",
+ "rip-workspace",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "rip-cli"
 version = "0.1.0"
 dependencies = [
@@ -1974,6 +1987,7 @@ dependencies = [
  "ignore",
  "regex",
  "rip-kernel",
+ "rip-workspace",
  "serde",
  "serde_json",
  "tempfile",

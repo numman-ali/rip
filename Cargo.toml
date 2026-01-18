@@ -8,5 +8,6 @@ members = [
   "crates/rip-tools",
   "crates/rip-cli",
   "crates/rip-workspace",
+  "crates/rip-bench",
   "crates/ripd",
 ]

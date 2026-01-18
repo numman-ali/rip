@@ -15,3 +15,7 @@ Acceptance criteria
 
 Tests
 - Benchmark smoke tests.
+
+Artifacts
+- Budgets: `docs/05_quality/benchmarks_budgets.json`
+- Runner: `scripts/bench`

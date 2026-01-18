@@ -421,12 +421,23 @@ struct WriteArgs {
     path: String,
 }
 
+#[derive(Deserialize)]
+struct ApplyPatchArgs {
+    patch: String,
+}
+
 fn files_for_invocation(invocation: &ToolInvocation) -> Result<Option<Vec<PathBuf>>, String> {
     match invocation.name.as_str() {
         "write" => {
             let args: WriteArgs = serde_json::from_value(invocation.args.clone())
                 .map_err(|err| format!("checkpoint args invalid: {err}"))?;
             Ok(Some(vec![PathBuf::from(args.path)]))
+        }
+        "apply_patch" => {
+            let args: ApplyPatchArgs = serde_json::from_value(invocation.args.clone())
+                .map_err(|err| format!("checkpoint args invalid: {err}"))?;
+            let patch = rip_workspace::Patch::parse(&args.patch).map_err(|err| format!("{err}"))?;
+            Ok(Some(patch.affected_paths()))
         }
         _ => Ok(None),
     }

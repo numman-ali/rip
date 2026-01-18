@@ -1,8 +1,9 @@
 # Agent Step
 
 Current focus
-- Tool runtime + workspace checkpoint hooks are wired into ripd; align docs/roadmap and capability registry/matrix.
-- Lock in the next Phase 1 Now item after doc alignment.
+- Phase 1 closeout: land CI + fixtures + benchmarks gates.
+- Eliminate test artifact leakage (no writes under `crates/*`).
+- Start provider integration MVP wiring (single OpenResponses endpoint).
 
 Reorientation (read in order after compaction)
 - `AGENTS.md`
@@ -16,9 +17,11 @@ Reorientation (read in order after compaction)
 - `docs/07_tasks/openresponses_coverage.md`
 
 Active priorities
-- Update capability registry/matrix if checkpointing is now exposed on CLI/server.
-- Keep roadmap doc/impl gaps aligned with recent changes.
-- Select the next Phase 1 Now task after docs are current.
+- Keep roadmap Now/Next aligned with the implementation work.
+- Ensure benchmarks/fixtures become CI gates (no regressions).
+- Keep OpenResponses boundary full-fidelity while wiring live provider streaming.
 
 Next checkpoints
-- Confirm next Now item once docs/registry are aligned.
+- CI runs `scripts/check-fast` on push/PR.
+- Bench harness + fixture repos exist and are CI-gated.
+- Provider streaming MVP emits `provider_event` frames from a real endpoint.

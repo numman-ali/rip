@@ -8,6 +8,7 @@ use tokio::task::spawn_blocking;
 
 use crate::{ToolOutput, ToolRegistry};
 
+mod apply_patch;
 mod grep;
 mod ls;
 mod read;
@@ -61,6 +62,21 @@ pub fn register_builtin_tools(registry: &ToolRegistry, config: BuiltinToolConfig
                 spawn_blocking(move || write::run_write(invocation, &cfg))
                     .await
                     .unwrap_or_else(|_| ToolOutput::failure(vec!["write panicked".to_string()]))
+            })
+        }),
+    );
+
+    let patch_config = config.clone();
+    registry.register(
+        "apply_patch",
+        std::sync::Arc::new(move |invocation| {
+            let cfg = patch_config.clone();
+            Box::pin(async move {
+                spawn_blocking(move || apply_patch::run_apply_patch(invocation, &cfg))
+                    .await
+                    .unwrap_or_else(|_| {
+                        ToolOutput::failure(vec!["apply_patch panicked".to_string()])
+                    })
             })
         }),
     );

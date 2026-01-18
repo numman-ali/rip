@@ -73,9 +73,16 @@ pub(crate) async fn serve(data_dir: std::path::PathBuf) {
     axum::serve(listener, app).await.expect("server");
 }
 
+#[cfg(not(test))]
 pub(crate) fn build_app(data_dir: std::path::PathBuf) -> Router {
+    build_app_with_workspace_root(data_dir, workspace_root())
+}
+
+pub(crate) fn build_app_with_workspace_root(
+    data_dir: std::path::PathBuf,
+    workspace_root: std::path::PathBuf,
+) -> Router {
     let (router, openapi_json) = build_openapi_router();
-    let workspace_root = workspace_root();
 
     let registry = Arc::new(ToolRegistry::default());
     register_builtin_tools(

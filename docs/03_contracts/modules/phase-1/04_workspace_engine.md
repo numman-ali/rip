@@ -11,6 +11,15 @@ Outputs
 - Diffs, snapshots, and status events.
 - Status events map to `checkpoint_created`, `checkpoint_rewound`, and `checkpoint_failed` frames.
 
+Patch format (Phase 1)
+- The patch apply input is the Codex-style patch envelope:
+  - `*** Begin Patch` / `*** End Patch`
+  - `*** Add File: <path>` with `+`-prefixed content lines
+  - `*** Update File: <path>` with optional `*** Move to: <path>` and `+/-/ ` hunk lines
+  - `*** Delete File: <path>`
+- Paths MUST be workspace-relative; absolute paths and `..` segments are rejected.
+- Apply is atomic: either all operations apply or the workspace is reverted.
+
 Config
 - Workspace root.
 - Snapshot retention policy.

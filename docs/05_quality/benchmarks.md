@@ -14,3 +14,8 @@ Fixture requirements
 - Small repo (fast CI).
 - Medium repo (realistic).
 - Deterministic prompts and tool outputs.
+
+Harness (Phase 1)
+- Budgets: `docs/05_quality/benchmarks_budgets.json`
+- Runner: `scripts/bench` (release mode; fails if budgets are exceeded)
+- Fixture root: `fixtures/`

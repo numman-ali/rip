@@ -2,12 +2,22 @@ use axum::body::Body;
 use axum::http::Request;
 use axum::Router;
 use http_body_util::BodyExt;
+use std::fs;
 use std::path::PathBuf;
 use tempfile::tempdir;
 use tokio::time::{sleep, timeout, Duration};
 use tower::util::ServiceExt;
 
-use crate::server::{build_app, build_openapi_router, workspace_root, SessionCreated};
+use crate::server::{
+    build_app_with_workspace_root, build_openapi_router, workspace_root, SessionCreated,
+};
+
+fn build_test_app(dir: &tempfile::TempDir) -> Router {
+    let data_dir = dir.path().join("data");
+    let workspace_dir = dir.path().join("workspace");
+    fs::create_dir_all(&workspace_dir).expect("workspace dir");
+    build_app_with_workspace_root(data_dir, workspace_dir)
+}
 
 async fn create_session_id(app: &Router) -> String {
     let response = app
@@ -44,7 +54,7 @@ fn workspace_root_returns_value() {
 #[tokio::test]
 async fn openapi_spec_served() {
     let dir = tempdir().expect("tmp");
-    let app = build_app(dir.path().join("data"));
+    let app = build_test_app(&dir);
 
     let response = app
         .clone()
@@ -93,7 +103,7 @@ fn openapi_snapshot_matches() {
 #[tokio::test]
 async fn create_session_returns_id() {
     let dir = tempdir().expect("tmp");
-    let app = build_app(dir.path().join("data"));
+    let app = build_test_app(&dir);
     let session_id = create_session_id(&app).await;
     assert!(!session_id.is_empty());
 }
@@ -101,7 +111,7 @@ async fn create_session_returns_id() {
 #[tokio::test]
 async fn send_input_unknown_session_404() {
     let dir = tempdir().expect("tmp");
-    let app = build_app(dir.path().join("data"));
+    let app = build_test_app(&dir);
     let response = app
         .oneshot(
             Request::builder()
@@ -119,7 +129,7 @@ async fn send_input_unknown_session_404() {
 #[tokio::test]
 async fn stream_events_unknown_session_404() {
     let dir = tempdir().expect("tmp");
-    let app = build_app(dir.path().join("data"));
+    let app = build_test_app(&dir);
     let response = app
         .oneshot(
             Request::builder()
@@ -136,7 +146,7 @@ async fn stream_events_unknown_session_404() {
 #[tokio::test]
 async fn cancel_unknown_session_404() {
     let dir = tempdir().expect("tmp");
-    let app = build_app(dir.path().join("data"));
+    let app = build_test_app(&dir);
     let response = app
         .oneshot(
             Request::builder()
@@ -153,7 +163,7 @@ async fn cancel_unknown_session_404() {
 #[tokio::test]
 async fn cancel_existing_session_no_content() {
     let dir = tempdir().expect("tmp");
-    let app = build_app(dir.path().join("data"));
+    let app = build_test_app(&dir);
     let session_id = create_session_id(&app).await;
     let response = app
         .oneshot(
@@ -172,7 +182,9 @@ async fn cancel_existing_session_no_content() {
 async fn send_input_accepts_and_writes_snapshot() {
     let dir = tempdir().expect("tmp");
     let data_dir = dir.path().join("data");
-    let app = build_app(data_dir.clone());
+    let workspace_dir = dir.path().join("workspace");
+    fs::create_dir_all(&workspace_dir).expect("workspace dir");
+    let app = build_app_with_workspace_root(data_dir.clone(), workspace_dir);
     let session_id = create_session_id(&app).await;
     let response = app
         .clone()
@@ -212,7 +224,7 @@ async fn send_input_accepts_and_writes_snapshot() {
 #[tokio::test]
 async fn stream_events_emits_payload() {
     let dir = tempdir().expect("tmp");
-    let app = build_app(dir.path().join("data"));
+    let app = build_test_app(&dir);
     let session_id = create_session_id(&app).await;
 
     let response = app
@@ -257,7 +269,7 @@ async fn stream_events_emits_payload() {
 #[tokio::test]
 async fn stream_events_sse_compliance() {
     let dir = tempdir().expect("tmp");
-    let app = build_app(dir.path().join("data"));
+    let app = build_test_app(&dir);
     let session_id = create_session_id(&app).await;
 
     let response = app
@@ -310,7 +322,7 @@ async fn stream_events_sse_compliance() {
 #[tokio::test]
 async fn stream_events_preserves_order() {
     let dir = tempdir().expect("tmp");
-    let app = build_app(dir.path().join("data"));
+    let app = build_test_app(&dir);
     let session_id = create_session_id(&app).await;
 
     let response = app
@@ -358,7 +370,7 @@ async fn stream_events_preserves_order() {
 #[tokio::test]
 async fn tool_input_emits_checkpoint_events() {
     let dir = tempdir().expect("tmp");
-    let app = build_app(dir.path().join("data"));
+    let app = build_test_app(&dir);
     let session_id = create_session_id(&app).await;
 
     let response = app

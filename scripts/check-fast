@@ -1,4 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-"$(dirname "$0")/check"
+require_cargo_subcmd() {
+  local name="$1"
+  local install_hint="$2"
+  if ! cargo "$name" --version >/dev/null 2>&1; then
+    echo "missing cargo subcommand: $name"
+    echo "install: $install_hint"
+    exit 1
+  fi
+}
+
+require_rustup_toolchain() {
+  local toolchain="$1"
+  local install_hint="$2"
+  if ! rustup toolchain list | grep -q "^${toolchain}"; then
+    echo "missing rustup toolchain: $toolchain"
+    echo "install: $install_hint"
+    exit 1
+  fi
+}
+
+cargo fmt --all -- --check
+cargo check --workspace --all-targets
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace
+
+require_rustup_toolchain nightly "rustup toolchain install nightly"
+require_cargo_subcmd udeps "cargo install cargo-udeps"
+cargo +nightly udeps --workspace --all-targets

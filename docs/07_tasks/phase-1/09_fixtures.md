@@ -12,3 +12,7 @@ Outputs
 Acceptance criteria
 - All Phase 1 tests can run offline.
 - Fixtures are deterministic and versioned.
+
+Artifacts
+- Fixture root: `fixtures/`
+- OpenResponses stream fixtures: `fixtures/openresponses/`

@@ -1,11 +1,15 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
+
+mod patch;
+
+pub use patch::{Patch, PatchHunk, PatchOp, PatchParseError};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Checkpoint {
@@ -37,6 +41,112 @@ impl Workspace {
             root,
             checkpoints_dir,
         })
+    }
+
+    pub fn apply_patch(&self, patch: &str) -> io::Result<PatchApplyResult> {
+        let patch = Patch::parse(patch)
+            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err.to_string()))?;
+
+        let mut seen = BTreeSet::new();
+        let mut undo: Vec<(PathBuf, Option<Vec<u8>>)> = Vec::new();
+        let mut changed_files: Vec<String> = Vec::new();
+
+        let mut record_undo = |path: &PathBuf| -> io::Result<()> {
+            if !seen.insert(path.clone()) {
+                return Ok(());
+            }
+            let previous = if path.exists() {
+                Some(fs::read(path)?)
+            } else {
+                None
+            };
+            undo.push((path.clone(), previous));
+            Ok(())
+        };
+
+        let apply_result = (|| -> io::Result<()> {
+            for op in patch.ops() {
+                match op {
+                    PatchOp::AddFile { path, content } => {
+                        let dest = self.safe_join(path)?;
+                        if dest.exists() {
+                            return Err(io::Error::new(
+                                io::ErrorKind::AlreadyExists,
+                                format!("file already exists: {}", path.display()),
+                            ));
+                        }
+                        record_undo(&dest)?;
+                        if let Some(parent) = dest.parent() {
+                            fs::create_dir_all(parent)?;
+                        }
+                        fs::write(&dest, content.as_bytes())?;
+                        changed_files.push(normalize_rel(path));
+                    }
+                    PatchOp::DeleteFile { path } => {
+                        let dest = self.safe_join(path)?;
+                        if !dest.exists() {
+                            return Err(io::Error::new(
+                                io::ErrorKind::NotFound,
+                                format!("file not found: {}", path.display()),
+                            ));
+                        }
+                        record_undo(&dest)?;
+                        fs::remove_file(&dest)?;
+                        changed_files.push(normalize_rel(path));
+                    }
+                    PatchOp::UpdateFile {
+                        path,
+                        moved_to,
+                        hunks,
+                    } => {
+                        let dest = self.safe_join(path)?;
+                        if !dest.exists() {
+                            return Err(io::Error::new(
+                                io::ErrorKind::NotFound,
+                                format!("file not found: {}", path.display()),
+                            ));
+                        }
+                        record_undo(&dest)?;
+                        let bytes = fs::read(&dest)?;
+                        let original_text = String::from_utf8(bytes).map_err(|err| {
+                            io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                format!("file is not valid UTF-8: {err}"),
+                            )
+                        })?;
+                        let updated = patch::apply_hunks_to_text(&original_text, hunks, path)?;
+                        fs::write(&dest, updated.as_bytes())?;
+                        changed_files.push(normalize_rel(path));
+
+                        if let Some(moved_to) = moved_to {
+                            let target = self.safe_join(moved_to)?;
+                            if target.exists() {
+                                return Err(io::Error::new(
+                                    io::ErrorKind::AlreadyExists,
+                                    format!("move target already exists: {}", moved_to.display()),
+                                ));
+                            }
+                            record_undo(&target)?;
+                            if let Some(parent) = target.parent() {
+                                fs::create_dir_all(parent)?;
+                            }
+                            fs::rename(&dest, &target)?;
+                            changed_files.push(normalize_rel(moved_to));
+                        }
+                    }
+                }
+            }
+            Ok(())
+        })();
+
+        if let Err(err) = apply_result {
+            let _ = self.revert_paths(undo);
+            return Err(err);
+        }
+
+        changed_files.sort();
+        changed_files.dedup();
+        Ok(PatchApplyResult { changed_files })
     }
 
     pub fn create_checkpoint(
@@ -184,6 +294,42 @@ impl Workspace {
             .map(|p| p.to_path_buf())
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path outside workspace"))
     }
+
+    fn safe_join(&self, rel: &Path) -> io::Result<PathBuf> {
+        if rel.is_absolute() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "absolute paths are not allowed",
+            ));
+        }
+        if rel
+            .components()
+            .any(|component| matches!(component, Component::ParentDir))
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "path escapes workspace root",
+            ));
+        }
+        Ok(self.root.join(rel))
+    }
+
+    fn revert_paths(&self, undo: Vec<(PathBuf, Option<Vec<u8>>)>) -> io::Result<()> {
+        for (path, previous) in undo.into_iter().rev() {
+            match previous {
+                Some(bytes) => {
+                    if let Some(parent) = path.parent() {
+                        let _ = fs::create_dir_all(parent);
+                    }
+                    let _ = fs::write(path, bytes);
+                }
+                None => {
+                    let _ = fs::remove_file(path);
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 fn now_ms() -> u64 {
@@ -199,6 +345,15 @@ fn hash_bytes(bytes: &[u8]) -> String {
     hasher.update(bytes);
     let digest = hasher.finalize();
     hex::encode(digest)
+}
+
+fn normalize_rel(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PatchApplyResult {
+    pub changed_files: Vec<String>,
 }
 
 #[cfg(test)]
@@ -229,6 +384,62 @@ mod tests {
 
         assert_eq!(fs::read_to_string(&file_a).unwrap(), "one");
         assert!(!file_b.exists());
+    }
+
+    #[test]
+    fn apply_patch_creates_updates_and_deletes() {
+        let dir = tempdir().expect("tmp");
+        let root = dir.path();
+        let workspace = Workspace::new(root).expect("workspace");
+
+        let patch = r#"*** Begin Patch
+*** Add File: a.txt
++one
++two
+*** End Patch"#;
+        let result = workspace.apply_patch(patch).expect("apply");
+        assert!(result.changed_files.contains(&"a.txt".to_string()));
+        assert_eq!(
+            fs::read_to_string(root.join("a.txt")).unwrap(),
+            "one\ntwo\n"
+        );
+
+        let patch = r#"*** Begin Patch
+*** Update File: a.txt
+@@
+-one
++ONE
+ two
+*** End Patch"#;
+        let _ = workspace.apply_patch(patch).expect("apply");
+        assert_eq!(
+            fs::read_to_string(root.join("a.txt")).unwrap(),
+            "ONE\ntwo\n"
+        );
+
+        let patch = r#"*** Begin Patch
+*** Delete File: a.txt
+*** End Patch"#;
+        let _ = workspace.apply_patch(patch).expect("apply");
+        assert!(!root.join("a.txt").exists());
+    }
+
+    #[test]
+    fn apply_patch_is_atomic_on_error() {
+        let dir = tempdir().expect("tmp");
+        let root = dir.path();
+        let workspace = Workspace::new(root).expect("workspace");
+
+        let patch = r#"*** Begin Patch
+*** Add File: a.txt
++one
+*** Update File: missing.txt
+@@
+-nope
++ok
+*** End Patch"#;
+        let _ = workspace.apply_patch(patch).expect_err("error");
+        assert!(!root.join("a.txt").exists());
     }
 
     #[test]

@@ -13,6 +13,7 @@ regex = "1.10"
 globset = "0.4"
 uuid = { version = "1.6", features = ["v4"] }
 rip-kernel = { path = "../rip-kernel" }
+rip-workspace = { path = "../rip-workspace" }
 
 [dev-dependencies]
 tempfile = "3.10"
