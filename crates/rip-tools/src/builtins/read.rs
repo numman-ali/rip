@@ -98,3 +98,42 @@ pub(super) fn run_read(invocation: ToolInvocation, config: &BuiltinToolConfig) -
         })),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    use serde_json::json;
+    use tempfile::tempdir;
+
+    #[test]
+    fn run_read_reads_file_from_workspace() {
+        let dir = tempdir().expect("tmp");
+        let root = dir.path().to_path_buf();
+        let file = root.join("note.txt");
+        fs::write(&file, "line1\nline2\n").expect("write");
+
+        let config = BuiltinToolConfig {
+            workspace_root: root.clone(),
+            ..BuiltinToolConfig::default()
+        };
+
+        let output = run_read(
+            ToolInvocation {
+                name: "read".to_string(),
+                args: json!({"path":"note.txt"}),
+                timeout_ms: None,
+            },
+            &config,
+        );
+
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(output.stdout, vec!["line1\nline2\n".to_string()]);
+        let artifacts = output.artifacts.expect("artifacts");
+        assert_eq!(
+            artifacts.get("path").and_then(|v| v.as_str()),
+            Some("note.txt")
+        );
+    }
+}

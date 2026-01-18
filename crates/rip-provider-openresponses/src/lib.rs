@@ -267,6 +267,21 @@ mod tests {
     }
 
     #[test]
+    fn invalid_json_constructor_sets_fields() {
+        let parsed = ParsedEvent::invalid_json(
+            "raw".to_string(),
+            "boom".to_string(),
+            Some("response.created".to_string()),
+        );
+        assert_eq!(parsed.kind, ParsedEventKind::InvalidJson);
+        assert_eq!(parsed.event.as_deref(), Some("response.created"));
+        assert_eq!(parsed.raw, "raw");
+        assert_eq!(parsed.errors, vec!["boom".to_string()]);
+        assert!(parsed.data.is_none());
+        assert!(parsed.response_errors.is_empty());
+    }
+
+    #[test]
     fn captures_event_name_mismatch() {
         let mut decoder = SseDecoder::new();
         let payload = "event: response.created\n\

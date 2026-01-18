@@ -16,3 +16,7 @@ Notes
 - Server is optional; CLI can talk directly to ripd (in-process) or via HTTP.
 - SSE stream emits JSON event frames (`docs/03_contracts/event_frames.md`).
 - OpenAPI spec is exposed at `/openapi.json` (canonical) and may be mirrored in `schemas/`.
+- JSON input envelopes can trigger tool execution and checkpoint actions (used for deterministic tests):
+  - Tool: `{"tool":"write","args":{"path":"a.txt","content":"hi"},"timeout_ms":1000}`
+  - Checkpoint create: `{"checkpoint":{"action":"create","label":"manual","files":["a.txt"]}}`
+  - Checkpoint rewind: `{"checkpoint":{"action":"rewind","id":"<checkpoint_id>"}}`

@@ -185,6 +185,14 @@ impl Session {
         &self.id
     }
 
+    pub fn seq(&self) -> u64 {
+        self.seq
+    }
+
+    pub fn set_seq(&mut self, seq: u64) {
+        self.seq = seq;
+    }
+
     pub fn next_event(&mut self) -> Option<Event> {
         let (next_stage, kind) = match self.stage {
             Stage::Start => (
@@ -323,6 +331,17 @@ mod tests {
     }
 
     #[test]
+    fn session_seq_can_be_overridden() {
+        let runtime = Runtime::new();
+        let mut session = runtime.start_session("hello".to_string());
+        assert_eq!(session.seq(), 0);
+        session.set_seq(42);
+        assert_eq!(session.seq(), 42);
+        let event = session.next_event().expect("event");
+        assert_eq!(event.seq, 42);
+    }
+
+    #[test]
     fn hook_abort_ends_session_early() {
         let runtime = Runtime::new();
         runtime.register_hook("abort-on-output", HookEventKind::Output, |_| {
@@ -368,6 +387,15 @@ mod tests {
         runtime
             .register_command("dup", "first", |_ctx| Ok("ok".to_string()))
             .expect("register");
+        let result = runtime.commands().execute(
+            "dup",
+            CommandContext {
+                session_id: None,
+                args: Vec::new(),
+                raw: "dup".to_string(),
+            },
+        );
+        assert_eq!(result.expect("execute"), "ok");
         let err = runtime
             .register_command("dup", "second", |_ctx| Ok("ok".to_string()))
             .expect_err("error");
@@ -392,6 +420,24 @@ mod tests {
             .collect();
         names.sort();
         assert_eq!(names, vec!["a".to_string(), "b".to_string()]);
+        let result = runtime.commands().execute(
+            "a",
+            CommandContext {
+                session_id: None,
+                args: Vec::new(),
+                raw: "a".to_string(),
+            },
+        );
+        assert_eq!(result.expect("execute"), "a");
+        let result = runtime.commands().execute(
+            "b",
+            CommandContext {
+                session_id: None,
+                args: Vec::new(),
+                raw: "b".to_string(),
+            },
+        );
+        assert_eq!(result.expect("execute"), "b");
     }
 
     #[test]

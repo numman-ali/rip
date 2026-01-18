@@ -186,9 +186,9 @@ Generated from docs/03_contracts/capability_registry.md.
 | workers.cache_warmers | not_applicable | not_applicable | planned | planned | not_applicable | planned |
 | workers.index_builders | not_applicable | not_applicable | planned | planned | not_applicable | planned |
 | workers.maintenance | not_applicable | not_applicable | planned | planned | not_applicable | planned |
-| checkpoint.auto | planned | planned | planned | planned | planned | planned |
-| checkpoint.rewind | planned | planned | planned | planned | planned | planned |
-| checkpoint.persist | planned | planned | planned | planned | planned | planned |
+| checkpoint.auto | planned | planned | supported | planned | planned | planned |
+| checkpoint.rewind | planned | planned | supported | planned | planned | planned |
+| checkpoint.persist | planned | planned | supported | planned | planned | planned |
 | security.sandbox | planned | planned | planned | planned | planned | planned |
 | security.redaction | planned | planned | planned | planned | planned | planned |
 | security.permissions | planned | planned | planned | planned | planned | planned |

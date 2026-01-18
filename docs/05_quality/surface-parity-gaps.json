@@ -1,3 +1,25 @@
 {
-  "gaps": []
+  "gaps": [
+    {
+      "capability_id": "checkpoint.auto",
+      "surface": "cli_h",
+      "owner": "runtime",
+      "reason": "Headless CLI does not expose explicit checkpoint controls yet; server sessions handle checkpoint events.",
+      "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "checkpoint.rewind",
+      "surface": "cli_h",
+      "owner": "runtime",
+      "reason": "Headless CLI does not provide a checkpoint rewind affordance yet; server input envelope supports it.",
+      "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "checkpoint.persist",
+      "surface": "cli_h",
+      "owner": "runtime",
+      "reason": "Checkpoint persistence is implemented in workspace engine, but CLI surface does not expose checkpoint management.",
+      "expires_on": "2026-03-01"
+    }
+  ]
 }

@@ -7,6 +7,7 @@ Summary
 
 Inputs
 - Session lifecycle requests (start, send input, cancel).
+- Tool/checkpoint command envelopes via session input (for deterministic testing).
 
 Outputs
 - Structured event stream over SSE (event frames: `docs/03_contracts/event_frames.md`).

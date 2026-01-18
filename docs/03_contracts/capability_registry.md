@@ -285,9 +285,9 @@ Rules
 ## Checkpointing & Rewind
 | id | v | phase | cli_i | cli_h | server | sdk | tui | mcp | intent |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| checkpoint.auto | v1 | P1 | planned | planned | planned | planned | planned | planned | Automatic checkpoints for file-edit tools. |
-| checkpoint.rewind | v1 | P1 | planned | planned | planned | planned | planned | planned | Rewind conversation/workspace to checkpoint. |
-| checkpoint.persist | v1 | P1 | planned | planned | planned | planned | planned | planned | Checkpoints persist across sessions. |
+| checkpoint.auto | v1 | P1 | planned | planned | supported | planned | planned | planned | Automatic checkpoints for file-edit tools. |
+| checkpoint.rewind | v1 | P1 | planned | planned | supported | planned | planned | planned | Rewind conversation/workspace to checkpoint. |
+| checkpoint.persist | v1 | P1 | planned | planned | supported | planned | planned | planned | Checkpoints persist across sessions. |
 
 ## Security & Safety
 | id | v | phase | cli_i | cli_h | server | sdk | tui | mcp | intent |

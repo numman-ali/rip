@@ -249,6 +249,45 @@ mod tests {
     }
 
     #[test]
+    fn validate_event_order_rejects_gap() {
+        let event0 = Event {
+            id: "e0".to_string(),
+            session_id: "s1".to_string(),
+            timestamp_ms: 0,
+            seq: 0,
+            kind: EventKind::SessionStarted {
+                input: "hi".to_string(),
+            },
+        };
+        let event2 = Event {
+            id: "e2".to_string(),
+            session_id: "s1".to_string(),
+            timestamp_ms: 1,
+            seq: 2,
+            kind: EventKind::SessionEnded {
+                reason: "done".to_string(),
+            },
+        };
+        let err = validate_event_order(&[event0, event2]).expect_err("error");
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn compare_events_rejects_length_mismatch() {
+        let left = vec![Event {
+            id: "e0".to_string(),
+            session_id: "s1".to_string(),
+            timestamp_ms: 0,
+            seq: 0,
+            kind: EventKind::SessionStarted {
+                input: "hi".to_string(),
+            },
+        }];
+        let err = compare_events(&left, &[]).expect_err("error");
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
     fn verify_snapshot_matches_replay() {
         let dir = tempdir().expect("tmp");
         let log_path = dir.path().join("events.jsonl");

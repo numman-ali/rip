@@ -2002,6 +2002,8 @@ dependencies = [
  "http-body-util",
  "rip-kernel",
  "rip-log",
+ "rip-tools",
+ "rip-workspace",
  "serde",
  "serde_json",
  "tempfile",

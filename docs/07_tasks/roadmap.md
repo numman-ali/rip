@@ -13,11 +13,6 @@ How to use
 - Date-stamp moves between Now/Next/Later to preserve intent over time.
 
 Now
-- Workspace engine: checkpoint + rewind hooks integration in runtime [confirm spec]
-  - Refs: `docs/07_tasks/phase-1/04_workspace_engine.md`, `docs/03_contracts/modules/phase-1/04_workspace_engine.md`, `docs/03_contracts/modules/phase-1/10_checkpointing.md`
-  - Ready: hook points in runtime defined; checkpoint event frames defined
-  - Done: runtime integration + rewind behavior tests
-  - Status: tool runtime emits checkpoint events; ripd session wiring pending
 
 Next
 
@@ -72,8 +67,6 @@ Capability coverage map (index)
 Doc/impl gaps
 - TUI surface is documented but not implemented (`rip-tui`).
 - MCP surface is documented but deferred to Phase 2 (`rip-mcp`).
-- Tool runtime not yet integrated into session execution.
-- Checkpoint hooks are available in tool runtime, but not wired into ripd session execution.
 - Benchmarks are required by docs but no harness exists.
 
 Decisions
@@ -84,6 +77,7 @@ Open questions
 - (empty)
 
 Done (recent)
+- 2026-01-18: Workspace checkpoint hooks wired into ripd session execution (tool + checkpoint envelopes, tests).
 - 2026-01-18: CLI interactive streaming renderer complete (minimal UI + golden render test).
 - 2026-01-18: Capability validation pass complete (parity + headless schema + tool conformance + OpenResponses invariants + server smoke).
 - 2026-01-18: OpenResponses capability alignment complete (capability map + matrix updates + roadmap tracking).

@@ -1,8 +1,8 @@
 # Agent Step
 
 Current focus
-- Checkpoint hooks + event frames implemented in tool runtime; next is wiring into ripd session execution.
-- Keep capability registry/matrix aligned once checkpoints are exposed on active surfaces.
+- Tool runtime + workspace checkpoint hooks are wired into ripd; align docs/roadmap and capability registry/matrix.
+- Lock in the next Phase 1 Now item after doc alignment.
 
 Reorientation (read in order after compaction)
 - `AGENTS.md`
@@ -16,9 +16,9 @@ Reorientation (read in order after compaction)
 - `docs/07_tasks/openresponses_coverage.md`
 
 Active priorities
-- Wire tool runtime + workspace checkpoint hooks into ripd session loop (requires dependency approval).
-- Update capability registry/matrix if checkpointing is exposed on CLI/server.
+- Update capability registry/matrix if checkpointing is now exposed on CLI/server.
 - Keep roadmap doc/impl gaps aligned with recent changes.
+- Select the next Phase 1 Now task after docs are current.
 
 Next checkpoints
-- Move workspace engine task into Now once approved.
+- Confirm next Now item once docs/registry are aligned.

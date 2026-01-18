@@ -16,6 +16,8 @@ uuid = { version = "1.6", features = ["v4"] }
 
 rip-kernel = { path = "../rip-kernel" }
 rip-log = { path = "../rip-log" }
+rip-tools = { path = "../rip-tools" }
+rip-workspace = { path = "../rip-workspace" }
 
 [dev-dependencies]
 http-body-util = "0.1"
