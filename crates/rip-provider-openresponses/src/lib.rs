@@ -468,6 +468,11 @@ mod tests {
                       data: {\"type\":\"response.completed\",\"sequence_number\":1,\"response\":{}}\n\n";
         let events = decoder.push(payload);
         assert_eq!(events.len(), 1);
-        assert!(!events[0].response_errors.is_empty());
+        let errors = &events[0].response_errors;
+        assert!(!errors.is_empty());
+        assert!(errors.iter().any(|err| err.contains("truncation")));
+        assert!(errors
+            .iter()
+            .any(|err| err.contains("previous_response_id")));
     }
 }

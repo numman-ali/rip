@@ -45,6 +45,15 @@ fn stream_fixture_maps_all_events() {
                     let data = data.as_ref().expect("data");
                     let event_type = data.get("type").and_then(|v| v.as_str());
                     assert_eq!(event_name.as_deref(), event_type);
+                    if let Some(response) = data.get("response") {
+                        let response = response.as_object().expect("response object");
+                        let truncation = response.get("truncation").expect("truncation");
+                        assert!(truncation.is_string());
+                        let previous = response
+                            .get("previous_response_id")
+                            .expect("previous_response_id");
+                        assert!(previous.is_null() || previous.is_string());
+                    }
                 }
                 ProviderEventStatus::Done => {
                     assert!(event_name.is_none());
