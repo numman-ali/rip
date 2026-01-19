@@ -21,6 +21,7 @@ Navigation
 - OpenResponses capability map: docs/03_contracts/openresponses_capability_map.md
 - CLI and server usage model: docs/04_execution/
 - Quality gates (tests, benchmarks): docs/05_quality/
+- Feature workflow (how we ship): docs/05_quality/feature_flow.md
 - Source-of-truth policy: docs/05_quality/source-policy.md
 - Surface parity gates: docs/05_quality/surface-parity.md
 - Decision log (ADRs): docs/06_decisions/

@@ -75,3 +75,17 @@ Example
 {"id":"...","session_id":"...","timestamp_ms":2,"seq":2,"type":"session_ended","reason":"completed"}
 {"id":"...","session_id":"...","timestamp_ms":3,"seq":3,"type":"provider_event","provider":"openresponses","status":"event","event_name":"response.output_text.delta","data":{"type":"response.output_text.delta","delta":"hi"},"raw":null,"errors":[],"response_errors":[]}
 ```
+
+Phase 2 (planned additions)
+- Background tool tasks:
+  - `tool_task_spawned`: `{task_id, tool_name, args, background:true}`
+  - `tool_task_status`: `{task_id, status, exit_code?, artifact_refs?}`
+  - `tool_task_cancelled`: `{task_id, reason}`
+- Artifact-backed outputs:
+  - `artifact_written`: `{artifact_id, kind, bytes, digest, preview?}`
+  - Tool frames may include bounded previews plus `artifact_refs` when full output is stored externally.
+- Skills (Agent Skills/OpenSkills):
+  - `skill_catalog_updated`: `{count, roots, collisions?}`
+  - `skill_loaded`: `{name, path, digest, frontmatter, warnings?}`
+  - `skill_invoked`: `{name, args?, mode:manual|auto, effective_allowed_tools?}`
+  - `skill_warning`: `{name?, kind, detail}`

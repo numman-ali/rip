@@ -1,0 +1,8 @@
+event: response.created
+data: {"type":"response.created","sequence_number":1,"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0,"id":"resp_2","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"fixture-model","object":"response","output":[],"parallel_tool_calls":false,"presence_penalty":0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":null,"safety_identifier":null,"service_tier":"","status":"","store":false,"temperature":0,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0,"truncation":"auto","usage":null,"user":null}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":2,"item_id":"msg_1","output_index":0,"content_index":0,"delta":"done","logprobs":[]}
+
+data: [DONE]
+

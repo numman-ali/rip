@@ -23,12 +23,96 @@ Now
 
 Next
 
-## Fixtures: deterministic tool outputs + replayable logs [needs work]
-- Refs: `docs/07_tasks/phase-1/09_fixtures.md`
-- Ready: tool runtime emits deterministic frames
-- Done: fixture repos + replay tests in CI
+## Live OpenResponses API smoke test (manual) [confirm spec]
+- Refs: `crates/ripd/src/server_tests.rs`, `docs/03_contracts/modules/phase-1/02_provider_adapters.md`
+- Ready:
+  - Set `RIP_OPENRESPONSES_ENDPOINT` (+ `RIP_OPENRESPONSES_API_KEY`, `RIP_OPENRESPONSES_MODEL` if required).
+  - If using OpenRouter and a model rejects `tool_choice=required`, either:
+    - switch models (known-good: `mistralai/devstral-2512:free`), or
+    - set `RIP_OPENRESPONSES_TOOL_CHOICE=auto` for the smoke test.
+- Done:
+  - `cargo test -p ripd live_openresponses_smoke -- --ignored` completes and observes:
+    - provider SSE events (`provider_event`), and
+    - at least one real tool call execution (provider -> tool -> follow-up).
+
+## CLI: single-command `rip` UX (local in-process + `rip serve`) [needs work]
+- Refs: `docs/04_execution/server.md`, `docs/02_architecture/surfaces.md`, `docs/02_architecture/capability_matrix.md`
+- Decision packet (required before implementation):
+  - Decision: default local execution mode for `rip` (in-process vs client/server).
+  - Options:
+    1) In-process default: `rip` runs the session engine + tool runtime directly; `rip serve` starts HTTP/SSE for SDK/remote.
+       - Pros: lowest latency; simplest “single command”; fewer moving parts for local use.
+       - Cons: two codepaths to maintain (local + server) unless carefully factored.
+    2) Always client/server: `rip` always speaks HTTP/SSE; it can auto-spawn a local server when none is running.
+       - Pros: one transport surface; simplest for SDK parity and multi-client attach.
+       - Cons: more overhead for local; daemon lifecycle/ports/data-dir complexity.
+  - Recommendation: Option 1 (in-process default) with an explicit `--server <url>` escape hatch; revisit auto-spawn once config/policy is in place.
+  - Reversibility: keep event frames + replay fixtures identical across modes; local mode can later be implemented by embedding the same server crate behind a transport trait.
+- Ready:
+  - Extract a shared session runner interface used by both `ripd` (server) and `rip` (local).
+  - Define CLI subcommands: `rip` (TUI), `rip run` (headless), `rip serve` (server), `--server` for remote.
+- Done:
+  - `rip` runs locally without requiring a separate `ripd` process.
+  - `rip serve` exposes the same session API; TS SDK targets the server API only.
+
+## Tools: artifact-backed outputs (no context explosion) [confirm spec]
+- Refs: `docs/03_contracts/modules/phase-2/03_tool_tasks.md`, `docs/03_contracts/capability_registry.md`, `docs/02_architecture/capability_matrix.md`
+- Decision packet:
+  - Decision: how to store and retrieve large tool outputs without bloating event streams or prompt context.
+  - Options:
+    1) Store outputs as workspace-local artifacts under `.rip/artifacts/` and reference by content digest (sha256).
+       - Pros: no new server API needed; works offline; deterministic ids; compatible with replay fixtures.
+       - Cons: needs careful size limits; artifacts live inside workspace.
+    2) Store outputs under server data dir (out-of-workspace), reference by opaque ids.
+       - Pros: keeps workspace clean; central management.
+       - Cons: couples storage to server runtime; harder for offline CLI runs.
+  - Recommendation: Option 1 (workspace-local, content-addressed by sha256) with bounded previews in frames.
+  - Reversibility: artifact ids are content digests; we can later relocate storage behind a store interface without changing references.
+- Ready:
+  - Define artifact layout (`.rip/artifacts/`) and retrieval tool/endpoint semantics (range-based; bounded reads).
+- Done:
+  - `bash` stores oversized stdout/stderr as artifacts under `.rip/artifacts/blobs/<sha256>` and emits bounded previews + artifact refs.
+  - Retrieval is supported via `artifact_fetch` (range reads) and is covered by deterministic tests.
+  - Extend artifact-backed output handling to other high-volume tools (and provider follow-ups) as needed.
+
+## Tools: background tool tasks (spawn/status/cancel) [needs work]
+- Refs: `docs/03_contracts/modules/phase-2/03_tool_tasks.md`, `docs/03_contracts/capability_registry.md`, `docs/02_architecture/capability_matrix.md`
+- Decision packet (required before implementation):
+  - Decision: how background tasks relate to session lifetime and event ordering.
+  - Options:
+    1) Multi-turn sessions: keep sessions alive; tasks emit frames into the same session stream.
+       - Pros: simplest UX; “insert message back” is natural.
+       - Cons: large server/runtime refactor; impacts invariants (`session_ended` terminal).
+    2) Task entity: background tasks have their own event streams; sessions can spawn tasks and later create new turns referencing task/artifact ids.
+       - Pros: preserves Phase 1 session invariants; easy to replay; decouples tasks from agent loop.
+       - Cons: UX needs orchestration; requires new API surface for task streams.
+  - Recommendation: Option 2 first (task entity), then optionally move to multi-turn sessions once `session.resume`/threading is in place.
+  - Reversibility: keep task ids stable and log all transitions; multi-turn sessions can consume task streams later without breaking ids.
+- Ready:
+  - Define task lifecycle + task event stream endpoints + policy defaults (safe vs full-auto).
+- Done:
+  - Async tool task spawn/status/cancel is exposed via server + SDK (CLI/TUI render/stream events).
+  - Replay fixtures cover task creation, output, cancellation, and artifact references end-to-end.
 
 Later
+- Sessions/Threads: resume + branch (multi-turn workspaces) [needs work]
+  - Refs: `docs/03_contracts/capability_registry.md` (`session.resume`, `thread.branch`, `thread.handoff`), `docs/03_contracts/modules/phase-1/06_server.md`
+  - Decision packet:
+    - Decision: how “continue later” is represented and exposed across surfaces without breaking Phase 1 replay invariants.
+    - Options:
+      1) Multi-turn session: allow repeated `session.send_input` on the same session id; redefine `session_ended` as end-of-turn.
+         - Pros: simplest mental model for users.
+         - Cons: breaks Phase 1 invariants (`session_ended` terminal); harder replay/compaction; complicates background tasks insertion.
+      2) Thread entity: keep Phase 1 sessions as single-run “turns”; introduce `thread_id` and attach new session runs to a thread.
+         - Pros: preserves Phase 1 session invariants; clean replay; enables branch/handoff/compaction naturally.
+         - Cons: requires new server endpoints + SDK/CLI/TUI wiring.
+    - Recommendation: Option 2 (thread entity). Keep “session == run” stable; implement “continue later” as threads built from session runs.
+    - Reversibility: multi-turn sessions can later be added as a thin compatibility layer that creates/targets a thread behind the scenes.
+  - Ready:
+    - Define server API endpoints for thread create/list/resume/branch and how they map to session runs.
+    - Define event-log entries for thread metadata + turn links (replayable).
+  - Done:
+    - “Continue later” works the same in CLI/TUI/SDK (parity enforced), with deterministic replay of a resumed thread.
 - Models & providers: multi-provider + routing + catalogs (Phase 2) [needs work]
   - Refs: `docs/03_contracts/modules/phase-2/01_model_routing.md`, `docs/03_contracts/capability_registry.md`, `docs/02_architecture/capability_matrix.md`, `docs/03_contracts/event_frames.md`
   - Ready: OpenResponses boundary stable; routing decisions can be logged as event frames
@@ -43,10 +127,27 @@ Later
     - Load a WASM plugin that can intercept tool calls and emit deterministic frames.
     - Provide at least one plugin-defined tool renderer (as render-hint frames).
     - Replay fixture covers plugin decisions and reproduces identical snapshots.
-- TUI surface (`rip-tui`) plan + MVP renderer [needs work]
-  - Refs: `docs/02_architecture/surfaces.md`, `docs/02_architecture/capability_matrix.md`, `temp/docs/ratatui/notes.md`
-  - Ready: confirm TUI stack + input model; define surface-specific capabilities
-  - Done: `rip-tui` package skeleton + streaming renderer; golden render tests
+- Skills: Agent Skills standard loader + progressive disclosure [needs work]
+  - Refs: `docs/03_contracts/modules/phase-2/04_skills.md`, `docs/03_contracts/capability_registry.md`, `docs/02_architecture/capability_matrix.md`, `temp/docs/agentskills/notes_2026-01-19.md`
+  - Decision packet:
+    - Decision: default skill discovery roots, collision precedence, and how skills become invokable commands.
+    - Options:
+      1) RIP-native roots only (`~/.rip/skills`, `<workspace>/.rip/skills`).
+         - Pros: least surprising; clean separation from other tools.
+         - Cons: less immediate reuse of existing skill libraries.
+      2) Include compatibility roots (Codex/Claude/Pi) by default.
+         - Pros: instant ecosystem reuse.
+         - Cons: surprising defaults; more collisions; harder policy story.
+    - Recommendation: Option 1 by default; Option 2 available via explicit config flags (policy-gated).
+    - Reversibility: roots + precedence are config-driven; collisions are logged; can expand safely later.
+  - Ready:
+    - Decide default skill discovery roots + collision precedence (explicit and deterministic).
+    - Define skill events and how skills map to commands (`/skill:<name>`).
+    - Define how `allowed-tools` interacts with policy profiles (safe vs full-auto).
+  - Done:
+    - Skill catalog is injected by the context compiler (frontmatter-only; fast scan).
+    - Skill activation loads full `SKILL.md` and can run scripts/tools under policy.
+    - Server + SDK expose skill lifecycle events; CLI/TUI render them; replay fixtures cover end-to-end behavior.
 - MCP surface (`rip-mcp`) parity adapter [needs work]
   - Refs: `docs/02_architecture/surfaces.md`, `docs/02_architecture/capability_matrix.md`
   - Ready: server capability registry expanded; MCP protocol mapping defined
@@ -79,10 +180,10 @@ Capability coverage map (index)
 - Search/index & memory [needs work] - Phase 3.
 
 Doc/impl gaps
-- TUI surface is documented but not implemented (`rip-tui`).
+- TUI surface has design docs + an MVP-0 renderer crate (`rip-tui`), but is not yet wired to a live server stream.
 - MCP surface is documented but deferred to Phase 2 (`rip-mcp`).
 - Bench harness includes TTFT + end-to-end loop benchmarks; budgets are intentionally conservative (ratchet over time).
-- Fixture repos exist (`fixtures/repo_small`, `fixtures/repo_medium`), but replayable “full agent loop” fixtures are still pending.
+- Fixture repos exist (`fixtures/repo_small`, `fixtures/repo_medium`); OpenResponses tool-loop fixtures cover tool execution + follow-up + snapshot/log replay equivalence.
 
 Decisions
 - Event frames live in `rip-kernel`; schema documented at `docs/03_contracts/event_frames.md`.
@@ -92,6 +193,10 @@ Open questions
 - (empty)
 
 Done (recent)
+- 2026-01-19: Tools: `bash` stores oversized stdout/stderr as workspace-local artifacts + added `artifact_fetch` builtin (range reads).
+- 2026-01-19: CLI: added `rip serve` (embedded server) to reduce `ripd` UX friction.
+- 2026-01-19: TUI: added `rip-tui` MVP-0 skeleton (frame-driven state + ratatui golden render snapshots).
+- 2026-01-19: Fixtures: added deterministic OpenResponses tool-loop SSE fixtures + replay equivalence tests; updated `e2e_loop_us` to exercise tool-loop + follow-up parsing.
 - 2026-01-18: Phase 1 closeout: CI + fixtures + bench harness are CI-gated (plus baseline budgets).
 - 2026-01-18: Decision: plugin architecture is WASM-first with optional out-of-process services (ADR-0004).
 - 2026-01-18: Phase 1 hygiene: tests use temp workspace roots (no writes under `crates/*`).

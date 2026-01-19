@@ -10,12 +10,17 @@ Entry points (read order for reorientation)
 - `docs/03_contracts/capability_registry.md` (canonical capability ids + surface support)
 - `docs/02_architecture/capability_matrix.md` (phase placement + hook points)
 - `docs/03_contracts/event_frames.md` (internal event schema)
+- `docs/05_quality/feature_flow.md` (how we turn ideas into shipped capabilities)
 - OpenResponses boundary:
   - `docs/03_contracts/openresponses_coverage.md` (exhaustive spec/schema coverage + capability ownership)
   - `docs/03_contracts/openresponses_capability_map.md` (feature-group → capability ids)
   - `docs/03_contracts/openresponses_traceability.md` (upstream snapshot + diff procedure)
 - Extension host (Phase 2):
   - `docs/03_contracts/modules/phase-2/02_extension_host.md` (WASM-first plugins, out-of-proc services, UI render-hints)
+- Tool tasks (Phase 2):
+  - `docs/03_contracts/modules/phase-2/03_tool_tasks.md` (background tools, artifact-backed outputs, determinism/replay)
+- Skills (Phase 2):
+  - `docs/03_contracts/modules/phase-2/04_skills.md` (Agent Skills/OpenSkills format + discovery/invoke + policy)
 
 How we keep product/UX aligned
 - Capability ids are the canonical interface contract (not provider schemas).
@@ -48,6 +53,8 @@ Doc index (authoritative docs only)
 | OpenResponses traceability | `docs/03_contracts/openresponses_traceability.md` | Upstream snapshot + sync/diff procedure. |
 | model routing (Phase 2) | `docs/03_contracts/modules/phase-2/01_model_routing.md` | Model switching, routing policies, catalogs, determinism. |
 | extension host (Phase 2) | `docs/03_contracts/modules/phase-2/02_extension_host.md` | Plugin/extension system contract and determinism rules. |
+| tool tasks (Phase 2) | `docs/03_contracts/modules/phase-2/03_tool_tasks.md` | Background tools + artifact-backed outputs + replay requirements. |
+| skills (Phase 2) | `docs/03_contracts/modules/phase-2/04_skills.md` | Skills format, discovery, progressive disclosure, and invocation. |
 | provider adapters | `docs/03_contracts/modules/phase-1/02_provider_adapters.md` | OpenResponses boundary invariants and tests. |
 | tool runtime | `docs/03_contracts/modules/phase-1/03_tool_runtime.md` | Built-in tools and tool dispatch contract. |
 | server | `docs/03_contracts/modules/phase-1/06_server.md` | Session API surface contract. |

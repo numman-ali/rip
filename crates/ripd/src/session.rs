@@ -354,6 +354,7 @@ struct FunctionCallBuffer {
 struct ToolCallCollector {
     response_id: Option<String>,
     function_call_by_item_id: HashMap<String, FunctionCallBuffer>,
+    item_id_by_call_id: HashMap<String, String>,
     completed_function_calls: Vec<FunctionCallItem>,
 }
 
@@ -396,13 +397,30 @@ impl ToolCallCollector {
                     return;
                 }
 
+                let call_id = item
+                    .get("call_id")
+                    .and_then(|value| value.as_str())
+                    .filter(|value| !value.is_empty())
+                    .map(|value| value.to_string());
                 let item_id = item
                     .get("id")
                     .and_then(|value| value.as_str())
-                    .unwrap_or("")
-                    .to_string();
+                    .filter(|value| !value.is_empty())
+                    .map(|value| value.to_string())
+                    .or_else(|| {
+                        call_id
+                            .as_deref()
+                            .and_then(|call_id| self.item_id_by_call_id.get(call_id).cloned())
+                    })
+                    .or_else(|| call_id.clone())
+                    .unwrap_or_default();
                 if item_id.is_empty() {
                     return;
+                }
+                if let Some(call_id) = call_id.as_deref() {
+                    self.item_id_by_call_id
+                        .entry(call_id.to_string())
+                        .or_insert_with(|| item_id.clone());
                 }
 
                 let entry = self
@@ -410,11 +428,7 @@ impl ToolCallCollector {
                     .entry(item_id.clone())
                     .or_default();
                 entry.output_index = output_index;
-                entry.call_id = item
-                    .get("call_id")
-                    .and_then(|value| value.as_str())
-                    .map(|value| value.to_string())
-                    .or(entry.call_id.take());
+                entry.call_id = call_id.clone().or(entry.call_id.take());
                 entry.name = item
                     .get("name")
                     .and_then(|value| value.as_str())

@@ -8,7 +8,9 @@ use tempfile::tempdir;
 use tokio::time::{sleep, timeout, Duration};
 use tower::util::ServiceExt;
 
-use crate::provider_openresponses::OpenResponsesConfig;
+use rip_provider_openresponses::ToolChoiceParam;
+
+use crate::provider_openresponses::{parse_tool_choice_env, OpenResponsesConfig};
 use crate::server::{
     build_app_with_workspace_root, build_app_with_workspace_root_and_provider,
     build_openapi_router, workspace_root, SessionCreated,
@@ -32,6 +34,7 @@ fn build_test_app_with_openresponses_provider(dir: &tempfile::TempDir, endpoint:
             endpoint,
             api_key: None,
             model: Some("fixture-model".to_string()),
+            tool_choice: ToolChoiceParam::auto(),
         }),
     )
 }
@@ -581,151 +584,227 @@ async fn prompt_uses_openresponses_provider_when_configured() {
 
 #[tokio::test]
 async fn prompt_openresponses_executes_function_tools_and_sends_followup() {
+    run_openresponses_tool_loop_fixture(include_str!(
+        "../../../fixtures/openresponses/tool_loop_apply_patch_first.sse"
+    ))
+    .await;
+}
+
+#[tokio::test]
+async fn prompt_openresponses_executes_function_tools_with_argument_deltas() {
+    run_openresponses_tool_loop_fixture(include_str!(
+        "../../../fixtures/openresponses/tool_loop_apply_patch_args_delta.sse"
+    ))
+    .await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_openresponses_smoke() {
+    let endpoint = match std::env::var("RIP_OPENRESPONSES_ENDPOINT") {
+        Ok(value) => value,
+        Err(_) => {
+            eprintln!("skipping live test: RIP_OPENRESPONSES_ENDPOINT not set");
+            return;
+        }
+    };
+    let api_key = std::env::var("RIP_OPENRESPONSES_API_KEY").ok();
+    let model = std::env::var("RIP_OPENRESPONSES_MODEL").ok();
+
+    if api_key.is_none() {
+        eprintln!("note: RIP_OPENRESPONSES_API_KEY not set (provider may reject)");
+    }
+    if model.is_none() {
+        eprintln!("note: RIP_OPENRESPONSES_MODEL not set (provider may require a model)");
+    }
+
+    let tool_choice = match std::env::var("RIP_OPENRESPONSES_TOOL_CHOICE") {
+        Ok(value) => match parse_tool_choice_env(&value) {
+            Ok(choice) => choice,
+            Err(err) => {
+                eprintln!(
+                    "invalid RIP_OPENRESPONSES_TOOL_CHOICE={value:?}: {err}; defaulting to auto"
+                );
+                ToolChoiceParam::auto()
+            }
+        },
+        Err(_) => ToolChoiceParam::required(),
+    };
+
+    let dir = tempdir().expect("tmp");
+    let data_dir = dir.path().join("data");
+    let workspace_dir = dir.path().join("workspace");
+    fs::create_dir_all(&workspace_dir).expect("workspace dir");
+
+    let app = build_app_with_workspace_root_and_provider(
+        data_dir,
+        workspace_dir,
+        Some(OpenResponsesConfig {
+            endpoint,
+            api_key,
+            model,
+            tool_choice,
+        }),
+    );
+
+    let session_id = create_session_id(&app).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/sessions/{session_id}/events"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let mut reader = TestSseReader::new(response.into_body());
+
+    let prompt = "RIP live test: you MUST call tool bash with {\"command\":\"echo RIP_LIVE_TEST_OK\"} exactly once, then respond with the text: done";
+    let send_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/sessions/{session_id}/input"))
+                .header("content-type", "application/json")
+                .body(Body::from(format!(
+                    "{{\"input\":{}}}",
+                    serde_json::to_string(prompt).unwrap()
+                )))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(send_response.status(), axum::http::StatusCode::ACCEPTED);
+
+    let mut saw_provider_done = false;
+    let mut saw_tool_started = false;
+    let mut saw_tool_stdout_marker = false;
+    let mut saw_tool_ended = false;
+    let mut saw_session_ended = false;
+    let mut last_provider_status: Option<String> = None;
+    let mut last_provider_raw: Option<String> = None;
+    let mut last_provider_errors: Option<Vec<String>> = None;
+    let mut seen_openresponses_event_types = std::collections::BTreeSet::<String>::new();
+    let mut sample_output_item_added: Option<serde_json::Value> = None;
+    let mut sample_output_item_done: Option<serde_json::Value> = None;
+    let mut sample_arguments_done: Option<serde_json::Value> = None;
+
+    timeout(Duration::from_secs(60), async {
+        while let Some(message) = reader.next_data_message().await {
+            if let Some(value) = extract_data_json(&message) {
+                match value.get("type").and_then(|value| value.as_str()) {
+                    Some("provider_event") => {
+                        let status = value
+                            .get("status")
+                            .and_then(|value| value.as_str())
+                            .unwrap_or("");
+                        last_provider_status = Some(status.to_string());
+                        last_provider_raw = value
+                            .get("raw")
+                            .and_then(|value| value.as_str())
+                            .map(|value| value.to_string());
+                        last_provider_errors = value.get("errors").and_then(|value| {
+                            value.as_array().map(|arr| {
+                                arr.iter()
+                                    .filter_map(|item| item.as_str().map(|s| s.to_string()))
+                                    .collect::<Vec<_>>()
+                            })
+                        });
+                        if let Some(event_type) = value
+                            .get("data")
+                            .and_then(|data| data.get("type"))
+                            .and_then(|value| value.as_str())
+                        {
+                            seen_openresponses_event_types.insert(event_type.to_string());
+                            if sample_output_item_added.is_none()
+                                && event_type == "response.output_item.added"
+                            {
+                                sample_output_item_added = value.get("data").cloned();
+                            }
+                            if sample_output_item_done.is_none()
+                                && event_type == "response.output_item.done"
+                            {
+                                sample_output_item_done = value.get("data").cloned();
+                            }
+                            if sample_arguments_done.is_none()
+                                && event_type == "response.function_call_arguments.done"
+                            {
+                                sample_arguments_done = value.get("data").cloned();
+                            }
+                        }
+                        if status == "done" {
+                            saw_provider_done = true;
+                        }
+                    }
+                    Some("tool_started") => saw_tool_started = true,
+                    Some("tool_stdout") => {
+                        if value
+                            .get("chunk")
+                            .and_then(|chunk| chunk.as_str())
+                            .unwrap_or("")
+                            .contains("RIP_LIVE_TEST_OK")
+                        {
+                            saw_tool_stdout_marker = true;
+                        }
+                    }
+                    Some("tool_ended") => saw_tool_ended = true,
+                    Some("session_ended") => {
+                        saw_session_ended = true;
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        }
+    })
+    .await
+    .expect("timeout");
+
+    assert!(
+        saw_provider_done,
+        "expected provider_event done; last provider_event status={last_provider_status:?} raw={last_provider_raw:?} errors={last_provider_errors:?}"
+    );
+    assert!(
+        saw_tool_started && saw_tool_ended,
+        "expected at least one tool execution (tool_started/tool_ended); seen openresponses event types={seen_openresponses_event_types:?}; sample output_item.added={sample_output_item_added:?}; sample output_item.done={sample_output_item_done:?}; sample arguments.done={sample_arguments_done:?}"
+    );
+    assert!(
+        saw_tool_stdout_marker,
+        "expected bash stdout marker; ensure provider/model executed bash tool"
+    );
+    assert!(saw_session_ended, "expected session_ended");
+}
+
+async fn run_openresponses_tool_loop_fixture(first_sse: &'static str) {
     use axum::extract::State;
     use axum::http::header::CONTENT_TYPE;
     use axum::routing::post;
     use axum::{response::IntoResponse, Json, Router as AxumRouter};
-    use serde_json::{json, Value};
+    use rip_log::{verify_snapshot, EventLog};
+    use serde_json::Value;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
     use tokio::net::TcpListener;
 
-    fn response_resource(id: &str) -> Value {
-        json!({
-            "background": false,
-            "completed_at": null,
-            "created_at": 0,
-            "error": null,
-            "frequency_penalty": 0,
-            "id": id,
-            "incomplete_details": null,
-            "instructions": null,
-            "max_output_tokens": null,
-            "max_tool_calls": null,
-            "metadata": {},
-            "model": "fixture-model",
-            "object": "response",
-            "output": [],
-            "parallel_tool_calls": false,
-            "presence_penalty": 0,
-            "previous_response_id": null,
-            "prompt_cache_key": null,
-            "reasoning": null,
-            "safety_identifier": null,
-            "service_tier": "",
-            "status": "",
-            "store": false,
-            "temperature": 0,
-            "text": { "format": { "type": "text" } },
-            "tool_choice": "auto",
-            "tools": [],
-            "top_logprobs": 0,
-            "top_p": 0,
-            "truncation": "auto",
-            "usage": null,
-            "user": null,
-        })
-    }
-
-    fn sse_event(event: &str, payload: Value) -> String {
-        format!("event: {event}\ndata: {payload}\n\n")
-    }
-
-    let first_sse = {
-        let mut sse = String::new();
-        sse.push_str(&sse_event(
-            "response.created",
-            json!({
-                "type": "response.created",
-                "sequence_number": 1,
-                "response": response_resource("resp_1"),
-            }),
-        ));
-        sse.push_str(&sse_event(
-            "response.output_item.added",
-            json!({
-                "type": "response.output_item.added",
-                "sequence_number": 2,
-                "output_index": 0,
-                "item": {
-                    "type": "function_call",
-                    "id": "fc_item_1",
-                    "call_id": "call_1",
-                    "name": "write",
-                    "arguments": "",
-                    "status": "in_progress"
-                }
-            }),
-        ));
-        sse.push_str(&sse_event(
-            "response.function_call_arguments.done",
-            json!({
-                "type": "response.function_call_arguments.done",
-                "sequence_number": 3,
-                "item_id": "fc_item_1",
-                "output_index": 0,
-                "arguments": "{\"path\":\"a.txt\",\"content\":\"hello\"}",
-            }),
-        ));
-        sse.push_str(&sse_event(
-            "response.output_item.done",
-            json!({
-                "type": "response.output_item.done",
-                "sequence_number": 4,
-                "output_index": 0,
-                "item": {
-                    "type": "function_call",
-                    "id": "fc_item_1",
-                    "call_id": "call_1",
-                    "name": "write",
-                    "arguments": "{\"path\":\"a.txt\",\"content\":\"hello\"}",
-                    "status": "completed"
-                }
-            }),
-        ));
-        sse.push_str("data: [DONE]\n\n");
-        sse
-    };
-
-    let second_sse = {
-        let mut sse = String::new();
-        sse.push_str(&sse_event(
-            "response.created",
-            json!({
-                "type": "response.created",
-                "sequence_number": 1,
-                "response": response_resource("resp_2"),
-            }),
-        ));
-        sse.push_str(&sse_event(
-            "response.output_text.delta",
-            json!({
-                "type": "response.output_text.delta",
-                "sequence_number": 2,
-                "item_id": "msg_1",
-                "output_index": 0,
-                "content_index": 0,
-                "delta": "done",
-                "logprobs": [],
-            }),
-        ));
-        sse.push_str("data: [DONE]\n\n");
-        sse
-    };
+    let second_sse = include_str!("../../../fixtures/openresponses/tool_loop_followup.sse");
 
     #[derive(Clone)]
     struct ProviderState {
         requests: Arc<Mutex<Vec<Value>>>,
         call_count: Arc<AtomicUsize>,
-        first_sse: String,
-        second_sse: String,
+        first_sse: &'static str,
+        second_sse: &'static str,
     }
 
     let state = ProviderState {
         requests: Arc::new(Mutex::new(Vec::new())),
         call_count: Arc::new(AtomicUsize::new(0)),
-        first_sse: first_sse.clone(),
-        second_sse: second_sse.clone(),
+        first_sse,
+        second_sse,
     };
 
     let provider_app = AxumRouter::new()
@@ -736,9 +815,9 @@ async fn prompt_openresponses_executes_function_tools_and_sends_followup() {
                     state.requests.lock().expect("requests").push(body);
                     let idx = state.call_count.fetch_add(1, Ordering::SeqCst);
                     let sse_body = if idx == 0 {
-                        state.first_sse.clone()
+                        state.first_sse
                     } else {
-                        state.second_sse.clone()
+                        state.second_sse
                     };
                     ([(CONTENT_TYPE, "text/event-stream")], sse_body).into_response()
                 },
@@ -756,6 +835,8 @@ async fn prompt_openresponses_executes_function_tools_and_sends_followup() {
     let dir = tempdir().expect("tmp");
     let app = build_test_app_with_openresponses_provider(&dir, endpoint);
     let session_id = create_session_id(&app).await;
+    let workspace_root = dir.path().join("workspace");
+    std::fs::write(workspace_root.join("a.txt"), "one\ntwo\n").expect("seed workspace");
 
     let response = app
         .clone()
@@ -814,7 +895,10 @@ async fn prompt_openresponses_executes_function_tools_and_sends_followup() {
     assert!(saw_session_ended, "expected session_ended");
 
     let written = dir.path().join("workspace").join("a.txt");
-    assert_eq!(std::fs::read_to_string(&written).expect("file"), "hello");
+    assert_eq!(
+        std::fs::read_to_string(&written).expect("file"),
+        "ONE\ntwo\n"
+    );
 
     let requests = state.requests.lock().expect("requests").clone();
     assert_eq!(requests.len(), 2, "expected two provider requests");
@@ -852,12 +936,35 @@ async fn prompt_openresponses_executes_function_tools_and_sends_followup() {
     let parsed: Value = serde_json::from_str(output).expect("output json");
     assert_eq!(
         parsed.get("tool").and_then(|value| value.as_str()),
-        Some("write")
+        Some("apply_patch")
     );
     assert_eq!(
         parsed.get("ok").and_then(|value| value.as_bool()),
         Some(true)
     );
+
+    let data_dir = dir.path().join("data");
+    let snapshot_path = data_dir
+        .join("snapshots")
+        .join(format!("{session_id}.json"));
+    let log_path = data_dir.join("events.jsonl");
+    timeout(Duration::from_secs(2), async {
+        loop {
+            let snapshot_ready = snapshot_path.exists();
+            let log_ready = log_path
+                .metadata()
+                .map(|meta| meta.len() > 0)
+                .unwrap_or(false);
+            if snapshot_ready && log_ready {
+                break;
+            }
+            sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("snapshot timeout");
+    let log = EventLog::new(log_path).expect("event log");
+    verify_snapshot(&log, snapshot_path).expect("verify snapshot");
 }
 
 #[tokio::test]

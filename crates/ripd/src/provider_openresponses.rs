@@ -1,6 +1,3 @@
-#[cfg(not(test))]
-use std::env;
-
 use rip_provider_openresponses::{
     CreateResponseBuilder, CreateResponsePayload, ItemParam, ToolChoiceParam,
 };
@@ -11,18 +8,32 @@ pub struct OpenResponsesConfig {
     pub endpoint: String,
     pub api_key: Option<String>,
     pub model: Option<String>,
+    pub tool_choice: ToolChoiceParam,
 }
 
 impl OpenResponsesConfig {
     #[cfg(not(test))]
     pub fn from_env() -> Option<Self> {
-        let endpoint = env::var("RIP_OPENRESPONSES_ENDPOINT").ok()?;
-        let api_key = env::var("RIP_OPENRESPONSES_API_KEY").ok();
-        let model = env::var("RIP_OPENRESPONSES_MODEL").ok();
+        let endpoint = std::env::var("RIP_OPENRESPONSES_ENDPOINT").ok()?;
+        let api_key = std::env::var("RIP_OPENRESPONSES_API_KEY").ok();
+        let model = std::env::var("RIP_OPENRESPONSES_MODEL").ok();
+        let tool_choice = match std::env::var("RIP_OPENRESPONSES_TOOL_CHOICE") {
+            Ok(value) => match parse_tool_choice_env(&value) {
+                Ok(choice) => choice,
+                Err(err) => {
+                    eprintln!(
+                        "invalid RIP_OPENRESPONSES_TOOL_CHOICE={value:?}: {err}; defaulting to auto"
+                    );
+                    ToolChoiceParam::auto()
+                }
+            },
+            Err(_) => ToolChoiceParam::auto(),
+        };
         Some(Self {
             endpoint,
             api_key,
             model,
+            tool_choice,
         })
     }
 }
@@ -36,7 +47,7 @@ pub fn build_streaming_request(
     let mut builder = base_streaming_builder(config)
         .input_text(prompt)
         .tools_raw(builtin_function_tools())
-        .tool_choice(ToolChoiceParam::auto())
+        .tool_choice(config.tool_choice.clone())
         .parallel_tool_calls(false)
         .max_tool_calls(DEFAULT_MAX_TOOL_CALLS);
     builder = builder.insert_raw("stream", Value::Bool(true));
@@ -55,7 +66,7 @@ pub fn build_streaming_followup_request(
         )
         .input_items(tool_outputs)
         .tools_raw(builtin_function_tools())
-        .tool_choice(ToolChoiceParam::auto())
+        .tool_choice(config.tool_choice.clone())
         .parallel_tool_calls(false)
         .max_tool_calls(DEFAULT_MAX_TOOL_CALLS)
         .insert_raw("stream", Value::Bool(true));
@@ -68,6 +79,52 @@ fn base_streaming_builder(config: &OpenResponsesConfig) -> CreateResponseBuilder
         return builder.model(model.to_string());
     }
     builder
+}
+
+pub(crate) fn parse_tool_choice_env(value: &str) -> Result<ToolChoiceParam, String> {
+    let raw = value.trim();
+    if raw.is_empty() {
+        return Ok(ToolChoiceParam::auto());
+    }
+
+    match raw {
+        "auto" => Ok(ToolChoiceParam::auto()),
+        "none" => Ok(ToolChoiceParam::none()),
+        "required" => Ok(ToolChoiceParam::required()),
+        _ => {
+            if let Some(rest) = raw.strip_prefix("function:") {
+                let name = rest.trim();
+                if name.is_empty() {
+                    return Err("function name missing (expected function:<name>)".to_string());
+                }
+                return Ok(ToolChoiceParam::specific_function(name.to_string()));
+            }
+
+            let (is_json, json) = match raw.strip_prefix("json:") {
+                Some(json) => (true, json.trim()),
+                None => (
+                    raw.starts_with('{') || raw.starts_with('[') || raw.starts_with('"'),
+                    raw,
+                ),
+            };
+
+            if is_json {
+                let parsed: Value = serde_json::from_str(json)
+                    .map_err(|err| format!("invalid json tool_choice: {err}"))?;
+                let param = ToolChoiceParam::new(parsed);
+                if !param.errors().is_empty() {
+                    return Err(format!(
+                        "invalid tool_choice: {}",
+                        param.errors().join("; ")
+                    ));
+                }
+                return Ok(param);
+            }
+
+            Err("unsupported value (expected auto|none|required|function:<name>|json:<tool_choice_json>)"
+                .to_string())
+        }
+    }
 }
 
 fn builtin_function_tools() -> Vec<Value> {
@@ -151,6 +208,20 @@ fn builtin_function_tools() -> Vec<Value> {
                     "follow_symlinks": { "type": "boolean" }
                 },
                 "required": ["pattern"],
+                "additionalProperties": false
+            }),
+        ),
+        function_tool(
+            "artifact_fetch",
+            "Fetch a stored artifact by id (sha256). Tool outputs may reference artifacts when output is too large to inline.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string" },
+                    "offset_bytes": { "type": "integer", "minimum": 0 },
+                    "max_bytes": { "type": "integer", "minimum": 1 }
+                },
+                "required": ["id"],
                 "additionalProperties": false
             }),
         ),

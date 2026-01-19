@@ -7,6 +7,7 @@ members = [
   "crates/rip-provider-openresponses",
   "crates/rip-tools",
   "crates/rip-cli",
+  "crates/rip-tui",
   "crates/rip-workspace",
   "crates/rip-bench",
   "crates/ripd",

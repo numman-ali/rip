@@ -15,5 +15,6 @@ Headless mode (draft)
 - `--view output` prints text + reasoning + tool deltas extracted from provider events
 
 Notes
-- CLI is a thin UI over ripd.
+- CLI is a thin UI over the agent server (HTTP/SSE).
+- Start a local server with `rip serve` (or `ripd`), then run `rip run ...`.
 - No agent logic lives in the CLI.

@@ -8,7 +8,7 @@ Phase 1 benchmarks
 - TTFT overhead (`ttft_overhead_us`): first provider byte received -> first internal frame emitted.
 - Tool dispatch latency (`tool_runner_noop_us`).
 - Patch apply throughput (`workspace_apply_patch_us`).
-- End-to-end loop latency (`e2e_loop_us`): parse deterministic provider SSE -> run `apply_patch` -> write snapshot.
+- End-to-end loop latency (`e2e_loop_us`): parse deterministic tool-call SSE -> run `apply_patch` -> build follow-up request -> parse follow-up SSE -> write snapshot.
 
 Fixture requirements
 - Small repo (fast CI).

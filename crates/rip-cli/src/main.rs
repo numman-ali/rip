@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use futures_util::StreamExt;
 use reqwest::Client;
 use reqwest_eventsource::{Error as EventSourceError, Event, RequestBuilderExt};
-use rip_kernel::Event as FrameEvent;
+use rip_kernel::{Event as FrameEvent, EventKind};
 use rip_provider_openresponses::{
     extract_reasoning_deltas, extract_text_deltas, extract_tool_call_argument_deltas,
 };
@@ -34,6 +34,7 @@ enum Commands {
         #[arg(long, value_enum, default_value_t = OutputView::Raw)]
         view: OutputView,
     },
+    Serve,
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum, PartialEq, Eq)]
@@ -66,6 +67,9 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             } else {
                 run_interactive(prompt, server, view).await?;
             }
+        }
+        Commands::Serve => {
+            ripd::serve_default().await;
         }
     }
 
@@ -141,7 +145,10 @@ async fn stream_events_with_writer(
         match next {
             Ok(Event::Open) => {}
             Ok(Event::Message(msg)) => {
-                render_message(view, &msg.data, out)?;
+                let should_stop = render_message(view, &msg.data, out)?;
+                if should_stop {
+                    break;
+                }
             }
             Err(EventSourceError::StreamEnded) => break,
             Err(err) => return Err(err.into()),
@@ -151,9 +158,10 @@ async fn stream_events_with_writer(
     Ok(())
 }
 
-fn render_message(view: OutputView, payload: &str, out: &mut dyn Write) -> anyhow::Result<()> {
+fn render_message(view: OutputView, payload: &str, out: &mut dyn Write) -> anyhow::Result<bool> {
     let frame: FrameEvent = serde_json::from_str(payload)
         .map_err(|err| anyhow::anyhow!("invalid event frame: {err}"))?;
+    let should_stop = matches!(frame.kind, EventKind::SessionEnded { .. });
 
     match view {
         OutputView::Raw => {
@@ -173,7 +181,7 @@ fn render_message(view: OutputView, payload: &str, out: &mut dyn Write) -> anyho
             out.flush()?;
         }
     }
-    Ok(())
+    Ok(should_stop)
 }
 
 #[cfg(test)]
@@ -364,6 +372,7 @@ mod tests {
         let cli = Cli::parse_from(["rip", "run", "hello"]);
         match cli.command {
             Commands::Run { prompt, .. } => assert_eq!(prompt, "hello"),
+            Commands::Serve => panic!("expected run"),
         }
     }
 
@@ -375,6 +384,7 @@ mod tests {
                 assert!(headless);
                 assert_eq!(view, OutputView::Raw);
             }
+            Commands::Serve => panic!("expected run"),
         }
     }
 
@@ -383,6 +393,7 @@ mod tests {
         let cli = Cli::parse_from(["rip", "run", "hello", "--server", "http://local"]);
         match cli.command {
             Commands::Run { server, .. } => assert_eq!(server, "http://local"),
+            Commands::Serve => panic!("expected run"),
         }
     }
 
@@ -474,6 +485,16 @@ mod tests {
         let cli = Cli::parse_from(["rip", "run", "hello", "--headless", "false"]);
         match cli.command {
             Commands::Run { headless, .. } => assert!(!headless),
+            Commands::Serve => panic!("expected run"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_serve() {
+        let cli = Cli::parse_from(["rip", "serve"]);
+        match cli.command {
+            Commands::Serve => {}
+            Commands::Run { .. } => panic!("expected serve"),
         }
     }
 }

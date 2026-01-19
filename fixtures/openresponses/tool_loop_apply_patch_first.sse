@@ -1,0 +1,14 @@
+event: response.created
+data: {"type":"response.created","sequence_number":1,"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0,"id":"resp_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"fixture-model","object":"response","output":[],"parallel_tool_calls":false,"presence_penalty":0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":null,"safety_identifier":null,"service_tier":"","status":"","store":false,"temperature":0,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0,"truncation":"auto","usage":null,"user":null}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":2,"output_index":0,"item":{"type":"function_call","id":"fc_item_1","call_id":"call_1","name":"apply_patch","arguments":"","status":"in_progress"}}
+
+event: response.function_call_arguments.done
+data: {"type":"response.function_call_arguments.done","sequence_number":3,"item_id":"fc_item_1","output_index":0,"arguments":"{\"patch\":\"*** Begin Patch\\n*** Update File: a.txt\\n@@\\n-one\\n+ONE\\n two\\n*** End Patch\"}"}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","sequence_number":4,"output_index":0,"item":{"type":"function_call","id":"fc_item_1","call_id":"call_1","name":"apply_patch","arguments":"{\"patch\":\"*** Begin Patch\\n*** Update File: a.txt\\n@@\\n-one\\n+ONE\\n two\\n*** End Patch\"}","status":"completed"}}
+
+data: [DONE]
+

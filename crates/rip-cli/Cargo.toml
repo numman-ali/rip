@@ -14,6 +14,7 @@ serde_json = "1.0"
 tokio = { version = "1.36", features = ["full"] }
 rip-kernel = { path = "../rip-kernel" }
 rip-provider-openresponses = { path = "../rip-provider-openresponses" }
+ripd = { path = "../ripd" }
 
 [dev-dependencies]
 httpmock = "0.7"

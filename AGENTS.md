@@ -47,9 +47,15 @@ Capability contract
 - Breaking changes require a version bump and an ADR.
 
 Approval gates
-- Operational changes (dependencies, scripts/hooks, repo config, commits, pushes) require explicit operator approval.
-- If a non-obvious choice impacts runtime behavior/public API, security posture, or introduces/changes dependencies or scripts/hooks, request explicit operator approval before changes.
-- Pre-approved: commits/pushes for docs, schema mappings, tests, and refactors that do NOT change runtime behavior or public API.
+- External operational changes (new third-party deps, scripts/hooks, repo config, commits, pushes) require explicit operator approval.
+- Internal wiring changes are pre-approved when scoped to Phase 1 quality work (tests/fixtures/benches) and do not widen default permissions:
+  - adding/removing *path* dependencies between existing workspace crates
+  - updating fixtures, replay tests, benchmark harnesses/budgets
+- If a non-obvious choice impacts runtime behavior/public API, security posture, or widens permissions by default, request explicit operator approval before changes.
+
+Standing approvals (chat-level)
+- If the operator says “proceed / do whatever you want / approved”, treat it as standing approval for the current thread for items in the “Internal wiring” bucket above.
+- Still escalate for external deps, permission widening, or hard-to-reverse architecture choices (ADR-worthy).
 
 Up-to-date sources rule
 - For any non-obvious implementation choice, consult current official docs before acting.

@@ -66,6 +66,7 @@ Rules
 | context.compile | v1 | P2 | planned | planned | planned | planned | planned | planned | Deterministic context compilation + replayable snapshots. |
 | context.refs.file | v1 | P2 | planned | planned | planned | planned | planned | planned | File references in prompts. |
 | context.refs.thread | v1 | P2 | planned | planned | planned | planned | planned | planned | Thread references in prompts. |
+| context.refs.artifact | v1 | P2 | planned | planned | planned | planned | planned | planned | Reference stored artifacts/tool outputs without inlining into context. |
 
 ## Configuration & Policy
 | id | v | phase | cli_i | cli_h | server | sdk | tui | mcp | intent |
@@ -132,11 +133,16 @@ Rules
 | tool.toolbox | v1 | P1 | planned | planned | planned | planned | planned | planned | Toolboxes discovered from directory. |
 | tool.schema | v1 | P1 | planned | planned | planned | planned | planned | planned | Tool schemas for structured I/O. |
 | tool.output_limits | v1 | P1 | planned | planned | planned | planned | planned | planned | Tool output truncation + safety limits. |
+| tool.output_store | v1 | P2 | planned | planned | planned | planned | planned | planned | Persist full tool outputs in an artifact store; frames carry references + previews. |
+| tool.output_fetch | v1 | P2 | planned | planned | planned | planned | planned | planned | Retrieve stored tool outputs/artifacts by id with range support. |
 | tool.plan_mode | v1 | P1 | planned | planned | planned | planned | planned | planned | Plan/read-only mode restricting tools. |
 | tool.permissions | v1 | P2 | planned | planned | planned | planned | planned | planned | Tool permission policy engine. |
 | tool.override | v1 | P2 | planned | planned | planned | planned | planned | planned | Override built-in tools with custom impls. |
 | tool.remote | v1 | P2 | planned | planned | planned | planned | planned | planned | Remote tool execution backend. |
 | tool.arg_rules | v1 | P2 | planned | planned | planned | planned | planned | planned | Per-tool argument rules. |
+| tool.task_spawn | v1 | P2 | planned | planned | planned | planned | planned | planned | Run a tool invocation in the background (returns task id; streams events). |
+| tool.task_status | v1 | P2 | planned | planned | planned | planned | planned | planned | Query background tool task status/metadata independent of the live stream. |
+| tool.task_cancel | v1 | P2 | planned | planned | planned | planned | planned | planned | Cancel/kill a running tool task (best-effort, logged). |
 | tool.choice | v1 | P1 | planned | planned | planned | planned | planned | planned | Tool choice policy (auto/required/none/force). |
 | tool.call_limits | v1 | P1 | planned | planned | planned | planned | planned | planned | Max tool calls + parallel tool call limits. |
 | tool.allowed_tools | v1 | P1 | planned | planned | planned | planned | planned | planned | Allowed-tools lists for noninteractive runs. |

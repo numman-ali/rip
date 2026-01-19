@@ -6,6 +6,7 @@ pub fn setup_registry(root: &Path) -> ToolRegistry {
     let registry = ToolRegistry::default();
     let config = BuiltinToolConfig {
         workspace_root: root.to_path_buf(),
+        artifact_max_bytes: 1024 * 1024,
         max_bytes: 1024 * 1024,
         max_results: 100,
         max_depth: 16,

@@ -13,7 +13,8 @@ Session lifecycle (draft)
 - POST /sessions/:id/cancel -> cancel session
 
 Notes
-- Server is optional; CLI can talk directly to ripd (in-process) or via HTTP.
+- Today: CLI talks to the server over HTTP/SSE (run `ripd` or `rip serve` first).
+- Planned: single-command `rip` UX (TUI/headless) can run the same session engine in-process, using the same event frames without HTTP.
 - SSE stream emits JSON event frames (`docs/03_contracts/event_frames.md`).
 - OpenAPI spec is exposed at `/openapi.json` (canonical) and may be mirrored in `schemas/`.
 - JSON input envelopes can trigger tool execution and checkpoint actions (used for deterministic tests):
@@ -27,6 +28,10 @@ Provider config (OpenResponses, Phase 1)
   - `RIP_OPENRESPONSES_ENDPOINT` (example: `https://api.openai.com/v1/responses`)
   - `RIP_OPENRESPONSES_API_KEY` (optional; sent as `Authorization: Bearer ...`)
   - `RIP_OPENRESPONSES_MODEL` (optional; if unset, the request omits `model`)
+  - `RIP_OPENRESPONSES_TOOL_CHOICE` (optional; default `auto`)
+    - `auto` | `none` | `required`
+    - `function:<tool_name>` (request a specific function tool)
+    - `json:<tool_choice_json>` (pass a full OpenResponses `tool_choice` value)
 - If `RIP_OPENRESPONSES_ENDPOINT` is not set, ripd runs in stub mode (`output_text_delta: "ack: <input>"`).
 
 Other env vars

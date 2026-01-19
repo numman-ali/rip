@@ -13,3 +13,4 @@ rip-provider-openresponses = { path = "../rip-provider-openresponses" }
 rip-tools = { path = "../rip-tools" }
 rip-log = { path = "../rip-log" }
 rip-workspace = { path = "../rip-workspace" }
+rip-kernel = { path = "../rip-kernel" }

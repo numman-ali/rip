@@ -9,6 +9,7 @@ use tokio::task::spawn_blocking;
 use crate::{ToolOutput, ToolRegistry};
 
 mod apply_patch;
+mod artifact_fetch;
 mod grep;
 mod ls;
 mod read;
@@ -18,6 +19,7 @@ mod write;
 #[derive(Clone, Debug)]
 pub struct BuiltinToolConfig {
     pub workspace_root: PathBuf,
+    pub artifact_max_bytes: usize,
     pub max_bytes: usize,
     pub max_results: usize,
     pub max_depth: usize,
@@ -30,12 +32,19 @@ impl Default for BuiltinToolConfig {
         let workspace_root = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         Self {
             workspace_root,
+            artifact_max_bytes: 16 * 1024 * 1024,
             max_bytes: 512 * 1024,
             max_results: 1000,
             max_depth: 64,
             follow_symlinks: false,
             include_hidden: false,
         }
+    }
+}
+
+impl BuiltinToolConfig {
+    pub fn artifacts_root(&self) -> PathBuf {
+        self.workspace_root.join(".rip").join("artifacts")
     }
 }
 
@@ -49,6 +58,21 @@ pub fn register_builtin_tools(registry: &ToolRegistry, config: BuiltinToolConfig
                 spawn_blocking(move || read::run_read(invocation, &cfg))
                     .await
                     .unwrap_or_else(|_| ToolOutput::failure(vec!["read panicked".to_string()]))
+            })
+        }),
+    );
+
+    let artifact_config = config.clone();
+    registry.register(
+        "artifact_fetch",
+        std::sync::Arc::new(move |invocation| {
+            let cfg = artifact_config.clone();
+            Box::pin(async move {
+                spawn_blocking(move || artifact_fetch::run_artifact_fetch(invocation, &cfg))
+                    .await
+                    .unwrap_or_else(|_| {
+                        ToolOutput::failure(vec!["artifact_fetch panicked".to_string()])
+                    })
             })
         }),
     );
@@ -158,13 +182,6 @@ pub(super) fn truncate_utf8(bytes: &[u8], max_bytes: usize) -> (String, bool, us
         true,
         end,
     )
-}
-
-pub(super) fn split_output(bytes: Vec<u8>, max_bytes: usize) -> Vec<String> {
-    let (text, _truncated, _) = truncate_utf8(&bytes, max_bytes);
-    text.lines()
-        .map(|line| line.trim_end_matches('\r').to_string())
-        .collect()
 }
 
 #[cfg(windows)]
@@ -316,12 +333,6 @@ mod tests {
     }
 
     #[test]
-    fn split_output_trims_cr() {
-        let output = split_output(b"one\r\ntwo\r\n".to_vec(), 1024);
-        assert_eq!(output, vec!["one".to_string(), "two".to_string()]);
-    }
-
-    #[test]
     fn globsets_match_exclude_only() {
         let patterns = vec!["**/*.log".to_string()];
         let exclude = build_globset(Some(&patterns)).expect("globset");
@@ -337,6 +348,7 @@ mod tests {
 
         let config = BuiltinToolConfig {
             workspace_root: root.to_path_buf(),
+            artifact_max_bytes: 1024 * 1024,
             max_bytes: 1024,
             max_results: 10,
             max_depth: 4,
@@ -368,6 +380,7 @@ mod tests {
 
         let config = BuiltinToolConfig {
             workspace_root: root.to_path_buf(),
+            artifact_max_bytes: 1024 * 1024,
             max_bytes: 1024,
             max_results: 10,
             max_depth: 4,
@@ -405,6 +418,7 @@ mod tests {
         let root = dir.path();
         let config = BuiltinToolConfig {
             workspace_root: root.to_path_buf(),
+            artifact_max_bytes: 1024 * 1024,
             max_bytes: 1024,
             max_results: 10,
             max_depth: 4,
@@ -431,6 +445,78 @@ mod tests {
     }
 
     #[test]
+    fn bash_writes_artifact_when_output_truncated() {
+        if cfg!(windows) {
+            return;
+        }
+        if !Path::new("/bin/sh").exists() {
+            return;
+        }
+
+        let dir = tempdir().expect("tmp");
+        let root = dir.path();
+        let config = BuiltinToolConfig {
+            workspace_root: root.to_path_buf(),
+            artifact_max_bytes: 8 * 1024,
+            max_bytes: 64,
+            max_results: 10,
+            max_depth: 4,
+            follow_symlinks: false,
+            include_hidden: false,
+        };
+
+        let rt = tokio::runtime::Runtime::new().expect("runtime");
+        let output = rt.block_on(shell::run_bash(
+            ToolInvocation {
+                name: "bash".to_string(),
+                args: json!({
+                    "command": "i=0; while [ $i -lt 2048 ]; do printf x; i=$((i+1)); done",
+                    "cwd": ".",
+                }),
+                timeout_ms: None,
+            },
+            config.clone(),
+        ));
+
+        assert_eq!(output.exit_code, 0);
+        let artifacts = output.artifacts.expect("artifacts");
+        let stdout_meta = artifacts.get("stdout").expect("stdout meta");
+        assert_eq!(
+            stdout_meta.get("truncated").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+
+        let artifact = stdout_meta
+            .get("artifact")
+            .and_then(|v| v.as_object())
+            .expect("stdout artifact");
+        let id = artifact.get("id").and_then(|v| v.as_str()).expect("id");
+        assert_eq!(id.len(), 64);
+        let path = artifact.get("path").and_then(|v| v.as_str()).expect("path");
+        assert!(root.join(path).exists(), "artifact path {path} missing");
+
+        let fetched = artifact_fetch::run_artifact_fetch(
+            ToolInvocation {
+                name: "artifact_fetch".to_string(),
+                args: json!({ "id": id, "max_bytes": 128 }),
+                timeout_ms: None,
+            },
+            &config,
+        );
+        assert_eq!(fetched.exit_code, 0);
+        assert!(
+            fetched.stdout.join("\n").contains('x'),
+            "stdout: {:?}",
+            fetched.stdout
+        );
+        let fetched_artifacts = fetched.artifacts.expect("fetch artifacts");
+        assert_eq!(
+            fetched_artifacts.get("id").and_then(|v| v.as_str()),
+            Some(id)
+        );
+    }
+
+    #[test]
     fn run_ls_lists_entries_direct() {
         let dir = tempdir().expect("tmp");
         let root = dir.path();
@@ -438,6 +524,7 @@ mod tests {
 
         let config = BuiltinToolConfig {
             workspace_root: root.to_path_buf(),
+            artifact_max_bytes: 1024 * 1024,
             max_bytes: 1024,
             max_results: 10,
             max_depth: 4,
@@ -466,6 +553,7 @@ mod tests {
 
         let config = BuiltinToolConfig {
             workspace_root: root.to_path_buf(),
+            artifact_max_bytes: 1024 * 1024,
             max_bytes: 1024,
             max_results: 10,
             max_depth: 4,

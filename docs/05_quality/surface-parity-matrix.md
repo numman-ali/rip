@@ -35,6 +35,7 @@ Generated from docs/03_contracts/capability_registry.md.
 | context.compile | planned | planned | planned | planned | planned | planned |
 | context.refs.file | planned | planned | planned | planned | planned | planned |
 | context.refs.thread | planned | planned | planned | planned | planned | planned |
+| context.refs.artifact | planned | planned | planned | planned | planned | planned |
 | config.scopes | planned | planned | planned | planned | planned | planned |
 | config.merge | planned | planned | planned | planned | planned | planned |
 | config.json_schema | planned | planned | planned | planned | planned | planned |
@@ -81,11 +82,16 @@ Generated from docs/03_contracts/capability_registry.md.
 | tool.toolbox | planned | planned | planned | planned | planned | planned |
 | tool.schema | planned | planned | planned | planned | planned | planned |
 | tool.output_limits | planned | planned | planned | planned | planned | planned |
+| tool.output_store | planned | planned | planned | planned | planned | planned |
+| tool.output_fetch | planned | planned | planned | planned | planned | planned |
 | tool.plan_mode | planned | planned | planned | planned | planned | planned |
 | tool.permissions | planned | planned | planned | planned | planned | planned |
 | tool.override | planned | planned | planned | planned | planned | planned |
 | tool.remote | planned | planned | planned | planned | planned | planned |
 | tool.arg_rules | planned | planned | planned | planned | planned | planned |
+| tool.task_spawn | planned | planned | planned | planned | planned | planned |
+| tool.task_status | planned | planned | planned | planned | planned | planned |
+| tool.task_cancel | planned | planned | planned | planned | planned | planned |
 | tool.choice | planned | planned | planned | planned | planned | planned |
 | tool.call_limits | planned | planned | planned | planned | planned | planned |
 | tool.allowed_tools | planned | planned | planned | planned | planned | planned |

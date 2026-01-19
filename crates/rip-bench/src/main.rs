@@ -6,11 +6,17 @@ use std::path::PathBuf;
 use std::sync::Arc;
 #[cfg(not(test))]
 use std::time::Instant;
+#[cfg(not(test))]
+use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(not(test))]
+use rip_kernel::{Event, EventKind, ProviderEventStatus};
 #[cfg(not(test))]
 use rip_log::write_snapshot;
 #[cfg(not(test))]
-use rip_provider_openresponses::{EventFrameMapper, SseDecoder};
+use rip_provider_openresponses::{
+    CreateResponseBuilder, ItemParam, ParsedEvent, ParsedEventKind, SseDecoder,
+};
 #[cfg(not(test))]
 use rip_tools::{
     register_builtin_tools, BuiltinToolConfig, CheckpointHook, CheckpointRecord, CheckpointRequest,
@@ -60,9 +66,187 @@ const TTFT_SSE_EVENT: &str = "event: response.output_text.delta\n\
 data: {\"type\":\"response.output_text.delta\",\"sequence_number\":1,\"item_id\":\"item_1\",\"output_index\":0,\"content_index\":0,\"delta\":\"hi\",\"logprobs\":[]}\n\n";
 
 #[cfg(not(test))]
-const E2E_SSE_STREAM: &str = "event: response.output_text.delta\n\
-data: {\"type\":\"response.output_text.delta\",\"sequence_number\":1,\"item_id\":\"item_1\",\"output_index\":0,\"content_index\":0,\"delta\":\"hi\",\"logprobs\":[]}\n\n\
-data: [DONE]\n\n";
+const TOOL_LOOP_FIRST_SSE_FIXTURE: &str = "fixtures/openresponses/tool_loop_apply_patch_first.sse";
+#[cfg(not(test))]
+const TOOL_LOOP_FOLLOWUP_SSE_FIXTURE: &str = "fixtures/openresponses/tool_loop_followup.sse";
+
+#[cfg(not(test))]
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+#[cfg(not(test))]
+fn emit(session_id: &str, seq: &mut u64, kind: EventKind) -> Event {
+    let event = Event {
+        id: format!("bench-{session_id}-{}", *seq),
+        session_id: session_id.to_string(),
+        timestamp_ms: now_ms(),
+        seq: *seq,
+        kind,
+    };
+    *seq += 1;
+    event
+}
+
+#[cfg(not(test))]
+fn map_openresponses_event(session_id: &str, seq: &mut u64, parsed: &ParsedEvent) -> Vec<Event> {
+    let (status, data, raw) = match parsed.kind {
+        ParsedEventKind::Done => (ProviderEventStatus::Done, None, Some(parsed.raw.clone())),
+        ParsedEventKind::InvalidJson => (
+            ProviderEventStatus::InvalidJson,
+            None,
+            Some(parsed.raw.clone()),
+        ),
+        ParsedEventKind::Event => (ProviderEventStatus::Event, parsed.data.clone(), None),
+    };
+
+    let mut events = vec![emit(
+        session_id,
+        seq,
+        EventKind::ProviderEvent {
+            provider: "openresponses".to_string(),
+            status,
+            event_name: parsed.event.clone(),
+            data: data.clone(),
+            raw,
+            errors: parsed.errors.clone(),
+            response_errors: parsed.response_errors.clone(),
+        },
+    )];
+
+    if let Some(delta) = data
+        .as_ref()
+        .and_then(|value| value.as_object())
+        .and_then(|obj| {
+            if obj.get("type").and_then(|value| value.as_str())
+                != Some("response.output_text.delta")
+            {
+                return None;
+            }
+            obj.get("delta")
+                .and_then(|value| value.as_str())
+                .map(|value| value.to_string())
+        })
+    {
+        events.push(emit(session_id, seq, EventKind::OutputTextDelta { delta }));
+    }
+
+    events
+}
+
+#[cfg(not(test))]
+#[derive(Debug, Clone)]
+struct FunctionCallItem {
+    call_id: String,
+    name: String,
+    arguments: String,
+}
+
+#[cfg(not(test))]
+fn observe_response_id(parsed: &ParsedEvent, response_id: &mut Option<String>) {
+    if parsed.kind != ParsedEventKind::Event {
+        return;
+    }
+    let Some(data) = parsed.data.as_ref() else {
+        return;
+    };
+    let Some(obj) = data.as_object() else {
+        return;
+    };
+    let Some(id) = obj
+        .get("response")
+        .and_then(|value| value.get("id"))
+        .and_then(|value| value.as_str())
+    else {
+        return;
+    };
+    if !id.is_empty() {
+        *response_id = Some(id.to_string());
+    }
+}
+
+#[cfg(not(test))]
+fn observe_function_call_done(parsed: &ParsedEvent) -> Option<FunctionCallItem> {
+    if parsed.kind != ParsedEventKind::Event {
+        return None;
+    }
+    let data = parsed.data.as_ref()?;
+    let obj = data.as_object()?;
+    if obj.get("type").and_then(|value| value.as_str()) != Some("response.output_item.done") {
+        return None;
+    }
+    let item = obj.get("item").and_then(|value| value.as_object())?;
+    if item.get("type").and_then(|value| value.as_str()) != Some("function_call") {
+        return None;
+    }
+    Some(FunctionCallItem {
+        call_id: item
+            .get("call_id")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default()
+            .to_string(),
+        name: item
+            .get("name")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default()
+            .to_string(),
+        arguments: item
+            .get("arguments")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default()
+            .to_string(),
+    })
+}
+
+#[cfg(not(test))]
+fn tool_events_to_function_call_output(tool_name: &str, events: &[Event]) -> serde_json::Value {
+    let mut stdout = String::new();
+    let mut stderr = String::new();
+    let mut exit_code: i32 = 1;
+    let mut artifacts: Option<serde_json::Value> = None;
+    let mut tool_error: Option<String> = None;
+
+    for event in events {
+        match &event.kind {
+            EventKind::ToolStdout { chunk, .. } => stdout.push_str(chunk),
+            EventKind::ToolStderr { chunk, .. } => stderr.push_str(chunk),
+            EventKind::ToolEnded {
+                exit_code: code,
+                artifacts: tool_artifacts,
+                ..
+            } => {
+                exit_code = *code;
+                artifacts = tool_artifacts.clone();
+            }
+            EventKind::ToolFailed { error, .. } => tool_error = Some(error.clone()),
+            _ => {}
+        }
+    }
+
+    let ok = exit_code == 0 && tool_error.is_none();
+    let mut obj = serde_json::Map::new();
+    obj.insert(
+        "tool".to_string(),
+        serde_json::Value::String(tool_name.to_string()),
+    );
+    obj.insert("ok".to_string(), serde_json::Value::Bool(ok));
+    obj.insert(
+        "exit_code".to_string(),
+        serde_json::Value::Number(serde_json::Number::from(exit_code as i64)),
+    );
+    obj.insert("stdout".to_string(), serde_json::Value::String(stdout));
+    obj.insert("stderr".to_string(), serde_json::Value::String(stderr));
+    if let Some(artifacts) = artifacts {
+        obj.insert("artifacts".to_string(), artifacts);
+    }
+    if let Some(error) = tool_error {
+        obj.insert("error".to_string(), serde_json::Value::String(error));
+    }
+    serde_json::Value::Object(obj)
+}
 
 #[cfg(not(test))]
 fn bench_sse_parse_us_per_event() -> std::io::Result<BenchResult> {
@@ -98,14 +282,14 @@ fn bench_sse_parse_us_per_event() -> std::io::Result<BenchResult> {
 #[cfg(not(test))]
 fn ttft_overhead_us(payload: &[u8], chunk_size: usize) -> f64 {
     let mut decoder = SseDecoder::new();
-    let mut mapper = EventFrameMapper::new("bench-session");
+    let mut seq = 0u64;
 
     let start = Instant::now();
     for chunk in payload.chunks(chunk_size.max(1)) {
         let text = std::str::from_utf8(chunk).unwrap_or("\u{FFFD}");
         let parsed = decoder.push(text);
         for event in parsed {
-            let frames = mapper.map(&event);
+            let frames = map_openresponses_event("bench-session", &mut seq, &event);
             if !frames.is_empty() {
                 return start.elapsed().as_secs_f64() * 1_000_000.0;
             }
@@ -114,7 +298,7 @@ fn ttft_overhead_us(payload: &[u8], chunk_size: usize) -> f64 {
 
     let parsed = decoder.finish();
     for event in parsed {
-        let frames = mapper.map(&event);
+        let frames = map_openresponses_event("bench-session", &mut seq, &event);
         if !frames.is_empty() {
             return start.elapsed().as_secs_f64() * 1_000_000.0;
         }
@@ -259,6 +443,9 @@ async fn bench_e2e_loop_us() -> std::io::Result<BenchResult> {
     let root = dir.path().to_path_buf();
     fs::write(root.join("a.txt"), "one\ntwo\n").expect("write");
 
+    let first_sse = fs::read_to_string(TOOL_LOOP_FIRST_SSE_FIXTURE)?;
+    let followup_sse = fs::read_to_string(TOOL_LOOP_FOLLOWUP_SSE_FIXTURE)?;
+
     let registry = Arc::new(ToolRegistry::default());
     register_builtin_tools(
         &registry,
@@ -288,12 +475,26 @@ async fn bench_e2e_loop_us() -> std::io::Result<BenchResult> {
     // Warm schema caches + tool path.
     {
         let mut decoder = SseDecoder::new();
-        let mut mapper = EventFrameMapper::new("bench-warm");
+        let mut seq = 0u64;
         let mut events = Vec::new();
-        for event in decoder.push(E2E_SSE_STREAM) {
-            events.extend(mapper.map(&event));
+        let mut response_id: Option<String> = None;
+        let mut call: Option<FunctionCallItem> = None;
+        for event in decoder.push(&first_sse) {
+            observe_response_id(&event, &mut response_id);
+            if call.is_none() {
+                call = observe_function_call_done(&event);
+            }
+            events.extend(map_openresponses_event("bench-warm", &mut seq, &event));
         }
-        let mut seq = events.len() as u64;
+        for event in decoder.finish() {
+            observe_response_id(&event, &mut response_id);
+            if call.is_none() {
+                call = observe_function_call_done(&event);
+            }
+            events.extend(map_openresponses_event("bench-warm", &mut seq, &event));
+        }
+
+        let call = call.expect("function_call fixture");
         let tool_events = tool_runner
             .run(
                 "bench-warm",
@@ -305,7 +506,30 @@ async fn bench_e2e_loop_us() -> std::io::Result<BenchResult> {
                 },
             )
             .await;
-        events.extend(tool_events);
+        events.extend(tool_events.clone());
+        let output_value = tool_events_to_function_call_output(&call.name, &tool_events);
+        let output_json =
+            serde_json::to_string(&output_value).unwrap_or_else(|_| "{\"ok\":false}".to_string());
+        let followup_payload = CreateResponseBuilder::new()
+            .model("fixture-model")
+            .insert_raw(
+                "previous_response_id",
+                serde_json::Value::String(response_id.unwrap_or_else(|| "resp_1".to_string())),
+            )
+            .input_items(vec![ItemParam::function_call_output(
+                call.call_id,
+                serde_json::Value::String(output_json),
+            )])
+            .insert_raw("stream", serde_json::Value::Bool(true))
+            .build();
+        std::hint::black_box(followup_payload.errors());
+        let mut decoder = SseDecoder::new();
+        for event in decoder.push(&followup_sse) {
+            events.extend(map_openresponses_event("bench-warm", &mut seq, &event));
+        }
+        for event in decoder.finish() {
+            events.extend(map_openresponses_event("bench-warm", &mut seq, &event));
+        }
         let _ = write_snapshot(root.join("snapshots"), "bench-warm", &events);
         let mut seq = 0u64;
         let _ = tool_runner
@@ -329,29 +553,71 @@ async fn bench_e2e_loop_us() -> std::io::Result<BenchResult> {
         let session_id = format!("bench-e2e-{idx}");
 
         let mut decoder = SseDecoder::new();
-        let mut mapper = EventFrameMapper::new(session_id.clone());
+        let mut seq = 0u64;
         let mut events = Vec::new();
-        for event in decoder.push(E2E_SSE_STREAM) {
-            events.extend(mapper.map(&event));
+        let mut response_id: Option<String> = None;
+        let mut call: Option<FunctionCallItem> = None;
+        for event in decoder.push(&first_sse) {
+            observe_response_id(&event, &mut response_id);
+            if call.is_none() {
+                call = observe_function_call_done(&event);
+            }
+            events.extend(map_openresponses_event(&session_id, &mut seq, &event));
         }
         for event in decoder.finish() {
-            events.extend(mapper.map(&event));
+            observe_response_id(&event, &mut response_id);
+            if call.is_none() {
+                call = observe_function_call_done(&event);
+            }
+            events.extend(map_openresponses_event(&session_id, &mut seq, &event));
         }
 
-        let mut seq = events.len() as u64;
+        let call = call.expect("function_call fixture");
         let patch = if idx % 2 == 0 { patch_a } else { patch_b };
+        let mut args_value = serde_json::from_str::<serde_json::Value>(&call.arguments)
+            .unwrap_or_else(|_| serde_json::Value::String(call.arguments.clone()));
+        if let serde_json::Value::Object(map) = &mut args_value {
+            map.insert(
+                "patch".to_string(),
+                serde_json::Value::String(patch.to_string()),
+            );
+        }
         let tool_events = tool_runner
             .run(
                 &session_id,
                 &mut seq,
                 ToolInvocation {
                     name: "apply_patch".to_string(),
-                    args: serde_json::json!({ "patch": patch }),
+                    args: args_value,
                     timeout_ms: Some(5_000),
                 },
             )
             .await;
-        events.extend(tool_events);
+        events.extend(tool_events.clone());
+
+        let output_value = tool_events_to_function_call_output(&call.name, &tool_events);
+        let output_json =
+            serde_json::to_string(&output_value).unwrap_or_else(|_| "{\"ok\":false}".to_string());
+        let followup_payload = CreateResponseBuilder::new()
+            .model("fixture-model")
+            .insert_raw(
+                "previous_response_id",
+                serde_json::Value::String(response_id.unwrap_or_else(|| "resp_1".to_string())),
+            )
+            .input_items(vec![ItemParam::function_call_output(
+                call.call_id,
+                serde_json::Value::String(output_json),
+            )])
+            .insert_raw("stream", serde_json::Value::Bool(true))
+            .build();
+        std::hint::black_box(followup_payload.errors());
+        let mut decoder = SseDecoder::new();
+        for event in decoder.push(&followup_sse) {
+            events.extend(map_openresponses_event(&session_id, &mut seq, &event));
+        }
+        for event in decoder.finish() {
+            events.extend(map_openresponses_event(&session_id, &mut seq, &event));
+        }
 
         write_snapshot(root.join("snapshots"), &session_id, &events)?;
 
