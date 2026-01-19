@@ -14,20 +14,6 @@ How to use
 
 Now
 
-## Live OpenResponses API smoke test (manual) [confirm spec]
-- Refs: `crates/ripd/src/server_tests.rs`, `docs/03_contracts/modules/phase-1/02_provider_adapters.md`
-- Ready:
-  - Set `RIP_OPENRESPONSES_ENDPOINT` (+ `RIP_OPENRESPONSES_API_KEY`, `RIP_OPENRESPONSES_MODEL` if required).
-  - If using OpenRouter and a model rejects `tool_choice=required`, either:
-    - switch models (known-good: `mistralai/devstral-2512:free`), or
-    - set `RIP_OPENRESPONSES_TOOL_CHOICE=auto` for the smoke test.
-- Done:
-  - `cargo test -p ripd live_openresponses_smoke -- --ignored` completes and observes:
-    - provider SSE events (`provider_event`), and
-    - at least one real tool call execution (provider -> tool -> follow-up).
-
-Next
-
 ## CLI: single-command `rip` UX (local in-process + `rip serve`) [needs work]
 - Refs: `docs/04_execution/server.md`, `docs/02_architecture/surfaces.md`, `docs/02_architecture/capability_matrix.md`
 - Decision packet (required before implementation):
@@ -47,6 +33,8 @@ Next
 - Done:
   - `rip` runs locally without requiring a separate `ripd` process.
   - `rip serve` exposes the same session API; TS SDK targets the server API only.
+
+Next
 
 ## Tools: artifact-backed outputs (no context explosion) [confirm spec]
 - Refs: `docs/03_contracts/modules/phase-2/03_tool_tasks.md`, `docs/03_contracts/capability_registry.md`, `docs/02_architecture/capability_matrix.md`
@@ -186,6 +174,7 @@ Open questions
 - (empty)
 
 Done (recent)
+- 2026-01-19: Live OpenResponses API smoke test: passed against configured endpoint (`live_openresponses_smoke`).
 - 2026-01-19: Bench budgets: ratcheted to tight CI gates (sse_parse=200us/event, ttft=200us, tool_runner_noop=100us, workspace_apply_patch=2000us, e2e_loop=10000us).
 - 2026-01-19: Tools: `bash` stores oversized stdout/stderr as workspace-local artifacts + added `artifact_fetch` builtin (range reads).
 - 2026-01-19: CLI: added `rip serve` (embedded server) to reduce `ripd` UX friction.
