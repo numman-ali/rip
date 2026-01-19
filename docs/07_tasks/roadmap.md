@@ -14,15 +14,6 @@ How to use
 
 Now
 
-## Bench budgets: ratchet TTFT + end-to-end loop [confirm spec]
-- Refs: `docs/05_quality/benchmarks.md`, `docs/05_quality/benchmarks_budgets.json`, `scripts/bench`
-- Ready:
-  - Capture CI baselines for `ttft_overhead_us` and `e2e_loop_us` (multiple runs).
-- Done:
-  - Budgets tightened with explicit headroom; regressions fail CI.
-
-Next
-
 ## Live OpenResponses API smoke test (manual) [confirm spec]
 - Refs: `crates/ripd/src/server_tests.rs`, `docs/03_contracts/modules/phase-1/02_provider_adapters.md`
 - Ready:
@@ -34,6 +25,8 @@ Next
   - `cargo test -p ripd live_openresponses_smoke -- --ignored` completes and observes:
     - provider SSE events (`provider_event`), and
     - at least one real tool call execution (provider -> tool -> follow-up).
+
+Next
 
 ## CLI: single-command `rip` UX (local in-process + `rip serve`) [needs work]
 - Refs: `docs/04_execution/server.md`, `docs/02_architecture/surfaces.md`, `docs/02_architecture/capability_matrix.md`
@@ -193,6 +186,7 @@ Open questions
 - (empty)
 
 Done (recent)
+- 2026-01-19: Bench budgets: ratcheted to tight CI gates (sse_parse=200us/event, ttft=200us, tool_runner_noop=100us, workspace_apply_patch=2000us, e2e_loop=10000us).
 - 2026-01-19: Tools: `bash` stores oversized stdout/stderr as workspace-local artifacts + added `artifact_fetch` builtin (range reads).
 - 2026-01-19: CLI: added `rip serve` (embedded server) to reduce `ripd` UX friction.
 - 2026-01-19: TUI: added `rip-tui` MVP-0 skeleton (frame-driven state + ratatui golden render snapshots).
