@@ -12,7 +12,7 @@ Interactive mode (draft)
 Headless mode (draft)
 - rip run <task> --headless --view raw
 - emits newline-delimited JSON event frames
-- `--view output` prints text + reasoning + tool deltas extracted from provider events
+- `--view output` prints human output: text deltas + tool stdout/stderr + reasoning/tool-call deltas
 
 Notes
 - CLI is a thin adapter over the shared session engine.

@@ -5,9 +5,7 @@ use futures_util::StreamExt;
 use reqwest::Client;
 use reqwest_eventsource::{Error as EventSourceError, Event, RequestBuilderExt};
 use rip_kernel::{Event as FrameEvent, EventKind};
-use rip_provider_openresponses::{
-    extract_reasoning_deltas, extract_text_deltas, extract_tool_call_argument_deltas,
-};
+use rip_provider_openresponses::{extract_reasoning_deltas, extract_tool_call_argument_deltas};
 use serde::Deserialize;
 use tokio::sync::broadcast;
 
@@ -230,14 +228,50 @@ fn render_message(view: OutputView, payload: &str, out: &mut dyn Write) -> anyho
             out.flush()?;
         }
         OutputView::Output => {
-            for delta in extract_text_deltas(std::slice::from_ref(&frame)) {
-                writeln!(out, "{delta}")?;
-            }
-            for delta in extract_reasoning_deltas(std::slice::from_ref(&frame)) {
-                writeln!(out, "reasoning: {delta}")?;
-            }
-            for delta in extract_tool_call_argument_deltas(std::slice::from_ref(&frame)) {
-                writeln!(out, "tool: {delta}")?;
+            match &frame.kind {
+                EventKind::OutputTextDelta { delta } => {
+                    writeln!(out, "{delta}")?;
+                }
+                EventKind::ToolStdout { chunk, .. } => {
+                    writeln!(out, "{chunk}")?;
+                }
+                EventKind::ToolStderr { chunk, .. } => {
+                    writeln!(out, "stderr: {chunk}")?;
+                }
+                EventKind::ToolFailed { error, .. } => {
+                    writeln!(out, "tool_failed: {error}")?;
+                }
+                EventKind::ProviderEvent {
+                    status,
+                    errors,
+                    response_errors,
+                    raw,
+                    ..
+                } => {
+                    for delta in extract_reasoning_deltas(std::slice::from_ref(&frame)) {
+                        writeln!(out, "reasoning: {delta}")?;
+                    }
+                    for delta in extract_tool_call_argument_deltas(std::slice::from_ref(&frame)) {
+                        writeln!(out, "tool: {delta}")?;
+                    }
+
+                    if !errors.is_empty() {
+                        writeln!(out, "provider_errors: {}", errors.join("; "))?;
+                    }
+                    if !response_errors.is_empty() {
+                        writeln!(
+                            out,
+                            "provider_response_errors: {}",
+                            response_errors.join("; ")
+                        )?;
+                    }
+                    if *status == rip_kernel::ProviderEventStatus::InvalidJson {
+                        if let Some(raw) = raw.as_deref() {
+                            writeln!(out, "provider_invalid_json: {raw}")?;
+                        }
+                    }
+                }
+                _ => {}
             }
             out.flush()?;
         }
@@ -332,14 +366,8 @@ mod tests {
             "session_id": "s1",
             "timestamp_ms": 0,
             "seq": 0,
-            "type": "provider_event",
-            "provider": "openresponses",
-            "status": "event",
-            "event_name": "response.output_text.delta",
-            "data": {"type": "response.output_text.delta", "delta": "hi"},
-            "raw": null,
-            "errors": [],
-            "response_errors": []
+            "type": "output_text_delta",
+            "delta": "hi"
         })
         .to_string();
         let reasoning_payload = serde_json::json!({
@@ -518,19 +546,31 @@ mod tests {
             "session_id": "s1",
             "timestamp_ms": 0,
             "seq": 0,
-            "type": "provider_event",
-            "provider": "openresponses",
-            "status": "event",
-            "event_name": "response.output_text.delta",
-            "data": {"type": "response.output_text.delta", "delta": "hi"},
-            "raw": null,
-            "errors": [],
-            "response_errors": []
+            "type": "output_text_delta",
+            "delta": "hi"
         })
         .to_string();
         render_message(OutputView::Output, &payload, &mut buffer).expect("render");
         let rendered = String::from_utf8(buffer).expect("utf8");
         assert_eq!(rendered.trim_end(), "hi");
+    }
+
+    #[test]
+    fn renders_tool_stdout_in_output_view() {
+        let mut buffer = Vec::new();
+        let payload = serde_json::json!({
+            "id": "e1",
+            "session_id": "s1",
+            "timestamp_ms": 0,
+            "seq": 0,
+            "type": "tool_stdout",
+            "tool_id": "t1",
+            "chunk": "a.txt"
+        })
+        .to_string();
+        render_message(OutputView::Output, &payload, &mut buffer).expect("render");
+        let rendered = String::from_utf8(buffer).expect("utf8");
+        assert_eq!(rendered.trim_end(), "a.txt");
     }
 
     #[test]
