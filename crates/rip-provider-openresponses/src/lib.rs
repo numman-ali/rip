@@ -15,6 +15,25 @@ pub use stream_transformers::{
     extract_reasoning_deltas, extract_text_deltas, extract_tool_call_argument_deltas,
 };
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ValidationOptions {
+    pub normalize_missing_item_ids: bool,
+}
+
+impl ValidationOptions {
+    pub fn strict() -> Self {
+        Self {
+            normalize_missing_item_ids: false,
+        }
+    }
+
+    pub fn compat_missing_item_ids() -> Self {
+        Self {
+            normalize_missing_item_ids: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParsedEventKind {
     Done,
@@ -55,9 +74,19 @@ impl ParsedEvent {
         }
     }
 
-    fn event(raw: String, event: Option<String>, data: Value) -> Self {
+    fn event(
+        raw: String,
+        event: Option<String>,
+        data: Value,
+        validation: ValidationOptions,
+    ) -> Self {
         let mut errors = Vec::new();
-        if let Err(errs) = validate_stream_event(&data) {
+        let validation_data = if validation.normalize_missing_item_ids {
+            normalize_event_for_validation(&data)
+        } else {
+            data.clone()
+        };
+        if let Err(errs) = validate_stream_event(&validation_data) {
             errors.extend(errs);
         }
 
@@ -72,7 +101,7 @@ impl ParsedEvent {
         }
 
         let mut response_errors = Vec::new();
-        if let Some(response) = data.get("response") {
+        if let Some(response) = validation_data.get("response") {
             if let Err(errs) = validate_response_resource(response) {
                 response_errors.extend(errs);
             }
@@ -168,16 +197,129 @@ fn output_text_delta(parsed: &ParsedEvent) -> Option<String> {
         .map(|value| value.to_string())
 }
 
+fn normalize_event_for_validation(value: &Value) -> Value {
+    let mut normalized = value.clone();
+    let Some(obj) = normalized.as_object_mut() else {
+        return normalized;
+    };
+
+    let output_index = obj.get("output_index").and_then(|value| value.as_u64());
+    if let Some(item) = obj.get_mut("item") {
+        normalize_output_item(item, output_index);
+    }
+
+    if let Some(response) = obj.get_mut("response") {
+        normalize_response_resource(response);
+    }
+
+    if let Some(event_type) = obj.get("type").and_then(|value| value.as_str()) {
+        if matches!(
+            event_type,
+            "response.function_call_arguments.delta" | "response.function_call_arguments.done"
+        ) && obj
+            .get("item_id")
+            .and_then(|value| value.as_str())
+            .map(|value| value.is_empty())
+            .unwrap_or(true)
+        {
+            if let Some(output_index) = obj.get("output_index").and_then(|value| value.as_u64()) {
+                obj.insert(
+                    "item_id".to_string(),
+                    Value::String(format!("item_{output_index}")),
+                );
+            }
+        }
+    }
+
+    normalized
+}
+
+fn normalize_response_resource(response: &mut Value) {
+    let Some(obj) = response.as_object_mut() else {
+        return;
+    };
+    let Some(output) = obj.get_mut("output") else {
+        return;
+    };
+    let Some(items) = output.as_array_mut() else {
+        return;
+    };
+    for (idx, item) in items.iter_mut().enumerate() {
+        normalize_output_item(item, Some(idx as u64));
+    }
+}
+
+fn normalize_output_item(item: &mut Value, output_index: Option<u64>) {
+    let Some(obj) = item.as_object_mut() else {
+        return;
+    };
+    if obj
+        .get("id")
+        .and_then(|value| value.as_str())
+        .map(|value| !value.is_empty())
+        .unwrap_or(false)
+    {
+        return;
+    }
+
+    let item_type = obj.get("type").and_then(|value| value.as_str());
+    match item_type {
+        Some("function_call") => {
+            if let Some(call_id) = obj
+                .get("call_id")
+                .and_then(|value| value.as_str())
+                .filter(|value| !value.is_empty())
+            {
+                obj.insert("id".to_string(), Value::String(call_id.to_string()));
+                return;
+            }
+            if let Some(output_index) = output_index {
+                obj.insert(
+                    "id".to_string(),
+                    Value::String(format!("item_{output_index}")),
+                );
+            }
+        }
+        Some("function_call_output") => {
+            if let Some(call_id) = obj
+                .get("call_id")
+                .and_then(|value| value.as_str())
+                .filter(|value| !value.is_empty())
+            {
+                obj.insert("id".to_string(), Value::String(format!("output_{call_id}")));
+                return;
+            }
+            if let Some(output_index) = output_index {
+                obj.insert(
+                    "id".to_string(),
+                    Value::String(format!("output_{output_index}")),
+                );
+            }
+        }
+        _ => {}
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct SseDecoder {
     buffer: String,
     current_event: Option<String>,
     current_data: Vec<String>,
+    validation: ValidationOptions,
 }
 
 impl SseDecoder {
     pub fn new() -> Self {
-        Self::default()
+        Self::new_with_validation(ValidationOptions::strict())
+    }
+
+    pub fn new_with_validation(validation: ValidationOptions) -> Self {
+        Self {
+            buffer: String::new(),
+            current_event: None,
+            current_data: Vec::new(),
+            validation,
+        }
     }
 
     pub fn push(&mut self, chunk: &str) -> Vec<ParsedEvent> {
@@ -240,7 +382,9 @@ impl SseDecoder {
         }
 
         match serde_json::from_str::<Value>(&raw) {
-            Ok(value) => ParsedEvent::event(raw, self.current_event.clone(), value),
+            Ok(value) => {
+                ParsedEvent::event(raw, self.current_event.clone(), value, self.validation)
+            }
             Err(err) => ParsedEvent::invalid_json(raw, err.to_string(), self.current_event.clone()),
         }
     }
@@ -249,6 +393,23 @@ impl SseDecoder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalizes_missing_item_ids_for_validation() {
+        let payload = "event: response.output_item.added\n\
+data: {\"type\":\"response.output_item.added\",\"sequence_number\":1,\"output_index\":0,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"ls\",\"arguments\":\"{}\",\"status\":\"in_progress\"}}\n\n";
+
+        let mut strict = SseDecoder::new();
+        let events = strict.push(payload);
+        assert_eq!(events.len(), 1);
+        assert!(events[0].errors.iter().any(|err| err.contains("id")));
+
+        let mut compat =
+            SseDecoder::new_with_validation(ValidationOptions::compat_missing_item_ids());
+        let events = compat.push(payload);
+        assert_eq!(events.len(), 1);
+        assert!(events[0].errors.is_empty());
+    }
 
     #[test]
     fn parses_done_sentinel() {

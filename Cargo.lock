@@ -2119,7 +2119,6 @@ dependencies = [
  "reqwest",
  "reqwest-eventsource",
  "rip-kernel",
- "rip-provider-openresponses",
  "ripd",
  "serde",
  "serde_json",

@@ -7,6 +7,7 @@ use rip_kernel::{Event, EventKind, Runtime};
 use rip_log::{write_snapshot, EventLog};
 use rip_provider_openresponses::{
     CreateResponsePayload, EventFrameMapper, ItemParam, ParsedEvent, ParsedEventKind, SseDecoder,
+    ValidationOptions,
 };
 use rip_tools::{ToolInvocation, ToolRunner};
 use serde::Deserialize;
@@ -15,8 +16,8 @@ use tokio::sync::{broadcast, Mutex};
 use uuid::Uuid;
 
 use crate::provider_openresponses::{
-    build_streaming_followup_request, build_streaming_request, OpenResponsesConfig,
-    DEFAULT_MAX_TOOL_CALLS,
+    build_streaming_followup_request, build_streaming_request, build_streaming_request_items,
+    OpenResponsesConfig, DEFAULT_MAX_TOOL_CALLS,
 };
 
 #[derive(Deserialize)]
@@ -192,10 +193,11 @@ impl<'a> OpenResponsesSsePipe<'a> {
         seq: &'a mut u64,
         sink: EventSink<'a>,
         collector: Option<&'a mut ToolCallCollector>,
+        validation: ValidationOptions,
     ) -> Self {
         Self {
             session_id: session_id.to_string(),
-            decoder: SseDecoder::new(),
+            decoder: SseDecoder::new_with_validation(validation),
             mapper: EventFrameMapper::new(session_id.to_string()),
             seq_offset: *seq,
             seq,
@@ -338,6 +340,7 @@ impl<'a> OpenResponsesSsePipe<'a> {
 struct FunctionCallItem {
     output_index: u64,
     call_id: String,
+    item_id: Option<String>,
     name: String,
     arguments: String,
 }
@@ -464,6 +467,7 @@ impl ToolCallCollector {
                         self.completed_function_calls.push(FunctionCallItem {
                             output_index,
                             call_id,
+                            item_id: Some(item_id.clone()),
                             name,
                             arguments,
                         });
@@ -564,6 +568,42 @@ fn tool_events_to_function_call_output(tool_name: &str, events: &[Event]) -> Val
     Value::Object(obj)
 }
 
+fn function_call_item_from_call(call: &FunctionCallItem, include_id: bool) -> ItemParam {
+    let mut obj = serde_json::Map::new();
+    obj.insert(
+        "type".to_string(),
+        Value::String("function_call".to_string()),
+    );
+    if include_id {
+        let id = call
+            .item_id
+            .clone()
+            .unwrap_or_else(|| format!("fc_{}", call.call_id));
+        obj.insert("id".to_string(), Value::String(id));
+    }
+    obj.insert("call_id".to_string(), Value::String(call.call_id.clone()));
+    obj.insert("name".to_string(), Value::String(call.name.clone()));
+    obj.insert(
+        "arguments".to_string(),
+        Value::String(call.arguments.clone()),
+    );
+    ItemParam::new(Value::Object(obj))
+}
+
+fn function_call_output_item(call_id: &str, output_json: String, include_id: bool) -> ItemParam {
+    let mut obj = serde_json::Map::new();
+    obj.insert(
+        "type".to_string(),
+        Value::String("function_call_output".to_string()),
+    );
+    if include_id {
+        obj.insert("id".to_string(), Value::String(format!("output_{call_id}")));
+    }
+    obj.insert("call_id".to_string(), Value::String(call_id.to_string()));
+    obj.insert("output".to_string(), Value::String(output_json));
+    ItemParam::new(Value::Object(obj))
+}
+
 async fn run_openresponses_agent_loop(
     http: &reqwest::Client,
     config: &OpenResponsesConfig,
@@ -576,6 +616,12 @@ async fn run_openresponses_agent_loop(
     let mut previous_response_id: Option<String> = None;
     let mut followup_tool_outputs: Option<Vec<ItemParam>> = None;
     let mut tool_call_count: u64 = 0;
+    let stateless_history = config.stateless_history;
+    let mut history_items = if stateless_history {
+        vec![ItemParam::user_message_text(prompt)]
+    } else {
+        Vec::new()
+    };
 
     loop {
         if tool_call_count >= DEFAULT_MAX_TOOL_CALLS {
@@ -583,10 +629,16 @@ async fn run_openresponses_agent_loop(
         }
 
         let payload = if let Some(tool_outputs) = followup_tool_outputs.take() {
-            let Some(prev) = previous_response_id.as_deref() else {
-                return "provider_error".to_string();
-            };
-            build_streaming_followup_request(config, prev, tool_outputs)
+            if stateless_history {
+                build_streaming_followup_request(config, None, history_items.clone())
+            } else {
+                let Some(prev) = previous_response_id.as_deref() else {
+                    return "provider_error".to_string();
+                };
+                build_streaming_followup_request(config, Some(prev), tool_outputs)
+            }
+        } else if stateless_history {
+            build_streaming_request_items(config, history_items.clone())
         } else {
             build_streaming_request(config, prompt)
         };
@@ -614,11 +666,16 @@ async fn run_openresponses_agent_loop(
         if tool_calls.is_empty() {
             return "completed".to_string();
         }
-        if previous_response_id.is_none() {
+        if previous_response_id.is_none() && !stateless_history {
             return "provider_error".to_string();
         }
 
         let mut tool_outputs = Vec::new();
+        if stateless_history {
+            for call in &tool_calls {
+                history_items.push(function_call_item_from_call(call, true));
+            }
+        }
         for call in tool_calls {
             if tool_call_count >= DEFAULT_MAX_TOOL_CALLS {
                 return "max_tool_calls_exceeded".to_string();
@@ -644,12 +701,16 @@ async fn run_openresponses_agent_loop(
             let output_value = tool_events_to_function_call_output(&call.name, &tool_events);
             let output_json = serde_json::to_string(&output_value)
                 .unwrap_or_else(|_| "{\"ok\":false}".to_string());
-            tool_outputs.push(ItemParam::function_call_output(
-                call.call_id,
-                Value::String(output_json),
+            tool_outputs.push(function_call_output_item(
+                &call.call_id,
+                output_json,
+                stateless_history,
             ));
         }
 
+        if stateless_history {
+            history_items.extend(tool_outputs.clone());
+        }
         followup_tool_outputs = Some(tool_outputs);
     }
 }
@@ -663,6 +724,12 @@ async fn stream_openresponses_request<'a>(
     sink: EventSink<'a>,
     collector: &mut ToolCallCollector,
 ) -> Result<(), String> {
+    let validation = if config.stateless_history {
+        ValidationOptions::compat_missing_item_ids()
+    } else {
+        ValidationOptions::strict()
+    };
+
     if !payload.errors().is_empty() {
         sink.emit(Event {
             id: Uuid::new_v4().to_string(),
@@ -692,7 +759,7 @@ async fn stream_openresponses_request<'a>(
     let response = match request.send().await {
         Ok(response) => response,
         Err(err) => {
-            let mut pipe = OpenResponsesSsePipe::new(session_id, seq, sink, None);
+            let mut pipe = OpenResponsesSsePipe::new(session_id, seq, sink, None, validation);
             pipe.emit_transport_error(err.to_string()).await;
             return Err("provider_error".to_string());
         }
@@ -701,14 +768,14 @@ async fn stream_openresponses_request<'a>(
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        let mut pipe = OpenResponsesSsePipe::new(session_id, seq, sink, None);
+        let mut pipe = OpenResponsesSsePipe::new(session_id, seq, sink, None, validation);
         pipe.emit_transport_error(format!("provider http error: {status}: {body}"))
             .await;
         return Err("provider_error".to_string());
     }
 
     let mut utf8_buf = Vec::new();
-    let mut pipe = OpenResponsesSsePipe::new(session_id, seq, sink, Some(collector));
+    let mut pipe = OpenResponsesSsePipe::new(session_id, seq, sink, Some(collector), validation);
     let mut saw_done = false;
 
     let mut stream = response.bytes_stream();

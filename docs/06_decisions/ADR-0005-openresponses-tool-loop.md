@@ -24,6 +24,7 @@ Decision
     - `previous_response_id` set to the last response id observed, and
     - `input` set to tool output items (Phase 1: `function_call_output` with `call_id`).
   - Compatibility note: some OpenResponses-compatible providers (notably stateless adapters) reject follow-ups that contain only assistant/tool items. Compatibility is opt-in via `RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE`, which appends a user message after tool outputs when configured; default remains spec-canonical (tool outputs only).
+  - Stateless compatibility mode: some providers require full conversation history on each request. When `RIP_OPENRESPONSES_STATELESS_HISTORY=1`, follow-ups omit `previous_response_id` and resend the accumulated input history (initial user message + `function_call` + `function_call_output` items, with deterministic ids).
 - Tool availability for the provider is declared explicitly via `tools` in each request (Phase 1: function tools for built-in RIP tools + aliases).
 - Tool call limits (Phase 1):
   - Requests set `parallel_tool_calls: false`.

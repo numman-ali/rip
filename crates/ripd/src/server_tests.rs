@@ -23,7 +23,11 @@ fn build_test_app(dir: &tempfile::TempDir) -> Router {
     build_app_with_workspace_root(data_dir, workspace_dir)
 }
 
-fn build_test_app_with_openresponses_provider(dir: &tempfile::TempDir, endpoint: String) -> Router {
+fn build_test_app_with_openresponses_provider(
+    dir: &tempfile::TempDir,
+    endpoint: String,
+    stateless_history: bool,
+) -> Router {
     let data_dir = dir.path().join("data");
     let workspace_dir = dir.path().join("workspace");
     fs::create_dir_all(&workspace_dir).expect("workspace dir");
@@ -36,6 +40,7 @@ fn build_test_app_with_openresponses_provider(dir: &tempfile::TempDir, endpoint:
             model: Some("fixture-model".to_string()),
             tool_choice: ToolChoiceParam::auto(),
             followup_user_message: None,
+            stateless_history,
         }),
     )
 }
@@ -514,7 +519,7 @@ async fn prompt_uses_openresponses_provider_when_configured() {
     let endpoint = format!("http://{addr}/v1/responses");
 
     let dir = tempdir().expect("tmp");
-    let app = build_test_app_with_openresponses_provider(&dir, endpoint);
+    let app = build_test_app_with_openresponses_provider(&dir, endpoint, false);
     let session_id = create_session_id(&app).await;
 
     let response = app
@@ -585,17 +590,28 @@ async fn prompt_uses_openresponses_provider_when_configured() {
 
 #[tokio::test]
 async fn prompt_openresponses_executes_function_tools_and_sends_followup() {
-    run_openresponses_tool_loop_fixture(include_str!(
-        "../../../fixtures/openresponses/tool_loop_apply_patch_first.sse"
-    ))
+    run_openresponses_tool_loop_fixture(
+        include_str!("../../../fixtures/openresponses/tool_loop_apply_patch_first.sse"),
+        false,
+    )
     .await;
 }
 
 #[tokio::test]
 async fn prompt_openresponses_executes_function_tools_with_argument_deltas() {
-    run_openresponses_tool_loop_fixture(include_str!(
-        "../../../fixtures/openresponses/tool_loop_apply_patch_args_delta.sse"
-    ))
+    run_openresponses_tool_loop_fixture(
+        include_str!("../../../fixtures/openresponses/tool_loop_apply_patch_args_delta.sse"),
+        false,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn prompt_openresponses_executes_function_tools_stateless_history() {
+    run_openresponses_tool_loop_fixture(
+        include_str!("../../../fixtures/openresponses/tool_loop_apply_patch_first.sse"),
+        true,
+    )
     .await;
 }
 
@@ -646,6 +662,7 @@ async fn live_openresponses_smoke() {
             model,
             tool_choice,
             followup_user_message: None,
+            stateless_history: false,
         }),
     );
 
@@ -781,7 +798,7 @@ async fn live_openresponses_smoke() {
     assert!(saw_session_ended, "expected session_ended");
 }
 
-async fn run_openresponses_tool_loop_fixture(first_sse: &'static str) {
+async fn run_openresponses_tool_loop_fixture(first_sse: &'static str, stateless_history: bool) {
     use axum::extract::State;
     use axum::http::header::CONTENT_TYPE;
     use axum::routing::post;
@@ -835,7 +852,7 @@ async fn run_openresponses_tool_loop_fixture(first_sse: &'static str) {
     let endpoint = format!("http://{addr}/v1/responses");
 
     let dir = tempdir().expect("tmp");
-    let app = build_test_app_with_openresponses_provider(&dir, endpoint);
+    let app = build_test_app_with_openresponses_provider(&dir, endpoint, stateless_history);
     let session_id = create_session_id(&app).await;
     let workspace_root = dir.path().join("workspace");
     std::fs::write(workspace_root.join("a.txt"), "one\ntwo\n").expect("seed workspace");
@@ -904,46 +921,133 @@ async fn run_openresponses_tool_loop_fixture(first_sse: &'static str) {
 
     let requests = state.requests.lock().expect("requests").clone();
     assert_eq!(requests.len(), 2, "expected two provider requests");
-    assert_eq!(
-        requests[0].get("input").and_then(|value| value.as_str()),
-        Some("hi")
-    );
-    assert_eq!(
-        requests[1]
-            .get("previous_response_id")
-            .and_then(|value| value.as_str()),
-        Some("resp_1")
-    );
-    let tool_output_item = requests[1]
+    if stateless_history {
+        let first_input_items = requests[0]
+            .get("input")
+            .and_then(|value| value.as_array())
+            .expect("first input array");
+        assert_eq!(
+            first_input_items
+                .first()
+                .and_then(|value| value.get("type"))
+                .and_then(|value| value.as_str()),
+            Some("message")
+        );
+        assert_eq!(
+            first_input_items
+                .first()
+                .and_then(|value| value.get("role"))
+                .and_then(|value| value.as_str()),
+            Some("user")
+        );
+    } else {
+        assert_eq!(
+            requests[0].get("input").and_then(|value| value.as_str()),
+            Some("hi")
+        );
+    }
+
+    let input_items = requests[1]
         .get("input")
         .and_then(|value| value.as_array())
-        .and_then(|array| array.first())
-        .expect("tool output item");
-    assert_eq!(
-        tool_output_item
-            .get("type")
-            .and_then(|value| value.as_str()),
-        Some("function_call_output")
-    );
-    assert_eq!(
-        tool_output_item
-            .get("call_id")
-            .and_then(|value| value.as_str()),
-        Some("call_1")
-    );
-    let output = tool_output_item
-        .get("output")
-        .and_then(|value| value.as_str())
-        .expect("output");
-    let parsed: Value = serde_json::from_str(output).expect("output json");
-    assert_eq!(
-        parsed.get("tool").and_then(|value| value.as_str()),
-        Some("apply_patch")
-    );
-    assert_eq!(
-        parsed.get("ok").and_then(|value| value.as_bool()),
-        Some(true)
-    );
+        .expect("followup input array");
+
+    if stateless_history {
+        assert!(requests[1].get("previous_response_id").is_none());
+        assert_eq!(
+            input_items
+                .first()
+                .and_then(|value| value.get("type"))
+                .and_then(|value| value.as_str()),
+            Some("message")
+        );
+        assert_eq!(
+            input_items
+                .first()
+                .and_then(|value| value.get("role"))
+                .and_then(|value| value.as_str()),
+            Some("user")
+        );
+
+        let function_call_item = input_items.get(1).expect("function_call item");
+        assert_eq!(
+            function_call_item
+                .get("type")
+                .and_then(|value| value.as_str()),
+            Some("function_call")
+        );
+        assert_eq!(
+            function_call_item
+                .get("call_id")
+                .and_then(|value| value.as_str()),
+            Some("call_1")
+        );
+
+        let tool_output_item = input_items.get(2).expect("tool output item");
+        assert_eq!(
+            tool_output_item
+                .get("type")
+                .and_then(|value| value.as_str()),
+            Some("function_call_output")
+        );
+        assert_eq!(
+            tool_output_item
+                .get("call_id")
+                .and_then(|value| value.as_str()),
+            Some("call_1")
+        );
+        assert_eq!(
+            tool_output_item.get("id").and_then(|value| value.as_str()),
+            Some("output_call_1")
+        );
+
+        let output = tool_output_item
+            .get("output")
+            .and_then(|value| value.as_str())
+            .expect("output");
+        let parsed: Value = serde_json::from_str(output).expect("output json");
+        assert_eq!(
+            parsed.get("tool").and_then(|value| value.as_str()),
+            Some("apply_patch")
+        );
+        assert_eq!(
+            parsed.get("ok").and_then(|value| value.as_bool()),
+            Some(true)
+        );
+    } else {
+        assert_eq!(
+            requests[1]
+                .get("previous_response_id")
+                .and_then(|value| value.as_str()),
+            Some("resp_1")
+        );
+        let tool_output_item = input_items.first().expect("tool output item");
+        assert_eq!(
+            tool_output_item
+                .get("type")
+                .and_then(|value| value.as_str()),
+            Some("function_call_output")
+        );
+        assert_eq!(
+            tool_output_item
+                .get("call_id")
+                .and_then(|value| value.as_str()),
+            Some("call_1")
+        );
+        let output = tool_output_item
+            .get("output")
+            .and_then(|value| value.as_str())
+            .expect("output");
+        let parsed: Value = serde_json::from_str(output).expect("output json");
+        assert_eq!(
+            parsed.get("tool").and_then(|value| value.as_str()),
+            Some("apply_patch")
+        );
+        assert_eq!(
+            parsed.get("ok").and_then(|value| value.as_bool()),
+            Some(true)
+        );
+    }
 
     let data_dir = dir.path().join("data");
     let snapshot_path = data_dir
@@ -997,7 +1101,7 @@ async fn prompt_openresponses_without_done_still_ends_session() {
     let endpoint = format!("http://{addr}/v1/responses");
 
     let dir = tempdir().expect("tmp");
-    let app = build_test_app_with_openresponses_provider(&dir, endpoint);
+    let app = build_test_app_with_openresponses_provider(&dir, endpoint, false);
     let session_id = create_session_id(&app).await;
 
     let response = app
@@ -1082,7 +1186,7 @@ async fn prompt_openresponses_http_error_emits_provider_error() {
     let endpoint = format!("http://{addr}/v1/responses");
 
     let dir = tempdir().expect("tmp");
-    let app = build_test_app_with_openresponses_provider(&dir, endpoint);
+    let app = build_test_app_with_openresponses_provider(&dir, endpoint, false);
     let session_id = create_session_id(&app).await;
 
     let response = app
@@ -1151,7 +1255,7 @@ async fn prompt_openresponses_connection_error_emits_provider_error() {
     let endpoint = "http://127.0.0.1:1/v1/responses".to_string();
 
     let dir = tempdir().expect("tmp");
-    let app = build_test_app_with_openresponses_provider(&dir, endpoint);
+    let app = build_test_app_with_openresponses_provider(&dir, endpoint, false);
     let session_id = create_session_id(&app).await;
 
     let response = app

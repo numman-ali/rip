@@ -10,6 +10,7 @@ pub struct OpenResponsesConfig {
     pub model: Option<String>,
     pub tool_choice: ToolChoiceParam,
     pub followup_user_message: Option<String>,
+    pub stateless_history: bool,
 }
 
 impl OpenResponsesConfig {
@@ -31,12 +32,22 @@ impl OpenResponsesConfig {
             Err(_) => ToolChoiceParam::auto(),
         };
         let followup_user_message = std::env::var("RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE").ok();
+        let stateless_history = std::env::var("RIP_OPENRESPONSES_STATELESS_HISTORY")
+            .ok()
+            .map(|value| {
+                matches!(
+                    value.trim().to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes" | "on"
+                )
+            })
+            .unwrap_or(false);
         Some(Self {
             endpoint,
             api_key,
             model,
             tool_choice,
             followup_user_message,
+            stateless_history,
         })
     }
 }
@@ -57,20 +68,37 @@ pub fn build_streaming_request(
     builder.build()
 }
 
+pub fn build_streaming_request_items(
+    config: &OpenResponsesConfig,
+    items: Vec<ItemParam>,
+) -> CreateResponsePayload {
+    let mut builder = base_streaming_builder(config)
+        .input_items(items)
+        .tools_raw(builtin_function_tools())
+        .tool_choice(config.tool_choice.clone())
+        .parallel_tool_calls(false)
+        .max_tool_calls(DEFAULT_MAX_TOOL_CALLS);
+    builder = builder.insert_raw("stream", Value::Bool(true));
+    builder.build()
+}
+
 pub fn build_streaming_followup_request(
     config: &OpenResponsesConfig,
-    previous_response_id: &str,
-    mut tool_outputs: Vec<ItemParam>,
+    previous_response_id: Option<&str>,
+    mut input_items: Vec<ItemParam>,
 ) -> CreateResponsePayload {
     if let Some(message) = config.followup_user_message.as_deref() {
-        tool_outputs.push(ItemParam::user_message_text(message));
+        input_items.push(ItemParam::user_message_text(message));
     }
-    let builder = base_streaming_builder(config)
-        .insert_raw(
+    let mut builder = base_streaming_builder(config);
+    if let Some(previous_response_id) = previous_response_id {
+        builder = builder.insert_raw(
             "previous_response_id",
             Value::String(previous_response_id.to_string()),
-        )
-        .input_items(tool_outputs)
+        );
+    }
+    let builder = builder
+        .input_items(input_items)
         .tools_raw(builtin_function_tools())
         .tool_choice(config.tool_choice.clone())
         .parallel_tool_calls(false)
@@ -270,7 +298,7 @@ fn function_tool(name: &str, description: &str, parameters: Value) -> Value {
         "name": name,
         "description": description,
         "parameters": parameters,
-        "strict": true
+        "strict": false
     })
 }
 
@@ -285,6 +313,7 @@ mod tests {
             model: None,
             tool_choice: ToolChoiceParam::auto(),
             followup_user_message,
+            stateless_history: false,
         }
     }
 
@@ -293,7 +322,7 @@ mod tests {
         let config = config_with_followup(None);
         let payload = build_streaming_followup_request(
             &config,
-            "resp_1",
+            Some("resp_1"),
             vec![ItemParam::function_call_output(
                 "call_1",
                 Value::String("ok".to_string()),
@@ -316,7 +345,7 @@ mod tests {
         let config = config_with_followup(Some("continue".to_string()));
         let payload = build_streaming_followup_request(
             &config,
-            "resp_1",
+            Some("resp_1"),
             vec![ItemParam::function_call_output(
                 "call_1",
                 Value::String("ok".to_string()),
@@ -340,5 +369,19 @@ mod tests {
             input[1].get("content").and_then(|value| value.as_str()),
             Some("continue")
         );
+    }
+
+    #[test]
+    fn followup_request_omits_previous_response_id_when_none() {
+        let config = config_with_followup(None);
+        let payload = build_streaming_followup_request(
+            &config,
+            None,
+            vec![ItemParam::function_call_output(
+                "call_1",
+                Value::String("ok".to_string()),
+            )],
+        );
+        assert!(payload.body().get("previous_response_id").is_none());
     }
 }

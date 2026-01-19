@@ -5,7 +5,6 @@ use futures_util::StreamExt;
 use reqwest::Client;
 use reqwest_eventsource::{Error as EventSourceError, Event, RequestBuilderExt};
 use rip_kernel::{Event as FrameEvent, EventKind};
-use rip_provider_openresponses::{extract_reasoning_deltas, extract_tool_call_argument_deltas};
 use serde::Deserialize;
 use tokio::sync::broadcast;
 
@@ -23,6 +22,14 @@ enum Commands {
         prompt: String,
         #[arg(long)]
         server: Option<String>,
+        #[arg(long, value_enum)]
+        provider: Option<Provider>,
+        #[arg(long)]
+        model: Option<String>,
+        #[arg(long, action = clap::ArgAction::SetTrue)]
+        stateless_history: bool,
+        #[arg(long)]
+        followup_user_message: Option<String>,
         #[arg(
             long,
             default_value_t = true,
@@ -42,6 +49,24 @@ enum OutputView {
     Output,
 }
 
+#[derive(Default)]
+struct OutputState {
+    saw_output: bool,
+    trailing_newline: bool,
+    tool_stdout: String,
+    tool_stderr: String,
+    tool_failed: Vec<String>,
+    provider_errors: Vec<String>,
+    provider_response_errors: Vec<String>,
+    provider_invalid_json: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum Provider {
+    Openai,
+    Openrouter,
+}
+
 #[derive(Deserialize)]
 struct SessionCreated {
     session_id: String,
@@ -58,9 +83,28 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         Commands::Run {
             prompt,
             server,
+            provider,
+            model,
+            stateless_history,
+            followup_user_message,
             headless,
             view,
         } => {
+            let has_openresponses_flags = provider.is_some()
+                || model.is_some()
+                || stateless_history
+                || followup_user_message.is_some();
+            if server.is_some() && has_openresponses_flags {
+                anyhow::bail!(
+                    "openresponses flags are only supported for local runs; configure the server instead"
+                );
+            }
+            if has_openresponses_flags {
+                let provider = provider.ok_or_else(|| {
+                    anyhow::anyhow!("--provider is required when using openresponses flags")
+                })?;
+                apply_openresponses_env(provider, model, stateless_history, followup_user_message)?;
+            }
             if let Some(server) = server {
                 if headless {
                     run_headless_remote(prompt, server, view).await?;
@@ -79,6 +123,47 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn apply_openresponses_env(
+    provider: Provider,
+    model: Option<String>,
+    stateless_history: bool,
+    followup_user_message: Option<String>,
+) -> anyhow::Result<()> {
+    let endpoint = match provider {
+        Provider::Openai => "https://api.openai.com/v1/responses",
+        Provider::Openrouter => "https://openrouter.ai/api/v1/responses",
+    };
+    std::env::set_var("RIP_OPENRESPONSES_ENDPOINT", endpoint);
+
+    if let Some(model) = model {
+        std::env::set_var("RIP_OPENRESPONSES_MODEL", model);
+    }
+
+    if stateless_history {
+        std::env::set_var("RIP_OPENRESPONSES_STATELESS_HISTORY", "1");
+    }
+
+    if let Some(message) = followup_user_message {
+        std::env::set_var("RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE", message);
+    }
+
+    let provider_key = match provider {
+        Provider::Openai => std::env::var("OPENAI_API_KEY").ok(),
+        Provider::Openrouter => std::env::var("OPENROUTER_API_KEY").ok(),
+    };
+    let api_key = provider_key.or_else(|| std::env::var("RIP_OPENRESPONSES_API_KEY").ok());
+    if let Some(api_key) = api_key {
+        std::env::set_var("RIP_OPENRESPONSES_API_KEY", api_key);
+        return Ok(());
+    }
+
+    let missing_hint = match provider {
+        Provider::Openai => "OPENAI_API_KEY",
+        Provider::Openrouter => "OPENROUTER_API_KEY",
+    };
+    anyhow::bail!("missing API key: set {missing_hint} or RIP_OPENRESPONSES_API_KEY")
 }
 
 async fn run_headless_remote(
@@ -166,11 +251,12 @@ async fn stream_events_with_writer(
     view: OutputView,
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
+    let mut state = OutputState::default();
     while let Some(next) = stream.next().await {
         match next {
             Ok(Event::Open) => {}
             Ok(Event::Message(msg)) => {
-                let should_stop = render_message(view, &msg.data, out)?;
+                let should_stop = render_message(view, &msg.data, out, &mut state)?;
                 if should_stop {
                     break;
                 }
@@ -200,12 +286,13 @@ async fn stream_events_from_receiver(
     view: OutputView,
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
+    let mut state = OutputState::default();
     loop {
         match receiver.recv().await {
             Ok(frame) => {
                 let payload = serde_json::to_string(&frame)
                     .map_err(|err| anyhow::anyhow!("event frame json: {err}"))?;
-                let should_stop = render_message(view, &payload, out)?;
+                let should_stop = render_message(view, &payload, out, &mut state)?;
                 if should_stop {
                     break;
                 }
@@ -217,7 +304,12 @@ async fn stream_events_from_receiver(
     Ok(())
 }
 
-fn render_message(view: OutputView, payload: &str, out: &mut dyn Write) -> anyhow::Result<bool> {
+fn render_message(
+    view: OutputView,
+    payload: &str,
+    out: &mut dyn Write,
+    state: &mut OutputState,
+) -> anyhow::Result<bool> {
     let frame: FrameEvent = serde_json::from_str(payload)
         .map_err(|err| anyhow::anyhow!("invalid event frame: {err}"))?;
     let should_stop = matches!(frame.kind, EventKind::SessionEnded { .. });
@@ -230,16 +322,26 @@ fn render_message(view: OutputView, payload: &str, out: &mut dyn Write) -> anyho
         OutputView::Output => {
             match &frame.kind {
                 EventKind::OutputTextDelta { delta } => {
-                    writeln!(out, "{delta}")?;
+                    state.saw_output = true;
+                    write!(out, "{delta}")?;
+                    if let Some(last) = delta.chars().last() {
+                        state.trailing_newline = last == '\n';
+                    }
                 }
                 EventKind::ToolStdout { chunk, .. } => {
-                    writeln!(out, "{chunk}")?;
+                    if !state.saw_output {
+                        state.tool_stdout.push_str(chunk);
+                    }
                 }
                 EventKind::ToolStderr { chunk, .. } => {
-                    writeln!(out, "stderr: {chunk}")?;
+                    if !state.saw_output {
+                        state.tool_stderr.push_str(chunk);
+                    }
                 }
                 EventKind::ToolFailed { error, .. } => {
-                    writeln!(out, "tool_failed: {error}")?;
+                    if !state.saw_output {
+                        state.tool_failed.push(error.clone());
+                    }
                 }
                 EventKind::ProviderEvent {
                     status,
@@ -248,30 +350,55 @@ fn render_message(view: OutputView, payload: &str, out: &mut dyn Write) -> anyho
                     raw,
                     ..
                 } => {
-                    for delta in extract_reasoning_deltas(std::slice::from_ref(&frame)) {
-                        writeln!(out, "reasoning: {delta}")?;
-                    }
-                    for delta in extract_tool_call_argument_deltas(std::slice::from_ref(&frame)) {
-                        writeln!(out, "tool: {delta}")?;
-                    }
-
-                    if !errors.is_empty() {
-                        writeln!(out, "provider_errors: {}", errors.join("; "))?;
-                    }
-                    if !response_errors.is_empty() {
-                        writeln!(
-                            out,
-                            "provider_response_errors: {}",
-                            response_errors.join("; ")
-                        )?;
-                    }
-                    if *status == rip_kernel::ProviderEventStatus::InvalidJson {
-                        if let Some(raw) = raw.as_deref() {
-                            writeln!(out, "provider_invalid_json: {raw}")?;
+                    if !state.saw_output {
+                        if !errors.is_empty() {
+                            state.provider_errors.extend(errors.iter().cloned());
+                        }
+                        if !response_errors.is_empty() {
+                            state
+                                .provider_response_errors
+                                .extend(response_errors.iter().cloned());
+                        }
+                        if *status == rip_kernel::ProviderEventStatus::InvalidJson {
+                            if let Some(raw) = raw.as_deref() {
+                                state.provider_invalid_json.push(raw.to_string());
+                            }
                         }
                     }
                 }
                 _ => {}
+            }
+
+            if should_stop {
+                if !state.saw_output {
+                    if !state.tool_stdout.is_empty() {
+                        write!(out, "{}", state.tool_stdout)?;
+                    }
+                    if !state.tool_stderr.is_empty() {
+                        if !state.tool_stdout.ends_with('\n') {
+                            writeln!(out)?;
+                        }
+                        write!(out, "stderr: {}", state.tool_stderr)?;
+                    }
+                    for error in &state.tool_failed {
+                        writeln!(out, "tool_failed: {error}")?;
+                    }
+                    if !state.provider_errors.is_empty() {
+                        writeln!(out, "provider_errors: {}", state.provider_errors.join("; "))?;
+                    }
+                    if !state.provider_response_errors.is_empty() {
+                        writeln!(
+                            out,
+                            "provider_response_errors: {}",
+                            state.provider_response_errors.join("; ")
+                        )?;
+                    }
+                    for raw in &state.provider_invalid_json {
+                        writeln!(out, "provider_invalid_json: {raw}")?;
+                    }
+                } else if !state.trailing_newline {
+                    writeln!(out)?;
+                }
             }
             out.flush()?;
         }
@@ -418,10 +545,7 @@ mod tests {
             .await
             .unwrap();
         let rendered = String::from_utf8(buffer).expect("utf8");
-        assert_eq!(
-            rendered.trim_end(),
-            "hi\nreasoning: step\ntool: {\"arg\":1}"
-        );
+        assert_eq!(rendered.trim_end(), "hi");
     }
 
     #[tokio::test]
@@ -448,6 +572,10 @@ mod tests {
             command: Commands::Run {
                 prompt: "hello".to_string(),
                 server: Some(server.base_url()),
+                provider: None,
+                model: None,
+                stateless_history: false,
+                followup_user_message: None,
                 headless: false,
                 view: OutputView::Raw,
             },
@@ -481,6 +609,37 @@ mod tests {
                 assert!(headless);
                 assert_eq!(view, OutputView::Output);
                 assert!(server.is_none());
+            }
+            Commands::Serve => panic!("expected run"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_openresponses_flags() {
+        let cli = Cli::parse_from([
+            "rip",
+            "run",
+            "hello",
+            "--provider",
+            "openai",
+            "--model",
+            "gpt-5-nano-2025-08-07",
+            "--stateless-history",
+            "--followup-user-message",
+            "continue",
+        ]);
+        match cli.command {
+            Commands::Run {
+                provider,
+                model,
+                stateless_history,
+                followup_user_message,
+                ..
+            } => {
+                assert_eq!(provider, Some(Provider::Openai));
+                assert_eq!(model.as_deref(), Some("gpt-5-nano-2025-08-07"));
+                assert!(stateless_history);
+                assert_eq!(followup_user_message.as_deref(), Some("continue"));
             }
             Commands::Serve => panic!("expected run"),
         }
@@ -524,8 +683,9 @@ mod tests {
     #[test]
     fn renders_raw_payload() {
         let mut buffer = Vec::new();
+        let mut state = OutputState::default();
         let payload = session_started_frame();
-        render_message(OutputView::Raw, payload.as_str(), &mut buffer).expect("render");
+        render_message(OutputView::Raw, payload.as_str(), &mut buffer, &mut state).expect("render");
         let rendered = String::from_utf8(buffer).expect("utf8");
         assert_eq!(rendered.trim_end(), payload);
     }
@@ -533,14 +693,16 @@ mod tests {
     #[test]
     fn raw_view_rejects_invalid_frame() {
         let mut buffer = Vec::new();
+        let mut state = OutputState::default();
         let payload = "{\"type\":\"session_started\"}";
-        let err = render_message(OutputView::Raw, payload, &mut buffer).unwrap_err();
+        let err = render_message(OutputView::Raw, payload, &mut buffer, &mut state).unwrap_err();
         assert!(err.to_string().contains("invalid event frame"));
     }
 
     #[test]
     fn renders_output_deltas() {
         let mut buffer = Vec::new();
+        let mut state = OutputState::default();
         let payload = serde_json::json!({
             "id": "e1",
             "session_id": "s1",
@@ -550,7 +712,7 @@ mod tests {
             "delta": "hi"
         })
         .to_string();
-        render_message(OutputView::Output, &payload, &mut buffer).expect("render");
+        render_message(OutputView::Output, &payload, &mut buffer, &mut state).expect("render");
         let rendered = String::from_utf8(buffer).expect("utf8");
         assert_eq!(rendered.trim_end(), "hi");
     }
@@ -558,6 +720,7 @@ mod tests {
     #[test]
     fn renders_tool_stdout_in_output_view() {
         let mut buffer = Vec::new();
+        let mut state = OutputState::default();
         let payload = serde_json::json!({
             "id": "e1",
             "session_id": "s1",
@@ -568,7 +731,17 @@ mod tests {
             "chunk": "a.txt"
         })
         .to_string();
-        render_message(OutputView::Output, &payload, &mut buffer).expect("render");
+        render_message(OutputView::Output, &payload, &mut buffer, &mut state).expect("render");
+        let end_payload = serde_json::json!({
+            "id": "e2",
+            "session_id": "s1",
+            "timestamp_ms": 0,
+            "seq": 1,
+            "type": "session_ended",
+            "reason": "completed"
+        })
+        .to_string();
+        render_message(OutputView::Output, &end_payload, &mut buffer, &mut state).expect("render");
         let rendered = String::from_utf8(buffer).expect("utf8");
         assert_eq!(rendered.trim_end(), "a.txt");
     }
@@ -576,6 +749,7 @@ mod tests {
     #[test]
     fn renders_reasoning_and_tool_deltas() {
         let mut buffer = Vec::new();
+        let mut state = OutputState::default();
         let reasoning_payload = serde_json::json!({
             "id": "e2",
             "session_id": "s1",
@@ -591,7 +765,13 @@ mod tests {
             "response_errors": []
         })
         .to_string();
-        render_message(OutputView::Output, &reasoning_payload, &mut buffer).expect("render");
+        render_message(
+            OutputView::Output,
+            &reasoning_payload,
+            &mut buffer,
+            &mut state,
+        )
+        .expect("render");
 
         let tool_payload = serde_json::json!({
             "id": "e3",
@@ -608,12 +788,20 @@ mod tests {
             "response_errors": []
         })
         .to_string();
-        render_message(OutputView::Output, &tool_payload, &mut buffer).expect("render");
+        render_message(OutputView::Output, &tool_payload, &mut buffer, &mut state).expect("render");
+        let end_payload = serde_json::json!({
+            "id": "e4",
+            "session_id": "s1",
+            "timestamp_ms": 0,
+            "seq": 2,
+            "type": "session_ended",
+            "reason": "completed"
+        })
+        .to_string();
+        render_message(OutputView::Output, &end_payload, &mut buffer, &mut state).expect("render");
 
         let rendered = String::from_utf8(buffer).expect("utf8");
-        let lines: Vec<&str> = rendered.lines().collect();
-        assert!(lines.contains(&"reasoning: step"));
-        assert!(lines.contains(&"tool: {\"arg\":1}"));
+        assert!(rendered.trim().is_empty());
     }
 
     #[test]
