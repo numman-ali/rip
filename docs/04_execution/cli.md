@@ -15,6 +15,8 @@ Headless mode (draft)
 - `--view output` prints text + reasoning + tool deltas extracted from provider events
 
 Notes
-- CLI is a thin UI over the agent server (HTTP/SSE).
-- Start a local server with `rip serve` (or `ripd`), then run `rip run ...`.
-- No agent logic lives in the CLI.
+- CLI is a thin adapter over the shared session engine.
+- Default: `rip run ...` executes in-process (no HTTP required).
+- Remote: `rip run ... --server <url>` streams the same event frames over HTTP/SSE.
+- `rip serve` (or `ripd`) starts the agent server for remote clients/SDKs.
+- Phase 1 is single-run sessions (no multi-turn/thread resume yet); OpenResponses tool execution is sequential and capped (`max_tool_calls=32`, `parallel_tool_calls=false`) per ADR-0005.

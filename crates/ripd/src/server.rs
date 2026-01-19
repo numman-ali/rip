@@ -8,43 +8,25 @@ use axum::{
     Json, Router,
 };
 use futures_util::StreamExt;
-use rip_kernel::Runtime;
-use rip_log::EventLog;
-use rip_tools::{register_builtin_tools, BuiltinToolConfig, ToolRegistry, ToolRunner};
 use serde::{Deserialize, Serialize};
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::Mutex;
 use tokio_stream::wrappers::BroadcastStream;
 use utoipa::{OpenApi, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
-use uuid::Uuid;
 
-use crate::checkpoints::WorkspaceCheckpointHook;
 use crate::provider_openresponses::OpenResponsesConfig;
-use crate::session::{run_session, SessionContext};
+use crate::runner::{SessionEngine, SessionHandle};
 
 #[cfg(not(test))]
 use std::net::SocketAddr;
 #[cfg(not(test))]
 use tokio::net::TcpListener;
 
-const TOOL_MAX_CONCURRENCY: usize = 4;
-
 #[derive(Clone)]
 pub(crate) struct AppState {
     sessions: Arc<Mutex<HashMap<String, SessionHandle>>>,
-    event_log: Arc<EventLog>,
-    snapshot_dir: Arc<std::path::PathBuf>,
-    runtime: Arc<Runtime>,
-    tool_runner: Arc<ToolRunner>,
-    http_client: reqwest::Client,
-    openresponses: Option<OpenResponsesConfig>,
+    engine: Arc<SessionEngine>,
     openapi_json: Arc<String>,
-}
-
-#[derive(Clone)]
-struct SessionHandle {
-    sender: broadcast::Sender<rip_kernel::Event>,
-    events: Arc<Mutex<Vec<rip_kernel::Event>>>,
 }
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
@@ -100,31 +82,13 @@ pub(crate) fn build_app_with_workspace_root_and_provider(
 ) -> Router {
     let (router, openapi_json) = build_openapi_router();
 
-    let registry = Arc::new(ToolRegistry::default());
-    register_builtin_tools(
-        &registry,
-        BuiltinToolConfig {
-            workspace_root: workspace_root.clone(),
-            ..BuiltinToolConfig::default()
-        },
+    let engine = Arc::new(
+        SessionEngine::new(data_dir, workspace_root, openresponses).expect("session engine"),
     );
-
-    let checkpoint_hook =
-        WorkspaceCheckpointHook::new(workspace_root).expect("workspace checkpoint hook");
-    let tool_runner = Arc::new(ToolRunner::with_checkpoint_hook(
-        registry,
-        TOOL_MAX_CONCURRENCY,
-        Arc::new(checkpoint_hook),
-    ));
 
     let state = AppState {
         sessions: Arc::new(Mutex::new(HashMap::new())),
-        event_log: Arc::new(EventLog::new(data_dir.join("events.jsonl")).expect("event log")),
-        snapshot_dir: Arc::new(data_dir.join("snapshots")),
-        runtime: Arc::new(Runtime::new()),
-        tool_runner,
-        http_client: reqwest::Client::new(),
-        openresponses,
+        engine,
         openapi_json: Arc::new(openapi_json),
     };
 
@@ -155,17 +119,11 @@ pub(crate) fn build_openapi_router() -> (Router<AppState>, String) {
     )
 )]
 async fn create_session(State(state): State<AppState>) -> impl IntoResponse {
-    let session_id = Uuid::new_v4().to_string();
-    let (sender, _receiver) = broadcast::channel(128);
+    let handle = state.engine.create_session();
+    let session_id = handle.session_id.clone();
 
     let mut sessions = state.sessions.lock().await;
-    sessions.insert(
-        session_id.clone(),
-        SessionHandle {
-            sender,
-            events: Arc::new(Mutex::new(Vec::new())),
-        },
-    );
+    sessions.insert(session_id.clone(), handle);
 
     (StatusCode::CREATED, Json(SessionCreated { session_id }))
 }
@@ -187,45 +145,15 @@ async fn send_input(
     State(state): State<AppState>,
     Json(payload): Json<InputPayload>,
 ) -> impl IntoResponse {
-    let sender = {
+    let handle = {
         let sessions = state.sessions.lock().await;
         match sessions.get(&session_id) {
-            Some(handle) => handle.sender.clone(),
+            Some(handle) => handle.clone(),
             None => return StatusCode::NOT_FOUND.into_response(),
         }
     };
 
-    let events = {
-        let sessions = state.sessions.lock().await;
-        match sessions.get(&session_id) {
-            Some(handle) => handle.events.clone(),
-            None => return StatusCode::NOT_FOUND.into_response(),
-        }
-    };
-
-    let event_log = state.event_log.clone();
-    let snapshot_dir = state.snapshot_dir.clone();
-    let runtime = state.runtime.clone();
-    let tool_runner = state.tool_runner.clone();
-    let http_client = state.http_client.clone();
-    let openresponses = state.openresponses.clone();
-    let server_session_id = session_id.clone();
-
-    tokio::spawn(async move {
-        run_session(SessionContext {
-            runtime,
-            tool_runner,
-            http_client,
-            openresponses,
-            sender,
-            events,
-            event_log,
-            snapshot_dir,
-            server_session_id,
-            input: payload.input,
-        })
-        .await;
-    });
+    state.engine.spawn_session(handle, payload.input);
 
     StatusCode::ACCEPTED.into_response()
 }
@@ -248,7 +176,7 @@ async fn stream_events(
     let receiver = {
         let sessions = state.sessions.lock().await;
         match sessions.get(&session_id) {
-            Some(handle) => handle.sender.subscribe(),
+            Some(handle) => handle.subscribe(),
             None => return StatusCode::NOT_FOUND.into_response(),
         }
     };

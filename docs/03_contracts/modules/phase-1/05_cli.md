@@ -7,7 +7,7 @@ Summary
 
 Inputs
 - User prompts and commands.
-- Agent event stream from ripd.
+- Agent event stream from the shared session engine (in-process) or from `ripd` over HTTP/SSE.
 
 Outputs
 - Rendered UI (interactive) or JSON stream of event frames (headless).

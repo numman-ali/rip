@@ -14,47 +14,17 @@ How to use
 
 Now
 
-## CLI: single-command `rip` UX (local in-process + `rip serve`) [needs work]
-- Refs: `docs/04_execution/server.md`, `docs/02_architecture/surfaces.md`, `docs/02_architecture/capability_matrix.md`
-- Decision packet (required before implementation):
-  - Decision: default local execution mode for `rip` (in-process vs client/server).
-  - Options:
-    1) In-process default: `rip` runs the session engine + tool runtime directly; `rip serve` starts HTTP/SSE for SDK/remote.
-       - Pros: lowest latency; simplest “single command”; fewer moving parts for local use.
-       - Cons: two codepaths to maintain (local + server) unless carefully factored.
-    2) Always client/server: `rip` always speaks HTTP/SSE; it can auto-spawn a local server when none is running.
-       - Pros: one transport surface; simplest for SDK parity and multi-client attach.
-       - Cons: more overhead for local; daemon lifecycle/ports/data-dir complexity.
-  - Recommendation: Option 1 (in-process default) with an explicit `--server <url>` escape hatch; revisit auto-spawn once config/policy is in place.
-  - Reversibility: keep event frames + replay fixtures identical across modes; local mode can later be implemented by embedding the same server crate behind a transport trait.
+## SDK: TypeScript baseline (session lifecycle + SSE) [needs work]
+- Refs: `docs/03_contracts/modules/phase-1/06_server.md`, `docs/02_architecture/surfaces.md`, `schemas/ripd/openapi.json`
 - Ready:
-  - Extract a shared session runner interface used by both `ripd` (server) and `rip` (local).
-  - Define CLI subcommands: `rip` (TUI), `rip run` (headless), `rip serve` (server), `--server` for remote.
+  - Server OpenAPI + SSE session stream are stable (create/send/stream/cancel).
+  - Decide package layout + versioning (`rip-sdk-ts` vs scoped packages) and auth story (Phase 1: local/no-auth).
 - Done:
-  - `rip` runs locally without requiring a separate `ripd` process.
-  - `rip serve` exposes the same session API; TS SDK targets the server API only.
+  - TS client supports: create session, send input, stream events, cancel.
+  - SDK contains no business logic (thin adapter over server API only).
+  - Minimal contract test runs against `rip serve` in CI using fixtures.
 
 Next
-
-## Tools: artifact-backed outputs (no context explosion) [confirm spec]
-- Refs: `docs/03_contracts/modules/phase-2/03_tool_tasks.md`, `docs/03_contracts/capability_registry.md`, `docs/02_architecture/capability_matrix.md`
-- Decision packet:
-  - Decision: how to store and retrieve large tool outputs without bloating event streams or prompt context.
-  - Options:
-    1) Store outputs as workspace-local artifacts under `.rip/artifacts/` and reference by content digest (sha256).
-       - Pros: no new server API needed; works offline; deterministic ids; compatible with replay fixtures.
-       - Cons: needs careful size limits; artifacts live inside workspace.
-    2) Store outputs under server data dir (out-of-workspace), reference by opaque ids.
-       - Pros: keeps workspace clean; central management.
-       - Cons: couples storage to server runtime; harder for offline CLI runs.
-  - Recommendation: Option 1 (workspace-local, content-addressed by sha256) with bounded previews in frames.
-  - Reversibility: artifact ids are content digests; we can later relocate storage behind a store interface without changing references.
-- Ready:
-  - Define artifact layout (`.rip/artifacts/`) and retrieval tool/endpoint semantics (range-based; bounded reads).
-- Done:
-  - `bash` stores oversized stdout/stderr as artifacts under `.rip/artifacts/blobs/<sha256>` and emits bounded previews + artifact refs.
-  - Retrieval is supported via `artifact_fetch` (range reads) and is covered by deterministic tests.
-  - Extend artifact-backed output handling to other high-volume tools (and provider follow-ups) as needed.
 
 ## Tools: background tool tasks (spawn/status/cancel) [needs work]
 - Refs: `docs/03_contracts/modules/phase-2/03_tool_tasks.md`, `docs/03_contracts/capability_registry.md`, `docs/02_architecture/capability_matrix.md`
@@ -94,6 +64,14 @@ Later
     - Define event-log entries for thread metadata + turn links (replayable).
   - Done:
     - “Continue later” works the same in CLI/TUI/SDK (parity enforced), with deterministic replay of a resumed thread.
+- OpenResponses: parallel tool calls + background responses [needs work]
+  - Refs: `docs/06_decisions/ADR-0005-openresponses-tool-loop.md`, `crates/ripd/src/provider_openresponses.rs`
+  - Decision packet:
+    - Decision: whether to support `parallel_tool_calls(true)` and `background(true)` in Phase 2 without breaking replay determinism.
+    - Recommendation: keep Phase 1 strict (`parallel_tool_calls(false)`, `background(false)`), then add an explicit capability + policy-gated opt-in for parallel/background execution once task entities + threads exist.
+  - Done:
+    - Parallel tool calls are supported behind an explicit capability flag and are replayable (ordering + concurrency recorded).
+    - Background responses are supported via task entities (spawn/poll/stream) with deterministic event framing.
 - Models & providers: multi-provider + routing + catalogs (Phase 2) [needs work]
   - Refs: `docs/03_contracts/modules/phase-2/01_model_routing.md`, `docs/03_contracts/capability_registry.md`, `docs/02_architecture/capability_matrix.md`, `docs/03_contracts/event_frames.md`
   - Ready: OpenResponses boundary stable; routing decisions can be logged as event frames
@@ -178,6 +156,7 @@ Done (recent)
 - 2026-01-19: Bench budgets: ratcheted to tight CI gates (sse_parse=200us/event, ttft=200us, tool_runner_noop=100us, workspace_apply_patch=2000us, e2e_loop=10000us).
 - 2026-01-19: Tools: `bash` stores oversized stdout/stderr as workspace-local artifacts + added `artifact_fetch` builtin (range reads).
 - 2026-01-19: CLI: added `rip serve` (embedded server) to reduce `ripd` UX friction.
+- 2026-01-19: CLI: `rip run` defaults to in-process execution; `--server <url>` targets remote; server+CLI share the same session runner.
 - 2026-01-19: TUI: added `rip-tui` MVP-0 skeleton (frame-driven state + ratatui golden render snapshots).
 - 2026-01-19: Fixtures: added deterministic OpenResponses tool-loop SSE fixtures + replay equivalence tests; updated `e2e_loop_us` to exercise tool-loop + follow-up parsing.
 - 2026-01-18: Phase 1 closeout: CI + fixtures + bench harness are CI-gated (plus baseline budgets).

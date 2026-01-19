@@ -13,8 +13,8 @@ Session lifecycle (draft)
 - POST /sessions/:id/cancel -> cancel session
 
 Notes
-- Today: CLI talks to the server over HTTP/SSE (run `ripd` or `rip serve` first).
-- Planned: single-command `rip` UX (TUI/headless) can run the same session engine in-process, using the same event frames without HTTP.
+- Today: `rip serve` (or `ripd`) exposes the session API for remote clients/SDKs over HTTP/SSE.
+- Today: `rip run` defaults to in-process execution; use `--server <url>` to target a remote server.
 - SSE stream emits JSON event frames (`docs/03_contracts/event_frames.md`).
 - OpenAPI spec is exposed at `/openapi.json` (canonical) and may be mirrored in `schemas/`.
 - JSON input envelopes can trigger tool execution and checkpoint actions (used for deterministic tests):

@@ -3,12 +3,12 @@
 Summary
 - All surfaces are thin adapters over the same core session + capability API.
 - No surface owns business logic; parity is enforced by contract and tests.
-- Server API is the canonical control plane for capability access.
+- Server API is the canonical control plane for remote/SDK capability access.
 
 Surfaces (Phase 1)
-- Interactive CLI: `rip-cli` (lightweight streaming renderer)
-- Headless CLI: `rip-cli --headless` (automation JSON)
-- Server: `ripd` (session HTTP/SSE + OpenAPI spec)
+- Interactive CLI: `rip-cli` (lightweight streaming renderer; in-process by default, optional remote server)
+- Headless CLI: `rip-cli --headless` (automation JSON; in-process by default, optional remote server)
+- Server: `ripd` (remote session HTTP/SSE + OpenAPI spec)
 
 Surfaces (Phase 2 / planned)
 - SDKs: `rip-sdk-*` (TypeScript first; optional Python later)

@@ -9,6 +9,7 @@ use rip_provider_openresponses::{
     extract_reasoning_deltas, extract_text_deltas, extract_tool_call_argument_deltas,
 };
 use serde::Deserialize;
+use tokio::sync::broadcast;
 
 #[derive(Parser)]
 #[command(name = "rip")]
@@ -22,8 +23,8 @@ struct Cli {
 enum Commands {
     Run {
         prompt: String,
-        #[arg(long, default_value = "http://127.0.0.1:7341")]
-        server: String,
+        #[arg(long)]
+        server: Option<String>,
         #[arg(
             long,
             default_value_t = true,
@@ -62,10 +63,16 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             headless,
             view,
         } => {
-            if headless {
-                run_headless(prompt, server, view).await?;
+            if let Some(server) = server {
+                if headless {
+                    run_headless_remote(prompt, server, view).await?;
+                } else {
+                    run_interactive_remote(prompt, server, view).await?;
+                }
+            } else if headless {
+                run_headless_local(prompt, view).await?;
             } else {
-                run_interactive(prompt, server, view).await?;
+                run_interactive_local(prompt, view).await?;
             }
         }
         Commands::Serve => {
@@ -76,7 +83,11 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn run_headless(prompt: String, server: String, view: OutputView) -> anyhow::Result<()> {
+async fn run_headless_remote(
+    prompt: String,
+    server: String,
+    view: OutputView,
+) -> anyhow::Result<()> {
     let client = Client::new();
     let session_id = create_session(&client, &server).await?;
     send_input(&client, &server, &session_id, &prompt).await?;
@@ -84,12 +95,28 @@ async fn run_headless(prompt: String, server: String, view: OutputView) -> anyho
     Ok(())
 }
 
-async fn run_interactive(prompt: String, server: String, view: OutputView) -> anyhow::Result<()> {
+async fn run_interactive_remote(
+    prompt: String,
+    server: String,
+    view: OutputView,
+) -> anyhow::Result<()> {
     let client = Client::new();
     let session_id = create_session(&client, &server).await?;
     send_input(&client, &server, &session_id, &prompt).await?;
     stream_events(&client, &server, &session_id, view).await?;
     Ok(())
+}
+
+async fn run_headless_local(prompt: String, view: OutputView) -> anyhow::Result<()> {
+    let engine =
+        ripd::SessionEngine::new_default().map_err(|err| anyhow::anyhow!("engine init: {err}"))?;
+    let stdout = io::stdout();
+    let mut handle = stdout.lock();
+    run_local_with_engine(&engine, prompt, view, &mut handle).await
+}
+
+async fn run_interactive_local(prompt: String, view: OutputView) -> anyhow::Result<()> {
+    run_headless_local(prompt, view).await
 }
 
 async fn create_session(client: &Client, server: &str) -> anyhow::Result<String> {
@@ -155,6 +182,40 @@ async fn stream_events_with_writer(
         }
     }
 
+    Ok(())
+}
+
+async fn run_local_with_engine(
+    engine: &ripd::SessionEngine,
+    prompt: String,
+    view: OutputView,
+    out: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let handle = engine.create_session();
+    let mut receiver = handle.subscribe();
+    engine.spawn_session(handle, prompt);
+    stream_events_from_receiver(&mut receiver, view, out).await
+}
+
+async fn stream_events_from_receiver(
+    receiver: &mut broadcast::Receiver<FrameEvent>,
+    view: OutputView,
+    out: &mut dyn Write,
+) -> anyhow::Result<()> {
+    loop {
+        match receiver.recv().await {
+            Ok(frame) => {
+                let payload = serde_json::to_string(&frame)
+                    .map_err(|err| anyhow::anyhow!("event frame json: {err}"))?;
+                let should_stop = render_message(view, &payload, out)?;
+                if should_stop {
+                    break;
+                }
+            }
+            Err(broadcast::error::RecvError::Closed) => break,
+            Err(broadcast::error::RecvError::Lagged(_)) => continue,
+        }
+    }
     Ok(())
 }
 
@@ -358,7 +419,7 @@ mod tests {
         let cli = Cli {
             command: Commands::Run {
                 prompt: "hello".to_string(),
-                server: server.base_url(),
+                server: Some(server.base_url()),
                 headless: false,
                 view: OutputView::Raw,
             },
@@ -371,7 +432,10 @@ mod tests {
     fn cli_parses_run() {
         let cli = Cli::parse_from(["rip", "run", "hello"]);
         match cli.command {
-            Commands::Run { prompt, .. } => assert_eq!(prompt, "hello"),
+            Commands::Run { prompt, server, .. } => {
+                assert_eq!(prompt, "hello");
+                assert!(server.is_none());
+            }
             Commands::Serve => panic!("expected run"),
         }
     }
@@ -380,9 +444,15 @@ mod tests {
     fn cli_defaults_headless() {
         let cli = Cli::parse_from(["rip", "run", "hello"]);
         match cli.command {
-            Commands::Run { headless, view, .. } => {
+            Commands::Run {
+                headless,
+                view,
+                server,
+                ..
+            } => {
                 assert!(headless);
                 assert_eq!(view, OutputView::Raw);
+                assert!(server.is_none());
             }
             Commands::Serve => panic!("expected run"),
         }
@@ -392,9 +462,35 @@ mod tests {
     fn cli_respects_server_flag() {
         let cli = Cli::parse_from(["rip", "run", "hello", "--server", "http://local"]);
         match cli.command {
-            Commands::Run { server, .. } => assert_eq!(server, "http://local"),
+            Commands::Run { server, .. } => assert_eq!(server.as_deref(), Some("http://local")),
             Commands::Serve => panic!("expected run"),
         }
+    }
+
+    #[tokio::test]
+    async fn local_run_emits_frames() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("rip-cli-test-{}-{}", std::process::id(), unique));
+        let data_dir = root.join("data");
+        let workspace_dir = root.join("workspace");
+        std::fs::create_dir_all(&workspace_dir).expect("workspace");
+
+        let engine = ripd::SessionEngine::new(data_dir, workspace_dir, None).expect("engine");
+        let mut buffer = Vec::new();
+        run_local_with_engine(&engine, "hello".to_string(), OutputView::Raw, &mut buffer)
+            .await
+            .expect("run");
+        let rendered = String::from_utf8(buffer).expect("utf8");
+        assert!(rendered.contains("\"type\":\"session_started\""));
+        assert!(rendered.contains("\"type\":\"session_ended\""));
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

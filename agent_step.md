@@ -1,10 +1,10 @@
 # Agent Step
 
 Current focus
-- Phase 1: keep CI/bench gates green and ratchet budgets.
-- Ratchet TTFT + end-to-end loop benchmark budgets.
-- Build replayable full agent-loop fixtures (provider stream -> tool -> follow-up -> done).
-- Prevent context explosion: artifact-backed tool outputs (workspace-local, content-addressed).
+- Phase 1: shared session runner across server + CLI (frames are canonical).
+- Default local execution: `rip run` in-process; `--server <url>` for remote; `rip serve` stays the remote control plane for SDKs.
+- Next up: TypeScript SDK baseline over the server API.
+- Keep CI/bench gates green; ratchet budgets only with replay coverage.
 
 Reorientation (read in order after compaction)
 - `AGENTS.md`
@@ -19,14 +19,13 @@ Reorientation (read in order after compaction)
 
 Active priorities
 - Keep roadmap Now/Next aligned with the implementation work.
-- Ensure benchmarks/fixtures become CI gates (no regressions).
-- Keep OpenResponses boundary full-fidelity while wiring live provider streaming.
+- Keep OpenResponses boundary full-fidelity while wiring new surfaces/adapters.
+- Prefer deterministic, replayable fixtures over ad-hoc behavior changes.
 
 Next checkpoints
 - CI runs `scripts/check-fast` on push/PR.
 - Bench harness includes TTFT + end-to-end loop and is CI-gated (`scripts/bench`).
-- Provider streaming emits `provider_event` frames from an OpenResponses endpoint (`RIP_OPENRESPONSES_ENDPOINT`).
-- Provider tool loop executes `function_call` items and continues via `previous_response_id` follow-ups (integration-tested).
-- Tool-loop fixtures cover `apply_patch` (including `response.function_call_arguments.delta`) and snapshot/log replay equivalence is asserted in tests.
-- Artifact-backed outputs: `bash` emits bounded previews + artifact refs; `artifact_fetch` supports range reads from `.rip/artifacts/`.
+- `rip run <prompt>` works without a separate `ripd` process (in-process session engine).
+- `rip run <prompt> --server <url>` targets a remote server and streams identical event frames.
+- `rip serve` exposes the session API for remote clients (SDK targets server only).
 - Manual smoke: `cargo test -p ripd live_openresponses_smoke -- --ignored` observes real provider SSE + at least one tool call.
