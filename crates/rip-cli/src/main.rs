@@ -30,7 +30,7 @@ enum Commands {
             action = clap::ArgAction::Set
         )]
         headless: bool,
-        #[arg(long, value_enum, default_value_t = OutputView::Raw)]
+        #[arg(long, value_enum, default_value_t = OutputView::Output)]
         view: OutputView,
     },
     Serve,
@@ -479,7 +479,7 @@ mod tests {
                 ..
             } => {
                 assert!(headless);
-                assert_eq!(view, OutputView::Raw);
+                assert_eq!(view, OutputView::Output);
                 assert!(server.is_none());
             }
             Commands::Serve => panic!("expected run"),

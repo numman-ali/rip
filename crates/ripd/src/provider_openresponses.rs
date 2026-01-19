@@ -57,8 +57,9 @@ pub fn build_streaming_request(
 pub fn build_streaming_followup_request(
     config: &OpenResponsesConfig,
     previous_response_id: &str,
-    tool_outputs: Vec<ItemParam>,
+    mut tool_outputs: Vec<ItemParam>,
 ) -> CreateResponsePayload {
+    tool_outputs.push(ItemParam::user_message_text("continue"));
     let builder = base_streaming_builder(config)
         .insert_raw(
             "previous_response_id",
