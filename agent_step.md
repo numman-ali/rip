@@ -20,6 +20,7 @@ Reorientation (read in order after compaction)
 Active priorities
 - Keep roadmap Now/Next aligned with the implementation work.
 - Keep OpenResponses boundary full-fidelity while wiring new surfaces/adapters.
+- Keep OpenResponses follow-ups spec-canonical; any compatibility user message is opt-in.
 - Prefer deterministic, replayable fixtures over ad-hoc behavior changes.
 
 Next checkpoints

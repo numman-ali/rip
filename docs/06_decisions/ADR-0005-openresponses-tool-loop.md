@@ -23,7 +23,7 @@ Decision
   - After completing tool execution for a response, send a new CreateResponse request with:
     - `previous_response_id` set to the last response id observed, and
     - `input` set to tool output items (Phase 1: `function_call_output` with `call_id`).
-  - Compatibility note: some OpenResponses-compatible providers reject follow-ups that contain only assistant/tool items. We append a minimal user message (`"continue"`) after tool outputs to ensure broad provider compatibility without changing frame fidelity.
+  - Compatibility note: some OpenResponses-compatible providers (notably stateless adapters) reject follow-ups that contain only assistant/tool items. Compatibility is opt-in via `RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE`, which appends a user message after tool outputs when configured; default remains spec-canonical (tool outputs only).
 - Tool availability for the provider is declared explicitly via `tools` in each request (Phase 1: function tools for built-in RIP tools + aliases).
 - Tool call limits (Phase 1):
   - Requests set `parallel_tool_calls: false`.

@@ -32,6 +32,7 @@ Provider config (OpenResponses, Phase 1)
     - `auto` | `none` | `required`
     - `function:<tool_name>` (request a specific function tool)
     - `json:<tool_choice_json>` (pass a full OpenResponses `tool_choice` value)
+  - `RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE` (optional; if set, append this user message after tool outputs in follow-up requests for provider compatibility)
 - If `RIP_OPENRESPONSES_ENDPOINT` is not set, ripd runs in stub mode (`output_text_delta: "ack: <input>"`).
 
 Other env vars

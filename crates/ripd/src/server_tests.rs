@@ -35,6 +35,7 @@ fn build_test_app_with_openresponses_provider(dir: &tempfile::TempDir, endpoint:
             api_key: None,
             model: Some("fixture-model".to_string()),
             tool_choice: ToolChoiceParam::auto(),
+            followup_user_message: None,
         }),
     )
 }
@@ -644,6 +645,7 @@ async fn live_openresponses_smoke() {
             api_key,
             model,
             tool_choice,
+            followup_user_message: None,
         }),
     );
 

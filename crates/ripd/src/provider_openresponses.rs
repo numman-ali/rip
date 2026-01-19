@@ -9,6 +9,7 @@ pub struct OpenResponsesConfig {
     pub api_key: Option<String>,
     pub model: Option<String>,
     pub tool_choice: ToolChoiceParam,
+    pub followup_user_message: Option<String>,
 }
 
 impl OpenResponsesConfig {
@@ -29,11 +30,13 @@ impl OpenResponsesConfig {
             },
             Err(_) => ToolChoiceParam::auto(),
         };
+        let followup_user_message = std::env::var("RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE").ok();
         Some(Self {
             endpoint,
             api_key,
             model,
             tool_choice,
+            followup_user_message,
         })
     }
 }
@@ -59,7 +62,9 @@ pub fn build_streaming_followup_request(
     previous_response_id: &str,
     mut tool_outputs: Vec<ItemParam>,
 ) -> CreateResponsePayload {
-    tool_outputs.push(ItemParam::user_message_text("continue"));
+    if let Some(message) = config.followup_user_message.as_deref() {
+        tool_outputs.push(ItemParam::user_message_text(message));
+    }
     let builder = base_streaming_builder(config)
         .insert_raw(
             "previous_response_id",
@@ -267,4 +272,73 @@ fn function_tool(name: &str, description: &str, parameters: Value) -> Value {
         "parameters": parameters,
         "strict": true
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config_with_followup(followup_user_message: Option<String>) -> OpenResponsesConfig {
+        OpenResponsesConfig {
+            endpoint: "http://example.test/v1/responses".to_string(),
+            api_key: None,
+            model: None,
+            tool_choice: ToolChoiceParam::auto(),
+            followup_user_message,
+        }
+    }
+
+    #[test]
+    fn followup_request_without_user_message() {
+        let config = config_with_followup(None);
+        let payload = build_streaming_followup_request(
+            &config,
+            "resp_1",
+            vec![ItemParam::function_call_output(
+                "call_1",
+                Value::String("ok".to_string()),
+            )],
+        );
+        let input = payload
+            .body()
+            .get("input")
+            .and_then(|value| value.as_array())
+            .expect("input array");
+        assert_eq!(input.len(), 1);
+        assert_eq!(
+            input[0].get("type").and_then(|value| value.as_str()),
+            Some("function_call_output")
+        );
+    }
+
+    #[test]
+    fn followup_request_appends_user_message_when_configured() {
+        let config = config_with_followup(Some("continue".to_string()));
+        let payload = build_streaming_followup_request(
+            &config,
+            "resp_1",
+            vec![ItemParam::function_call_output(
+                "call_1",
+                Value::String("ok".to_string()),
+            )],
+        );
+        let input = payload
+            .body()
+            .get("input")
+            .and_then(|value| value.as_array())
+            .expect("input array");
+        assert_eq!(input.len(), 2);
+        assert_eq!(
+            input[1].get("type").and_then(|value| value.as_str()),
+            Some("message")
+        );
+        assert_eq!(
+            input[1].get("role").and_then(|value| value.as_str()),
+            Some("user")
+        );
+        assert_eq!(
+            input[1].get("content").and_then(|value| value.as_str()),
+            Some("continue")
+        );
+    }
 }

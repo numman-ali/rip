@@ -98,6 +98,7 @@ Specification (`temp/openresponses/src/pages/specification.mdx`)
 - Extended item types MUST be prefixed with implementor slug; clients SHOULD tolerate unknown items.
 - Streaming events MUST be either delta or state-machine events.
 - `previous_response_id`: server MUST load prior input + output and preserve order `previous_response.input` -> `previous_response.output` -> new `input` (truncation allowed per policy).
+- Schema: `input` may be a string or an array of `ItemParam`; array inputs can include tool outputs and do not require a user message item.
 - `tool_choice`: `auto`/`required`/`none` controls tool use; structured choice can force a tool.
 - `allowed_tools`: server MUST enforce; tool calls outside allowed list MUST be rejected/suppressed.
 - `truncation`: `disabled` MUST NOT truncate and MUST error on overflow; `auto` MAY truncate and SHOULD preserve system + recent context.

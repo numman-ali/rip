@@ -152,6 +152,7 @@ Open questions
 - (empty)
 
 Done (recent)
+- 2026-01-19: OpenResponses follow-up compatibility is opt-in (`RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE`); spec-canonical tool-output-only follow-ups remain default.
 - 2026-01-19: Live OpenResponses API smoke test: passed against configured endpoint (`live_openresponses_smoke`).
 - 2026-01-19: Bench budgets: ratcheted to tight CI gates (sse_parse=200us/event, ttft=200us, tool_runner_noop=100us, workspace_apply_patch=2000us, e2e_loop=10000us).
 - 2026-01-19: Tools: `bash` stores oversized stdout/stderr as workspace-local artifacts + added `artifact_fetch` builtin (range reads).
