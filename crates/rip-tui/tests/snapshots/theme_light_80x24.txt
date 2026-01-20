@@ -1,5 +1,5 @@
 ┌RIP───────────────────────────────────────────────────────────────────────────┐
-│ session:s1  seq:6  TTFT:200ms  E2E:500ms  view:rendered  theme:default-dark  │
+│ session:s1  seq:6  TTFT:200ms  E2E:500ms  view:rendered  theme:default-light │
 └──────────────────────────────────────────────────────────────────────────────┘
 ┌Timeline──────────────────────┐┌Details───────────────────────────────────────┐
 │  seq   type        summary   ││ JSON │ Decoded                               │

@@ -1,12 +1,12 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Text};
 use ratatui::widgets::{Block, Borders, Paragraph, Row, Table, TableState, Tabs, Wrap};
 use ratatui::Frame;
 use serde_json::Value;
 
 use crate::summary::{event_summary, event_type};
-use crate::TuiState;
+use crate::{OutputViewMode, ThemeId, TuiState};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RenderMode {
@@ -15,6 +15,7 @@ pub enum RenderMode {
 }
 
 pub fn render(frame: &mut Frame<'_>, state: &TuiState, mode: RenderMode, input: &str) {
+    let theme = ThemeStyles::for_theme(state.theme);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -25,13 +26,42 @@ pub fn render(frame: &mut Frame<'_>, state: &TuiState, mode: RenderMode, input: 
         ])
         .split(frame.area());
 
-    render_status_bar(frame, state, chunks[0]);
-    render_main_panes(frame, state, mode, chunks[1]);
-    render_output(frame, state, chunks[2]);
-    render_input(frame, chunks[3], input);
+    render_status_bar(frame, state, &theme, chunks[0]);
+    render_main_panes(frame, state, &theme, mode, chunks[1]);
+    render_output(frame, state, &theme, chunks[2]);
+    render_input(frame, &theme, chunks[3], input);
 }
 
-fn render_status_bar(frame: &mut Frame<'_>, state: &TuiState, area: Rect) {
+#[derive(Debug, Clone, Copy)]
+struct ThemeStyles {
+    chrome: Style,
+    header: Style,
+    highlight: Style,
+}
+
+impl ThemeStyles {
+    fn for_theme(theme: ThemeId) -> Self {
+        match theme {
+            ThemeId::DefaultDark => Self {
+                chrome: Style::default().fg(Color::White),
+                header: Style::default().add_modifier(Modifier::BOLD),
+                highlight: Style::default().add_modifier(Modifier::REVERSED),
+            },
+            ThemeId::DefaultLight => Self {
+                chrome: Style::default().fg(Color::Black),
+                header: Style::default()
+                    .fg(Color::Black)
+                    .add_modifier(Modifier::BOLD),
+                highlight: Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            },
+        }
+    }
+}
+
+fn render_status_bar(frame: &mut Frame<'_>, state: &TuiState, theme: &ThemeStyles, area: Rect) {
     let session = state.session_id.as_deref().unwrap_or("-");
     let last_seq = state
         .frames
@@ -47,14 +77,31 @@ fn render_status_bar(frame: &mut Frame<'_>, state: &TuiState, area: Rect) {
         .map(|ms| format!("{ms}ms"))
         .unwrap_or("-".to_string());
 
-    let line = Line::from(format!(
-        " session:{session}  seq:{last_seq}  TTFT:{ttft}  E2E:{e2e} "
+    let view = state.output_view.as_str();
+    let theme_name = state.theme.as_str();
+
+    let mut line = String::new();
+    if let Some(msg) = state.status_message.as_deref() {
+        line.push_str(" msg:");
+        line.push_str(msg);
+        line.push_str(" |");
+    }
+    line.push_str(&format!(
+        " session:{session}  seq:{last_seq}  TTFT:{ttft}  E2E:{e2e}  view:{view}  theme:{theme_name}"
     ));
-    let widget = Paragraph::new(line).block(Block::default().borders(Borders::ALL).title("RIP"));
+    let widget = Paragraph::new(Line::from(line))
+        .style(theme.chrome)
+        .block(Block::default().borders(Borders::ALL).title("RIP"));
     frame.render_widget(widget, area);
 }
 
-fn render_main_panes(frame: &mut Frame<'_>, state: &TuiState, mode: RenderMode, area: Rect) {
+fn render_main_panes(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    theme: &ThemeStyles,
+    mode: RenderMode,
+    area: Rect,
+) {
     let (left_pct, right_pct) = if area.width < 80 { (50, 50) } else { (40, 60) };
     let panes = Layout::default()
         .direction(Direction::Horizontal)
@@ -64,11 +111,11 @@ fn render_main_panes(frame: &mut Frame<'_>, state: &TuiState, mode: RenderMode, 
         ])
         .split(area);
 
-    render_timeline(frame, state, panes[0]);
-    render_details(frame, state, mode, panes[1]);
+    render_timeline(frame, state, theme, panes[0]);
+    render_details(frame, state, theme, mode, panes[1]);
 }
 
-fn render_timeline(frame: &mut Frame<'_>, state: &TuiState, area: Rect) {
+fn render_timeline(frame: &mut Frame<'_>, state: &TuiState, theme: &ThemeStyles, area: Rect) {
     let mut rows: Vec<Row<'static>> = Vec::new();
     for event in state.frames.iter() {
         let seq = event.seq.to_string();
@@ -77,8 +124,7 @@ fn render_timeline(frame: &mut Frame<'_>, state: &TuiState, area: Rect) {
         rows.push(Row::new(vec![seq, kind, summary]));
     }
 
-    let header = Row::new(vec!["seq", "type", "summary"])
-        .style(Style::default().add_modifier(Modifier::BOLD));
+    let header = Row::new(vec!["seq", "type", "summary"]).style(theme.header);
     let table = Table::new(
         rows,
         [
@@ -89,7 +135,7 @@ fn render_timeline(frame: &mut Frame<'_>, state: &TuiState, area: Rect) {
     )
     .header(header)
     .block(Block::default().borders(Borders::ALL).title("Timeline"))
-    .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
+    .row_highlight_style(theme.highlight)
     .highlight_symbol("▸ ");
 
     let mut table_state = TableState::default();
@@ -101,8 +147,17 @@ fn render_timeline(frame: &mut Frame<'_>, state: &TuiState, area: Rect) {
     frame.render_stateful_widget(table, area, &mut table_state);
 }
 
-fn render_details(frame: &mut Frame<'_>, state: &TuiState, mode: RenderMode, area: Rect) {
-    let block = Block::default().borders(Borders::ALL).title("Details");
+fn render_details(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    theme: &ThemeStyles,
+    mode: RenderMode,
+    area: Rect,
+) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title("Details")
+        .style(theme.chrome);
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -126,7 +181,7 @@ fn render_details(frame: &mut Frame<'_>, state: &TuiState, mode: RenderMode, are
 
 fn selected_event_json(state: &TuiState) -> Text<'static> {
     let Some(event) = state.selected_event() else {
-        return Text::from("");
+        return Text::from("<no frame selected>");
     };
     match serde_json::to_string_pretty(event) {
         Ok(json) => Text::from(json),
@@ -147,20 +202,34 @@ fn selected_event_decoded(state: &TuiState) -> Text<'static> {
     Text::from(serde_json::to_string_pretty(&Value::Object(object)).unwrap_or_default())
 }
 
-fn render_output(frame: &mut Frame<'_>, state: &TuiState, area: Rect) {
-    let mut title = "Output".to_string();
-    if state.output_truncated {
+fn render_output(frame: &mut Frame<'_>, state: &TuiState, theme: &ThemeStyles, area: Rect) {
+    let (mut title, content) = match state.output_view {
+        OutputViewMode::Rendered => ("Output".to_string(), Text::from(state.output_text.as_str())),
+        OutputViewMode::Raw => ("Raw".to_string(), selected_event_json(state)),
+    };
+
+    if state.output_truncated && state.output_view == OutputViewMode::Rendered {
         title.push_str(" (truncated)");
     }
-    let widget = Paragraph::new(state.output_text.as_str())
-        .block(Block::default().borders(Borders::ALL).title(title))
+
+    let widget = Paragraph::new(content)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(title)
+                .style(theme.chrome),
+        )
         .wrap(Wrap { trim: false });
     frame.render_widget(widget, area);
 }
 
-fn render_input(frame: &mut Frame<'_>, area: Rect, input: &str) {
-    let widget = Paragraph::new(format!("> {input}"))
-        .block(Block::default().borders(Borders::ALL).title("Input"));
+fn render_input(frame: &mut Frame<'_>, theme: &ThemeStyles, area: Rect, input: &str) {
+    let widget = Paragraph::new(format!("> {input}")).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("Input")
+            .style(theme.chrome),
+    );
     frame.render_widget(widget, area);
 }
 

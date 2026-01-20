@@ -4,7 +4,7 @@ use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 use ratatui::Terminal;
 use rip_kernel::{Event, EventKind, ProviderEventStatus};
-use rip_tui::{render, RenderMode, TuiState};
+use rip_tui::{render, OutputViewMode, RenderMode, ThemeId, TuiState};
 
 fn event(seq: u64, timestamp_ms: u64, kind: EventKind) -> Event {
     Event {
@@ -134,4 +134,28 @@ fn golden_basic_60x20() {
     let state = basic_state();
     let rendered = render_to_string(60, 20, &state, RenderMode::Json);
     assert_snapshot("basic_60x20.txt", rendered);
+}
+
+#[test]
+fn golden_raw_80x24() {
+    let mut state = basic_state();
+    state.output_view = OutputViewMode::Raw;
+    let rendered = render_to_string(80, 24, &state, RenderMode::Json);
+    assert_snapshot("raw_80x24.txt", rendered);
+}
+
+#[test]
+fn golden_theme_light_80x24() {
+    let mut state = basic_state();
+    state.theme = ThemeId::DefaultLight;
+    let rendered = render_to_string(80, 24, &state, RenderMode::Json);
+    assert_snapshot("theme_light_80x24.txt", rendered);
+}
+
+#[test]
+fn golden_clipboard_fallback_80x24() {
+    let mut state = basic_state();
+    state.status_message = Some("clipboard: stored (OSC52 disabled)".to_string());
+    let rendered = render_to_string(80, 24, &state, RenderMode::Json);
+    assert_snapshot("clipboard_fallback_80x24.txt", rendered);
 }

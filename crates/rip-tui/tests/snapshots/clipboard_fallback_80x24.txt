@@ -1,5 +1,5 @@
 ┌RIP───────────────────────────────────────────────────────────────────────────┐
-│ session:s1  seq:6  TTFT:200ms  E2E:500ms  view:rendered  theme:default-dark  │
+│ msg:clipboard: stored (OSC52 disabled) | session:s1  seq:6  TTFT:200ms  E2E:5│
 └──────────────────────────────────────────────────────────────────────────────┘
 ┌Timeline──────────────────────┐┌Details───────────────────────────────────────┐
 │  seq   type        summary   ││ JSON │ Decoded                               │

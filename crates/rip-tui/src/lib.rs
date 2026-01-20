@@ -5,4 +5,4 @@ mod summary;
 
 pub use frame_store::FrameStore;
 pub use render::{render, RenderMode};
-pub use state::TuiState;
+pub use state::{OutputViewMode, ThemeId, TuiState};

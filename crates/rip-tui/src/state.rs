@@ -5,17 +5,65 @@ use crate::FrameStore;
 const DEFAULT_MAX_FRAMES: usize = 10_000;
 const DEFAULT_MAX_OUTPUT_BYTES: usize = 1_000_000;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputViewMode {
+    Rendered,
+    Raw,
+}
+
+impl OutputViewMode {
+    pub fn toggle(&mut self) {
+        *self = match self {
+            Self::Rendered => Self::Raw,
+            Self::Raw => Self::Rendered,
+        };
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Rendered => "rendered",
+            Self::Raw => "raw",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThemeId {
+    DefaultDark,
+    DefaultLight,
+}
+
+impl ThemeId {
+    pub fn toggle(&mut self) {
+        *self = match self {
+            Self::DefaultDark => Self::DefaultLight,
+            Self::DefaultLight => Self::DefaultDark,
+        };
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::DefaultDark => "default-dark",
+            Self::DefaultLight => "default-light",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TuiState {
     pub frames: FrameStore,
     pub selected_seq: Option<u64>,
     pub auto_follow: bool,
+    pub output_view: OutputViewMode,
+    pub theme: ThemeId,
     pub session_id: Option<String>,
     pub start_ms: Option<u64>,
     pub first_output_ms: Option<u64>,
     pub end_ms: Option<u64>,
     pub output_text: String,
     pub output_truncated: bool,
+    pub status_message: Option<String>,
+    pub clipboard_buffer: Option<String>,
     max_output_bytes: usize,
 }
 
@@ -31,14 +79,30 @@ impl TuiState {
             frames: FrameStore::new(max_frames),
             selected_seq: None,
             auto_follow: true,
+            output_view: OutputViewMode::Rendered,
+            theme: ThemeId::DefaultDark,
             session_id: None,
             start_ms: None,
             first_output_ms: None,
             end_ms: None,
             output_text: String::new(),
             output_truncated: false,
+            status_message: None,
+            clipboard_buffer: None,
             max_output_bytes: max_output_bytes.max(1),
         }
+    }
+
+    pub fn toggle_output_view(&mut self) {
+        self.output_view.toggle();
+    }
+
+    pub fn toggle_theme(&mut self) {
+        self.theme.toggle();
+    }
+
+    pub fn set_status_message(&mut self, message: impl Into<String>) {
+        self.status_message = Some(message.into());
     }
 
     pub fn update(&mut self, event: Event) {
