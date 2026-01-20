@@ -2,9 +2,21 @@
 
 TypeScript SDK for RIP.
 
+Requirements
+- `rip` binary available (PATH), or pass `executablePath`.
+
 Transport
 - Default: spawns the local `rip` binary and reads JSONL event frames from stdout (`rip run ... --headless --view raw`).
 - Optional remote: pass `server` to run against `rip serve`/`ripd` via `rip run --server <url> ...` and still consume the same frames.
+
+Repo dev quickstart
+```bash
+cargo build -p rip-cli
+cd sdk/typescript
+npm ci
+npm run build
+node --input-type=module -e 'import { Rip } from "./dist/index.js"; const rip = new Rip({ executablePath: "../../target/debug/rip" }); const turn = await rip.run("Say hello."); console.log(turn.finalOutput);'
+```
 
 Quickstart
 ```ts
