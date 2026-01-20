@@ -14,15 +14,16 @@ How to use
 
 Now
 
-## SDK: TypeScript baseline (session lifecycle + SSE) [needs work]
-- Refs: `docs/03_contracts/modules/phase-1/06_server.md`, `docs/02_architecture/surfaces.md`, `schemas/ripd/openapi.json`
+## SDK: TypeScript baseline (wrap `rip` + JSONL frames; optional remote) [needs work]
+- Refs: `docs/06_decisions/ADR-0006-sdk-transport.md`, `docs/03_contracts/event_frames.md`, `docs/04_execution/cli.md`
 - Ready:
-  - Server OpenAPI + SSE session stream are stable (create/send/stream/cancel).
-  - Decide package layout + versioning (`rip-sdk-ts` vs scoped packages) and auth story (Phase 1: local/no-auth).
+  - `rip run --headless --view raw` emits canonical JSONL event frames (and matches server SSE frames).
+  - Decide package layout + versioning (`rip-sdk-ts` vs scoped packages) and how the SDK finds `rip` (PATH vs bundled binaries).
+  - Decide minimal API surface (turn run + streamed events + cancel).
 - Done:
-  - TS client supports: create session, send input, stream events, cancel.
-  - SDK contains no business logic (thin adapter over server API only).
-  - Minimal contract test runs against `rip serve` in CI using fixtures.
+  - TS client supports: run a turn, stream frames, cancel (process-level); remote targeting via `--server <url>`.
+  - SDK contains no business logic (thin adapter over frame stream; rendering/aggregation only).
+  - Minimal contract test runs `rip` against fixtures in CI (optionally also `rip serve` remote mode).
 
 Next
 

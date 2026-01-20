@@ -13,7 +13,7 @@ Session lifecycle (draft)
 - POST /sessions/:id/cancel -> cancel session
 
 Notes
-- Today: `rip serve` (or `ripd`) exposes the session API for remote clients/SDKs over HTTP/SSE.
+- Today: `rip serve` (or `ripd`) exposes the session API for remote clients (SDKs can attach via `--server <url>`).
 - Today: `rip run` defaults to in-process execution; use `--server <url>` to target a remote server.
 - SSE stream emits JSON event frames (`docs/03_contracts/event_frames.md`).
 - OpenAPI spec is exposed at `/openapi.json` (canonical) and may be mirrored in `schemas/`.

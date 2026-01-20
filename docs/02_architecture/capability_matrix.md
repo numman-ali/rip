@@ -25,7 +25,7 @@ Phase 2 — Expansion
 - Output styles: style registry + command selector; hook: response renderer.
 - UI/interaction: interactive affordances (palette, editor, shortcuts); hook: CLI/TUI UI layer.
 - TUI surface: `rip-tui` (rich rendering over the same capabilities).
-- Programmatic SDK: session start/resume + event streaming; hook: server API.
+- Programmatic SDK: session start/resume + event streaming; hook: canonical event frames (local JSONL via `rip` + optional server API).
 - Execution modes: RPC mode + streaming JSON input + structured output; hook: RPC mux.
 - Models & providers expansion: multi-provider routing + model registry; hook: provider adapter boundary.
 - OpenResponses extensions: vendor-prefixed items/events + schema extensions; hook: provider adapter boundary.
