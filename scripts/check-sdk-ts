@@ -14,7 +14,16 @@ if [ ! -d "$sdk_dir" ]; then
   exit 0
 fi
 
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "skipping TypeScript SDK checks (missing cargo; cannot build rip)"
+  exit 0
+fi
+
+(
+  cd "$root"
+  cargo +stable build -p rip-cli
+)
+
 cd "$sdk_dir"
 npm ci
 npm test
-

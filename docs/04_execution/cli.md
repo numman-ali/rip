@@ -1,13 +1,15 @@
 # CLI Execution Model
 
 Summary
-- Interactive CLI is the primary UX.
+- `rip` (no subcommand) launches the fullscreen interactive terminal UI (TUI).
 - Headless CLI is for automation.
-- Full-screen TUI is a separate surface (`rip-tui`, Phase 2) and is tracked separately.
+- `rip run` remains the headless/automation entrypoint (JSONL frames or rendered text).
 
-Interactive mode (draft)
-- rip run <task>
-- streams event frames (no diffs/approvals in Phase 1)
+Interactive mode (default)
+- `rip [<prompt>]`
+- Starts an interactive terminal UI driven by canonical event frames.
+- Local-first: runs the session engine in-process (no HTTP required).
+- Phase 1 posture: single-run sessions; enter a prompt to start a run, then submit another prompt for a new run.
 
 Headless mode (draft)
 - rip run <task> --headless --view raw
@@ -28,7 +30,7 @@ Examples:
 
 Notes
 - CLI is a thin adapter over the shared session engine.
-- Default: `rip run ...` executes in-process (no HTTP required).
+- Default: interactive `rip` and headless `rip run` execute in-process (no HTTP required).
 - Remote: `rip run ... --server <url>` streams the same event frames over HTTP/SSE.
 - `rip serve` (or `ripd`) starts the agent server for remote clients (SDKs can target it via `--server <url>`).
 - Default output: `rip run ...` uses `--view output` (human-readable). Use `--view raw` for newline-delimited JSON frames.

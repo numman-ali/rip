@@ -8,12 +8,16 @@ use rip_kernel::{Event as FrameEvent, EventKind};
 use serde::Deserialize;
 use tokio::sync::broadcast;
 
+mod fullscreen;
+
 #[derive(Parser)]
 #[command(name = "rip")]
 #[command(about = "RIP CLI", long_about = None)]
 struct Cli {
+    /// Optional initial prompt for the interactive terminal UI (when no subcommand is used).
+    prompt: Option<String>,
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
@@ -82,7 +86,10 @@ async fn main() -> anyhow::Result<()> {
 
 async fn run(cli: Cli) -> anyhow::Result<()> {
     match cli.command {
-        Commands::Run {
+        None => {
+            fullscreen::run_fullscreen_tui(cli.prompt).await?;
+        }
+        Some(Commands::Run {
             prompt,
             server,
             provider,
@@ -92,7 +99,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             followup_user_message,
             headless,
             view,
-        } => {
+        }) => {
             let has_openresponses_flags = provider.is_some()
                 || model.is_some()
                 || stateless_history
@@ -127,7 +134,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                 run_interactive_local(prompt, view).await?;
             }
         }
-        Commands::Serve => {
+        Some(Commands::Serve) => {
             ripd::serve_default().await;
         }
     }
@@ -670,7 +677,8 @@ mod tests {
         });
 
         let cli = Cli {
-            command: Commands::Run {
+            prompt: None,
+            command: Some(Commands::Run {
                 prompt: "hello".to_string(),
                 server: Some(server.base_url()),
                 provider: None,
@@ -680,7 +688,7 @@ mod tests {
                 followup_user_message: None,
                 headless: false,
                 view: OutputView::Raw,
-            },
+            }),
         };
         let result = run(cli).await;
         assert!(result.is_ok());
@@ -707,7 +715,8 @@ mod tests {
         });
 
         let cli = Cli {
-            command: Commands::Run {
+            prompt: None,
+            command: Some(Commands::Run {
                 prompt: "hello".to_string(),
                 server: Some(server.base_url()),
                 provider: None,
@@ -717,7 +726,7 @@ mod tests {
                 followup_user_message: None,
                 headless: true,
                 view: OutputView::Raw,
-            },
+            }),
         };
         let result = run(cli).await;
         assert!(result.is_ok());
@@ -734,7 +743,8 @@ mod tests {
             std::env::set_var("RIP_WORKSPACE_ROOT", &workspace_dir);
 
             let cli = Cli {
-                command: Commands::Run {
+                prompt: None,
+                command: Some(Commands::Run {
                     prompt: "hello".to_string(),
                     server: None,
                     provider: None,
@@ -744,7 +754,7 @@ mod tests {
                     followup_user_message: None,
                     headless: false,
                     view: OutputView::Raw,
-                },
+                }),
             };
             let result = run(cli).await;
             assert!(result.is_ok());
@@ -757,7 +767,8 @@ mod tests {
     #[tokio::test]
     async fn run_rejects_openresponses_flags_with_server() {
         let cli = Cli {
-            command: Commands::Run {
+            prompt: None,
+            command: Some(Commands::Run {
                 prompt: "hello".to_string(),
                 server: Some("http://local".to_string()),
                 provider: Some(Provider::Openai),
@@ -767,7 +778,7 @@ mod tests {
                 followup_user_message: None,
                 headless: true,
                 view: OutputView::Output,
-            },
+            }),
         };
         let err = run(cli).await.unwrap_err();
         assert!(err
@@ -778,7 +789,8 @@ mod tests {
     #[tokio::test]
     async fn run_requires_provider_when_openresponses_flags_set() {
         let cli = Cli {
-            command: Commands::Run {
+            prompt: None,
+            command: Some(Commands::Run {
                 prompt: "hello".to_string(),
                 server: None,
                 provider: None,
@@ -788,7 +800,7 @@ mod tests {
                 followup_user_message: None,
                 headless: true,
                 view: OutputView::Output,
-            },
+            }),
         };
         let err = run(cli).await.unwrap_err();
         assert!(err
@@ -799,30 +811,34 @@ mod tests {
     #[test]
     fn cli_parses_run() {
         let cli = Cli::parse_from(["rip", "run", "hello"]);
+        assert!(cli.prompt.is_none());
         match cli.command {
-            Commands::Run { prompt, server, .. } => {
+            Some(Commands::Run { prompt, server, .. }) => {
                 assert_eq!(prompt, "hello");
                 assert!(server.is_none());
             }
-            Commands::Serve => panic!("expected run"),
+            Some(Commands::Serve) => panic!("expected run"),
+            None => panic!("expected run"),
         }
     }
 
     #[test]
     fn cli_defaults_headless() {
         let cli = Cli::parse_from(["rip", "run", "hello"]);
+        assert!(cli.prompt.is_none());
         match cli.command {
-            Commands::Run {
+            Some(Commands::Run {
                 headless,
                 view,
                 server,
                 ..
-            } => {
+            }) => {
                 assert!(headless);
                 assert_eq!(view, OutputView::Output);
                 assert!(server.is_none());
             }
-            Commands::Serve => panic!("expected run"),
+            Some(Commands::Serve) => panic!("expected run"),
+            None => panic!("expected run"),
         }
     }
 
@@ -841,31 +857,37 @@ mod tests {
             "--followup-user-message",
             "continue",
         ]);
+        assert!(cli.prompt.is_none());
         match cli.command {
-            Commands::Run {
+            Some(Commands::Run {
                 provider,
                 model,
                 stateless_history,
                 parallel_tool_calls,
                 followup_user_message,
                 ..
-            } => {
+            }) => {
                 assert_eq!(provider, Some(Provider::Openai));
                 assert_eq!(model.as_deref(), Some("gpt-5-nano-2025-08-07"));
                 assert!(stateless_history);
                 assert!(parallel_tool_calls);
                 assert_eq!(followup_user_message.as_deref(), Some("continue"));
             }
-            Commands::Serve => panic!("expected run"),
+            Some(Commands::Serve) => panic!("expected run"),
+            None => panic!("expected run"),
         }
     }
 
     #[test]
     fn cli_respects_server_flag() {
         let cli = Cli::parse_from(["rip", "run", "hello", "--server", "http://local"]);
+        assert!(cli.prompt.is_none());
         match cli.command {
-            Commands::Run { server, .. } => assert_eq!(server.as_deref(), Some("http://local")),
-            Commands::Serve => panic!("expected run"),
+            Some(Commands::Run { server, .. }) => {
+                assert_eq!(server.as_deref(), Some("http://local"))
+            }
+            Some(Commands::Serve) => panic!("expected run"),
+            None => panic!("expected run"),
         }
     }
 
@@ -1050,19 +1072,30 @@ mod tests {
     #[test]
     fn cli_respects_headless_flag() {
         let cli = Cli::parse_from(["rip", "run", "hello", "--headless", "false"]);
+        assert!(cli.prompt.is_none());
         match cli.command {
-            Commands::Run { headless, .. } => assert!(!headless),
-            Commands::Serve => panic!("expected run"),
+            Some(Commands::Run { headless, .. }) => assert!(!headless),
+            Some(Commands::Serve) => panic!("expected run"),
+            None => panic!("expected run"),
         }
     }
 
     #[test]
     fn cli_parses_serve() {
         let cli = Cli::parse_from(["rip", "serve"]);
+        assert!(cli.prompt.is_none());
         match cli.command {
-            Commands::Serve => {}
-            Commands::Run { .. } => panic!("expected serve"),
+            Some(Commands::Serve) => {}
+            Some(Commands::Run { .. }) => panic!("expected serve"),
+            None => panic!("expected serve"),
         }
+    }
+
+    #[test]
+    fn cli_parses_default_interactive_prompt() {
+        let cli = Cli::parse_from(["rip", "hello"]);
+        assert_eq!(cli.prompt.as_deref(), Some("hello"));
+        assert!(cli.command.is_none());
     }
 
     #[tokio::test]

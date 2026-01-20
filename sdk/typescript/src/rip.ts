@@ -8,12 +8,14 @@ export type RipOptions = {
   executablePath?: string;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  unsetEnv?: string[];
 };
 
 export type RipRunOptions = {
   server?: string;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  unsetEnv?: string[];
   executablePath?: string;
   signal?: AbortSignal;
   extraArgs?: string[];
@@ -58,6 +60,8 @@ export class Rip {
     const executablePath = options.executablePath ?? this.base.executablePath ?? "rip";
     const cwd = options.cwd ?? this.base.cwd;
     const env = mergeEnv(process.env, this.base.env, options.env);
+    unsetEnvVars(env, this.base.unsetEnv);
+    unsetEnvVars(env, options.unsetEnv);
     const args = buildRipRunArgs(prompt, { server: options.server, extraArgs: options.extraArgs });
 
     const child = spawn(executablePath, args, {
@@ -178,3 +182,9 @@ function mergeEnv(...envs: Array<NodeJS.ProcessEnv | undefined>): Record<string,
   return merged;
 }
 
+function unsetEnvVars(env: Record<string, string>, unset: string[] | undefined) {
+  if (!unset?.length) return;
+  for (const key of unset) {
+    delete env[key];
+  }
+}

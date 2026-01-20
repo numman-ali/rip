@@ -85,7 +85,7 @@ fn basic_state() -> TuiState {
 
 fn render_to_string(width: u16, height: u16, state: &TuiState, mode: RenderMode) -> String {
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
-    terminal.draw(|f| render(f, state, mode)).expect("draw");
+    terminal.draw(|f| render(f, state, mode, "")).expect("draw");
     buffer_to_string(terminal.backend().buffer())
 }
 

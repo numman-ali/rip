@@ -14,7 +14,7 @@ pub enum RenderMode {
     Decoded,
 }
 
-pub fn render(frame: &mut Frame<'_>, state: &TuiState, mode: RenderMode) {
+pub fn render(frame: &mut Frame<'_>, state: &TuiState, mode: RenderMode, input: &str) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -28,7 +28,7 @@ pub fn render(frame: &mut Frame<'_>, state: &TuiState, mode: RenderMode) {
     render_status_bar(frame, state, chunks[0]);
     render_main_panes(frame, state, mode, chunks[1]);
     render_output(frame, state, chunks[2]);
-    render_input(frame, chunks[3]);
+    render_input(frame, chunks[3], input);
 }
 
 fn render_status_bar(frame: &mut Frame<'_>, state: &TuiState, area: Rect) {
@@ -158,8 +158,9 @@ fn render_output(frame: &mut Frame<'_>, state: &TuiState, area: Rect) {
     frame.render_widget(widget, area);
 }
 
-fn render_input(frame: &mut Frame<'_>, area: Rect) {
-    let widget = Paragraph::new("> ").block(Block::default().borders(Borders::ALL).title("Input"));
+fn render_input(frame: &mut Frame<'_>, area: Rect, input: &str) {
+    let widget = Paragraph::new(format!("> {input}"))
+        .block(Block::default().borders(Borders::ALL).title("Input"));
     frame.render_widget(widget, area);
 }
 
@@ -182,7 +183,7 @@ mod tests {
 
     fn render_once(state: &TuiState, mode: RenderMode, width: u16) {
         let mut terminal = Terminal::new(TestBackend::new(width, 20)).expect("terminal");
-        terminal.draw(|f| render(f, state, mode)).expect("draw");
+        terminal.draw(|f| render(f, state, mode, "")).expect("draw");
     }
 
     #[test]

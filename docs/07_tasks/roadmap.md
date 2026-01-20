@@ -14,16 +14,14 @@ How to use
 
 Now
 
-## SDK: TypeScript baseline (wrap `rip` + JSONL frames; optional remote) [needs work]
-- Refs: `docs/06_decisions/ADR-0006-sdk-transport.md`, `docs/03_contracts/event_frames.md`, `docs/04_execution/cli.md`
+## TUI: remote attach (stream server SSE frames into the fullscreen UI) [needs work]
+- Refs: `docs/02_architecture/tui/00_index.md`, `docs/03_contracts/event_frames.md`, `docs/03_contracts/modules/phase-1/06_server.md`
 - Ready:
-  - `rip run --headless --view raw` emits canonical JSONL event frames (and matches server SSE frames).
-  - Decide package layout + versioning (`rip-sdk-ts` vs scoped packages) and how the SDK finds `rip` (PATH vs bundled binaries).
-  - Decide minimal API surface (turn run + streamed events + cancel).
+  - Default local interactive TUI exists (`rip` with no subcommand).
+  - Server SSE endpoint is stable (`GET /sessions/{id}/events`).
 - Done:
-  - TS client supports: run a turn, stream frames, cancel (process-level); remote targeting via `--server <url>`.
-  - SDK contains no business logic (thin adapter over frame stream; rendering/aggregation only).
-  - Minimal contract test runs `rip` against fixtures in CI (optionally also `rip serve` remote mode).
+  - `rip --server <url> --session <id>` attaches to an existing session and renders frames live (same UI as local).
+  - Replay fixture covers attach streaming and produces identical rendered output snapshots.
 
 Next
 
@@ -45,6 +43,14 @@ Next
 - Done:
   - Async tool task spawn/status/cancel is exposed via server + SDK (CLI/TUI render/stream events).
   - Replay fixtures cover task creation, output, cancellation, and artifact references end-to-end.
+
+## SDK: transport + distribution (direct HTTP, packaging) [needs work]
+- Refs: `docs/06_decisions/ADR-0006-sdk-transport.md`, `docs/04_execution/sdk.md`
+- Ready:
+  - `sdk/typescript` is exercised by `scripts/check-sdk-ts`.
+- Done:
+  - Decide distribution (PATH vs bundled binaries).
+  - Decide whether to add a direct-HTTP transport (keeping SDK as a thin adapter over canonical frames).
 
 Later
 - Sessions/Threads: resume + branch (multi-turn workspaces) [needs work]
@@ -153,6 +159,7 @@ Open questions
 - (empty)
 
 Done (recent)
+- 2026-01-20: Default UX: `rip` launches a fullscreen terminal UI (TUI) and runs the session engine in-process; `rip run` remains the headless/automation entrypoint.
 - 2026-01-20: TypeScript SDK scaffold added (`sdk/typescript`): spawns `rip` and parses JSONL event frames; `scripts/check-sdk-ts` wired into `scripts/check`; CI check-fast now pins stable toolchain for fmt/check/clippy/test.
 - 2026-01-19: OpenResponses validation compatibility: normalize missing item ids for schema validation (raw events preserved); output view now streams only output_text (tool stdout/stderr fallback when no model output).
 - 2026-01-19: CLI: added provider/model/stateless/followup flags for local OpenResponses testing; OpenAI/OpenRouter one-liners documented.

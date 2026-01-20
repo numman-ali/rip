@@ -1,12 +1,14 @@
 # RIP TUI Design Index
 
-Status: **Early Design** | Phase: 2 | Last updated: 2026-01-19
+Status: **Early Design** | Phase: 2 | Last updated: 2026-01-20
 
 ---
 
 ## Executive Summary
 
 **What**: A terminal-based UI (Ratatui) for observing and interacting with RIP agent sessions.
+
+**Current implementation posture**: A baseline fullscreen terminal UI ships as the default `rip` UX (observability-first, frame-driven). Phase 2 work is the richer interaction layer (threads/palette/editor/attach/resume) on top of the same frames.
 
 **Why**: Provide real-time observability into agent behavior, natural-language interaction, and efficient keyboard-driven workflows for power users.
 

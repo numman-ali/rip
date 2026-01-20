@@ -29,8 +29,8 @@ Navigation
 - OpenResponses coverage checklist: docs/07_tasks/openresponses_coverage.md
 
 Status
-- Phase 1: foundation (kernel, adapters, tools, workspace, CLI, server, benchmarks)
-- Phase 2: expansion (TUI, MCP, search, memory, context compiler, policy, background workers)
+- Phase 1: foundation (kernel, adapters, tools, workspace, interactive terminal UI, server, benchmarks)
+- Phase 2: expansion (richer TUI interactions, MCP, search, memory, context compiler, policy, background workers)
 
 Rules
 - Every module must have a contract doc before implementation.
