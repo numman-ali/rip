@@ -179,6 +179,10 @@ Generated from docs/03_contracts/capability_registry.md.
 | ui.edit_message | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable |
 | ui.command_palette | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable |
 | ui.shortcuts | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable |
+| ui.keybindings | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable |
+| ui.theme | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable |
+| ui.raw_events | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable |
+| ui.clipboard | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable |
 | ui.background_tasks | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable |
 | ui.shell_input | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable |
 | ui.permission_modes | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable |

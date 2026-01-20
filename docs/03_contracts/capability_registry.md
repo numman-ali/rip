@@ -266,6 +266,10 @@ Rules
 | ui.edit_message | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable | Edit prior message to revert downstream changes. |
 | ui.command_palette | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable | Custom commands via palette. |
 | ui.shortcuts | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable | Keyboard shortcuts and integrations. |
+| ui.keybindings | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable | Customizable keybindings (including key-event debugging). |
+| ui.theme | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable | Theme selection and runtime switching. |
+| ui.raw_events | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable | Raw frame/event viewing mode (rendered ↔ raw). |
+| ui.clipboard | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable | Clipboard read/write for copy/paste affordances. |
 | ui.background_tasks | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable | Background task status updates. |
 | ui.shell_input | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable | Direct shell input mode. |
 | ui.permission_modes | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable | Permission mode toggles. |

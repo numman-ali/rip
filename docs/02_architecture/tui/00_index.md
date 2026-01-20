@@ -113,10 +113,14 @@ Complete mapping of capability IDs to TUI elements with phase and parity notes.
 | `command.slash` | P2 | Command Palette, Input | `/command` / `--command` / method call |
 | `command.registry` | P1 | Command Palette | `rip help commands` / `--list-commands` / `getCommands()` |
 | **UI-Specific** |
-| `ui.palette` | P2 | Command Palette | N/A (TUI-only) / N/A / N/A |
+| `ui.palette` | P2 | Command Palette | Slash commands + `rip help` / flags / method calls |
 | `ui.review` | P2 | Review Panel | `rip review` / `--changes --json` / `getChanges()` |
 | `ui.background_tasks` | P2 | Tasks panel | `rip tasks` / same / `listTasks()` |
 | `ui.shortcuts` | P2 | Help overlay | `rip help` / `--help` / docs |
+| `ui.keybindings` | P2 | Help overlay, config | Config file / N/A / N/A |
+| `ui.theme` | P2 | Palette settings (`set:theme`) | Config file / N/A / N/A |
+| `ui.raw_events` | P2 | Output/Timeline raw mode | `--json` output / JSON frames / frame iterator |
+| `ui.clipboard` | P2 | Copy actions (`y`) | Pipe/redirect / N/A / N/A |
 | **Extensions** |
 | `extension.tool_renderers` | P2 | Output, Tool Detail | Formatted text / JSON hints / structured |
 | **Skills** |

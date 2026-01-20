@@ -16,6 +16,7 @@ Quick access to all commands, actions, threads, and files via fuzzy search. The 
 |------------|-------|
 | `ui.palette` | Palette interface |
 | `ui.command_palette` | Custom commands |
+| `ui.theme` | Theme selection via `set:theme` |
 | `command.registry` | Command lookup |
 | `command.slash` | Slash command execution |
 | `ui.autocomplete` | Completion |

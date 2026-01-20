@@ -18,6 +18,8 @@ Deep inspection of a tool execution. Shows inputs, outputs, timing, diffs, and a
 | `checkpoint.rewind` | Revert action |
 | `tool.output_fetch` | Retrieve full output if truncated |
 | `extension.tool_renderers` | Custom rendering hints |
+| `ui.raw_events` | Toggle formatted ↔ raw frame view |
+| `ui.clipboard` | Copy tool output |
 
 ---
 

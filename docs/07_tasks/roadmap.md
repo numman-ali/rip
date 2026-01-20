@@ -46,6 +46,20 @@ Next
   - Decide distribution (PATH vs bundled binaries).
   - Decide whether to add a direct-HTTP transport (keeping SDK as a thin adapter over canonical frames).
 
+## TUI: interaction foundations (themes, keybindings, raw view, clipboard) [confirm spec]
+- Refs:
+  - `docs/02_architecture/tui/00_index.md`
+  - `docs/02_architecture/tui/03_interaction_patterns.md`
+  - `docs/02_architecture/tui/screens/04_live_session.md`
+  - `docs/02_architecture/tui/screens/05_tool_detail.md`
+  - `docs/02_architecture/tui/screens/11_command_palette.md`
+  - `docs/03_contracts/capability_registry.md`
+- Ready:
+  - Implement `ui.theme`, `ui.keybindings`, `ui.raw_events`, and `ui.clipboard` in `rip-tui` without adding business logic (frame-driven).
+  - Add ratatui golden snapshots covering: rendered↔raw toggle, theme switch, and copy-to-clipboard fallback behavior.
+- Done:
+  - The above UI capabilities are available in the default fullscreen UX and are replay-testable via golden snapshots.
+
 Later
 - Sessions/Threads: resume + branch (multi-turn workspaces) [needs work]
   - Refs: `docs/03_contracts/capability_registry.md` (`session.resume`, `thread.branch`, `thread.handoff`), `docs/03_contracts/modules/phase-1/06_server.md`

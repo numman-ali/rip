@@ -22,6 +22,8 @@ The primary workspace. Where users observe agent activity, read output, inspect 
 | `ui.multiline` | Multi-line input |
 | `ui.autocomplete` | @file, /command completion |
 | `ui.message_queue` | Queue during streaming |
+| `ui.raw_events` | Rendered output ↔ raw frame mode |
+| `ui.clipboard` | Copy selected frame / output |
 
 ---
 
