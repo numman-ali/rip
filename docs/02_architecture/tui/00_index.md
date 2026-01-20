@@ -8,7 +8,7 @@ Status: **Early Design** | Phase: 2 | Last updated: 2026-01-20
 
 **What**: A terminal-based UI (Ratatui) for observing and interacting with RIP agent sessions.
 
-**Current implementation posture**: A baseline fullscreen terminal UI ships as the default `rip` UX (observability-first, frame-driven). Phase 2 work is the richer interaction layer (threads/palette/editor/attach/resume) on top of the same frames.
+**Current implementation posture**: A baseline fullscreen terminal UI ships as the default `rip` UX (observability-first, frame-driven). Basic remote attach is supported (`rip --server <url> --session <id>`). Phase 2 work is the richer interaction layer (threads/palette/editor/resume) on top of the same frames.
 
 **Why**: Provide real-time observability into agent behavior, natural-language interaction, and efficient keyboard-driven workflows for power users.
 
@@ -85,7 +85,7 @@ Complete mapping of capability IDs to TUI elements with phase and parity notes.
 | **Sessions & Threads** |
 | `session.create` | P1 | Start screen | `rip` / `rip run` / `createSession()` |
 | `session.send_input` | P1 | Input panel | Prompt arg / stdin / `sendInput()` |
-| `session.stream_events` | P1 | Timeline, Output | `--verbose` / JSON stream / event iterator |
+| `session.stream_events` | P1 | Timeline, Output | `rip --server <url> --session <id>` / JSON stream / event iterator |
 | `session.cancel` | P1 | `Ctrl+C`, status bar | `Ctrl+C` / SIGINT / `cancel()` |
 | `session.resume` | P2 | Start, Thread Browser | `rip resume <id>` / `--session-id` / `resume()` |
 | `thread.branch` | P2 | Branch flow | `rip branch` / same / `branch()` |

@@ -5,7 +5,7 @@ Current focus
 - Default local execution: `rip` launches fullscreen TUI (in-process); `rip run` stays headless; `--server <url>` enables remote runs; `rip serve` stays the remote control plane.
 - OpenResponses provider compatibility: stateless history mode + tool schema strict=false; fix provider_errors without dropping raw fidelity.
 - Output view: human-friendly aggregation (no tool arg deltas), aligned with Codex exec expectations.
-- Next up: TUI remote attach (render server SSE frames), then background tool tasks (spawn/status/cancel).
+- Next up: background tool tasks (spawn/status/cancel), then threads/resume/branch.
 - Keep CI/bench gates green; ratchet budgets only with replay coverage.
 
 Reorientation (read in order after compaction)

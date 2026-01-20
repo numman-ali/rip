@@ -10,7 +10,11 @@ use crossterm::{execute, ExecutableCommand};
 use futures_util::StreamExt;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
-use rip_kernel::Event;
+use reqwest::Client;
+use reqwest_eventsource::{
+    Error as EventSourceError, Event as SseEvent, EventSource, RequestBuilderExt,
+};
+use rip_kernel::Event as FrameEvent;
 use rip_tui::{render, RenderMode, TuiState};
 use tokio::sync::broadcast;
 
@@ -31,7 +35,7 @@ pub async fn run_fullscreen_tui(initial_prompt: Option<String>) -> anyhow::Resul
     let mut mode = RenderMode::Json;
     let mut input = initial_prompt.unwrap_or_default();
 
-    let mut receiver: Option<broadcast::Receiver<Event>> = None;
+    let mut receiver: Option<broadcast::Receiver<FrameEvent>> = None;
     if !input.trim().is_empty() {
         receiver = Some(start_local_session(&engine, std::mem::take(&mut input)));
     }
@@ -86,7 +90,80 @@ pub async fn run_fullscreen_tui(initial_prompt: Option<String>) -> anyhow::Resul
     Ok(())
 }
 
-fn start_local_session(engine: &ripd::SessionEngine, prompt: String) -> broadcast::Receiver<Event> {
+pub async fn run_fullscreen_tui_attach(server: String, session_id: String) -> anyhow::Result<()> {
+    let client = Client::new();
+    let url = format!("{server}/sessions/{session_id}/events");
+    let mut stream = Some(client.get(url).eventsource()?);
+
+    let mut stdout = io::stdout();
+    enable_raw_mode()?;
+    stdout.execute(EnterAlternateScreen)?;
+    let mut terminal = Terminal::new(CrosstermBackend::new(stdout))?;
+
+    let mut guard = TerminalGuard::active();
+
+    terminal.clear()?;
+
+    let mut state = TuiState::default();
+    let mut mode = RenderMode::Json;
+    let mut input = String::new();
+
+    let mut term_events = EventStream::new();
+    let mut tick = tokio::time::interval(Duration::from_millis(33));
+    let mut dirty = true;
+
+    loop {
+        if dirty {
+            terminal.draw(|f| render(f, &state, mode, &input))?;
+            dirty = false;
+        }
+
+        tokio::select! {
+            _ = tick.tick() => {
+                dirty = true;
+            }
+            maybe_event = term_events.next() => {
+                let Some(Ok(event)) = maybe_event else {
+                    continue;
+                };
+                match handle_term_event(event, &mut state, &mut mode, &mut input, true) {
+                    UiAction::None | UiAction::Submit => {}
+                    UiAction::Quit => break,
+                };
+                dirty = true;
+            }
+            maybe_sse = next_sse_event(&mut stream) => {
+                let Some(next) = maybe_sse else {
+                    dirty = true;
+                    continue;
+                };
+                match next {
+                    Ok(SseEvent::Open) => {}
+                    Ok(SseEvent::Message(msg)) => {
+                        if let Ok(frame) = serde_json::from_str::<FrameEvent>(&msg.data) {
+                            state.update(frame);
+                        }
+                    }
+                    Err(EventSourceError::StreamEnded) => {
+                        stream.take();
+                    }
+                    Err(_) => {
+                        stream.take();
+                    }
+                }
+                dirty = true;
+            }
+        }
+    }
+
+    guard.deactivate(&mut terminal)?;
+    Ok(())
+}
+
+fn start_local_session(
+    engine: &ripd::SessionEngine,
+    prompt: String,
+) -> broadcast::Receiver<FrameEvent> {
     let handle = engine.create_session();
     let receiver = handle.subscribe();
     engine.spawn_session(handle, prompt);
@@ -178,9 +255,9 @@ fn move_selected(state: &mut TuiState, delta: i64) {
     state.selected_seq = Some(clamped);
 }
 
-async fn next_frame(receiver: &mut Option<broadcast::Receiver<Event>>) -> Option<Event> {
+async fn next_frame(receiver: &mut Option<broadcast::Receiver<FrameEvent>>) -> Option<FrameEvent> {
     let Some(rx) = receiver.as_mut() else {
-        return future::pending::<Option<Event>>().await;
+        return future::pending::<Option<FrameEvent>>().await;
     };
 
     loop {
@@ -193,6 +270,15 @@ async fn next_frame(receiver: &mut Option<broadcast::Receiver<Event>>) -> Option
             Err(broadcast::error::RecvError::Lagged(_)) => continue,
         }
     }
+}
+
+async fn next_sse_event(
+    source: &mut Option<EventSource>,
+) -> Option<Result<SseEvent, EventSourceError>> {
+    let Some(stream) = source.as_mut() else {
+        return future::pending::<Option<Result<SseEvent, EventSourceError>>>().await;
+    };
+    stream.next().await
 }
 
 struct TerminalGuard {

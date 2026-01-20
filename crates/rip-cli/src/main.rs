@@ -16,6 +16,12 @@ mod fullscreen;
 struct Cli {
     /// Optional initial prompt for the interactive terminal UI (when no subcommand is used).
     prompt: Option<String>,
+    /// Server base URL for TUI attach mode (requires `--session` and no subcommand).
+    #[arg(long)]
+    server: Option<String>,
+    /// Existing session id for TUI attach mode.
+    #[arg(long)]
+    session: Option<String>,
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -87,7 +93,24 @@ async fn main() -> anyhow::Result<()> {
 async fn run(cli: Cli) -> anyhow::Result<()> {
     match cli.command {
         None => {
-            fullscreen::run_fullscreen_tui(cli.prompt).await?;
+            if cli.server.is_some() || cli.session.is_some() {
+                let server = cli
+                    .server
+                    .ok_or_else(|| anyhow::anyhow!("missing --server"))?;
+                let session_id = cli
+                    .session
+                    .ok_or_else(|| anyhow::anyhow!("missing --session"))?;
+                if let Some(prompt) = cli.prompt {
+                    if !prompt.trim().is_empty() {
+                        anyhow::bail!(
+                            "unexpected prompt when attaching to a session; omit <prompt>"
+                        );
+                    }
+                }
+                fullscreen::run_fullscreen_tui_attach(server, session_id).await?;
+            } else {
+                fullscreen::run_fullscreen_tui(cli.prompt).await?;
+            }
         }
         Some(Commands::Run {
             prompt,
@@ -434,6 +457,10 @@ mod tests {
     use httpmock::MockServer;
     use std::sync::{Mutex, OnceLock};
 
+    fn fixture_path(rel: &str) -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(rel)
+    }
+
     fn session_started_frame() -> String {
         serde_json::json!({
             "id": "e1",
@@ -678,6 +705,8 @@ mod tests {
 
         let cli = Cli {
             prompt: None,
+            server: None,
+            session: None,
             command: Some(Commands::Run {
                 prompt: "hello".to_string(),
                 server: Some(server.base_url()),
@@ -716,6 +745,8 @@ mod tests {
 
         let cli = Cli {
             prompt: None,
+            server: None,
+            session: None,
             command: Some(Commands::Run {
                 prompt: "hello".to_string(),
                 server: Some(server.base_url()),
@@ -744,6 +775,8 @@ mod tests {
 
             let cli = Cli {
                 prompt: None,
+                server: None,
+                session: None,
                 command: Some(Commands::Run {
                     prompt: "hello".to_string(),
                     server: None,
@@ -768,6 +801,8 @@ mod tests {
     async fn run_rejects_openresponses_flags_with_server() {
         let cli = Cli {
             prompt: None,
+            server: None,
+            session: None,
             command: Some(Commands::Run {
                 prompt: "hello".to_string(),
                 server: Some("http://local".to_string()),
@@ -790,6 +825,8 @@ mod tests {
     async fn run_requires_provider_when_openresponses_flags_set() {
         let cli = Cli {
             prompt: None,
+            server: None,
+            session: None,
             command: Some(Commands::Run {
                 prompt: "hello".to_string(),
                 server: None,
@@ -812,6 +849,8 @@ mod tests {
     fn cli_parses_run() {
         let cli = Cli::parse_from(["rip", "run", "hello"]);
         assert!(cli.prompt.is_none());
+        assert!(cli.server.is_none());
+        assert!(cli.session.is_none());
         match cli.command {
             Some(Commands::Run { prompt, server, .. }) => {
                 assert_eq!(prompt, "hello");
@@ -826,6 +865,8 @@ mod tests {
     fn cli_defaults_headless() {
         let cli = Cli::parse_from(["rip", "run", "hello"]);
         assert!(cli.prompt.is_none());
+        assert!(cli.server.is_none());
+        assert!(cli.session.is_none());
         match cli.command {
             Some(Commands::Run {
                 headless,
@@ -858,6 +899,8 @@ mod tests {
             "continue",
         ]);
         assert!(cli.prompt.is_none());
+        assert!(cli.server.is_none());
+        assert!(cli.session.is_none());
         match cli.command {
             Some(Commands::Run {
                 provider,
@@ -882,6 +925,8 @@ mod tests {
     fn cli_respects_server_flag() {
         let cli = Cli::parse_from(["rip", "run", "hello", "--server", "http://local"]);
         assert!(cli.prompt.is_none());
+        assert!(cli.server.is_none());
+        assert!(cli.session.is_none());
         match cli.command {
             Some(Commands::Run { server, .. }) => {
                 assert_eq!(server.as_deref(), Some("http://local"))
@@ -1073,6 +1118,8 @@ mod tests {
     fn cli_respects_headless_flag() {
         let cli = Cli::parse_from(["rip", "run", "hello", "--headless", "false"]);
         assert!(cli.prompt.is_none());
+        assert!(cli.server.is_none());
+        assert!(cli.session.is_none());
         match cli.command {
             Some(Commands::Run { headless, .. }) => assert!(!headless),
             Some(Commands::Serve) => panic!("expected run"),
@@ -1084,6 +1131,8 @@ mod tests {
     fn cli_parses_serve() {
         let cli = Cli::parse_from(["rip", "serve"]);
         assert!(cli.prompt.is_none());
+        assert!(cli.server.is_none());
+        assert!(cli.session.is_none());
         match cli.command {
             Some(Commands::Serve) => {}
             Some(Commands::Run { .. }) => panic!("expected serve"),
@@ -1095,7 +1144,87 @@ mod tests {
     fn cli_parses_default_interactive_prompt() {
         let cli = Cli::parse_from(["rip", "hello"]);
         assert_eq!(cli.prompt.as_deref(), Some("hello"));
+        assert!(cli.server.is_none());
+        assert!(cli.session.is_none());
         assert!(cli.command.is_none());
+    }
+
+    #[test]
+    fn cli_parses_tui_attach_flags() {
+        let cli = Cli::parse_from(["rip", "--server", "http://local", "--session", "abc"]);
+        assert!(cli.prompt.is_none());
+        assert_eq!(cli.server.as_deref(), Some("http://local"));
+        assert_eq!(cli.session.as_deref(), Some("abc"));
+        assert!(cli.command.is_none());
+    }
+
+    #[tokio::test]
+    async fn tui_attach_stream_renders_like_basic_snapshot() {
+        use ratatui::backend::TestBackend;
+        use ratatui::buffer::Buffer;
+        use ratatui::Terminal;
+        use rip_tui::{render, RenderMode, TuiState};
+
+        fn buffer_to_string(buffer: &Buffer) -> String {
+            let mut out = String::new();
+            for y in 0..buffer.area.height {
+                let mut line = String::new();
+                for x in 0..buffer.area.width {
+                    let symbol = buffer.cell((x, y)).map(|cell| cell.symbol()).unwrap_or(" ");
+                    line.push_str(symbol);
+                }
+                out.push_str(line.trim_end());
+                out.push('\n');
+            }
+            out
+        }
+
+        fn render_to_string(width: u16, height: u16, state: &TuiState) -> String {
+            let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
+            terminal
+                .draw(|f| render(f, state, RenderMode::Json, ""))
+                .expect("draw");
+            buffer_to_string(terminal.backend().buffer())
+        }
+
+        let fixture =
+            std::fs::read_to_string(fixture_path("../../fixtures/server/attach_basic.sse"))
+                .expect("fixture");
+
+        let server = MockServer::start();
+        let _events = server.mock(|when, then| {
+            when.method(GET).path("/sessions/abc/events");
+            then.status(200)
+                .header("content-type", "text/event-stream")
+                .body(fixture.clone());
+        });
+
+        let client = Client::new();
+        let url = format!("{}/sessions/abc/events", server.base_url());
+        let mut stream = client.get(url).eventsource().expect("eventsource");
+
+        let mut state = TuiState::new(10_000, 1_000_000);
+        while let Some(next) = stream.next().await {
+            match next {
+                Ok(Event::Open) => {}
+                Ok(Event::Message(msg)) => {
+                    let frame: FrameEvent = serde_json::from_str(&msg.data).expect("frame json");
+                    state.update(frame);
+                }
+                Err(EventSourceError::StreamEnded) => break,
+                Err(err) => panic!("stream error: {err}"),
+            }
+        }
+
+        let expected_80 =
+            std::fs::read_to_string(fixture_path("../rip-tui/tests/snapshots/basic_80x24.txt"))
+                .expect("snapshot");
+        assert_eq!(expected_80, render_to_string(80, 24, &state));
+
+        let expected_60 =
+            std::fs::read_to_string(fixture_path("../rip-tui/tests/snapshots/basic_60x20.txt"))
+                .expect("snapshot");
+        assert_eq!(expected_60, render_to_string(60, 20, &state));
     }
 
     #[tokio::test]

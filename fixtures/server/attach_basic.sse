@@ -1,0 +1,14 @@
+data: {"id":"e0","session_id":"s1","timestamp_ms":1000,"seq":0,"type":"session_started","input":"hi"}
+
+data: {"id":"e1","session_id":"s1","timestamp_ms":1200,"seq":1,"type":"output_text_delta","delta":"hello"}
+
+data: {"id":"e2","session_id":"s1","timestamp_ms":1300,"seq":2,"type":"tool_started","tool_id":"t1","name":"bash","args":{"command":"echo ok"},"timeout_ms":null}
+
+data: {"id":"e3","session_id":"s1","timestamp_ms":1350,"seq":3,"type":"tool_stdout","tool_id":"t1","chunk":"ok\n"}
+
+data: {"id":"e4","session_id":"s1","timestamp_ms":1400,"seq":4,"type":"tool_ended","tool_id":"t1","exit_code":0,"duration_ms":50,"artifacts":null}
+
+data: {"id":"e5","session_id":"s1","timestamp_ms":1450,"seq":5,"type":"provider_event","provider":"openresponses","status":"done","event_name":null,"data":null,"raw":null,"errors":[],"response_errors":[]}
+
+data: {"id":"e6","session_id":"s1","timestamp_ms":1500,"seq":6,"type":"session_ended","reason":"completed"}
+

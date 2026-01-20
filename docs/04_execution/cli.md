@@ -11,6 +11,10 @@ Interactive mode (default)
 - Local-first: runs the session engine in-process (no HTTP required).
 - Phase 1 posture: single-run sessions; enter a prompt to start a run, then submit another prompt for a new run.
 
+Attach mode (remote)
+- `rip --server <url> --session <id>`
+- Attaches the fullscreen UI to an existing server session and streams canonical event frames over SSE.
+
 Headless mode (draft)
 - rip run <task> --headless --view raw
 - emits newline-delimited JSON event frames

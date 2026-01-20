@@ -14,17 +14,6 @@ How to use
 
 Now
 
-## TUI: remote attach (stream server SSE frames into the fullscreen UI) [needs work]
-- Refs: `docs/02_architecture/tui/00_index.md`, `docs/03_contracts/event_frames.md`, `docs/03_contracts/modules/phase-1/06_server.md`
-- Ready:
-  - Default local interactive TUI exists (`rip` with no subcommand).
-  - Server SSE endpoint is stable (`GET /sessions/{id}/events`).
-- Done:
-  - `rip --server <url> --session <id>` attaches to an existing session and renders frames live (same UI as local).
-  - Replay fixture covers attach streaming and produces identical rendered output snapshots.
-
-Next
-
 ## Tools: background tool tasks (spawn/status/cancel) [needs work]
 - Refs: `docs/03_contracts/modules/phase-2/03_tool_tasks.md`, `docs/03_contracts/capability_registry.md`, `docs/02_architecture/capability_matrix.md`
 - Decision packet (required before implementation):
@@ -43,6 +32,8 @@ Next
 - Done:
   - Async tool task spawn/status/cancel is exposed via server + SDK (CLI/TUI render/stream events).
   - Replay fixtures cover task creation, output, cancellation, and artifact references end-to-end.
+
+Next
 
 ## SDK: transport + distribution (direct HTTP, packaging) [needs work]
 - Refs: `docs/06_decisions/ADR-0006-sdk-transport.md`, `docs/04_execution/sdk.md`
@@ -146,7 +137,7 @@ Capability coverage map (index)
 - Search/index & memory [needs work] - Phase 3.
 
 Doc/impl gaps
-- TUI surface has design docs + an MVP-0 renderer crate (`rip-tui`), but is not yet wired to a live server stream.
+- TUI surface has design docs + an MVP-0 renderer crate (`rip-tui`) and can attach to a live server stream; richer interactions (threads/palette/editor/resume) remain Phase 2.
 - MCP surface is documented but deferred to Phase 2 (`rip-mcp`).
 - Bench harness includes TTFT + end-to-end loop benchmarks; budgets are intentionally conservative (ratchet over time).
 - Fixture repos exist (`fixtures/repo_small`, `fixtures/repo_medium`); OpenResponses tool-loop fixtures cover tool execution + follow-up + snapshot/log replay equivalence.
@@ -159,6 +150,7 @@ Open questions
 - (empty)
 
 Done (recent)
+- 2026-01-20: TUI remote attach: `rip --server <url> --session <id>` streams server SSE frames into the fullscreen UI; fixture + snapshot parity test.
 - 2026-01-20: Default UX: `rip` launches a fullscreen terminal UI (TUI) and runs the session engine in-process; `rip run` remains the headless/automation entrypoint.
 - 2026-01-20: TypeScript SDK scaffold added (`sdk/typescript`): spawns `rip` and parses JSONL event frames; `scripts/check-sdk-ts` wired into `scripts/check`; CI check-fast now pins stable toolchain for fmt/check/clippy/test.
 - 2026-01-19: OpenResponses validation compatibility: normalize missing item ids for schema validation (raw events preserved); output view now streams only output_text (tool stdout/stderr fallback when no model output).
