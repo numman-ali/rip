@@ -11,6 +11,7 @@ pub struct OpenResponsesConfig {
     pub tool_choice: ToolChoiceParam,
     pub followup_user_message: Option<String>,
     pub stateless_history: bool,
+    pub parallel_tool_calls: bool,
 }
 
 impl OpenResponsesConfig {
@@ -41,6 +42,15 @@ impl OpenResponsesConfig {
                 )
             })
             .unwrap_or(false);
+        let parallel_tool_calls = std::env::var("RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS")
+            .ok()
+            .map(|value| {
+                matches!(
+                    value.trim().to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes" | "on"
+                )
+            })
+            .unwrap_or(false);
         Some(Self {
             endpoint,
             api_key,
@@ -48,6 +58,7 @@ impl OpenResponsesConfig {
             tool_choice,
             followup_user_message,
             stateless_history,
+            parallel_tool_calls,
         })
     }
 }
@@ -62,7 +73,7 @@ pub fn build_streaming_request(
         .input_text(prompt)
         .tools_raw(builtin_function_tools())
         .tool_choice(config.tool_choice.clone())
-        .parallel_tool_calls(false)
+        .parallel_tool_calls(config.parallel_tool_calls)
         .max_tool_calls(DEFAULT_MAX_TOOL_CALLS);
     builder = builder.insert_raw("stream", Value::Bool(true));
     builder.build()
@@ -76,7 +87,7 @@ pub fn build_streaming_request_items(
         .input_items(items)
         .tools_raw(builtin_function_tools())
         .tool_choice(config.tool_choice.clone())
-        .parallel_tool_calls(false)
+        .parallel_tool_calls(config.parallel_tool_calls)
         .max_tool_calls(DEFAULT_MAX_TOOL_CALLS);
     builder = builder.insert_raw("stream", Value::Bool(true));
     builder.build()
@@ -101,7 +112,7 @@ pub fn build_streaming_followup_request(
         .input_items(input_items)
         .tools_raw(builtin_function_tools())
         .tool_choice(config.tool_choice.clone())
-        .parallel_tool_calls(false)
+        .parallel_tool_calls(config.parallel_tool_calls)
         .max_tool_calls(DEFAULT_MAX_TOOL_CALLS)
         .insert_raw("stream", Value::Bool(true));
     builder.build()
@@ -314,6 +325,7 @@ mod tests {
             tool_choice: ToolChoiceParam::auto(),
             followup_user_message,
             stateless_history: false,
+            parallel_tool_calls: false,
         }
     }
 

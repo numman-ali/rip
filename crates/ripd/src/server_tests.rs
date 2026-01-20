@@ -41,6 +41,7 @@ fn build_test_app_with_openresponses_provider(
             tool_choice: ToolChoiceParam::auto(),
             followup_user_message: None,
             stateless_history,
+            parallel_tool_calls: false,
         }),
     )
 }
@@ -663,6 +664,7 @@ async fn live_openresponses_smoke() {
             tool_choice,
             followup_user_message: None,
             stateless_history: false,
+            parallel_tool_calls: false,
         }),
     );
 

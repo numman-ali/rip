@@ -27,7 +27,7 @@ Decision
   - Stateless compatibility mode: some providers require full conversation history on each request. When `RIP_OPENRESPONSES_STATELESS_HISTORY=1`, follow-ups omit `previous_response_id` and resend the accumulated input history (initial user message + `function_call` + `function_call_output` items, with deterministic ids).
 - Tool availability for the provider is declared explicitly via `tools` in each request (Phase 1: function tools for built-in RIP tools + aliases).
 - Tool call limits (Phase 1):
-  - Requests set `parallel_tool_calls: false`.
+  - Requests default to `parallel_tool_calls: false` (opt-in via `RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS`; execution remains sequential in Phase 1).
   - Requests set `max_tool_calls` and ripd enforces a global cap to avoid infinite loops.
 - Tool output encoding (Phase 1):
   - `function_call_output.output` is a JSON string of a stable output object (stdout/stderr/exit_code/artifacts).

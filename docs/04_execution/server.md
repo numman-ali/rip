@@ -34,6 +34,7 @@ Provider config (OpenResponses, Phase 1)
     - `json:<tool_choice_json>` (pass a full OpenResponses `tool_choice` value)
   - `RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE` (optional; if set, append this user message after tool outputs in follow-up requests for provider compatibility)
   - `RIP_OPENRESPONSES_STATELESS_HISTORY` (optional; if set, follow-ups resend full input history instead of using `previous_response_id`)
+  - `RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS` (optional; if set, request parallel tool calls; execution remains sequential in Phase 1)
 - If `RIP_OPENRESPONSES_ENDPOINT` is not set, ripd runs in stub mode (`output_text_delta: "ack: <input>"`).
 
 Other env vars

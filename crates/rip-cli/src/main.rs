@@ -28,6 +28,8 @@ enum Commands {
         model: Option<String>,
         #[arg(long, action = clap::ArgAction::SetTrue)]
         stateless_history: bool,
+        #[arg(long, action = clap::ArgAction::SetTrue)]
+        parallel_tool_calls: bool,
         #[arg(long)]
         followup_user_message: Option<String>,
         #[arg(
@@ -86,6 +88,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             provider,
             model,
             stateless_history,
+            parallel_tool_calls,
             followup_user_message,
             headless,
             view,
@@ -93,6 +96,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             let has_openresponses_flags = provider.is_some()
                 || model.is_some()
                 || stateless_history
+                || parallel_tool_calls
                 || followup_user_message.is_some();
             if server.is_some() && has_openresponses_flags {
                 anyhow::bail!(
@@ -103,7 +107,13 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                 let provider = provider.ok_or_else(|| {
                     anyhow::anyhow!("--provider is required when using openresponses flags")
                 })?;
-                apply_openresponses_env(provider, model, stateless_history, followup_user_message)?;
+                apply_openresponses_env(
+                    provider,
+                    model,
+                    stateless_history,
+                    parallel_tool_calls,
+                    followup_user_message,
+                )?;
             }
             if let Some(server) = server {
                 if headless {
@@ -129,6 +139,7 @@ fn apply_openresponses_env(
     provider: Provider,
     model: Option<String>,
     stateless_history: bool,
+    parallel_tool_calls: bool,
     followup_user_message: Option<String>,
 ) -> anyhow::Result<()> {
     let endpoint = match provider {
@@ -143,6 +154,9 @@ fn apply_openresponses_env(
 
     if stateless_history {
         std::env::set_var("RIP_OPENRESPONSES_STATELESS_HISTORY", "1");
+    }
+    if parallel_tool_calls {
+        std::env::set_var("RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS", "1");
     }
 
     if let Some(message) = followup_user_message {
@@ -575,6 +589,7 @@ mod tests {
                 provider: None,
                 model: None,
                 stateless_history: false,
+                parallel_tool_calls: false,
                 followup_user_message: None,
                 headless: false,
                 view: OutputView::Raw,
@@ -625,6 +640,7 @@ mod tests {
             "--model",
             "gpt-5-nano-2025-08-07",
             "--stateless-history",
+            "--parallel-tool-calls",
             "--followup-user-message",
             "continue",
         ]);
@@ -633,12 +649,14 @@ mod tests {
                 provider,
                 model,
                 stateless_history,
+                parallel_tool_calls,
                 followup_user_message,
                 ..
             } => {
                 assert_eq!(provider, Some(Provider::Openai));
                 assert_eq!(model.as_deref(), Some("gpt-5-nano-2025-08-07"));
                 assert!(stateless_history);
+                assert!(parallel_tool_calls);
                 assert_eq!(followup_user_message.as_deref(), Some("continue"));
             }
             Commands::Serve => panic!("expected run"),

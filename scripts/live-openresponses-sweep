@@ -1,0 +1,208 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+provider="both"
+openai_model="gpt-5-nano-2025-08-07"
+openrouter_model="mistralai/devstral-2512:free"
+include_parallel_case="1"
+
+usage() {
+  cat <<'USAGE'
+Usage: scripts/live-openresponses-sweep [options]
+
+Runs a live tool-sweep against real OpenResponses APIs (OpenAI/OpenRouter).
+Requires OPENAI_API_KEY and/or OPENROUTER_API_KEY in the environment.
+
+Options:
+  --provider <openai|openrouter|both>   Which provider(s) to run (default: both)
+  --openai-model <id>                  OpenAI model id (default: gpt-5-nano-2025-08-07)
+  --openrouter-model <id>              OpenRouter model id (default: mistralai/devstral-2512:free)
+  --skip-parallel-case                 Skip the parallel-tool-call scenario
+  -h, --help                           Show help
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --provider)
+      provider="${2:-}"
+      shift 2
+      ;;
+    --openai-model)
+      openai_model="${2:-}"
+      shift 2
+      ;;
+    --openrouter-model)
+      openrouter_model="${2:-}"
+      shift 2
+      ;;
+    --skip-parallel-case)
+      include_parallel_case="0"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+if [[ "$provider" != "openai" && "$provider" != "openrouter" && "$provider" != "both" ]]; then
+  echo "Invalid --provider: $provider" >&2
+  exit 1
+fi
+
+run_case() {
+  local label="$1"
+  local prompt="$2"
+  local provider_flag="$3"
+  local model="$4"
+  local extra_flags=("${@:5}")
+
+  local workspace
+  workspace="$(mktemp -d)"
+  cp -R fixtures/repo_small/. "$workspace"
+
+  local data_dir
+  data_dir="$(mktemp -d)"
+
+  echo ""
+  echo "== ${label} =="
+
+  RIP_DATA_DIR="$data_dir" RIP_WORKSPACE_ROOT="$workspace" \
+    cargo run -p rip-cli -- run "$prompt" \
+    --provider "$provider_flag" --model "$model" --view output \
+    "${extra_flags[@]}"
+}
+
+python_bin="$(command -v python3 || command -v python || true)"
+artifact_prompt=""
+if [[ -n "$python_bin" ]]; then
+  artifact_prompt=$(cat <<EOF
+Use bash with max_bytes 8 to run: ${python_bin} - <<'PY'
+print('x'*200)
+PY
+Then use artifact_fetch to read 32 bytes from the stdout artifact and answer with just those bytes.
+EOF
+)
+fi
+
+run_suite_openai() {
+  if [[ -z "${OPENAI_API_KEY:-}" && -z "${RIP_OPENRESPONSES_API_KEY:-}" ]]; then
+    echo "Missing OPENAI_API_KEY (or RIP_OPENRESPONSES_API_KEY) for OpenAI." >&2
+    exit 1
+  fi
+
+  run_case "openai: ls + read" \
+    "List files in src using ls, then read README.md lines 1-2. Answer with filenames + those two lines." \
+    openai "$openai_model"
+
+  run_case "openai: write + read" \
+    "Use write to create tmp_note.txt with content 'hello'. Then read it and answer with just the contents." \
+    openai "$openai_model"
+
+  run_case "openai: apply_patch + read" \
+    "Use apply_patch to add a new file notes.txt with one line 'note'. Then read it and answer with just that line." \
+    openai "$openai_model"
+
+  run_case "openai: grep + read" \
+    "Use grep to find 'fn ' in src, then read the first matching file lines 1-3. Answer with file path + lines." \
+    openai "$openai_model"
+
+  run_case "openai: bash multi-command" \
+    "Use bash to run 'printf \"a\\nb\\n\"' then 'ls'. Answer with both outputs clearly." \
+    openai "$openai_model"
+
+  run_case "openai: shell alias" \
+    "Use shell to run 'pwd'. Answer with just the output." \
+    openai "$openai_model"
+
+  if [[ -n "$artifact_prompt" ]]; then
+    run_case "openai: artifact_fetch" \
+      "$artifact_prompt" \
+      openai "$openai_model"
+  else
+    echo ""
+    echo "== openai: artifact_fetch =="
+    echo "Skipped (python not found)."
+  fi
+
+  run_case "openai: tool error" \
+    "Try to read a missing file nope.txt, then explain the error in one sentence." \
+    openai "$openai_model"
+
+  if [[ "$include_parallel_case" == "1" ]]; then
+    run_case "openai: parallel tool calls (request)" \
+      "Use ls to list src and read README.md lines 1-2. You may call tools in parallel; call both tools before responding. Answer with filenames and the two lines." \
+      openai "$openai_model" --parallel-tool-calls
+  fi
+}
+
+run_suite_openrouter() {
+  if [[ -z "${OPENROUTER_API_KEY:-}" && -z "${RIP_OPENRESPONSES_API_KEY:-}" ]]; then
+    echo "Missing OPENROUTER_API_KEY (or RIP_OPENRESPONSES_API_KEY) for OpenRouter." >&2
+    exit 1
+  fi
+
+  run_case "openrouter: ls + read" \
+    "List files in src using ls, then read README.md lines 1-2. Answer with filenames + those two lines." \
+    openrouter "$openrouter_model" --stateless-history
+
+  run_case "openrouter: write + read" \
+    "Use write to create tmp_note.txt with content 'hello'. Then read it and answer with just the contents." \
+    openrouter "$openrouter_model" --stateless-history
+
+  run_case "openrouter: apply_patch + read" \
+    "Use apply_patch to add a new file notes.txt with one line 'note'. Then read it and answer with just that line." \
+    openrouter "$openrouter_model" --stateless-history
+
+  run_case "openrouter: grep + read" \
+    "Use grep to find 'fn ' in src, then read the first matching file lines 1-3. Answer with file path + lines." \
+    openrouter "$openrouter_model" --stateless-history
+
+  run_case "openrouter: bash multi-command" \
+    "Use bash to run 'printf \"a\\nb\\n\"' then 'ls'. Answer with both outputs clearly." \
+    openrouter "$openrouter_model" --stateless-history
+
+  run_case "openrouter: shell alias" \
+    "Use shell to run 'pwd'. Answer with just the output." \
+    openrouter "$openrouter_model" --stateless-history
+
+  if [[ -n "$artifact_prompt" ]]; then
+    run_case "openrouter: artifact_fetch" \
+      "$artifact_prompt" \
+      openrouter "$openrouter_model" --stateless-history
+  else
+    echo ""
+    echo "== openrouter: artifact_fetch =="
+    echo "Skipped (python not found)."
+  fi
+
+  run_case "openrouter: tool error" \
+    "Try to read a missing file nope.txt, then explain the error in one sentence." \
+    openrouter "$openrouter_model" --stateless-history
+
+  if [[ "$include_parallel_case" == "1" ]]; then
+    run_case "openrouter: parallel tool calls (request)" \
+      "Use ls to list src and read README.md lines 1-2. You may call tools in parallel; call both tools before responding. Answer with filenames and the two lines." \
+      openrouter "$openrouter_model" --stateless-history --parallel-tool-calls
+  fi
+}
+
+case "$provider" in
+  openai)
+    run_suite_openai
+    ;;
+  openrouter)
+    run_suite_openrouter
+    ;;
+  both)
+    run_suite_openai
+    run_suite_openrouter
+    ;;
+esac

@@ -18,11 +18,13 @@ Provider shortcuts (local runs only)
 - `--provider openai|openrouter` selects the OpenResponses endpoint and API key env fallback.
 - `--model <id>` overrides `RIP_OPENRESPONSES_MODEL`.
 - `--stateless-history` enables stateless followups (`RIP_OPENRESPONSES_STATELESS_HISTORY=1`).
+- `--parallel-tool-calls` sets `RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS=1` (request-only; execution remains sequential).
 - `--followup-user-message <text>` sets `RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE`.
 - Flags are ignored for `--server` runs; configure the server environment instead.
 Examples:
 - OpenAI: `OPENAI_API_KEY=... rip run "<task>" --provider openai --model gpt-5-nano-2025-08-07`
 - OpenRouter: `OPENROUTER_API_KEY=... rip run "<task>" --provider openrouter --model mistralai/devstral-2512:free --stateless-history`
+- Live sweep: `scripts/live-openresponses-sweep` (real APIs; runs a tool-sweep against OpenAI/OpenRouter).
 
 Notes
 - CLI is a thin adapter over the shared session engine.
