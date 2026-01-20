@@ -225,6 +225,12 @@ fn specific_tool_choice_roundtrip() {
 }
 
 #[test]
+fn specific_tool_choice_reports_errors() {
+    let specific = SpecificToolChoiceParam::new(json!("invalid"));
+    assert!(!specific.errors().is_empty());
+}
+
+#[test]
 fn create_response_builder_accepts_tool_fields() {
     let payload = CreateResponseBuilder::new()
         .model("gpt-4.1")

@@ -162,3 +162,52 @@ fn render_input(frame: &mut Frame<'_>, area: Rect) {
     let widget = Paragraph::new("> ").block(Block::default().borders(Borders::ALL).title("Input"));
     frame.render_widget(widget, area);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+    use rip_kernel::{Event, EventKind};
+
+    fn event(seq: u64, kind: EventKind) -> Event {
+        Event {
+            id: format!("e{seq}"),
+            session_id: "s1".to_string(),
+            timestamp_ms: 0,
+            seq,
+            kind,
+        }
+    }
+
+    fn render_once(state: &TuiState, mode: RenderMode, width: u16) {
+        let mut terminal = Terminal::new(TestBackend::new(width, 20)).expect("terminal");
+        terminal.draw(|f| render(f, state, mode)).expect("draw");
+    }
+
+    #[test]
+    fn render_handles_empty_state_small_width() {
+        let state = TuiState::new(100, 1024);
+        render_once(&state, RenderMode::Json, 60);
+    }
+
+    #[test]
+    fn render_handles_decoded_mode_and_truncated_output() {
+        let mut state = TuiState::new(100, 16);
+        state.update(event(
+            0,
+            EventKind::SessionStarted {
+                input: "hi".to_string(),
+            },
+        ));
+        state.update(event(
+            1,
+            EventKind::OutputTextDelta {
+                delta: "hello".to_string(),
+            },
+        ));
+        state.output_truncated = true;
+        state.output_text = "partial".to_string();
+        render_once(&state, RenderMode::Decoded, 100);
+    }
+}

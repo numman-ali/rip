@@ -654,4 +654,51 @@ mod tests {
         let _ = tokio::join!(first, second);
         assert_eq!(max_seen.load(Ordering::SeqCst), 1);
     }
+
+    #[test]
+    fn files_for_invocation_reports_invalid_write_args() {
+        let invocation = ToolInvocation {
+            name: "write".to_string(),
+            args: serde_json::json!({"content": "missing path"}),
+            timeout_ms: None,
+        };
+        let err = files_for_invocation(&invocation).unwrap_err();
+        assert!(err.contains("checkpoint args invalid"));
+    }
+
+    #[test]
+    fn files_for_invocation_accepts_apply_patch() {
+        let patch = "*** Begin Patch\n*** Add File: hello.txt\n+hi\n*** End Patch\n";
+        let invocation = ToolInvocation {
+            name: "apply_patch".to_string(),
+            args: serde_json::json!({"patch": patch}),
+            timeout_ms: None,
+        };
+        let files = files_for_invocation(&invocation)
+            .expect("ok")
+            .expect("files");
+        assert_eq!(files, vec![PathBuf::from("hello.txt")]);
+    }
+
+    #[test]
+    fn files_for_invocation_rejects_bad_patch() {
+        let invocation = ToolInvocation {
+            name: "apply_patch".to_string(),
+            args: serde_json::json!({"patch": "bad patch"}),
+            timeout_ms: None,
+        };
+        let err = files_for_invocation(&invocation).unwrap_err();
+        assert!(!err.is_empty());
+    }
+
+    #[test]
+    fn files_for_invocation_returns_none_for_unknown_tool() {
+        let invocation = ToolInvocation {
+            name: "ls".to_string(),
+            args: serde_json::json!({}),
+            timeout_ms: None,
+        };
+        let result = files_for_invocation(&invocation).expect("ok");
+        assert!(result.is_none());
+    }
 }

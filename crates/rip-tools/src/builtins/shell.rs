@@ -376,3 +376,131 @@ fn path_rel(root: &Path, path: &Path) -> String {
         .to_string_lossy()
         .replace('\\', "/")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+    use tokio::io::{duplex, AsyncWriteExt};
+
+    fn config_for(root: &Path) -> BuiltinToolConfig {
+        BuiltinToolConfig {
+            workspace_root: root.to_path_buf(),
+            artifact_max_bytes: 1024,
+            max_bytes: 64,
+            max_results: 10,
+            max_depth: 4,
+            follow_symlinks: false,
+            include_hidden: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn capture_stream_handles_none() {
+        let dir = tempdir().expect("tmp");
+        let config = config_for(dir.path());
+        let capture = capture_stream::<tokio::io::DuplexStream>(None, &config, 10).await;
+        assert!(capture.preview_lines.is_empty());
+        assert_eq!(capture.bytes_total, 0);
+        assert!(!capture.truncated_preview);
+        assert!(capture.artifact.is_none());
+    }
+
+    #[tokio::test]
+    async fn capture_stream_skips_artifacts_when_max_zero() {
+        let dir = tempdir().expect("tmp");
+        let mut config = config_for(dir.path());
+        config.artifact_max_bytes = 0;
+        let (mut writer, reader) = duplex(64);
+        let write_task = tokio::spawn(async move {
+            writer.write_all(b"abcdefgh").await.expect("write");
+        });
+        let capture = capture_stream(Some(reader), &config, 4).await;
+        write_task.await.expect("writer");
+        assert!(capture.truncated_preview);
+        assert!(capture.artifact.is_none());
+        assert_eq!(capture.bytes_total, 8);
+    }
+
+    #[tokio::test]
+    async fn write_artifact_tail_respects_max_bytes() {
+        let dir = tempdir().expect("tmp");
+        let path = dir.path().join("tmp");
+        let mut file = tokio::fs::File::create(&path).await.expect("create");
+        let mut hasher = Sha256::new();
+        let mut stored = 0u64;
+
+        write_artifact_tail(&mut file, &mut hasher, &mut stored, 3, b"abcdef")
+            .await
+            .expect("write");
+        let stored_after = stored;
+        write_artifact_tail(&mut file, &mut hasher, &mut stored, 0, b"zzz")
+            .await
+            .expect("write");
+        assert_eq!(stored, stored_after);
+        file.sync_all().await.expect("sync");
+        drop(file);
+
+        let data = tokio::fs::read(&path).await.expect("read");
+        assert_eq!(data.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn finalize_artifact_returns_existing_blob() {
+        let dir = tempdir().expect("tmp");
+        let config = config_for(dir.path());
+        let root = config.artifacts_root();
+        let blobs_dir = root.join("blobs");
+        let tmp_dir = root.join("tmp");
+        tokio::fs::create_dir_all(&blobs_dir).await.expect("blobs");
+        tokio::fs::create_dir_all(&tmp_dir).await.expect("tmp");
+
+        let content = b"hello";
+        let tmp_path = tmp_dir.join("file.tmp");
+        tokio::fs::write(&tmp_path, content)
+            .await
+            .expect("write tmp");
+
+        let mut hasher = Sha256::new();
+        hasher.update(content);
+        let mut digest_hasher = Sha256::new();
+        digest_hasher.update(content);
+        let digest = hex::encode(digest_hasher.finalize());
+        let final_path = blobs_dir.join(&digest);
+        tokio::fs::write(&final_path, b"existing")
+            .await
+            .expect("write final");
+
+        let file = tokio::fs::File::open(&tmp_path).await.expect("open");
+        let artifact = finalize_artifact(
+            &config,
+            Some(file),
+            Some(tmp_path.clone()),
+            Some(hasher),
+            content.len() as u64,
+            content.len() as u64,
+        )
+        .await
+        .expect("artifact");
+        assert_eq!(artifact.id, digest);
+        assert!(!tmp_path.exists());
+        assert!(artifact.path.contains(".rip/artifacts/blobs"));
+    }
+
+    #[tokio::test]
+    async fn finalize_artifact_returns_none_when_missing_parts() {
+        let dir = tempdir().expect("tmp");
+        let config = config_for(dir.path());
+        let artifact = finalize_artifact(&config, None, None, None, 0, 0).await;
+        assert!(artifact.is_none());
+    }
+
+    #[test]
+    fn path_rel_returns_absolute_when_outside_root() {
+        let root_dir = tempdir().expect("tmp");
+        let other_dir = tempdir().expect("tmp");
+        let rel = path_rel(root_dir.path(), other_dir.path());
+        let expected = other_dir.path().to_string_lossy().replace('\\', "/");
+        assert_eq!(rel, expected);
+    }
+}

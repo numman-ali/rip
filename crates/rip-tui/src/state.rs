@@ -145,4 +145,69 @@ mod tests {
         assert_eq!(state.ttft_ms(), Some(300));
         assert_eq!(state.e2e_ms(), Some(800));
     }
+
+    #[test]
+    fn update_respects_selected_seq_when_auto_follow_disabled() {
+        let mut state = TuiState::new(100, 1024);
+        state.auto_follow = false;
+        state.selected_seq = Some(0);
+        state.update(event(
+            1,
+            1000,
+            EventKind::SessionStarted {
+                input: "hi".to_string(),
+            },
+        ));
+        assert_eq!(state.selected_seq, Some(0));
+    }
+
+    #[test]
+    fn update_sets_session_id_once() {
+        let mut state = TuiState::new(100, 1024);
+        state.update(event(
+            0,
+            1000,
+            EventKind::SessionStarted {
+                input: "hi".to_string(),
+            },
+        ));
+        state.update(Event {
+            id: "e2".to_string(),
+            session_id: "s2".to_string(),
+            timestamp_ms: 1100,
+            seq: 1,
+            kind: EventKind::SessionEnded {
+                reason: "done".to_string(),
+            },
+        });
+        assert_eq!(state.session_id.as_deref(), Some("s1"));
+    }
+
+    #[test]
+    fn push_output_truncates_and_flags() {
+        let mut state = TuiState::new(100, 8);
+        state.update(event(
+            0,
+            1000,
+            EventKind::OutputTextDelta {
+                delta: "abcdefghijk".to_string(),
+            },
+        ));
+        assert!(state.output_truncated);
+        assert!(state.output_text.len() <= 8);
+    }
+
+    #[test]
+    fn push_output_ignores_empty_delta() {
+        let mut state = TuiState::new(100, 1024);
+        state.output_text = "keep".to_string();
+        state.update(event(
+            0,
+            1000,
+            EventKind::OutputTextDelta {
+                delta: "".to_string(),
+            },
+        ));
+        assert_eq!(state.output_text, "keep");
+    }
 }

@@ -145,6 +145,29 @@ mod tests {
     use tempfile::tempdir;
     use tokio::time::{timeout, Duration};
 
+    struct EnvGuard {
+        key: &'static str,
+        value: Option<std::ffi::OsString>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, value: impl Into<std::ffi::OsString>) -> Self {
+            let value = value.into();
+            let prev = std::env::var_os(key);
+            std::env::set_var(key, &value);
+            Self { key, value: prev }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match &self.value {
+                Some(value) => std::env::set_var(self.key, value),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+
     #[test]
     fn openresponses_env_is_disabled_in_tests() {
         assert!(openresponses_from_env().is_none());
@@ -172,6 +195,24 @@ mod tests {
         sessions.insert(session_id.clone(), handle);
         assert!(SessionEngine::cancel_session(&mut sessions, &session_id));
         assert!(!SessionEngine::cancel_session(&mut sessions, &session_id));
+    }
+
+    #[test]
+    fn new_default_uses_env_paths() {
+        let dir = tempdir().expect("tmp");
+        let data_dir = dir.path().join("data");
+        let workspace_dir = dir.path().join("workspace");
+        std::fs::create_dir_all(&workspace_dir).expect("workspace");
+
+        let _data_guard = EnvGuard::set("RIP_DATA_DIR", data_dir.to_string_lossy().to_string());
+        let _workspace_guard = EnvGuard::set(
+            "RIP_WORKSPACE_ROOT",
+            workspace_dir.to_string_lossy().to_string(),
+        );
+
+        let engine = SessionEngine::new_default().expect("engine");
+        let handle = engine.create_session();
+        assert!(!handle.session_id.is_empty());
     }
 
     #[tokio::test]

@@ -332,4 +332,89 @@ mod tests {
         let out = apply_hunks_to_text("a\nb\n", &hunks, Path::new("x.txt")).expect("apply");
         assert_eq!(out, "a\nB\nc\n");
     }
+
+    #[test]
+    fn parse_rejects_missing_header() {
+        let err = Patch::parse("oops").unwrap_err();
+        assert!(err.to_string().contains("missing '*** Begin Patch'"));
+    }
+
+    #[test]
+    fn parse_rejects_missing_footer() {
+        let patch = "*** Begin Patch\n*** Add File: a.txt\n+one\n";
+        let err = Patch::parse(patch).unwrap_err();
+        assert!(err.to_string().contains("missing '*** End Patch'"));
+    }
+
+    #[test]
+    fn parse_rejects_add_file_without_plus() {
+        let patch = "*** Begin Patch\n*** Add File: a.txt\nnope\n*** End Patch";
+        let err = Patch::parse(patch).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("add file line must start with '+'"));
+    }
+
+    #[test]
+    fn parse_rejects_update_without_hunks() {
+        let patch = "*** Begin Patch\n*** Update File: a.txt\n*** End Patch";
+        let err = Patch::parse(patch).unwrap_err();
+        assert!(err.to_string().contains("update file has no hunks"));
+    }
+
+    #[test]
+    fn parse_rejects_invalid_prefix() {
+        let patch = "*** Begin Patch\n*** Update File: a.txt\n?bad\n*** End Patch";
+        let err = Patch::parse(patch).unwrap_err();
+        assert!(err.to_string().contains("invalid patch line prefix"));
+    }
+
+    #[test]
+    fn parse_rejects_empty_path() {
+        let err = parse_rel_path("   ").unwrap_err();
+        assert!(err.to_string().contains("path cannot be empty"));
+    }
+
+    #[test]
+    fn parse_rejects_absolute_path() {
+        let err = parse_rel_path("/abs.txt").unwrap_err();
+        assert!(err.to_string().contains("absolute paths are not allowed"));
+    }
+
+    #[test]
+    fn parse_rejects_parent_path() {
+        let err = parse_rel_path("../escape.txt").unwrap_err();
+        assert!(err.to_string().contains("path escapes workspace root"));
+    }
+
+    #[test]
+    fn apply_hunks_reports_missing_context() {
+        let hunks = vec![PatchHunk {
+            before: vec!["b".to_string()],
+            after: vec!["B".to_string()],
+        }];
+        let err = apply_hunks_to_text("a\n", &hunks, Path::new("x.txt")).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn detects_crlf_line_endings() {
+        assert_eq!(detect_line_ending("a\r\nb\r\n"), "\r\n");
+        assert_eq!(detect_line_ending("a\nb\n"), "\n");
+    }
+
+    #[test]
+    fn split_and_join_lines_roundtrip() {
+        let (lines, trailing) = split_lines("a\r\nb\r\n");
+        assert_eq!(lines, vec!["a".to_string(), "b".to_string()]);
+        assert!(trailing);
+        let joined = join_lines(&lines, trailing, "\r\n");
+        assert_eq!(joined, "a\r\nb\r\n");
+    }
+
+    #[test]
+    fn find_subslice_handles_empty_needle() {
+        let haystack = vec!["a".to_string(), "b".to_string()];
+        assert_eq!(find_subslice_from(&haystack, &[], 1), Some(1));
+    }
 }

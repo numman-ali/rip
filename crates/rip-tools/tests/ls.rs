@@ -89,6 +89,25 @@ async fn ls_includes_hidden_when_requested() {
 }
 
 #[tokio::test]
+async fn ls_defaults_to_current_dir() {
+    let dir = tempdir().expect("tmp");
+    let root = dir.path();
+    fs::write(root.join("root.txt"), "hi").expect("write");
+
+    let registry = setup_registry(root);
+    let ls = registry.get("ls").expect("ls tool");
+    let output = ls(ToolInvocation {
+        name: "ls".to_string(),
+        args: json!({}),
+        timeout_ms: None,
+    })
+    .await;
+
+    let joined = output.stdout.join("\n");
+    assert!(joined.contains("root.txt"));
+}
+
+#[tokio::test]
 async fn ls_rejects_invalid_glob() {
     let dir = tempdir().expect("tmp");
     let root = dir.path();

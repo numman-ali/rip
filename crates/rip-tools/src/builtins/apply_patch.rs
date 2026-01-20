@@ -73,4 +73,69 @@ mod tests {
         assert_eq!(out.exit_code, 0);
         assert_eq!(fs::read_to_string(root.join("note.txt")).unwrap(), "hi\n");
     }
+
+    #[test]
+    fn apply_patch_rejects_invalid_args() {
+        let dir = tempdir().expect("tmp");
+        let config = BuiltinToolConfig {
+            workspace_root: dir.path().to_path_buf(),
+            ..BuiltinToolConfig::default()
+        };
+
+        let out = run_apply_patch(
+            ToolInvocation {
+                name: "apply_patch".to_string(),
+                args: json!({ "patch": 123 }),
+                timeout_ms: None,
+            },
+            &config,
+        );
+
+        assert_eq!(out.exit_code, 2);
+        assert!(out.stderr.join("\n").contains("invalid args"));
+    }
+
+    #[test]
+    fn apply_patch_reports_invalid_patch() {
+        let dir = tempdir().expect("tmp");
+        let config = BuiltinToolConfig {
+            workspace_root: dir.path().to_path_buf(),
+            ..BuiltinToolConfig::default()
+        };
+
+        let out = run_apply_patch(
+            ToolInvocation {
+                name: "apply_patch".to_string(),
+                args: json!({ "patch": "not a patch" }),
+                timeout_ms: None,
+            },
+            &config,
+        );
+
+        assert_eq!(out.exit_code, 2);
+        assert!(out.stderr.join("\n").contains("invalid patch"));
+    }
+
+    #[test]
+    fn apply_patch_reports_workspace_errors() {
+        let dir = tempdir().expect("tmp");
+        let root_file = dir.path().join("root_file");
+        fs::write(&root_file, "nope").expect("write");
+        let config = BuiltinToolConfig {
+            workspace_root: root_file,
+            ..BuiltinToolConfig::default()
+        };
+
+        let out = run_apply_patch(
+            ToolInvocation {
+                name: "apply_patch".to_string(),
+                args: json!({ "patch": "*** Begin Patch\n*** End Patch" }),
+                timeout_ms: None,
+            },
+            &config,
+        );
+
+        assert_eq!(out.exit_code, 1);
+        assert!(out.stderr.join("\n").contains("apply_patch failed"));
+    }
 }

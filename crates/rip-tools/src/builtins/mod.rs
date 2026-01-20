@@ -272,6 +272,7 @@ pub(super) fn globsets_match(
 mod tests {
     use super::*;
     use crate::ToolInvocation;
+    use serde::Deserialize;
     use serde_json::json;
     use std::ffi::OsString;
     use std::fs;
@@ -579,5 +580,107 @@ mod tests {
             "stdout: {:?}",
             output.stdout
         );
+    }
+
+    #[test]
+    fn parse_args_rejects_invalid_payload() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        struct Args {
+            path: String,
+        }
+
+        let err = parse_args::<Args>(json!({"missing": 1})).unwrap_err();
+        assert_eq!(err.exit_code, 2);
+        assert!(err.stderr.join("\n").contains("invalid args"));
+    }
+
+    #[test]
+    fn resolve_path_rejects_absolute_and_parent() {
+        let root = Path::new("root");
+        let absolute = if cfg!(windows) { "C:\\temp" } else { "/tmp" };
+        let err = resolve_path(root, absolute).unwrap_err();
+        assert!(err.contains("absolute paths"));
+
+        let err = resolve_path(root, "../escape").unwrap_err();
+        assert!(err.contains("escapes workspace root"));
+    }
+
+    #[test]
+    fn normalize_rel_path_strips_root() {
+        let root = Path::new("root");
+        let path = Path::new("root/dir/file.txt");
+        let rel = normalize_rel_path(root, path);
+        assert_eq!(rel, "dir/file.txt");
+    }
+
+    #[test]
+    fn build_globset_reports_invalid_pattern() {
+        let patterns = vec!["[".to_string()];
+        let err = build_globset(Some(&patterns)).unwrap_err();
+        assert!(err.contains("invalid glob"));
+    }
+
+    #[test]
+    fn globsets_match_include_only() {
+        let patterns = vec!["**/*.rs".to_string()];
+        let include = build_globset(Some(&patterns))
+            .expect("globset")
+            .expect("include");
+        assert!(globsets_match(&Some(include.clone()), &None, "src/lib.rs"));
+        assert!(!globsets_match(&Some(include), &None, "README.md"));
+    }
+
+    #[test]
+    fn build_globset_none_returns_none() {
+        let set = build_globset(None).expect("globset");
+        assert!(set.is_none());
+    }
+
+    #[test]
+    fn build_globset_empty_vec_returns_none() {
+        let patterns: Vec<String> = Vec::new();
+        let set = build_globset(Some(&patterns)).expect("globset");
+        assert!(set.is_none());
+    }
+
+    #[test]
+    fn resolve_path_allows_relative() {
+        let root = Path::new("root");
+        let path = resolve_path(root, "dir/file.txt").expect("path");
+        assert!(path.ends_with(Path::new("root/dir/file.txt")));
+    }
+
+    #[test]
+    fn parse_args_accepts_valid_payload() {
+        #[derive(Debug, Deserialize)]
+        struct Args {
+            path: String,
+        }
+
+        let args = parse_args::<Args>(json!({"path": "ok"})).expect("args");
+        assert_eq!(args.path, "ok");
+    }
+
+    #[test]
+    fn globsets_match_include_and_exclude() {
+        let include_patterns = vec!["**/*.txt".to_string()];
+        let exclude_patterns = vec!["secret.txt".to_string()];
+        let include = build_globset(Some(&include_patterns))
+            .expect("globset")
+            .expect("include");
+        let exclude = build_globset(Some(&exclude_patterns))
+            .expect("globset")
+            .expect("exclude");
+        assert!(globsets_match(
+            &Some(include.clone()),
+            &Some(exclude.clone()),
+            "notes.txt"
+        ));
+        assert!(!globsets_match(
+            &Some(include),
+            &Some(exclude),
+            "secret.txt"
+        ));
     }
 }

@@ -651,4 +651,104 @@ data: {\"type\":\"response.output_item.added\",\"sequence_number\":1,\"output_in
             .iter()
             .any(|err| err.contains("previous_response_id")));
     }
+
+    #[test]
+    fn output_text_delta_filters_non_text_events() {
+        let parsed = ParsedEvent {
+            kind: ParsedEventKind::Event,
+            event: Some("response.completed".to_string()),
+            raw: "{\"type\":\"response.completed\"}".to_string(),
+            data: Some(serde_json::json!({
+                "type": "response.completed"
+            })),
+            errors: Vec::new(),
+            response_errors: Vec::new(),
+        };
+        assert!(output_text_delta(&parsed).is_none());
+    }
+
+    #[test]
+    fn normalize_event_inserts_item_id_for_function_call_arguments() {
+        let value = serde_json::json!({
+            "type": "response.function_call_arguments.delta",
+            "output_index": 2,
+            "delta": "{}"
+        });
+        let normalized = normalize_event_for_validation(&value);
+        assert_eq!(
+            normalized.get("item_id").and_then(|v| v.as_str()),
+            Some("item_2")
+        );
+    }
+
+    #[test]
+    fn normalize_event_preserves_existing_item_id() {
+        let value = serde_json::json!({
+            "type": "response.function_call_arguments.done",
+            "output_index": 1,
+            "item_id": "item_custom"
+        });
+        let normalized = normalize_event_for_validation(&value);
+        assert_eq!(
+            normalized.get("item_id").and_then(|v| v.as_str()),
+            Some("item_custom")
+        );
+    }
+
+    #[test]
+    fn normalize_event_for_validation_passthrough_non_object() {
+        let value = serde_json::json!("raw");
+        let normalized = normalize_event_for_validation(&value);
+        assert_eq!(normalized, value);
+    }
+
+    #[test]
+    fn normalize_output_item_prefers_call_id() {
+        let mut value = serde_json::json!({
+            "type": "function_call",
+            "call_id": "call_9"
+        });
+        normalize_output_item(&mut value, Some(3));
+        assert_eq!(value.get("id").and_then(|v| v.as_str()), Some("call_9"));
+    }
+
+    #[test]
+    fn normalize_output_item_sets_item_id_when_missing() {
+        let mut value = serde_json::json!({
+            "type": "function_call",
+            "call_id": ""
+        });
+        normalize_output_item(&mut value, Some(2));
+        assert_eq!(value.get("id").and_then(|v| v.as_str()), Some("item_2"));
+    }
+
+    #[test]
+    fn normalize_output_item_sets_output_id_when_missing() {
+        let mut value = serde_json::json!({
+            "type": "function_call_output",
+            "call_id": ""
+        });
+        normalize_output_item(&mut value, Some(0));
+        assert_eq!(value.get("id").and_then(|v| v.as_str()), Some("output_0"));
+    }
+
+    #[test]
+    fn normalize_response_resource_sets_missing_ids() {
+        let mut value = serde_json::json!({
+            "output": [
+                {"type": "function_call", "call_id": "call_a"},
+                {"type": "function_call_output", "call_id": "call_b"}
+            ]
+        });
+        normalize_response_resource(&mut value);
+        let output = value
+            .get("output")
+            .and_then(|v| v.as_array())
+            .expect("output");
+        assert_eq!(output[0].get("id").and_then(|v| v.as_str()), Some("call_a"));
+        assert_eq!(
+            output[1].get("id").and_then(|v| v.as_str()),
+            Some("output_call_b")
+        );
+    }
 }

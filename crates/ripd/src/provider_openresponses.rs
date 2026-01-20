@@ -396,4 +396,111 @@ mod tests {
         );
         assert!(payload.body().get("previous_response_id").is_none());
     }
+
+    #[test]
+    fn parse_tool_choice_env_defaults_to_auto() {
+        let parsed = parse_tool_choice_env("   ").expect("auto");
+        assert_eq!(parsed.value(), ToolChoiceParam::auto().value());
+    }
+
+    #[test]
+    fn parse_tool_choice_env_accepts_named_function() {
+        let parsed = parse_tool_choice_env("function:ls").expect("function");
+        let value = parsed.value();
+        assert_eq!(value.get("type").and_then(|v| v.as_str()), Some("function"));
+        assert_eq!(value.get("name").and_then(|v| v.as_str()), Some("ls"));
+    }
+
+    #[test]
+    fn parse_tool_choice_env_rejects_missing_function_name() {
+        let err = parse_tool_choice_env("function:   ").unwrap_err();
+        assert!(err.contains("function name missing"));
+    }
+
+    #[test]
+    fn parse_tool_choice_env_accepts_json() {
+        let parsed =
+            parse_tool_choice_env(r#"json:{"type":"function","name":"ls"}"#).expect("json");
+        assert_eq!(
+            parsed.value().get("type").and_then(|v| v.as_str()),
+            Some("function")
+        );
+        assert_eq!(
+            parsed.value().get("name").and_then(|v| v.as_str()),
+            Some("ls")
+        );
+    }
+
+    #[test]
+    fn parse_tool_choice_env_rejects_invalid_json() {
+        let err = parse_tool_choice_env("json:{bad}").unwrap_err();
+        assert!(err.contains("invalid json tool_choice"));
+    }
+
+    #[test]
+    fn parse_tool_choice_env_rejects_invalid_param() {
+        let err = parse_tool_choice_env("json:{}").unwrap_err();
+        assert!(err.contains("invalid tool_choice"));
+    }
+
+    #[test]
+    fn parse_tool_choice_env_rejects_unknown_value() {
+        let err = parse_tool_choice_env("maybe").unwrap_err();
+        assert!(err.contains("unsupported value"));
+    }
+
+    #[test]
+    fn build_streaming_request_includes_model_and_stream() {
+        let config = OpenResponsesConfig {
+            endpoint: "http://example.test/v1/responses".to_string(),
+            api_key: None,
+            model: Some("gpt-5-nano-2025-08-07".to_string()),
+            tool_choice: ToolChoiceParam::required(),
+            followup_user_message: None,
+            stateless_history: false,
+            parallel_tool_calls: true,
+        };
+        let payload = build_streaming_request(&config, "hi");
+        let body = payload.body();
+        assert_eq!(
+            body.get("model").and_then(|v| v.as_str()),
+            Some("gpt-5-nano-2025-08-07")
+        );
+        assert_eq!(body.get("stream").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            body.get("max_tool_calls").and_then(|v| v.as_u64()),
+            Some(DEFAULT_MAX_TOOL_CALLS)
+        );
+        assert_eq!(
+            body.get("parallel_tool_calls").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn build_streaming_request_items_includes_items() {
+        let config = config_with_followup(None);
+        let payload =
+            build_streaming_request_items(&config, vec![ItemParam::user_message_text("hello")]);
+        let input = payload
+            .body()
+            .get("input")
+            .and_then(|value| value.as_array())
+            .expect("input array");
+        assert_eq!(input.len(), 1);
+        assert_eq!(
+            input[0].get("type").and_then(|v| v.as_str()),
+            Some("message")
+        );
+    }
+
+    #[test]
+    fn builtin_function_tools_are_strict_false() {
+        let tools = builtin_function_tools();
+        let tool = tools
+            .iter()
+            .find(|tool| tool.get("name").and_then(|v| v.as_str()) == Some("read"))
+            .expect("read tool");
+        assert_eq!(tool.get("strict").and_then(|v| v.as_bool()), Some(false));
+    }
 }

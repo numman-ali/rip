@@ -356,6 +356,13 @@ mod tests {
     }
 
     #[test]
+    fn start_session_with_id_sets_id() {
+        let runtime = Runtime::new();
+        let session = runtime.start_session_with_id("custom", "hello".to_string());
+        assert_eq!(session.id(), "custom");
+    }
+
+    #[test]
     fn hook_abort_ends_session_early() {
         let runtime = Runtime::new();
         runtime.register_hook("abort-on-output", HookEventKind::Output, |_| {

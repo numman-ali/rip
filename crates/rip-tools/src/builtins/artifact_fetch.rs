@@ -92,3 +92,84 @@ fn is_sha256_hex(id: &str) -> bool {
     }
     id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn config_for(root: &Path) -> BuiltinToolConfig {
+        BuiltinToolConfig {
+            workspace_root: root.to_path_buf(),
+            artifact_max_bytes: 1024,
+            max_bytes: 64,
+            max_results: 10,
+            max_depth: 4,
+            follow_symlinks: false,
+            include_hidden: false,
+        }
+    }
+
+    #[test]
+    fn artifact_fetch_rejects_invalid_id() {
+        let dir = tempdir().expect("tmp");
+        let config = config_for(dir.path());
+        let output = run_artifact_fetch(
+            ToolInvocation {
+                name: "artifact_fetch".to_string(),
+                args: serde_json::json!({"id":"not-hex"}),
+                timeout_ms: None,
+            },
+            &config,
+        );
+        assert_eq!(output.exit_code, 2);
+        assert!(output.stderr.join("\n").contains("id must be"));
+    }
+
+    #[test]
+    fn artifact_fetch_reads_with_offset() {
+        let dir = tempdir().expect("tmp");
+        let config = config_for(dir.path());
+        let blobs = artifacts_blobs_dir(&config);
+        std::fs::create_dir_all(&blobs).expect("blobs");
+        let id = "a".repeat(64);
+        let path = blobs.join(&id);
+        std::fs::write(&path, b"hello world").expect("write");
+
+        let output = run_artifact_fetch(
+            ToolInvocation {
+                name: "artifact_fetch".to_string(),
+                args: serde_json::json!({"id": id, "offset_bytes": 6, "max_bytes": 5}),
+                timeout_ms: None,
+            },
+            &config,
+        );
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(output.stdout, vec!["world".to_string()]);
+        let artifacts = output.artifacts.expect("artifacts");
+        assert_eq!(
+            artifacts.get("offset_bytes").and_then(|v| v.as_u64()),
+            Some(6)
+        );
+        assert_eq!(
+            artifacts.get("truncated").and_then(|v| v.as_bool()),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn artifact_fetch_reports_missing_blob() {
+        let dir = tempdir().expect("tmp");
+        let config = config_for(dir.path());
+        let output = run_artifact_fetch(
+            ToolInvocation {
+                name: "artifact_fetch".to_string(),
+                args: serde_json::json!({"id": "b".repeat(64)}),
+                timeout_ms: None,
+            },
+            &config,
+        );
+        assert_eq!(output.exit_code, 1);
+        assert!(output.stderr.join("\n").contains("artifact_fetch failed"));
+    }
+}

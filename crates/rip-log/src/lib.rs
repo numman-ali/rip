@@ -249,6 +249,52 @@ mod tests {
     }
 
     #[test]
+    fn read_snapshot_roundtrips() {
+        let dir = tempdir().expect("tmp");
+        let runtime = Runtime::new();
+        let mut session = runtime.start_session("hello".to_string());
+        let mut events = Vec::new();
+        while let Some(event) = session.next_event() {
+            events.push(event);
+        }
+        let path = write_snapshot(dir.path(), "s1", &events).expect("snapshot");
+        let loaded = read_snapshot(&path).expect("read");
+        assert_eq!(loaded.len(), events.len());
+    }
+
+    #[test]
+    fn replay_session_filters_by_id() {
+        let dir = tempdir().expect("tmp");
+        let log_path = dir.path().join("events.jsonl");
+        let log = EventLog::new(&log_path).expect("log");
+
+        let event_a = Event {
+            id: "e1".to_string(),
+            session_id: "s1".to_string(),
+            timestamp_ms: 0,
+            seq: 0,
+            kind: EventKind::SessionStarted {
+                input: "hi".to_string(),
+            },
+        };
+        let event_b = Event {
+            id: "e2".to_string(),
+            session_id: "s2".to_string(),
+            timestamp_ms: 0,
+            seq: 0,
+            kind: EventKind::SessionStarted {
+                input: "yo".to_string(),
+            },
+        };
+        log.append(&event_a).expect("append");
+        log.append(&event_b).expect("append");
+
+        let events = log.replay_session("s1").expect("replay");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].session_id, "s1");
+    }
+
+    #[test]
     fn validate_event_order_rejects_gap() {
         let event0 = Event {
             id: "e0".to_string(),

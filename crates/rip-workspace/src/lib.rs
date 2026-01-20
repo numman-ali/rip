@@ -569,4 +569,91 @@ mod tests {
         let err = workspace.list_checkpoints("s1").expect_err("err");
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
     }
+
+    #[test]
+    fn apply_patch_rejects_existing_add() {
+        let dir = tempdir().expect("tmp");
+        let root = dir.path();
+        let workspace = Workspace::new(root).expect("workspace");
+        let file = root.join("a.txt");
+        fs::write(&file, b"one").expect("write");
+
+        let patch = r#"*** Begin Patch
+*** Add File: a.txt
++two
+*** End Patch"#;
+        let err = workspace.apply_patch(patch).expect_err("err");
+        assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
+        assert_eq!(fs::read_to_string(&file).unwrap(), "one");
+    }
+
+    #[test]
+    fn apply_patch_rejects_delete_missing_file() {
+        let dir = tempdir().expect("tmp");
+        let root = dir.path();
+        let workspace = Workspace::new(root).expect("workspace");
+        let patch = r#"*** Begin Patch
+*** Delete File: missing.txt
+*** End Patch"#;
+        let err = workspace.apply_patch(patch).expect_err("err");
+        assert_eq!(err.kind(), io::ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn apply_patch_rejects_invalid_utf8() {
+        let dir = tempdir().expect("tmp");
+        let root = dir.path();
+        let workspace = Workspace::new(root).expect("workspace");
+        let file = root.join("a.txt");
+        fs::write(&file, vec![0xff, 0xfe]).expect("write");
+
+        let patch = r#"*** Begin Patch
+*** Update File: a.txt
+@@
+-bad
++good
+*** End Patch"#;
+        let err = workspace.apply_patch(patch).expect_err("err");
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn apply_patch_rejects_move_target_exists() {
+        let dir = tempdir().expect("tmp");
+        let root = dir.path();
+        let workspace = Workspace::new(root).expect("workspace");
+        let file = root.join("a.txt");
+        let target = root.join("b.txt");
+        fs::write(&file, b"one").expect("write");
+        fs::write(&target, b"two").expect("write");
+
+        let patch = r#"*** Begin Patch
+*** Update File: a.txt
+*** Move to: b.txt
+@@
+-one
++one
+*** End Patch"#;
+        let err = workspace.apply_patch(patch).expect_err("err");
+        assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
+    }
+
+    #[test]
+    fn safe_join_rejects_absolute_and_parent_paths() {
+        let dir = tempdir().expect("tmp");
+        let workspace = Workspace::new(dir.path()).expect("workspace");
+        let err = workspace.safe_join(Path::new("/abs.txt")).expect_err("err");
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+
+        let err = workspace
+            .safe_join(Path::new("../escape.txt"))
+            .expect_err("err");
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn normalize_rel_converts_backslashes() {
+        let path = Path::new("a\\b");
+        assert_eq!(normalize_rel(path), "a/b");
+    }
 }

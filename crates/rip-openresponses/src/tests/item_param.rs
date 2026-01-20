@@ -79,6 +79,113 @@ fn validate_item_param_reports_missing_required_fields() {
 }
 
 #[test]
+fn validate_item_param_reports_missing_message_fields() {
+    let missing_role = serde_json::json!({
+        "type": "message",
+        "content": "hi"
+    });
+    let errors = validate_item_param(&missing_role).err().unwrap_or_default();
+    assert!(
+        errors
+            .iter()
+            .any(|err| err.contains("missing required field `role`")),
+        "errors: {errors:?}"
+    );
+
+    let missing_content = serde_json::json!({
+        "type": "message",
+        "role": "user"
+    });
+    let errors = validate_item_param(&missing_content)
+        .err()
+        .unwrap_or_default();
+    assert!(
+        errors
+            .iter()
+            .any(|err| err.contains("missing required field `content`")),
+        "errors: {errors:?}"
+    );
+}
+
+#[test]
+fn validate_item_param_reports_missing_output_fields() {
+    let missing_output = serde_json::json!({
+        "type": "function_call_output",
+        "call_id": "call_1"
+    });
+    let errors = validate_item_param(&missing_output)
+        .err()
+        .unwrap_or_default();
+    assert!(
+        errors
+            .iter()
+            .any(|err| err.contains("missing required field `output`")),
+        "errors: {errors:?}"
+    );
+}
+
+#[test]
+fn validate_item_param_reports_missing_query_fields() {
+    let missing_queries = serde_json::json!({
+        "type": "file_search_call",
+        "id": "fs1"
+    });
+    let errors = validate_item_param(&missing_queries)
+        .err()
+        .unwrap_or_default();
+    assert!(
+        errors
+            .iter()
+            .any(|err| err.contains("missing required field `queries`")),
+        "errors: {errors:?}"
+    );
+}
+
+#[test]
+fn validate_item_param_reports_missing_structured_fields() {
+    let missing_summary = serde_json::json!({
+        "type": "reasoning"
+    });
+    let errors = validate_item_param(&missing_summary)
+        .err()
+        .unwrap_or_default();
+    assert!(
+        errors
+            .iter()
+            .any(|err| err.contains("missing required field `summary`")),
+        "errors: {errors:?}"
+    );
+
+    let missing_action = serde_json::json!({
+        "type": "computer_call",
+        "call_id": "cc1"
+    });
+    let errors = validate_item_param(&missing_action)
+        .err()
+        .unwrap_or_default();
+    assert!(
+        errors
+            .iter()
+            .any(|err| err.contains("missing required field `action`")),
+        "errors: {errors:?}"
+    );
+
+    let missing_approve = serde_json::json!({
+        "type": "mcp_approval_response",
+        "approval_request_id": "ar1"
+    });
+    let errors = validate_item_param(&missing_approve)
+        .err()
+        .unwrap_or_default();
+    assert!(
+        errors
+            .iter()
+            .any(|err| err.contains("missing required field `approve`")),
+        "errors: {errors:?}"
+    );
+}
+
+#[test]
 fn validate_item_param_reports_invalid_field_types() {
     let message = serde_json::json!({
         "type": "message",

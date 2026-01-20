@@ -47,6 +47,22 @@ impl CheckpointHook for HookSpy {
     }
 }
 
+struct FailingHook;
+
+impl CheckpointHook for FailingHook {
+    fn create(&self, _request: CheckpointRequest) -> Result<CheckpointRecord, String> {
+        Err("hook failed".to_string())
+    }
+
+    fn rewind(
+        &self,
+        _session_id: &str,
+        _checkpoint_id: &str,
+    ) -> Result<CheckpointRewindRecord, String> {
+        Err("hook failed".to_string())
+    }
+}
+
 #[tokio::test]
 async fn auto_checkpoint_emits_before_tool_started() {
     let dir = tempdir().expect("tmp");
@@ -140,6 +156,41 @@ async fn checkpoint_parse_failure_emits_failed() {
     assert!(hook.requests.lock().expect("lock").is_empty());
 }
 
+#[tokio::test]
+async fn auto_checkpoint_failure_emits_failed() {
+    let dir = tempdir().expect("tmp");
+    let registry = Arc::new(ToolRegistry::default());
+    register_builtin_tools(
+        &registry,
+        BuiltinToolConfig {
+            workspace_root: dir.path().to_path_buf(),
+            ..BuiltinToolConfig::default()
+        },
+    );
+
+    let runner = ToolRunner::with_checkpoint_hook(registry, 1, Arc::new(FailingHook));
+    let mut seq = 0;
+    let events = runner
+        .run(
+            "session-1",
+            &mut seq,
+            ToolInvocation {
+                name: "write".to_string(),
+                args: json!({"path": "a.txt", "content": "hello"}),
+                timeout_ms: None,
+            },
+        )
+        .await;
+
+    assert!(matches!(
+        events[0].kind,
+        EventKind::CheckpointFailed {
+            action: CheckpointAction::Create,
+            ..
+        }
+    ));
+}
+
 #[test]
 fn rewind_checkpoint_emits_event() {
     let registry = Arc::new(ToolRegistry::default());
@@ -160,6 +211,22 @@ fn rewind_checkpoint_emits_event() {
         }
         other => panic!("expected checkpoint_rewound, got {other:?}"),
     }
+}
+
+#[test]
+fn rewind_checkpoint_reports_hook_error() {
+    let registry = Arc::new(ToolRegistry::default());
+    let runner = ToolRunner::with_checkpoint_hook(registry, 1, Arc::new(FailingHook));
+    let mut seq = 0;
+
+    let events = runner.rewind_checkpoint("session-1", &mut seq, "cp-9");
+    assert!(matches!(
+        events[0].kind,
+        EventKind::CheckpointFailed {
+            action: CheckpointAction::Rewind,
+            ..
+        }
+    ));
 }
 
 #[test]
@@ -204,6 +271,27 @@ fn create_checkpoint_emits_event() {
         }
         other => panic!("expected checkpoint_created, got {other:?}"),
     }
+}
+
+#[test]
+fn create_checkpoint_reports_hook_error() {
+    let registry = Arc::new(ToolRegistry::default());
+    let runner = ToolRunner::with_checkpoint_hook(registry, 1, Arc::new(FailingHook));
+    let mut seq = 0;
+
+    let events = runner.create_checkpoint(
+        "session-1",
+        &mut seq,
+        "manual".to_string(),
+        vec![std::path::PathBuf::from("a.txt")],
+    );
+    assert!(matches!(
+        events[0].kind,
+        EventKind::CheckpointFailed {
+            action: CheckpointAction::Create,
+            ..
+        }
+    ));
 }
 
 #[test]

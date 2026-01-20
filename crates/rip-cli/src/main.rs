@@ -425,6 +425,7 @@ mod tests {
     use super::*;
     use httpmock::Method::{GET, POST};
     use httpmock::MockServer;
+    use std::sync::{Mutex, OnceLock};
 
     fn session_started_frame() -> String {
         serde_json::json!({
@@ -436,6 +437,78 @@ mod tests {
             "input": "hi"
         })
         .to_string()
+    }
+
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("env lock")
+    }
+
+    fn capture_env(keys: &[&str]) -> Vec<(String, Option<String>)> {
+        keys.iter()
+            .map(|key| ((*key).to_string(), std::env::var(*key).ok()))
+            .collect()
+    }
+
+    fn restore_env(saved: Vec<(String, Option<String>)>) {
+        for (key, value) in saved {
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
+        }
+    }
+
+    fn with_clean_env<F: FnOnce()>(f: F) {
+        let _guard = env_lock();
+        let keys = [
+            "RIP_DATA_DIR",
+            "RIP_WORKSPACE_ROOT",
+            "RIP_OPENRESPONSES_ENDPOINT",
+            "RIP_OPENRESPONSES_MODEL",
+            "RIP_OPENRESPONSES_STATELESS_HISTORY",
+            "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
+            "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
+            "RIP_OPENRESPONSES_API_KEY",
+            "OPENAI_API_KEY",
+            "OPENROUTER_API_KEY",
+        ];
+        let saved = capture_env(&keys);
+        for key in keys {
+            std::env::remove_var(key);
+        }
+        f();
+        restore_env(saved);
+    }
+
+    #[allow(clippy::await_holding_lock)]
+    async fn with_clean_env_async<F, Fut>(f: F)
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = ()>,
+    {
+        // Keep the env lock held across await to avoid test env races.
+        let _guard = env_lock();
+        let keys = [
+            "RIP_DATA_DIR",
+            "RIP_WORKSPACE_ROOT",
+            "RIP_OPENRESPONSES_ENDPOINT",
+            "RIP_OPENRESPONSES_MODEL",
+            "RIP_OPENRESPONSES_STATELESS_HISTORY",
+            "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
+            "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
+            "RIP_OPENRESPONSES_API_KEY",
+            "OPENAI_API_KEY",
+            "OPENROUTER_API_KEY",
+        ];
+        let saved = capture_env(&keys);
+        for key in keys {
+            std::env::remove_var(key);
+        }
+        f().await;
+        restore_env(saved);
     }
 
     #[tokio::test]
@@ -482,6 +555,20 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("send input failed"));
+    }
+
+    #[tokio::test]
+    async fn send_input_success() {
+        let server = MockServer::start();
+        let _mock = server.mock(|when, then| {
+            when.method(POST).path("/sessions/s1/input");
+            then.status(202);
+        });
+
+        let client = Client::new();
+        send_input(&client, &server.base_url(), "s1", "hi")
+            .await
+            .expect("send");
     }
 
     #[tokio::test]
@@ -597,6 +684,116 @@ mod tests {
         };
         let result = run(cli).await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn run_headless_remote() {
+        let server = MockServer::start();
+        let _create = server.mock(|when, then| {
+            when.method(POST).path("/sessions");
+            then.status(201)
+                .header("content-type", "application/json")
+                .body(r#"{"session_id":"abc"}"#);
+        });
+        let _input = server.mock(|when, then| {
+            when.method(POST).path("/sessions/abc/input");
+            then.status(202);
+        });
+        let _events = server.mock(|when, then| {
+            when.method(GET).path("/sessions/abc/events");
+            then.status(200)
+                .header("content-type", "text/event-stream")
+                .body(format!("data: {}\n\n", session_started_frame()));
+        });
+
+        let cli = Cli {
+            command: Commands::Run {
+                prompt: "hello".to_string(),
+                server: Some(server.base_url()),
+                provider: None,
+                model: None,
+                stateless_history: false,
+                parallel_tool_calls: false,
+                followup_user_message: None,
+                headless: true,
+                view: OutputView::Raw,
+            },
+        };
+        let result = run(cli).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn run_interactive_local_uses_env_paths() {
+        with_clean_env_async(|| async {
+            let tmp = std::env::temp_dir().join(format!("rip-cli-local-{}", std::process::id()));
+            let data_dir = tmp.join("data");
+            let workspace_dir = tmp.join("workspace");
+            std::fs::create_dir_all(&workspace_dir).expect("workspace");
+            std::env::set_var("RIP_DATA_DIR", &data_dir);
+            std::env::set_var("RIP_WORKSPACE_ROOT", &workspace_dir);
+
+            let cli = Cli {
+                command: Commands::Run {
+                    prompt: "hello".to_string(),
+                    server: None,
+                    provider: None,
+                    model: None,
+                    stateless_history: false,
+                    parallel_tool_calls: false,
+                    followup_user_message: None,
+                    headless: false,
+                    view: OutputView::Raw,
+                },
+            };
+            let result = run(cli).await;
+            assert!(result.is_ok());
+
+            let _ = std::fs::remove_dir_all(&tmp);
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn run_rejects_openresponses_flags_with_server() {
+        let cli = Cli {
+            command: Commands::Run {
+                prompt: "hello".to_string(),
+                server: Some("http://local".to_string()),
+                provider: Some(Provider::Openai),
+                model: None,
+                stateless_history: false,
+                parallel_tool_calls: false,
+                followup_user_message: None,
+                headless: true,
+                view: OutputView::Output,
+            },
+        };
+        let err = run(cli).await.unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("openresponses flags are only supported for local runs"));
+    }
+
+    #[tokio::test]
+    async fn run_requires_provider_when_openresponses_flags_set() {
+        let cli = Cli {
+            command: Commands::Run {
+                prompt: "hello".to_string(),
+                server: None,
+                provider: None,
+                model: Some("gpt-5-nano-2025-08-07".to_string()),
+                stateless_history: false,
+                parallel_tool_calls: false,
+                followup_user_message: None,
+                headless: true,
+                view: OutputView::Output,
+            },
+        };
+        let err = run(cli).await.unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("--provider is required when using openresponses flags"));
     }
 
     #[test]
@@ -765,6 +962,34 @@ mod tests {
     }
 
     #[test]
+    fn renders_trailing_newline_when_missing() {
+        let mut buffer = Vec::new();
+        let mut state = OutputState::default();
+        let payload = serde_json::json!({
+            "id": "e1",
+            "session_id": "s1",
+            "timestamp_ms": 0,
+            "seq": 0,
+            "type": "output_text_delta",
+            "delta": "hi"
+        })
+        .to_string();
+        render_message(OutputView::Output, &payload, &mut buffer, &mut state).expect("render");
+        let end_payload = serde_json::json!({
+            "id": "e2",
+            "session_id": "s1",
+            "timestamp_ms": 0,
+            "seq": 1,
+            "type": "session_ended",
+            "reason": "completed"
+        })
+        .to_string();
+        render_message(OutputView::Output, &end_payload, &mut buffer, &mut state).expect("render");
+        let rendered = String::from_utf8(buffer).expect("utf8");
+        assert!(rendered.ends_with("hi\n"));
+    }
+
+    #[test]
     fn renders_reasoning_and_tool_deltas() {
         let mut buffer = Vec::new();
         let mut state = OutputState::default();
@@ -838,5 +1063,233 @@ mod tests {
             Commands::Serve => {}
             Commands::Run { .. } => panic!("expected serve"),
         }
+    }
+
+    #[tokio::test]
+    async fn stream_events_stops_on_stream_end() {
+        let mut stream = futures_util::stream::iter(vec![Err(EventSourceError::StreamEnded)]);
+        let mut buffer = Vec::new();
+        let result = stream_events_with_writer(&mut stream, OutputView::Raw, &mut buffer).await;
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_openresponses_env_sets_openai_vars() {
+        with_clean_env(|| {
+            std::env::set_var("OPENAI_API_KEY", "test-openai");
+            apply_openresponses_env(
+                Provider::Openai,
+                Some("gpt-5-nano-2025-08-07".to_string()),
+                true,
+                true,
+                Some("continue".to_string()),
+            )
+            .expect("env");
+
+            assert_eq!(
+                std::env::var("RIP_OPENRESPONSES_ENDPOINT").ok().as_deref(),
+                Some("https://api.openai.com/v1/responses")
+            );
+            assert_eq!(
+                std::env::var("RIP_OPENRESPONSES_MODEL").ok().as_deref(),
+                Some("gpt-5-nano-2025-08-07")
+            );
+            assert_eq!(
+                std::env::var("RIP_OPENRESPONSES_STATELESS_HISTORY")
+                    .ok()
+                    .as_deref(),
+                Some("1")
+            );
+            assert_eq!(
+                std::env::var("RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS")
+                    .ok()
+                    .as_deref(),
+                Some("1")
+            );
+            assert_eq!(
+                std::env::var("RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE")
+                    .ok()
+                    .as_deref(),
+                Some("continue")
+            );
+            assert_eq!(
+                std::env::var("RIP_OPENRESPONSES_API_KEY").ok().as_deref(),
+                Some("test-openai")
+            );
+        });
+    }
+
+    #[test]
+    fn apply_openresponses_env_sets_openrouter_vars() {
+        with_clean_env(|| {
+            std::env::set_var("OPENROUTER_API_KEY", "test-openrouter");
+            apply_openresponses_env(Provider::Openrouter, None, false, false, None).expect("env");
+
+            assert_eq!(
+                std::env::var("RIP_OPENRESPONSES_ENDPOINT").ok().as_deref(),
+                Some("https://openrouter.ai/api/v1/responses")
+            );
+            assert_eq!(
+                std::env::var("RIP_OPENRESPONSES_API_KEY").ok().as_deref(),
+                Some("test-openrouter")
+            );
+        });
+    }
+
+    #[test]
+    fn apply_openresponses_env_uses_fallback_key() {
+        with_clean_env(|| {
+            std::env::set_var("RIP_OPENRESPONSES_API_KEY", "fallback");
+            apply_openresponses_env(Provider::Openai, None, false, false, None).expect("env");
+            assert_eq!(
+                std::env::var("RIP_OPENRESPONSES_API_KEY").ok().as_deref(),
+                Some("fallback")
+            );
+        });
+    }
+
+    #[test]
+    fn apply_openresponses_env_missing_key_errors() {
+        with_clean_env(|| {
+            let err =
+                apply_openresponses_env(Provider::Openai, None, false, false, None).unwrap_err();
+            assert!(err.to_string().contains("missing API key"));
+        });
+    }
+
+    #[test]
+    fn renders_provider_errors_when_no_output() {
+        let mut buffer = Vec::new();
+        let mut state = OutputState::default();
+        let payload = serde_json::json!({
+            "id": "e1",
+            "session_id": "s1",
+            "timestamp_ms": 0,
+            "seq": 0,
+            "type": "provider_event",
+            "provider": "openresponses",
+            "status": "invalid_json",
+            "event_name": null,
+            "data": null,
+            "raw": "raw",
+            "errors": ["bad json"],
+            "response_errors": ["schema"]
+        })
+        .to_string();
+        render_message(OutputView::Output, &payload, &mut buffer, &mut state).expect("render");
+        let end_payload = serde_json::json!({
+            "id": "e2",
+            "session_id": "s1",
+            "timestamp_ms": 0,
+            "seq": 1,
+            "type": "session_ended",
+            "reason": "completed"
+        })
+        .to_string();
+        render_message(OutputView::Output, &end_payload, &mut buffer, &mut state).expect("render");
+        let rendered = String::from_utf8(buffer).expect("utf8");
+        assert!(rendered.contains("provider_errors: bad json"));
+        assert!(rendered.contains("provider_response_errors: schema"));
+        assert!(rendered.contains("provider_invalid_json: raw"));
+    }
+
+    #[test]
+    fn renders_tool_stderr_with_newline() {
+        let mut buffer = Vec::new();
+        let mut state = OutputState::default();
+        let stdout_payload = serde_json::json!({
+            "id": "e1",
+            "session_id": "s1",
+            "timestamp_ms": 0,
+            "seq": 0,
+            "type": "tool_stdout",
+            "tool_id": "t1",
+            "chunk": "a.txt"
+        })
+        .to_string();
+        render_message(OutputView::Output, &stdout_payload, &mut buffer, &mut state)
+            .expect("render");
+        let stderr_payload = serde_json::json!({
+            "id": "e2",
+            "session_id": "s1",
+            "timestamp_ms": 0,
+            "seq": 1,
+            "type": "tool_stderr",
+            "tool_id": "t1",
+            "chunk": "boom"
+        })
+        .to_string();
+        render_message(OutputView::Output, &stderr_payload, &mut buffer, &mut state)
+            .expect("render");
+        let end_payload = serde_json::json!({
+            "id": "e3",
+            "session_id": "s1",
+            "timestamp_ms": 0,
+            "seq": 2,
+            "type": "session_ended",
+            "reason": "completed"
+        })
+        .to_string();
+        render_message(OutputView::Output, &end_payload, &mut buffer, &mut state).expect("render");
+        let rendered = String::from_utf8(buffer).expect("utf8");
+        assert!(rendered.contains("a.txt"));
+        assert!(rendered.contains("\nstderr: boom"));
+    }
+
+    #[test]
+    fn renders_tool_failed_when_no_output() {
+        let mut buffer = Vec::new();
+        let mut state = OutputState::default();
+        let payload = serde_json::json!({
+            "id": "e1",
+            "session_id": "s1",
+            "timestamp_ms": 0,
+            "seq": 0,
+            "type": "tool_failed",
+            "tool_id": "t1",
+            "error": "boom"
+        })
+        .to_string();
+        render_message(OutputView::Output, &payload, &mut buffer, &mut state).expect("render");
+        let end_payload = serde_json::json!({
+            "id": "e2",
+            "session_id": "s1",
+            "timestamp_ms": 0,
+            "seq": 1,
+            "type": "session_ended",
+            "reason": "completed"
+        })
+        .to_string();
+        render_message(OutputView::Output, &end_payload, &mut buffer, &mut state).expect("render");
+        let rendered = String::from_utf8(buffer).expect("utf8");
+        assert!(rendered.contains("tool_failed: boom"));
+    }
+
+    #[test]
+    fn trailing_newline_is_preserved() {
+        let mut buffer = Vec::new();
+        let mut state = OutputState::default();
+        let payload = serde_json::json!({
+            "id": "e1",
+            "session_id": "s1",
+            "timestamp_ms": 0,
+            "seq": 0,
+            "type": "output_text_delta",
+            "delta": "hi\n"
+        })
+        .to_string();
+        render_message(OutputView::Output, &payload, &mut buffer, &mut state).expect("render");
+        let end_payload = serde_json::json!({
+            "id": "e2",
+            "session_id": "s1",
+            "timestamp_ms": 0,
+            "seq": 1,
+            "type": "session_ended",
+            "reason": "completed"
+        })
+        .to_string();
+        render_message(OutputView::Output, &end_payload, &mut buffer, &mut state).expect("render");
+        let rendered = String::from_utf8(buffer).expect("utf8");
+        assert!(rendered.ends_with("hi\n"));
     }
 }
