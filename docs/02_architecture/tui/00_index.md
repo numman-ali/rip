@@ -67,7 +67,7 @@ The capability matrix is the source of truth. These designs visualize how capabi
 | [Live Session](screens/04_live_session.md) | Primary workspace | `session.stream_events`, `session.send_input` |
 | [Tool Detail](screens/05_tool_detail.md) | Inspect tool execution | `tool.*` frame inspection |
 | [Artifact Viewer](screens/06_artifact_viewer.md) | View large outputs | `tool.output_fetch`, `context.refs.artifact` |
-| [Background Tasks](screens/07_background_tasks.md) | Monitor async work | `tool.task_spawn`, `tool.task_status`, `tool.task_cancel` |
+| [Background Tasks](screens/07_background_tasks.md) | Monitor async work | `tool.task_spawn`, `tool.task_status`, `tool.task_cancel`, `tool.task_stream_events` |
 | [Permissions](screens/08_permissions.md) | Approval prompts | `policy.permissions.*`, `security.permissions` |
 | [Review Panel](screens/09_review_panel.md) | Batch change review | `ui.review`, `checkpoint.rewind` |
 | [Branch/Handoff](screens/10_branch_handoff.md) | Fork conversations | `thread.branch`, `thread.handoff` |
@@ -98,6 +98,10 @@ Complete mapping of capability IDs to TUI elements with phase and parity notes.
 | `tool.task_spawn` | P2 | Tasks panel | `rip task spawn` / same / `spawnTask()` |
 | `tool.task_status` | P2 | Tasks panel | `rip tasks` / `--tasks --json` / `listTasks()` |
 | `tool.task_cancel` | P2 | Tasks panel `[c]` | `rip task cancel` / same / `cancelTask()` |
+| `tool.task_stream_events` | P2 | Tasks panel (attach) | `rip task stream` / SSE stream / `streamTaskEvents()` |
+| `tool.task_write_stdin` | P2 | Task attach view | `rip task send` / HTTP / `writeTaskStdin()` |
+| `tool.task_resize` | P2 | Task attach view | Auto (on terminal resize) / HTTP / `resizeTask()` |
+| `tool.task_signal` | P2 | Tasks panel / Task attach view | `rip task signal` / HTTP / `signalTask()` |
 | `tool.output_fetch` | P2 | Artifact Viewer | `rip artifact <id>` / raw bytes / `getArtifact()` |
 | **Checkpointing** |
 | `checkpoint.auto` | P1 | Tool Detail (cp ref) | Implicit / frame data / frame access |

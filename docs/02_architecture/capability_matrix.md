@@ -21,7 +21,7 @@ Phase 2 — Expansion
 - Extensions & hooks: tool/permission/compaction hooks + event bus + extension registry; hook: pre/post tool, permission, session, compaction.
 - Skills: SKILL discovery + on-demand loader + skill-scoped hooks; hook: context compiler.
 - Subagents: subagent manager + budgets + tool caps; hook: task scheduler.
-- Tools & tooling: background tool tasks + artifact-backed outputs + cancellation; hook: tool runner + task scheduler + event log.
+- Tools & tooling: background tool tasks (pipes + PTY interactive control) + artifact-backed outputs + cancellation; hook: tool runner + task scheduler + event log.
 - Output styles: style registry + command selector; hook: response renderer.
 - UI/interaction: interactive affordances (palette, editor, shortcuts); hook: CLI/TUI UI layer.
 - TUI surface: `rip-tui` (rich rendering over the same capabilities).

@@ -4,6 +4,7 @@ Summary
 - All surfaces are thin adapters over the same core session + capability API.
 - No surface owns business logic; parity is enforced by contract and tests.
 - Server API is the canonical control plane for remote capability access; SDKs may run locally via `rip` exec (JSONL frames) or attach to a server.
+- Background tasks and interactive process control (PTY) are **core tool-runtime capabilities** (task entities); surfaces only render/attach/control via capabilities.
 
 Surfaces (Phase 1)
 - Interactive terminal UI: `rip` (fullscreen TUI; in-process by default; supports remote attach via `--server/--session`)

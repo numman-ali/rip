@@ -17,6 +17,10 @@ Monitor and control asynchronous tool executions. Shows running, completed, and 
 | `tool.task_spawn` | Task creation |
 | `tool.task_status` | Status monitoring |
 | `tool.task_cancel` | Cancellation |
+| `tool.task_stream_events` | Live output streaming / attach |
+| `tool.task_write_stdin` | Interactive input (PTY tasks) |
+| `tool.task_resize` | Terminal resize propagation (PTY tasks) |
+| `tool.task_signal` | SIGINT/SIGTERM/etc (PTY + non-PTY tasks where applicable) |
 | `ui.background_tasks` | Status display |
 
 ---
@@ -126,6 +130,14 @@ When a task is selected, shows streaming output:
 └───────────────────────────────────────────────────────────────────────────────┘
 ```
 
+### Interactive Task Attach (PTY)
+
+For PTY-backed tasks, the task panel can switch into an interactive terminal attach mode:
+- renders the PTY byte stream (ANSI-aware)
+- forwards user keystrokes to the task (`tool.task_write_stdin`)
+- propagates terminal resizes (`tool.task_resize`)
+- supports signals (`tool.task_signal`) and cancellation (`tool.task_cancel`)
+
 ---
 
 ## Progress Indicators
@@ -202,6 +214,7 @@ In the sidebar, tasks show minimal info:
 |-----|--------|---------|
 | `Enter` | Expand/select | Task list |
 | `c` | Cancel task | Selected active task |
+| `Ctrl+C` | Send SIGINT | Attached PTY task |
 | `a` | Cancel all | Any (confirmation) |
 | `l` | View full log | Any task |
 | `r` | Rerun task | Completed task |

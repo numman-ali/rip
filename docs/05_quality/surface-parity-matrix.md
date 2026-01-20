@@ -92,6 +92,10 @@ Generated from docs/03_contracts/capability_registry.md.
 | tool.task_spawn | planned | planned | planned | planned | planned | planned |
 | tool.task_status | planned | planned | planned | planned | planned | planned |
 | tool.task_cancel | planned | planned | planned | planned | planned | planned |
+| tool.task_stream_events | planned | planned | planned | planned | planned | planned |
+| tool.task_write_stdin | planned | planned | planned | planned | planned | planned |
+| tool.task_resize | planned | planned | planned | planned | planned | planned |
+| tool.task_signal | planned | planned | planned | planned | planned | planned |
 | tool.choice | planned | planned | planned | planned | planned | planned |
 | tool.call_limits | planned | planned | planned | planned | planned | planned |
 | tool.allowed_tools | planned | planned | planned | planned | planned | planned |

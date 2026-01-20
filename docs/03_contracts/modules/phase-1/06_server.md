@@ -25,3 +25,9 @@ Tests
 - Session lifecycle integration tests.
 - SSE stream compliance tests.
 - OpenAPI schema generation/validation tests.
+
+Phase 2 planned extensions
+- Background tool tasks (task entities) with their own event streams and control APIs:
+  - spawn/status/cancel + stream events
+  - interactive PTY control (stdin/resize/signal) when enabled by policy
+- See `docs/06_decisions/ADR-0007-tool-tasks-pty.md` and `docs/03_contracts/modules/phase-2/03_tool_tasks.md`.

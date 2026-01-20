@@ -14,24 +14,27 @@ How to use
 
 Now
 
-## Tools: background tool tasks (spawn/status/cancel) [needs work]
-- Refs: `docs/03_contracts/modules/phase-2/03_tool_tasks.md`, `docs/03_contracts/capability_registry.md`, `docs/02_architecture/capability_matrix.md`
-- Decision packet (required before implementation):
-  - Decision: how background tasks relate to session lifetime and event ordering.
-  - Options:
-    1) Multi-turn sessions: keep sessions alive; tasks emit frames into the same session stream.
-       - Pros: simplest UX; “insert message back” is natural.
-       - Cons: large server/runtime refactor; impacts invariants (`session_ended` terminal).
-    2) Task entity: background tasks have their own event streams; sessions can spawn tasks and later create new turns referencing task/artifact ids.
-       - Pros: preserves Phase 1 session invariants; easy to replay; decouples tasks from agent loop.
-       - Cons: UX needs orchestration; requires new API surface for task streams.
-  - Recommendation: Option 2 first (task entity), then optionally move to multi-turn sessions once `session.resume`/threading is in place.
-  - Reversibility: keep task ids stable and log all transitions; multi-turn sessions can consume task streams later without breaking ids.
+## Tools: background tool tasks + interactive PTY control [confirm spec]
+- Refs:
+  - `docs/06_decisions/ADR-0007-tool-tasks-pty.md`
+  - `docs/03_contracts/modules/phase-2/03_tool_tasks.md`
+  - `docs/03_contracts/event_frames.md`
+  - `docs/03_contracts/capability_registry.md`
+  - `docs/02_architecture/capability_matrix.md`
+- Spec snapshot:
+  - Background work is a **task entity** (`task_id`) with its own event stream; Phase 1 session invariant remains (one session == one run).
+  - Execution modes: `pipes` (default) and `pty` (opt-in; stdin/resize/signal).
+  - Artifact-backed logs prevent context/log explosion; frames carry previews + artifact refs.
+  - “Wake the agent” is orchestration: watchers start a new session referencing `{task_id, artifact_refs}`.
 - Ready:
-  - Define task lifecycle + task event stream endpoints + policy defaults (safe vs full-auto).
+  - Implement task registry + event stream plumbing (task spawn/status/cancel + stream).
+  - Implement PTY mode (policy-gated) with stdin/resize/signal operations.
+  - Implement artifact-backed logs for long-running tasks (range fetch).
+  - Add deterministic replay fixtures for: pipes task, PTY task, cancel, and “attach late”.
 - Done:
-  - Async tool task spawn/status/cancel is exposed via server + SDK (CLI/TUI render/stream events).
-  - Replay fixtures cover task creation, output, cancellation, and artifact references end-to-end.
+  - `tool.task_*` capabilities are exposed via server + SDK; CLI/TUI can list, stream, and control tasks.
+  - Replay fixtures cover: spawn→output→exit, spawn→cancel, PTY stdin/resize/signal, and artifact refs.
+  - Bench budgets cover task overhead (registry + per-delta emit) and do not regress TTFT/loop latency.
 
 Next
 
