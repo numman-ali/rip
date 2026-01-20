@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+  echo "skipping TypeScript SDK checks (missing node/npm)"
+  exit 0
+fi
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+sdk_dir="$root/sdk/typescript"
+
+if [ ! -d "$sdk_dir" ]; then
+  echo "skipping TypeScript SDK checks (missing $sdk_dir)"
+  exit 0
+fi
+
+cd "$sdk_dir"
+npm ci
+npm test
+

@@ -12,6 +12,7 @@ require_cargo_subcmd() {
 }
 
 "$(dirname "$0")/check-fast"
+"$(dirname "$0")/check-sdk-ts"
 
 cargo test --workspace --doc
 

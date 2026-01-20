@@ -2,3 +2,8 @@
 /temp/
 /target/
 /data/
+
+# Node/TypeScript
+node_modules/
+*.tsbuildinfo
+sdk/typescript/dist/

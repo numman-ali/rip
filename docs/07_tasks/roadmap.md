@@ -153,6 +153,7 @@ Open questions
 - (empty)
 
 Done (recent)
+- 2026-01-20: TypeScript SDK scaffold added (`sdk/typescript`): spawns `rip` and parses JSONL event frames; `scripts/check-sdk-ts` wired into `scripts/check`; CI check-fast now pins stable toolchain for fmt/check/clippy/test.
 - 2026-01-19: OpenResponses validation compatibility: normalize missing item ids for schema validation (raw events preserved); output view now streams only output_text (tool stdout/stderr fallback when no model output).
 - 2026-01-19: CLI: added provider/model/stateless/followup flags for local OpenResponses testing; OpenAI/OpenRouter one-liners documented.
 - 2026-01-19: OpenResponses follow-up compatibility is opt-in (`RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE`); spec-canonical tool-output-only follow-ups remain default.

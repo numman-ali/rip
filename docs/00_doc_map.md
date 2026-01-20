@@ -59,3 +59,6 @@ Doc index (authoritative docs only)
 | tool runtime | `docs/03_contracts/modules/phase-1/03_tool_runtime.md` | Built-in tools and tool dispatch contract. |
 | server | `docs/03_contracts/modules/phase-1/06_server.md` | Session API surface contract. |
 | CLI | `docs/03_contracts/modules/phase-1/05_cli.md` | CLI surface contract (interactive + headless). |
+| CLI execution | `docs/04_execution/cli.md` | How to run `rip` locally/remotely and interpret output modes. |
+| server execution | `docs/04_execution/server.md` | How sessions/events work over HTTP/SSE. |
+| SDK execution | `docs/04_execution/sdk.md` | How the TypeScript SDK runs (local exec + optional remote). |

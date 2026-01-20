@@ -21,10 +21,10 @@ require_rustup_toolchain() {
   fi
 }
 
-cargo fmt --all -- --check
-cargo check --workspace --all-targets
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace
+cargo +stable fmt --all -- --check
+cargo +stable check --workspace --all-targets
+cargo +stable clippy --workspace --all-targets --all-features -- -D warnings
+cargo +stable test --workspace
 
 require_rustup_toolchain nightly "rustup toolchain install nightly"
 require_cargo_subcmd udeps "cargo install cargo-udeps"

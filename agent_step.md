@@ -29,6 +29,7 @@ Active priorities
 
 Next checkpoints
 - CI runs `scripts/check-fast` on push/PR.
+- SDK TS checks (local): `scripts/check-sdk-ts`.
 - Bench harness includes TTFT + end-to-end loop and is CI-gated (`scripts/bench`).
 - `rip run <prompt>` works without a separate `ripd` process (in-process session engine).
 - `rip run <prompt> --server <url>` targets a remote server and streams identical event frames.
