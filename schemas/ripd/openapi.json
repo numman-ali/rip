@@ -107,10 +107,195 @@
           }
         }
       }
+    },
+    "/tasks": {
+      "get": {
+        "operationId": "list_tasks",
+        "responses": {
+          "200": {
+            "description": "List tasks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskStatusResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "create_task",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskSpawnPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Task created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskCreated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid task request"
+          }
+        }
+      }
+    },
+    "/tasks/{id}": {
+      "get": {
+        "operationId": "task_status",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Task id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskStatusResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found"
+          }
+        }
+      }
+    },
+    "/tasks/{id}/cancel": {
+      "post": {
+        "operationId": "cancel_task",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Task id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskCancelPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Cancel requested"
+          },
+          "404": {
+            "description": "Task not found"
+          }
+        }
+      }
+    },
+    "/tasks/{id}/events": {
+      "get": {
+        "operationId": "stream_task_events",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Task id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE stream of task event frames"
+          },
+          "404": {
+            "description": "Task not found"
+          }
+        }
+      }
+    },
+    "/tasks/{id}/output": {
+      "get": {
+        "operationId": "task_output",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Task id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Fetch task output (range)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskOutputResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found"
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "ApiToolTaskExecutionMode": {
+        "type": "string",
+        "enum": [
+          "pipes",
+          "pty"
+        ]
+      },
+      "ApiToolTaskStatus": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "exited",
+          "cancelled",
+          "failed"
+        ]
+      },
       "InputPayload": {
         "type": "object",
         "required": [
@@ -129,6 +314,176 @@
         ],
         "properties": {
           "session_id": {
+            "type": "string"
+          }
+        }
+      },
+      "TaskCancelPayload": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "TaskCreated": {
+        "type": "object",
+        "required": [
+          "task_id"
+        ],
+        "properties": {
+          "task_id": {
+            "type": "string"
+          }
+        }
+      },
+      "TaskOutputResponse": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "stream",
+          "content",
+          "offset_bytes",
+          "bytes",
+          "total_bytes",
+          "truncated",
+          "artifact_id",
+          "path"
+        ],
+        "properties": {
+          "artifact_id": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "content": {
+            "type": "string"
+          },
+          "offset_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "path": {
+            "type": "string"
+          },
+          "stream": {
+            "$ref": "#/components/schemas/TaskOutputStream"
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "total_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        }
+      },
+      "TaskOutputStream": {
+        "type": "string",
+        "enum": [
+          "stdout",
+          "stderr"
+        ]
+      },
+      "TaskSpawnPayload": {
+        "type": "object",
+        "required": [
+          "tool"
+        ],
+        "properties": {
+          "args": {},
+          "execution_mode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ApiToolTaskExecutionMode"
+              }
+            ]
+          },
+          "origin_session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tool": {
+            "type": "string"
+          }
+        }
+      },
+      "TaskStatusResponse": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "status",
+          "tool",
+          "execution_mode"
+        ],
+        "properties": {
+          "artifacts": {},
+          "ended_at_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "execution_mode": {
+            "$ref": "#/components/schemas/ApiToolTaskExecutionMode"
+          },
+          "exit_code": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "started_at_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "status": {
+            "$ref": "#/components/schemas/ApiToolTaskStatus"
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tool": {
             "type": "string"
           }
         }

@@ -8,6 +8,13 @@ Summary
 Decision
 - See `docs/06_decisions/ADR-0007-tool-tasks-pty.md`.
 
+Current status (implemented)
+- Pipes-mode background tasks are implemented and exposed via server + CLI:
+  - Task lifecycle/events: `POST /tasks`, `GET /tasks`, `GET /tasks/{id}`, `GET /tasks/{id}/events`, `POST /tasks/{id}/cancel`.
+  - Artifact-backed log tailing: `GET /tasks/{id}/output?stream=stdout|stderr&offset_bytes=...&max_bytes=...`.
+  - Frames: `tool_task_*` (see `docs/03_contracts/event_frames.md`).
+- PTY mode and interactive control operations (`stdin/resize/signal`) are still pending.
+
 Related capabilities
 - `tool.task_spawn`, `tool.task_status`, `tool.task_cancel`
 - `tool.task_stream_events`, `tool.task_write_stdin`, `tool.task_resize`, `tool.task_signal`

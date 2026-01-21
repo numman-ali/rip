@@ -14,6 +14,14 @@ pub fn event_type(event: &Event) -> &'static str {
         EventKind::CheckpointCreated { .. } => "checkpoint_created",
         EventKind::CheckpointRewound { .. } => "checkpoint_rewound",
         EventKind::CheckpointFailed { .. } => "checkpoint_failed",
+        EventKind::ToolTaskSpawned { .. } => "tool_task_spawned",
+        EventKind::ToolTaskStatus { .. } => "tool_task_status",
+        EventKind::ToolTaskCancelRequested { .. } => "tool_task_cancel_requested",
+        EventKind::ToolTaskCancelled { .. } => "tool_task_cancelled",
+        EventKind::ToolTaskOutputDelta { .. } => "tool_task_output_delta",
+        EventKind::ToolTaskStdinWritten { .. } => "tool_task_stdin_written",
+        EventKind::ToolTaskResized { .. } => "tool_task_resized",
+        EventKind::ToolTaskSignalled { .. } => "tool_task_signalled",
     }
 }
 
@@ -52,6 +60,16 @@ pub fn event_summary(event: &Event) -> String {
             format!("{:?}", truncate(label, 64))
         }
         EventKind::CheckpointFailed { error, .. } => format!("{:?}", truncate(error, 64)),
+        EventKind::ToolTaskSpawned { tool_name, .. } => tool_name.to_string(),
+        EventKind::ToolTaskStatus { status, .. } => format!("{status:?}").to_lowercase(),
+        EventKind::ToolTaskCancelRequested { reason, .. }
+        | EventKind::ToolTaskCancelled { reason, .. } => format!("{:?}", truncate(reason, 64)),
+        EventKind::ToolTaskOutputDelta { chunk, .. } => format!("{:?}", truncate(chunk, 64)),
+        EventKind::ToolTaskStdinWritten { chunk_b64, .. } => {
+            format!("{:?}", truncate(chunk_b64, 64))
+        }
+        EventKind::ToolTaskResized { rows, cols, .. } => format!("{rows}x{cols}"),
+        EventKind::ToolTaskSignalled { signal, .. } => signal.to_string(),
     }
 }
 

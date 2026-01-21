@@ -29,6 +29,31 @@ pub enum ProviderEventStatus {
     InvalidJson,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolTaskExecutionMode {
+    Pipes,
+    Pty,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolTaskStatus {
+    Queued,
+    Running,
+    Exited,
+    Cancelled,
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolTaskStream {
+    Stdout,
+    Stderr,
+    Pty,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CheckpointAction {
@@ -97,6 +122,53 @@ pub enum EventKind {
     CheckpointFailed {
         action: CheckpointAction,
         error: String,
+    },
+    ToolTaskSpawned {
+        task_id: String,
+        tool_name: String,
+        args: Value,
+        cwd: Option<String>,
+        title: Option<String>,
+        execution_mode: ToolTaskExecutionMode,
+        origin_session_id: Option<String>,
+        artifacts: Option<Value>,
+    },
+    ToolTaskStatus {
+        task_id: String,
+        status: ToolTaskStatus,
+        exit_code: Option<i32>,
+        started_at_ms: Option<u64>,
+        ended_at_ms: Option<u64>,
+        artifacts: Option<Value>,
+        error: Option<String>,
+    },
+    ToolTaskCancelRequested {
+        task_id: String,
+        reason: String,
+    },
+    ToolTaskCancelled {
+        task_id: String,
+        reason: String,
+        wall_time_ms: Option<u64>,
+    },
+    ToolTaskOutputDelta {
+        task_id: String,
+        stream: ToolTaskStream,
+        chunk: String,
+        artifacts: Option<Value>,
+    },
+    ToolTaskStdinWritten {
+        task_id: String,
+        chunk_b64: String,
+    },
+    ToolTaskResized {
+        task_id: String,
+        rows: u16,
+        cols: u16,
+    },
+    ToolTaskSignalled {
+        task_id: String,
+        signal: String,
     },
 }
 
@@ -255,7 +327,15 @@ impl Session {
             | EventKind::ToolFailed { .. }
             | EventKind::CheckpointCreated { .. }
             | EventKind::CheckpointRewound { .. }
-            | EventKind::CheckpointFailed { .. } => (None, None),
+            | EventKind::CheckpointFailed { .. }
+            | EventKind::ToolTaskSpawned { .. }
+            | EventKind::ToolTaskStatus { .. }
+            | EventKind::ToolTaskCancelRequested { .. }
+            | EventKind::ToolTaskCancelled { .. }
+            | EventKind::ToolTaskOutputDelta { .. }
+            | EventKind::ToolTaskStdinWritten { .. }
+            | EventKind::ToolTaskResized { .. }
+            | EventKind::ToolTaskSignalled { .. } => (None, None),
         };
 
         if let Some(hook_event) = hook_event {

@@ -11,6 +11,7 @@ use uuid::Uuid;
 use crate::checkpoints::WorkspaceCheckpointHook;
 use crate::provider_openresponses::OpenResponsesConfig;
 use crate::session::{run_session, SessionContext};
+use crate::tasks::{TaskEngine, TaskEngineConfig};
 
 const EVENT_CHANNEL_CAPACITY: usize = 16_384;
 const TOOL_MAX_CONCURRENCY: usize = 4;
@@ -26,6 +27,10 @@ impl SessionHandle {
     pub fn subscribe(&self) -> broadcast::Receiver<Event> {
         self.sender.subscribe()
     }
+
+    pub(crate) async fn events_snapshot(&self) -> Vec<Event> {
+        self.events.lock().await.clone()
+    }
 }
 
 pub struct SessionEngine {
@@ -35,6 +40,7 @@ pub struct SessionEngine {
     openresponses: Option<OpenResponsesConfig>,
     event_log: Arc<EventLog>,
     snapshot_dir: Arc<PathBuf>,
+    task_engine: Arc<TaskEngine>,
 }
 
 impl SessionEngine {
@@ -44,15 +50,13 @@ impl SessionEngine {
         openresponses: Option<OpenResponsesConfig>,
     ) -> Result<Self, String> {
         let registry = Arc::new(ToolRegistry::default());
-        register_builtin_tools(
-            &registry,
-            BuiltinToolConfig {
-                workspace_root: workspace_root.clone(),
-                ..BuiltinToolConfig::default()
-            },
-        );
+        let builtin_config = BuiltinToolConfig {
+            workspace_root: workspace_root.clone(),
+            ..BuiltinToolConfig::default()
+        };
+        register_builtin_tools(&registry, builtin_config.clone());
 
-        let checkpoint_hook = WorkspaceCheckpointHook::new(workspace_root)
+        let checkpoint_hook = WorkspaceCheckpointHook::new(workspace_root.clone())
             .map_err(|err| format!("workspace checkpoint hook init failed: {err}"))?;
         let tool_runner = Arc::new(ToolRunner::with_checkpoint_hook(
             registry,
@@ -65,6 +69,16 @@ impl SessionEngine {
                 .map_err(|err| format!("event log init failed: {err}"))?,
         );
         let snapshot_dir = Arc::new(data_dir.join("snapshots"));
+        let task_snapshot_dir = Arc::new(data_dir.join("task_snapshots"));
+        let task_engine = Arc::new(TaskEngine::new(
+            TaskEngineConfig {
+                workspace_root: workspace_root.clone(),
+                artifact_max_bytes: builtin_config.artifact_max_bytes,
+                max_bytes: builtin_config.max_bytes,
+            },
+            event_log.clone(),
+            task_snapshot_dir,
+        ));
 
         Ok(Self {
             runtime: Arc::new(Runtime::new()),
@@ -73,6 +87,7 @@ impl SessionEngine {
             openresponses,
             event_log,
             snapshot_dir,
+            task_engine,
         })
     }
 
@@ -110,6 +125,10 @@ impl SessionEngine {
 
     pub fn cancel_session(sessions: &mut HashMap<String, SessionHandle>, session_id: &str) -> bool {
         sessions.remove(session_id).is_some()
+    }
+
+    pub(crate) fn tasks(&self) -> Arc<TaskEngine> {
+        self.task_engine.clone()
     }
 }
 

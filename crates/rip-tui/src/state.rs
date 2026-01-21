@@ -116,14 +116,37 @@ impl TuiState {
                     self.start_ms = Some(event.timestamp_ms);
                 }
             }
+            EventKind::ToolTaskSpawned { .. } => {
+                if self.start_ms.is_none() {
+                    self.start_ms = Some(event.timestamp_ms);
+                }
+            }
             EventKind::OutputTextDelta { delta } => {
                 if self.first_output_ms.is_none() {
                     self.first_output_ms = Some(event.timestamp_ms);
                 }
                 self.push_output(delta);
             }
+            EventKind::ToolTaskOutputDelta { chunk, .. } => {
+                if self.first_output_ms.is_none() {
+                    self.first_output_ms = Some(event.timestamp_ms);
+                }
+                self.push_output(chunk);
+            }
             EventKind::SessionEnded { .. } => {
                 if self.end_ms.is_none() {
+                    self.end_ms = Some(event.timestamp_ms);
+                }
+            }
+            EventKind::ToolTaskStatus { status, .. } => {
+                if self.end_ms.is_none()
+                    && matches!(
+                        status,
+                        rip_kernel::ToolTaskStatus::Exited
+                            | rip_kernel::ToolTaskStatus::Cancelled
+                            | rip_kernel::ToolTaskStatus::Failed
+                    )
+                {
                     self.end_ms = Some(event.timestamp_ms);
                 }
             }

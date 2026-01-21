@@ -89,10 +89,10 @@ Generated from docs/03_contracts/capability_registry.md.
 | tool.override | planned | planned | planned | planned | planned | planned |
 | tool.remote | planned | planned | planned | planned | planned | planned |
 | tool.arg_rules | planned | planned | planned | planned | planned | planned |
-| tool.task_spawn | planned | planned | planned | planned | planned | planned |
-| tool.task_status | planned | planned | planned | planned | planned | planned |
-| tool.task_cancel | planned | planned | planned | planned | planned | planned |
-| tool.task_stream_events | planned | planned | planned | planned | planned | planned |
+| tool.task_spawn | planned | supported | supported | planned | planned | planned |
+| tool.task_status | planned | supported | supported | planned | planned | planned |
+| tool.task_cancel | planned | supported | supported | planned | planned | planned |
+| tool.task_stream_events | planned | supported | supported | planned | planned | planned |
 | tool.task_write_stdin | planned | planned | planned | planned | planned | planned |
 | tool.task_resize | planned | planned | planned | planned | planned | planned |
 | tool.task_signal | planned | planned | planned | planned | planned | planned |

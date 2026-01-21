@@ -3,6 +3,7 @@ mod provider_openresponses;
 mod runner;
 mod server;
 mod session;
+mod tasks;
 
 pub use runner::{SessionEngine, SessionHandle};
 

@@ -15,6 +15,18 @@ Attach mode (remote)
 - `rip --server <url> --session <id>`
 - Attaches the fullscreen UI to an existing server session and streams canonical event frames over SSE.
 
+Task attach mode (remote)
+- `rip --server <url> --task <id>`
+- Attaches the fullscreen UI to an existing background task and streams task frames over SSE.
+
+Task commands (remote)
+- `rip tasks --server <url> spawn --tool bash --args '{"command":"<cmd>"}'`
+- `rip tasks --server <url> list`
+- `rip tasks --server <url> status <task_id>`
+- `rip tasks --server <url> cancel <task_id> --reason "<why>"`
+- `rip tasks --server <url> output <task_id> --stream stdout --offset-bytes 0 --max-bytes 4096`
+- `rip tasks --server <url> events <task_id>` (prints JSON frames until terminal `tool_task_status`)
+
 Headless mode (draft)
 - rip run <task> --headless --view raw
 - emits newline-delimited JSON event frames

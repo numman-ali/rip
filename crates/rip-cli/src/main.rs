@@ -6,6 +6,7 @@ use reqwest::Client;
 use reqwest_eventsource::{Error as EventSourceError, Event, RequestBuilderExt};
 use rip_kernel::{Event as FrameEvent, EventKind};
 use serde::Deserialize;
+use serde_json::Value;
 use tokio::sync::broadcast;
 
 mod fullscreen;
@@ -22,6 +23,9 @@ struct Cli {
     /// Existing session id for TUI attach mode.
     #[arg(long)]
     session: Option<String>,
+    /// Existing task id for TUI attach mode.
+    #[arg(long)]
+    task: Option<String>,
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -53,6 +57,12 @@ enum Commands {
         view: OutputView,
     },
     Serve,
+    Tasks {
+        #[arg(long)]
+        server: String,
+        #[command(subcommand)]
+        command: TaskCommand,
+    },
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum, PartialEq, Eq)]
@@ -84,6 +94,46 @@ struct SessionCreated {
     session_id: String,
 }
 
+#[derive(Subcommand)]
+enum TaskCommand {
+    Spawn {
+        #[arg(long)]
+        tool: String,
+        /// Tool args as JSON.
+        #[arg(long)]
+        args: String,
+        #[arg(long)]
+        title: Option<String>,
+    },
+    List,
+    Status {
+        id: String,
+    },
+    Cancel {
+        id: String,
+        #[arg(long)]
+        reason: Option<String>,
+    },
+    Output {
+        id: String,
+        #[arg(long, value_enum, default_value_t = TaskStream::Stdout)]
+        stream: TaskStream,
+        #[arg(long, default_value_t = 0)]
+        offset_bytes: u64,
+        #[arg(long)]
+        max_bytes: Option<usize>,
+    },
+    Events {
+        id: String,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum TaskStream {
+    Stdout,
+    Stderr,
+}
+
 #[cfg(not(test))]
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -93,13 +143,13 @@ async fn main() -> anyhow::Result<()> {
 async fn run(cli: Cli) -> anyhow::Result<()> {
     match cli.command {
         None => {
-            if cli.server.is_some() || cli.session.is_some() {
+            if cli.server.is_some() || cli.session.is_some() || cli.task.is_some() {
                 let server = cli
                     .server
                     .ok_or_else(|| anyhow::anyhow!("missing --server"))?;
-                let session_id = cli
-                    .session
-                    .ok_or_else(|| anyhow::anyhow!("missing --session"))?;
+                if cli.session.is_some() && cli.task.is_some() {
+                    anyhow::bail!("use exactly one of --session or --task");
+                }
                 if let Some(prompt) = cli.prompt {
                     if !prompt.trim().is_empty() {
                         anyhow::bail!(
@@ -107,7 +157,13 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                         );
                     }
                 }
-                fullscreen::run_fullscreen_tui_attach(server, session_id).await?;
+                if let Some(session_id) = cli.session {
+                    fullscreen::run_fullscreen_tui_attach(server, session_id).await?;
+                } else if let Some(task_id) = cli.task {
+                    fullscreen::run_fullscreen_tui_attach_task(server, task_id).await?;
+                } else {
+                    anyhow::bail!("missing --session or --task");
+                }
             } else {
                 fullscreen::run_fullscreen_tui(cli.prompt).await?;
             }
@@ -159,6 +215,117 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         }
         Some(Commands::Serve) => {
             ripd::serve_default().await;
+        }
+        Some(Commands::Tasks { server, command }) => {
+            let client = Client::new();
+            match command {
+                TaskCommand::Spawn { tool, args, title } => {
+                    let args_value: Value = serde_json::from_str(&args)
+                        .map_err(|err| anyhow::anyhow!("invalid --args json: {err}"))?;
+                    let url = format!("{server}/tasks");
+                    let response = client
+                        .post(url)
+                        .json(&serde_json::json!({
+                            "tool": tool,
+                            "args": args_value,
+                            "title": title,
+                            "execution_mode": "pipes"
+                        }))
+                        .send()
+                        .await?;
+                    let status = response.status();
+                    if !status.is_success() {
+                        anyhow::bail!("task spawn failed: {status}");
+                    }
+                    let body = response.text().await?;
+                    println!("{body}");
+                }
+                TaskCommand::List => {
+                    let url = format!("{server}/tasks");
+                    let response = client.get(url).send().await?;
+                    let status = response.status();
+                    if !status.is_success() {
+                        anyhow::bail!("task list failed: {status}");
+                    }
+                    let body = response.text().await?;
+                    println!("{body}");
+                }
+                TaskCommand::Status { id } => {
+                    let url = format!("{server}/tasks/{id}");
+                    let response = client.get(url).send().await?;
+                    let status = response.status();
+                    if !status.is_success() {
+                        anyhow::bail!("task status failed: {status}");
+                    }
+                    let body = response.text().await?;
+                    println!("{body}");
+                }
+                TaskCommand::Cancel { id, reason } => {
+                    let url = format!("{server}/tasks/{id}/cancel");
+                    let response = client
+                        .post(url)
+                        .json(&serde_json::json!({"reason": reason}))
+                        .send()
+                        .await?;
+                    let status = response.status();
+                    if !status.is_success() {
+                        anyhow::bail!("task cancel failed: {status}");
+                    }
+                }
+                TaskCommand::Output {
+                    id,
+                    stream,
+                    offset_bytes,
+                    max_bytes,
+                } => {
+                    let stream_str = match stream {
+                        TaskStream::Stdout => "stdout",
+                        TaskStream::Stderr => "stderr",
+                    };
+                    let mut url = format!(
+                        "{server}/tasks/{id}/output?stream={stream_str}&offset_bytes={offset_bytes}"
+                    );
+                    if let Some(max_bytes) = max_bytes {
+                        url.push_str(&format!("&max_bytes={max_bytes}"));
+                    }
+                    let response = client.get(url).send().await?;
+                    let status = response.status();
+                    if !status.is_success() {
+                        anyhow::bail!("task output failed: {status}");
+                    }
+                    let body = response.text().await?;
+                    println!("{body}");
+                }
+                TaskCommand::Events { id } => {
+                    let url = format!("{server}/tasks/{id}/events");
+                    let mut stream = client.get(url).eventsource()?;
+                    while let Some(next) = stream.next().await {
+                        match next {
+                            Ok(Event::Open) => {}
+                            Ok(Event::Message(msg)) => {
+                                let frame: Option<FrameEvent> =
+                                    serde_json::from_str(&msg.data).ok();
+                                println!("{}", msg.data);
+                                if let Some(frame) = frame {
+                                    if matches!(
+                                        frame.kind,
+                                        EventKind::ToolTaskStatus {
+                                            status: rip_kernel::ToolTaskStatus::Exited
+                                                | rip_kernel::ToolTaskStatus::Cancelled
+                                                | rip_kernel::ToolTaskStatus::Failed,
+                                            ..
+                                        }
+                                    ) {
+                                        break;
+                                    }
+                                }
+                            }
+                            Err(EventSourceError::StreamEnded) => break,
+                            Err(err) => return Err(err.into()),
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -707,6 +874,7 @@ mod tests {
             prompt: None,
             server: None,
             session: None,
+            task: None,
             command: Some(Commands::Run {
                 prompt: "hello".to_string(),
                 server: Some(server.base_url()),
@@ -747,6 +915,7 @@ mod tests {
             prompt: None,
             server: None,
             session: None,
+            task: None,
             command: Some(Commands::Run {
                 prompt: "hello".to_string(),
                 server: Some(server.base_url()),
@@ -777,6 +946,7 @@ mod tests {
                 prompt: None,
                 server: None,
                 session: None,
+                task: None,
                 command: Some(Commands::Run {
                     prompt: "hello".to_string(),
                     server: None,
@@ -803,6 +973,7 @@ mod tests {
             prompt: None,
             server: None,
             session: None,
+            task: None,
             command: Some(Commands::Run {
                 prompt: "hello".to_string(),
                 server: Some("http://local".to_string()),
@@ -827,6 +998,7 @@ mod tests {
             prompt: None,
             server: None,
             session: None,
+            task: None,
             command: Some(Commands::Run {
                 prompt: "hello".to_string(),
                 server: None,
@@ -851,12 +1023,14 @@ mod tests {
         assert!(cli.prompt.is_none());
         assert!(cli.server.is_none());
         assert!(cli.session.is_none());
+        assert!(cli.task.is_none());
         match cli.command {
             Some(Commands::Run { prompt, server, .. }) => {
                 assert_eq!(prompt, "hello");
                 assert!(server.is_none());
             }
             Some(Commands::Serve) => panic!("expected run"),
+            Some(Commands::Tasks { .. }) => panic!("expected run"),
             None => panic!("expected run"),
         }
     }
@@ -867,6 +1041,7 @@ mod tests {
         assert!(cli.prompt.is_none());
         assert!(cli.server.is_none());
         assert!(cli.session.is_none());
+        assert!(cli.task.is_none());
         match cli.command {
             Some(Commands::Run {
                 headless,
@@ -879,6 +1054,7 @@ mod tests {
                 assert!(server.is_none());
             }
             Some(Commands::Serve) => panic!("expected run"),
+            Some(Commands::Tasks { .. }) => panic!("expected run"),
             None => panic!("expected run"),
         }
     }
@@ -901,6 +1077,7 @@ mod tests {
         assert!(cli.prompt.is_none());
         assert!(cli.server.is_none());
         assert!(cli.session.is_none());
+        assert!(cli.task.is_none());
         match cli.command {
             Some(Commands::Run {
                 provider,
@@ -917,6 +1094,7 @@ mod tests {
                 assert_eq!(followup_user_message.as_deref(), Some("continue"));
             }
             Some(Commands::Serve) => panic!("expected run"),
+            Some(Commands::Tasks { .. }) => panic!("expected run"),
             None => panic!("expected run"),
         }
     }
@@ -927,11 +1105,13 @@ mod tests {
         assert!(cli.prompt.is_none());
         assert!(cli.server.is_none());
         assert!(cli.session.is_none());
+        assert!(cli.task.is_none());
         match cli.command {
             Some(Commands::Run { server, .. }) => {
                 assert_eq!(server.as_deref(), Some("http://local"))
             }
             Some(Commands::Serve) => panic!("expected run"),
+            Some(Commands::Tasks { .. }) => panic!("expected run"),
             None => panic!("expected run"),
         }
     }
@@ -1120,9 +1300,11 @@ mod tests {
         assert!(cli.prompt.is_none());
         assert!(cli.server.is_none());
         assert!(cli.session.is_none());
+        assert!(cli.task.is_none());
         match cli.command {
             Some(Commands::Run { headless, .. }) => assert!(!headless),
             Some(Commands::Serve) => panic!("expected run"),
+            Some(Commands::Tasks { .. }) => panic!("expected run"),
             None => panic!("expected run"),
         }
     }
@@ -1133,9 +1315,11 @@ mod tests {
         assert!(cli.prompt.is_none());
         assert!(cli.server.is_none());
         assert!(cli.session.is_none());
+        assert!(cli.task.is_none());
         match cli.command {
             Some(Commands::Serve) => {}
             Some(Commands::Run { .. }) => panic!("expected serve"),
+            Some(Commands::Tasks { .. }) => panic!("expected serve"),
             None => panic!("expected serve"),
         }
     }
@@ -1146,6 +1330,7 @@ mod tests {
         assert_eq!(cli.prompt.as_deref(), Some("hello"));
         assert!(cli.server.is_none());
         assert!(cli.session.is_none());
+        assert!(cli.task.is_none());
         assert!(cli.command.is_none());
     }
 
@@ -1155,6 +1340,7 @@ mod tests {
         assert!(cli.prompt.is_none());
         assert_eq!(cli.server.as_deref(), Some("http://local"));
         assert_eq!(cli.session.as_deref(), Some("abc"));
+        assert!(cli.task.is_none());
         assert!(cli.command.is_none());
     }
 

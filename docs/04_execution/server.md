@@ -12,9 +12,18 @@ Session lifecycle (draft)
 - GET /sessions/:id/events -> SSE event stream
 - POST /sessions/:id/cancel -> cancel session
 
+Task lifecycle (pipes; implemented)
+- POST /tasks -> task id (background task spawn)
+- GET /tasks -> list tasks
+- GET /tasks/:id -> task status
+- GET /tasks/:id/events -> SSE task event stream
+- POST /tasks/:id/cancel -> cancel task (best-effort)
+- GET /tasks/:id/output -> range fetch task logs (stdout/stderr)
+
 Notes
 - Today: `rip serve` (or `ripd`) exposes the session API for remote clients (SDKs can attach via `--server <url>`).
 - Today: `rip run` defaults to in-process execution; use `--server <url>` to target a remote server.
+- Today: `rip tasks --server <url> ...` is the CLI adapter over the task API.
 - SSE stream emits JSON event frames (`docs/03_contracts/event_frames.md`).
 - OpenAPI spec is exposed at `/openapi.json` (canonical) and may be mirrored in `schemas/`.
 - JSON input envelopes can trigger tool execution and checkpoint actions (used for deterministic tests):

@@ -1,7 +1,7 @@
 use std::{collections::HashMap, convert::Infallible, sync::Arc};
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{header::CONTENT_TYPE, StatusCode},
     response::{sse::Event as SseEvent, IntoResponse, Sse},
     routing::get,
@@ -16,6 +16,10 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::provider_openresponses::OpenResponsesConfig;
 use crate::runner::{SessionEngine, SessionHandle};
+use crate::tasks::{
+    TaskCancelPayload, TaskCreated, TaskEngine, TaskHandle, TaskOutputQuery, TaskOutputResponse,
+    TaskSpawnPayload, TaskStatusResponse,
+};
 
 #[cfg(not(test))]
 use std::net::SocketAddr;
@@ -25,6 +29,7 @@ use tokio::net::TcpListener;
 #[derive(Clone)]
 pub(crate) struct AppState {
     sessions: Arc<Mutex<HashMap<String, SessionHandle>>>,
+    tasks: Arc<Mutex<HashMap<String, TaskHandle>>>,
     engine: Arc<SessionEngine>,
     openapi_json: Arc<String>,
 }
@@ -88,6 +93,7 @@ pub(crate) fn build_app_with_workspace_root_and_provider(
 
     let state = AppState {
         sessions: Arc::new(Mutex::new(HashMap::new())),
+        tasks: Arc::new(Mutex::new(HashMap::new())),
         engine,
         openapi_json: Arc::new(openapi_json),
     };
@@ -103,6 +109,12 @@ pub(crate) fn build_openapi_router() -> (Router<AppState>, String) {
         .routes(routes!(send_input))
         .routes(routes!(stream_events))
         .routes(routes!(cancel_session))
+        .routes(routes!(create_task))
+        .routes(routes!(list_tasks))
+        .routes(routes!(task_status))
+        .routes(routes!(task_output))
+        .routes(routes!(stream_task_events))
+        .routes(routes!(cancel_task))
         .split_for_parts();
     let json = api
         .to_pretty_json()
@@ -173,26 +185,41 @@ async fn stream_events(
     Path(session_id): Path<String>,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
-    let receiver = {
+    let handle = {
         let sessions = state.sessions.lock().await;
         match sessions.get(&session_id) {
-            Some(handle) => handle.subscribe(),
+            Some(handle) => handle.clone(),
             None => return StatusCode::NOT_FOUND.into_response(),
         }
     };
 
-    let stream = BroadcastStream::new(receiver).filter_map(|result| async move {
-        match result {
-            Ok(event) => {
-                let json = match serde_json::to_string(&event) {
-                    Ok(value) => value,
-                    Err(_) => return None,
-                };
-                Some(Ok::<SseEvent, Infallible>(SseEvent::default().data(json)))
+    let receiver = handle.subscribe();
+    let past = handle.events_snapshot().await;
+
+    let last_seq = past.last().map(|event| event.seq);
+    let past_stream = tokio_stream::iter(past).filter_map(|event| async move {
+        let json = serde_json::to_string(&event).ok()?;
+        Some(Ok::<SseEvent, Infallible>(SseEvent::default().data(json)))
+    });
+
+    let last_seq_live = last_seq;
+    let live_stream = BroadcastStream::new(receiver).filter_map(move |result| {
+        let last_seq = last_seq_live;
+        async move {
+            match result {
+                Ok(event) => {
+                    if last_seq.map(|last| event.seq <= last).unwrap_or(false) {
+                        return None;
+                    }
+                    let json = serde_json::to_string(&event).ok()?;
+                    Some(Ok::<SseEvent, Infallible>(SseEvent::default().data(json)))
+                }
+                Err(_) => None,
             }
-            Err(_) => None,
         }
     });
+
+    let stream = past_stream.chain(live_stream);
 
     Sse::new(stream)
         .keep_alive(axum::response::sse::KeepAlive::new().text("ping"))
@@ -220,6 +247,208 @@ async fn cancel_session(
     } else {
         StatusCode::NOT_FOUND
     }
+}
+
+#[utoipa::path(
+    post,
+    path = "/tasks",
+    request_body = TaskSpawnPayload,
+    responses(
+        (status = 201, description = "Task created", body = TaskCreated),
+        (status = 400, description = "Invalid task request")
+    )
+)]
+async fn create_task(
+    State(state): State<AppState>,
+    Json(payload): Json<TaskSpawnPayload>,
+) -> impl IntoResponse {
+    let mode = payload
+        .execution_mode
+        .unwrap_or(crate::tasks::ApiToolTaskExecutionMode::Pipes);
+    if mode != crate::tasks::ApiToolTaskExecutionMode::Pipes {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+    if payload.tool != "bash" && payload.tool != "shell" {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+
+    let engine: Arc<TaskEngine> = state.engine.tasks();
+    let handle = engine.create_task(&payload);
+    let task_id = handle.task_id.clone();
+    {
+        let mut tasks = state.tasks.lock().await;
+        tasks.insert(task_id.clone(), handle.clone());
+    }
+
+    engine.spawn_task(handle, payload);
+
+    (StatusCode::CREATED, Json(TaskCreated { task_id })).into_response()
+}
+
+#[utoipa::path(
+    get,
+    path = "/tasks",
+    responses(
+        (status = 200, description = "List tasks", body = [TaskStatusResponse])
+    )
+)]
+async fn list_tasks(State(state): State<AppState>) -> impl IntoResponse {
+    let handles = {
+        let tasks = state.tasks.lock().await;
+        tasks.values().cloned().collect::<Vec<_>>()
+    };
+    let mut out = Vec::with_capacity(handles.len());
+    for handle in handles {
+        out.push(handle.status().await);
+    }
+    Json(out).into_response()
+}
+
+#[utoipa::path(
+    get,
+    path = "/tasks/{id}",
+    params(
+        ("id" = String, Path, description = "Task id")
+    ),
+    responses(
+        (status = 200, description = "Task status", body = TaskStatusResponse),
+        (status = 404, description = "Task not found")
+    )
+)]
+async fn task_status(
+    Path(task_id): Path<String>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    let handle = {
+        let tasks = state.tasks.lock().await;
+        match tasks.get(&task_id) {
+            Some(handle) => handle.clone(),
+            None => return StatusCode::NOT_FOUND.into_response(),
+        }
+    };
+    Json(handle.status().await).into_response()
+}
+
+#[utoipa::path(
+    get,
+    path = "/tasks/{id}/output",
+    params(
+        ("id" = String, Path, description = "Task id")
+    ),
+    responses(
+        (status = 200, description = "Fetch task output (range)", body = TaskOutputResponse),
+        (status = 404, description = "Task not found")
+    )
+)]
+async fn task_output(
+    Path(task_id): Path<String>,
+    Query(query): Query<TaskOutputQuery>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    let handle = {
+        let tasks = state.tasks.lock().await;
+        match tasks.get(&task_id) {
+            Some(handle) => handle.clone(),
+            None => return StatusCode::NOT_FOUND.into_response(),
+        }
+    };
+
+    let engine: Arc<TaskEngine> = state.engine.tasks();
+    let offset = query.offset_bytes.unwrap_or(0);
+    let max_bytes = query.max_bytes.unwrap_or(engine.config().max_bytes);
+
+    match handle
+        .output(engine.config(), query.stream, offset, max_bytes)
+        .await
+    {
+        Ok(output) => Json(output).into_response(),
+        Err(_) => StatusCode::BAD_REQUEST.into_response(),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/tasks/{id}/events",
+    params(
+        ("id" = String, Path, description = "Task id")
+    ),
+    responses(
+        (status = 200, description = "SSE stream of task event frames"),
+        (status = 404, description = "Task not found")
+    )
+)]
+async fn stream_task_events(
+    Path(task_id): Path<String>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    let handle = {
+        let tasks = state.tasks.lock().await;
+        match tasks.get(&task_id) {
+            Some(handle) => handle.clone(),
+            None => return StatusCode::NOT_FOUND.into_response(),
+        }
+    };
+
+    let receiver = handle.subscribe();
+    let past = handle.events_snapshot().await;
+
+    let last_seq = past.last().map(|event| event.seq);
+    let past_stream = tokio_stream::iter(past).filter_map(|event| async move {
+        let json = serde_json::to_string(&event).ok()?;
+        Some(Ok::<SseEvent, Infallible>(SseEvent::default().data(json)))
+    });
+
+    let last_seq_live = last_seq;
+    let live_stream = BroadcastStream::new(receiver).filter_map(move |result| {
+        let last_seq = last_seq_live;
+        async move {
+            match result {
+                Ok(event) => {
+                    if last_seq.map(|last| event.seq <= last).unwrap_or(false) {
+                        return None;
+                    }
+                    let json = serde_json::to_string(&event).ok()?;
+                    Some(Ok::<SseEvent, Infallible>(SseEvent::default().data(json)))
+                }
+                Err(_) => None,
+            }
+        }
+    });
+
+    let stream = past_stream.chain(live_stream);
+    Sse::new(stream)
+        .keep_alive(axum::response::sse::KeepAlive::new().text("ping"))
+        .into_response()
+}
+
+#[utoipa::path(
+    post,
+    path = "/tasks/{id}/cancel",
+    params(
+        ("id" = String, Path, description = "Task id")
+    ),
+    request_body = TaskCancelPayload,
+    responses(
+        (status = 202, description = "Cancel requested"),
+        (status = 404, description = "Task not found")
+    )
+)]
+async fn cancel_task(
+    Path(task_id): Path<String>,
+    State(state): State<AppState>,
+    Json(payload): Json<TaskCancelPayload>,
+) -> impl IntoResponse {
+    let handle = {
+        let tasks = state.tasks.lock().await;
+        match tasks.get(&task_id) {
+            Some(handle) => handle.clone(),
+            None => return StatusCode::NOT_FOUND.into_response(),
+        }
+    };
+
+    let reason = payload.reason.unwrap_or_else(|| "cancel".to_string());
+    handle.cancel(reason);
+    StatusCode::ACCEPTED.into_response()
 }
 
 async fn openapi_spec(State(state): State<AppState>) -> impl IntoResponse {

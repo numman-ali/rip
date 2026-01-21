@@ -10,6 +10,7 @@ TypeScript SDK
 - Current posture:
   - No business logic in the SDK (only transport + frame parsing + light aggregation helpers).
   - The authoritative log is the frame stream (SDK can expose convenience fields derived from frames).
+  - Task APIs are accessed via the `rip` CLI adapter (`rip tasks --server ...`), keeping SDK transport consistent with ADR-0006.
 
 Local dev
 - `scripts/check-sdk-ts` (builds `rip` + runs SDK tests)

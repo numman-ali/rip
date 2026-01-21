@@ -204,6 +204,93 @@ pub async fn run_fullscreen_tui_attach(server: String, session_id: String) -> an
     Ok(())
 }
 
+pub async fn run_fullscreen_tui_attach_task(server: String, task_id: String) -> anyhow::Result<()> {
+    let client = Client::new();
+    let url = format!("{server}/tasks/{task_id}/events");
+    let mut stream = Some(client.get(url).eventsource()?);
+
+    let mut stdout = io::stdout();
+    enable_raw_mode()?;
+    stdout.execute(EnterAlternateScreen)?;
+    let mut terminal = Terminal::new(CrosstermBackend::new(stdout))?;
+
+    let mut guard = TerminalGuard::active();
+
+    terminal.clear()?;
+
+    let mut state = TuiState::default();
+    let mut mode = RenderMode::Json;
+    let mut input = String::new();
+
+    let (keymap, keymap_warning) = Keymap::load();
+    let mut warnings = Vec::new();
+    match load_theme() {
+        Ok(Some(theme)) => state.theme = theme,
+        Ok(None) => {}
+        Err(err) => warnings.push(format!("theme: {err}")),
+    }
+    if let Some(warn) = keymap_warning {
+        warnings.push(warn);
+    }
+    if !warnings.is_empty() {
+        state.set_status_message(warnings.join("; "));
+    }
+
+    let mut term_events = EventStream::new();
+    let mut tick = tokio::time::interval(Duration::from_millis(33));
+    let mut dirty = true;
+
+    loop {
+        if dirty {
+            terminal.draw(|f| render(f, &state, mode, &input))?;
+            dirty = false;
+        }
+
+        tokio::select! {
+            _ = tick.tick() => {
+                dirty = true;
+            }
+            maybe_event = term_events.next() => {
+                let Some(Ok(event)) = maybe_event else {
+                    continue;
+                };
+                match handle_term_event(event, &mut state, &mut mode, &mut input, true, &keymap) {
+                    UiAction::None | UiAction::Submit => {}
+                    UiAction::CopySelected => {
+                        copy_selected(&mut terminal, &mut state)?;
+                    }
+                    UiAction::Quit => break,
+                };
+                dirty = true;
+            }
+            maybe_sse = next_sse_event(&mut stream) => {
+                let Some(next) = maybe_sse else {
+                    dirty = true;
+                    continue;
+                };
+                match next {
+                    Ok(SseEvent::Open) => {}
+                    Ok(SseEvent::Message(msg)) => {
+                        if let Ok(frame) = serde_json::from_str::<FrameEvent>(&msg.data) {
+                            state.update(frame);
+                        }
+                    }
+                    Err(EventSourceError::StreamEnded) => {
+                        stream.take();
+                    }
+                    Err(_) => {
+                        stream.take();
+                    }
+                }
+                dirty = true;
+            }
+        }
+    }
+
+    guard.deactivate(&mut terminal)?;
+    Ok(())
+}
+
 fn start_local_session(
     engine: &ripd::SessionEngine,
     prompt: String,

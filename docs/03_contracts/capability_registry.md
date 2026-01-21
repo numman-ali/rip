@@ -140,10 +140,10 @@ Rules
 | tool.override | v1 | P2 | planned | planned | planned | planned | planned | planned | Override built-in tools with custom impls. |
 | tool.remote | v1 | P2 | planned | planned | planned | planned | planned | planned | Remote tool execution backend. |
 | tool.arg_rules | v1 | P2 | planned | planned | planned | planned | planned | planned | Per-tool argument rules. |
-| tool.task_spawn | v1 | P2 | planned | planned | planned | planned | planned | planned | Run a tool invocation in the background (returns task id; streams events). |
-| tool.task_status | v1 | P2 | planned | planned | planned | planned | planned | planned | Query background tool task status/metadata independent of the live stream. |
-| tool.task_cancel | v1 | P2 | planned | planned | planned | planned | planned | planned | Cancel/kill a running tool task (best-effort, logged). |
-| tool.task_stream_events | v1 | P2 | planned | planned | planned | planned | planned | planned | Subscribe to a background tool task event stream (SSE/JSONL) by `task_id`. |
+| tool.task_spawn | v1 | P2 | planned | supported | supported | planned | planned | planned | Run a tool invocation in the background (returns task id; streams events). |
+| tool.task_status | v1 | P2 | planned | supported | supported | planned | planned | planned | Query background tool task status/metadata independent of the live stream. |
+| tool.task_cancel | v1 | P2 | planned | supported | supported | planned | planned | planned | Cancel/kill a running tool task (best-effort, logged). |
+| tool.task_stream_events | v1 | P2 | planned | supported | supported | planned | planned | planned | Subscribe to a background tool task event stream (SSE/JSONL) by `task_id`. |
 | tool.task_write_stdin | v1 | P2 | planned | planned | planned | planned | planned | planned | Send stdin bytes/keys to an interactive tool task (PTY mode only). |
 | tool.task_resize | v1 | P2 | planned | planned | planned | planned | planned | planned | Resize an interactive tool task terminal (rows/cols; PTY mode only). |
 | tool.task_signal | v1 | P2 | planned | planned | planned | planned | planned | planned | Send a signal to a running tool task (SIGINT/SIGTERM/etc; platform-mapped). |

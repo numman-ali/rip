@@ -21,16 +21,19 @@ Now
   - `docs/03_contracts/event_frames.md`
   - `docs/03_contracts/capability_registry.md`
   - `docs/02_architecture/capability_matrix.md`
+- Status (2026-01-21):
+  - Implemented: `pipes` tasks (spawn/list/status/cancel + SSE events) + artifact-backed log tailing (range fetch).
+  - Implemented: CLI adapter (`rip tasks --server ...`) + TS SDK wrappers (spawn via `rip`).
+  - Pending: PTY mode + stdin/resize/signal control ops + task UI affordances beyond attach.
 - Spec snapshot:
   - Background work is a **task entity** (`task_id`) with its own event stream; Phase 1 session invariant remains (one session == one run).
   - Execution modes: `pipes` (default) and `pty` (opt-in; stdin/resize/signal).
   - Artifact-backed logs prevent context/log explosion; frames carry previews + artifact refs.
   - “Wake the agent” is orchestration: watchers start a new session referencing `{task_id, artifact_refs}`.
 - Ready:
-  - Implement task registry + event stream plumbing (task spawn/status/cancel + stream).
   - Implement PTY mode (policy-gated) with stdin/resize/signal operations.
-  - Implement artifact-backed logs for long-running tasks (range fetch).
-  - Add deterministic replay fixtures for: pipes task, PTY task, cancel, and “attach late”.
+  - Add deterministic replay fixtures for: PTY task + stdin/resize/signal ordering.
+  - Add UI affordances for tasks beyond attach (list + select + tail + cancel).
 - Done:
   - `tool.task_*` capabilities are exposed via server + SDK; CLI/TUI can list, stream, and control tasks.
   - Replay fixtures cover: spawn→output→exit, spawn→cancel, PTY stdin/resize/signal, and artifact refs.

@@ -65,6 +65,9 @@ Invariants
 - `seq` starts at 0 and increments by 1 for each emitted frame.
 - Frames are append-only and ordered within a session.
 - `session_ended` is the terminal frame for a runtime-generated session.
+- Background tool tasks are modeled as **task event streams** and are encoded using the v1 envelope for now:
+  - `session_id` holds the `task_id` (stream id) for task streams.
+  - Task streams do not emit `session_started/session_ended`; lifecycle is expressed via `tool_task_*` frames.
 - Provider adapters emit `provider_event` for every SSE event (no drops).
 - Automatic checkpoint events for file-edit tools are emitted before the tool starts.
 
@@ -92,12 +95,12 @@ Schema (v2 — stream-scoped; planned)
   - Task streams never emit `session_started/session_ended`; their lifecycle is expressed via task/tool frames.
 
 - Background tool tasks:
-  - `tool_task_spawned`: `{task_id, tool_name, args, cwd?, title?, execution_mode: pipes|pty, origin?: {stream_kind, stream_id}}`
-  - `tool_task_status`: `{task_id, status, exit_code?, started_at_ms?, ended_at_ms?, artifact_refs?}`
+  - `tool_task_spawned`: `{task_id, tool_name, args, cwd?, title?, execution_mode: pipes|pty, origin_session_id?, artifacts?}`
+  - `tool_task_status`: `{task_id, status, exit_code?, started_at_ms?, ended_at_ms?, artifacts?, error?}`
   - `tool_task_cancel_requested`: `{task_id, reason}`
   - `tool_task_cancelled`: `{task_id, reason, wall_time_ms?}`
-  - `tool_task_output_delta`: `{task_id, stream: stdout|stderr|pty, chunk_b64, chunk_utf8?}`
-  - `tool_task_stdin_written`: `{task_id, chunk_b64}`
+  - `tool_task_output_delta`: `{task_id, stream: stdout|stderr|pty, chunk, artifacts?}`
+  - `tool_task_stdin_written`: `{task_id, chunk_b64}` (PTY only)
   - `tool_task_resized`: `{task_id, rows, cols}`
   - `tool_task_signalled`: `{task_id, signal}`
 - Artifact-backed outputs:
