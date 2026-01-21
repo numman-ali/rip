@@ -12,13 +12,16 @@ Session lifecycle (draft)
 - GET /sessions/:id/events -> SSE event stream
 - POST /sessions/:id/cancel -> cancel session
 
-Task lifecycle (pipes; implemented)
+Task lifecycle (pipes + pty; implemented)
 - POST /tasks -> task id (background task spawn)
 - GET /tasks -> list tasks
 - GET /tasks/:id -> task status
 - GET /tasks/:id/events -> SSE task event stream
 - POST /tasks/:id/cancel -> cancel task (best-effort)
-- GET /tasks/:id/output -> range fetch task logs (stdout/stderr)
+- GET /tasks/:id/output -> range fetch task logs (`stream=stdout|stderr|pty` depending on task mode)
+- POST /tasks/:id/stdin -> write stdin bytes (`chunk_b64`, PTY only)
+- POST /tasks/:id/resize -> resize terminal (`rows`,`cols`, PTY only)
+- POST /tasks/:id/signal -> send a signal (`signal`, PTY only today)
 
 Notes
 - Today: `rip serve` (or `ripd`) exposes the session API for remote clients (SDKs can attach via `--server <url>`).
@@ -49,3 +52,4 @@ Provider config (OpenResponses, Phase 1)
 Other env vars
 - `RIP_DATA_DIR`: overrides the default `data/` directory.
 - `RIP_WORKSPACE_ROOT`: overrides the workspace root used for tool IO and checkpoints.
+- `RIP_TASKS_ALLOW_PTY`: if set (`1|true|yes|on`), allow `execution_mode=pty` for background tasks and enable PTY control ops.

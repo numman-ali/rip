@@ -275,6 +275,117 @@
           }
         }
       }
+    },
+    "/tasks/{id}/resize": {
+      "post": {
+        "operationId": "task_resize",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Task id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskResizePayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Resize accepted"
+          },
+          "400": {
+            "description": "Invalid resize request"
+          },
+          "404": {
+            "description": "Task not found"
+          }
+        }
+      }
+    },
+    "/tasks/{id}/signal": {
+      "post": {
+        "operationId": "task_signal",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Task id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskSignalPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Signal accepted"
+          },
+          "400": {
+            "description": "Invalid signal request"
+          },
+          "404": {
+            "description": "Task not found"
+          }
+        }
+      }
+    },
+    "/tasks/{id}/stdin": {
+      "post": {
+        "operationId": "task_write_stdin",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Task id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskWriteStdinPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Stdin accepted"
+          },
+          "400": {
+            "description": "Invalid stdin request"
+          },
+          "404": {
+            "description": "Task not found"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -392,8 +503,39 @@
         "type": "string",
         "enum": [
           "stdout",
-          "stderr"
+          "stderr",
+          "pty"
         ]
+      },
+      "TaskResizePayload": {
+        "type": "object",
+        "required": [
+          "rows",
+          "cols"
+        ],
+        "properties": {
+          "cols": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "rows": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "TaskSignalPayload": {
+        "type": "object",
+        "required": [
+          "signal"
+        ],
+        "properties": {
+          "signal": {
+            "type": "string"
+          }
+        }
       },
       "TaskSpawnPayload": {
         "type": "object",
@@ -484,6 +626,17 @@
             ]
           },
           "tool": {
+            "type": "string"
+          }
+        }
+      },
+      "TaskWriteStdinPayload": {
+        "type": "object",
+        "required": [
+          "chunk_b64"
+        ],
+        "properties": {
+          "chunk_b64": {
             "type": "string"
           }
         }

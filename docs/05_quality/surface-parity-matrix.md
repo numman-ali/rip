@@ -11,6 +11,11 @@ Generated from docs/03_contracts/capability_registry.md.
 | session.cancel | planned | supported | supported | planned | planned | planned |
 | session.resume | planned | planned | planned | planned | planned | planned |
 | session.previous_response | planned | planned | planned | planned | planned | planned |
+| thread.ensure | planned | planned | planned | planned | planned | planned |
+| thread.post_message | planned | planned | planned | planned | planned | planned |
+| thread.stream_events | planned | planned | planned | planned | planned | planned |
+| thread.list | planned | planned | planned | planned | planned | planned |
+| thread.get | planned | planned | planned | planned | planned | planned |
 | thread.branch | planned | planned | planned | planned | planned | planned |
 | thread.handoff | planned | planned | planned | planned | planned | planned |
 | thread.reference | planned | planned | planned | planned | planned | planned |
@@ -93,9 +98,9 @@ Generated from docs/03_contracts/capability_registry.md.
 | tool.task_status | planned | supported | supported | planned | planned | planned |
 | tool.task_cancel | planned | supported | supported | planned | planned | planned |
 | tool.task_stream_events | planned | supported | supported | planned | planned | planned |
-| tool.task_write_stdin | planned | planned | planned | planned | planned | planned |
-| tool.task_resize | planned | planned | planned | planned | planned | planned |
-| tool.task_signal | planned | planned | planned | planned | planned | planned |
+| tool.task_write_stdin | planned | supported | supported | planned | planned | planned |
+| tool.task_resize | planned | supported | supported | planned | planned | planned |
+| tool.task_signal | planned | supported | supported | planned | planned | planned |
 | tool.choice | planned | planned | planned | planned | planned | planned |
 | tool.call_limits | planned | planned | planned | planned | planned | planned |
 | tool.allowed_tools | planned | planned | planned | planned | planned | planned |

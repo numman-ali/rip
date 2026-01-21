@@ -3,13 +3,18 @@
 Summary
 - All surfaces are thin adapters over the same core session + capability API.
 - No surface owns business logic; parity is enforced by contract and tests.
-- Server API is the canonical control plane for remote capability access; SDKs may run locally via `rip` exec (JSONL frames) or attach to a server.
+- The **control plane** (server API) is the canonical remote access surface; SDKs may run locally via `rip` exec (JSONL frames) or attach to a control plane.
 - Background tasks and interactive process control (PTY) are **core tool-runtime capabilities** (task entities); surfaces only render/attach/control via capabilities.
+
+Terminology
+- Runtime: executes the agent loop + tools and emits canonical frames (local or remote).
+- Control plane: session API surface (HTTP/SSE today) used by remote clients to drive/observe a runtime.
+- Remote mode: client transport choice (`--server <url>`); must not change semantics.
 
 Surfaces (Phase 1)
 - Interactive terminal UI: `rip` (fullscreen TUI; in-process by default; supports remote attach via `--server/--session`)
 - Headless CLI: `rip run --headless` (automation JSON; in-process by default, optional remote server)
-- Server: `ripd` (remote session HTTP/SSE + OpenAPI spec)
+- Control plane: `ripd`/`rip serve` (session HTTP/SSE + OpenAPI spec)
 - SDK (TypeScript): `rip-sdk-ts` (default local exec of `rip run ... --view raw`; optional remote via `--server <url>`)
 
 Surfaces (Phase 2 / planned)

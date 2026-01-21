@@ -2,11 +2,16 @@
 
 Current focus
 - Phase 1: shared session runner across server + CLI (frames are canonical).
+- Continuity OS posture: continuity log is truth; provider state is cache (cursor rotation allowed); sessions are runs/turns (not user-facing by default).
 - Default local execution: `rip` launches fullscreen TUI (in-process); `rip run` stays headless; `--server <url>` enables remote runs; `rip serve` stays the remote control plane.
 - OpenResponses provider compatibility: stateless history mode + tool schema strict=false; fix provider_errors without dropping raw fidelity.
 - Output view: human-friendly aggregation (no tool arg deltas), aligned with Codex exec expectations.
 - Now: background tool tasks **as task entities** are implemented in `pipes` mode (spawn/status/stream/cancel + artifact-backed log tailing).
-- Next up: interactive PTY control (stdin/resize/signal), then threads/resume/branch.
+- Now: PTY mode + interactive control ops (stdin/resize/signal) are implemented (policy-gated); deterministic task replay fixtures added.
+- Now: CLI task watch UI exists (`rip tasks --server <url> watch`) for list/select/tail/cancel (minimal keys; no PTY attach yet).
+- Operator gate: capability delivery order is `cli_h(local)` → `tui` → `server` → `remote` → `sdk`.
+- Terminology: see `docs/02_architecture/runtime_and_control_plane.md` (runtime vs control plane vs remote runtime).
+- Next up: get `scripts/check` green again (llvm-cov thresholds), then continuities (threads): resume/branch + cursor rotation design.
 - Keep CI/bench gates green; ratchet budgets only with replay coverage.
 
 Reorientation (read in order after compaction)

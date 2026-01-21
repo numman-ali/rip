@@ -16,3 +16,4 @@ Acceptance criteria
 Artifacts
 - Fixture root: `fixtures/`
 - OpenResponses stream fixtures: `fixtures/openresponses/`
+- Tool task fixtures: `fixtures/tasks/`

@@ -5,7 +5,7 @@ Summary
 - Keeps the core small while proving extensibility early.
 
 Phase 1 — Foundation
-- Sessions & threads: session manager + event log + server API + CLI (interactive + headless); hook: session lifecycle events.
+- Continuities & runs (sessions): continuity-backed “one chat” state + session runner + event log + server API + CLI (interactive + headless); hook: session lifecycle events.
 - Session storage & replay: append-only log + snapshot reader; hook: replay reader for deterministic tests.
 - Execution modes: interactive CLI, headless CLI, JSONL output + JSON Schema; hook: output renderer.
 - Models & providers: Open Responses adapter boundary + full schema/streaming fidelity + model selection stub; hook: provider adapter boundary.

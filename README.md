@@ -49,6 +49,7 @@ rip is built on a few core beliefs:
 - **Extreme performance** — Sub-millisecond overhead on streaming, parsing, tool dispatch
 - **Modular by design** — Every component is replaceable via strict contracts
 - **Deterministic replay** — Event log + snapshots enable full session replay
+- **One chat forever** — Continuity OS model: continuity log is truth; provider conversation state is a cache (cursor rotation allowed)
 - **Multiple surfaces** — CLI, TUI, server, SDK — all powered by one core runtime
 
 ---
@@ -72,6 +73,7 @@ Key constraints:
 - All inter-module traffic is structured events, not raw text
 - Every module is replaceable via strict contracts
 - Determinism: event log + snapshots enable full replay
+- Provider state is not truth: Open Responses `previous_response_id` (and vendor thread ids) are treated as caches that can be rotated/rebuilt
 
 ---
 

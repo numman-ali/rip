@@ -230,11 +230,10 @@ fn config_dir() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_env;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Mutex;
 
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
     static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
     #[test]
@@ -280,7 +279,7 @@ mod tests {
 
     #[test]
     fn keymap_load_can_override_defaults_via_env_path() {
-        let _guard = ENV_LOCK.lock().expect("lock");
+        let _guard = test_env::lock_env();
         let prev = std::env::var_os("RIP_KEYBINDINGS_PATH");
 
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -302,7 +301,7 @@ mod tests {
 
     #[test]
     fn keymap_load_reports_invalid_json_as_warning() {
-        let _guard = ENV_LOCK.lock().expect("lock");
+        let _guard = test_env::lock_env();
         let prev = std::env::var_os("RIP_KEYBINDINGS_PATH");
 
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);

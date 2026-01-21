@@ -48,7 +48,7 @@ The capability matrix is the source of truth. These designs visualize how capabi
 | **Screen** | A full-terminal view (Start, Live Session, Thread Browser, etc.) |
 | **Panel** | A region within a screen (Timeline, Output, Inspector, etc.) |
 | **Overlay** | A modal layer on top of a screen (Command Palette, Tool Detail, Permissions) |
-| **Thread** | A conversation branch; threads can fork and reference each other |
+| **Thread** | A continuity (user-facing identity/state). Default UX is “one continuity forever”; branching/handoff exists as a power feature. |
 | **Checkpoint** | A workspace snapshot that can be reverted to |
 | **Artifact** | A stored output (file, log, etc.) referenced by ID rather than inlined |
 | **Capability** | A discrete feature from the capability registry (`session.create`, `tool.task_spawn`, etc.) |
@@ -82,7 +82,7 @@ Complete mapping of capability IDs to TUI elements with phase and parity notes.
 
 | Capability ID | Phase | TUI Location | Parity (CLI/Headless/SDK) |
 |--------------|-------|--------------|---------------------------|
-| **Sessions & Threads** |
+| **Continuities & Sessions** |
 | `session.create` | P1 | Start screen | `rip` / `rip run` / `createSession()` |
 | `session.send_input` | P1 | Input panel | Prompt arg / stdin / `sendInput()` |
 | `session.stream_events` | P1 | Timeline, Output | `rip --server <url> --session <id>` / JSON stream / event iterator |

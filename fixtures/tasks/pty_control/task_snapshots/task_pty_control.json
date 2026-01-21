@@ -1,0 +1,118 @@
+[
+  {
+    "id": "e0",
+    "session_id": "task_pty_control",
+    "timestamp_ms": 0,
+    "seq": 0,
+    "type": "tool_task_spawned",
+    "task_id": "task_pty_control",
+    "tool_name": "bash",
+    "args": {
+      "command": "stty -echo; cat",
+      "rows": 24,
+      "cols": 80
+    },
+    "cwd": null,
+    "title": "fixture-pty-control",
+    "execution_mode": "pty",
+    "origin_session_id": null,
+    "artifacts": {
+      "logs": {
+        "pty": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "path": ".rip/artifacts/blobs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "artifact_max_bytes": 1024,
+      "max_bytes": 128
+    }
+  },
+  {
+    "id": "e1",
+    "session_id": "task_pty_control",
+    "timestamp_ms": 1,
+    "seq": 1,
+    "type": "tool_task_status",
+    "task_id": "task_pty_control",
+    "status": "running",
+    "exit_code": null,
+    "started_at_ms": 1,
+    "ended_at_ms": null,
+    "artifacts": null,
+    "error": null
+  },
+  {
+    "id": "e2",
+    "session_id": "task_pty_control",
+    "timestamp_ms": 2,
+    "seq": 2,
+    "type": "tool_task_stdin_written",
+    "task_id": "task_pty_control",
+    "chunk_b64": "aGkK"
+  },
+  {
+    "id": "e3",
+    "session_id": "task_pty_control",
+    "timestamp_ms": 2,
+    "seq": 3,
+    "type": "tool_task_output_delta",
+    "task_id": "task_pty_control",
+    "stream": "pty",
+    "chunk": "hi\n",
+    "artifacts": {
+      "log": {
+        "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "path": ".rip/artifacts/blobs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "offset_bytes": 0,
+        "bytes": 3,
+        "bytes_total": 3,
+        "bytes_stored": 3,
+        "truncated": false
+      }
+    }
+  },
+  {
+    "id": "e4",
+    "session_id": "task_pty_control",
+    "timestamp_ms": 3,
+    "seq": 4,
+    "type": "tool_task_resized",
+    "task_id": "task_pty_control",
+    "rows": 30,
+    "cols": 100
+  },
+  {
+    "id": "e5",
+    "session_id": "task_pty_control",
+    "timestamp_ms": 4,
+    "seq": 5,
+    "type": "tool_task_signalled",
+    "task_id": "task_pty_control",
+    "signal": "SIGTERM"
+  },
+  {
+    "id": "e6",
+    "session_id": "task_pty_control",
+    "timestamp_ms": 5,
+    "seq": 6,
+    "type": "tool_task_status",
+    "task_id": "task_pty_control",
+    "status": "exited",
+    "exit_code": 143,
+    "started_at_ms": 1,
+    "ended_at_ms": 5,
+    "artifacts": {
+      "logs": {
+        "pty": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "path": ".rip/artifacts/blobs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "bytes_total": 3,
+          "bytes_stored": 3,
+          "truncated": false,
+          "error": null
+        }
+      }
+    },
+    "error": null
+  }
+]

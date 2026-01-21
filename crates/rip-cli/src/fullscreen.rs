@@ -37,23 +37,12 @@ pub async fn run_fullscreen_tui(initial_prompt: Option<String>) -> anyhow::Resul
 
     terminal.clear()?;
 
-    let mut state = TuiState::default();
-    let mut mode = RenderMode::Json;
-    let mut input = initial_prompt.unwrap_or_default();
-
-    let (keymap, keymap_warning) = Keymap::load();
-    let mut warnings = Vec::new();
-    match load_theme() {
-        Ok(Some(theme)) => state.theme = theme,
-        Ok(None) => {}
-        Err(err) => warnings.push(format!("theme: {err}")),
-    }
-    if let Some(warn) = keymap_warning {
-        warnings.push(warn);
-    }
-    if !warnings.is_empty() {
-        state.set_status_message(warnings.join("; "));
-    }
+    let InitState {
+        mut state,
+        mut mode,
+        mut input,
+        keymap,
+    } = init_fullscreen_state(initial_prompt);
 
     let mut receiver: Option<broadcast::Receiver<FrameEvent>> = None;
     if !input.trim().is_empty() {
@@ -131,23 +120,12 @@ pub async fn run_fullscreen_tui_attach(server: String, session_id: String) -> an
 
     terminal.clear()?;
 
-    let mut state = TuiState::default();
-    let mut mode = RenderMode::Json;
-    let mut input = String::new();
-
-    let (keymap, keymap_warning) = Keymap::load();
-    let mut warnings = Vec::new();
-    match load_theme() {
-        Ok(Some(theme)) => state.theme = theme,
-        Ok(None) => {}
-        Err(err) => warnings.push(format!("theme: {err}")),
-    }
-    if let Some(warn) = keymap_warning {
-        warnings.push(warn);
-    }
-    if !warnings.is_empty() {
-        state.set_status_message(warnings.join("; "));
-    }
+    let InitState {
+        mut state,
+        mut mode,
+        mut input,
+        keymap,
+    } = init_fullscreen_state(None);
 
     let mut term_events = EventStream::new();
     let mut tick = tokio::time::interval(Duration::from_millis(33));
@@ -218,23 +196,12 @@ pub async fn run_fullscreen_tui_attach_task(server: String, task_id: String) -> 
 
     terminal.clear()?;
 
-    let mut state = TuiState::default();
-    let mut mode = RenderMode::Json;
-    let mut input = String::new();
-
-    let (keymap, keymap_warning) = Keymap::load();
-    let mut warnings = Vec::new();
-    match load_theme() {
-        Ok(Some(theme)) => state.theme = theme,
-        Ok(None) => {}
-        Err(err) => warnings.push(format!("theme: {err}")),
-    }
-    if let Some(warn) = keymap_warning {
-        warnings.push(warn);
-    }
-    if !warnings.is_empty() {
-        state.set_status_message(warnings.join("; "));
-    }
+    let InitState {
+        mut state,
+        mut mode,
+        mut input,
+        keymap,
+    } = init_fullscreen_state(None);
 
     let mut term_events = EventStream::new();
     let mut tick = tokio::time::interval(Duration::from_millis(33));
@@ -307,6 +274,40 @@ enum UiAction {
     Quit,
     Submit,
     CopySelected,
+}
+
+struct InitState {
+    state: TuiState,
+    mode: RenderMode,
+    input: String,
+    keymap: Keymap,
+}
+
+fn init_fullscreen_state(initial_prompt: Option<String>) -> InitState {
+    let mut state = TuiState::default();
+    let mode = RenderMode::Json;
+    let input = initial_prompt.unwrap_or_default();
+
+    let (keymap, keymap_warning) = Keymap::load();
+    let mut warnings = Vec::new();
+    match load_theme() {
+        Ok(Some(theme)) => state.theme = theme,
+        Ok(None) => {}
+        Err(err) => warnings.push(format!("theme: {err}")),
+    }
+    if let Some(warn) = keymap_warning {
+        warnings.push(warn);
+    }
+    if !warnings.is_empty() {
+        state.set_status_message(warnings.join("; "));
+    }
+
+    InitState {
+        state,
+        mode,
+        input,
+        keymap,
+    }
 }
 
 fn handle_term_event(
@@ -526,28 +527,10 @@ fn copy_selected(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     state: &mut TuiState,
 ) -> anyhow::Result<()> {
-    let Some(event) = state.selected_event() else {
-        state.set_status_message("clipboard: no frame selected");
+    let action = prepare_copy_selected(state);
+    let CopySelectedAction::Osc52(payload) = action else {
         return Ok(());
     };
-
-    let payload = match serde_json::to_string_pretty(event) {
-        Ok(json) => json,
-        Err(_) => {
-            state.set_status_message("clipboard: failed to serialize frame");
-            return Ok(());
-        }
-    };
-
-    if std::env::var_os("RIP_TUI_DISABLE_OSC52").is_some() || payload.len() > OSC52_MAX_BYTES {
-        state.clipboard_buffer = Some(payload);
-        if std::env::var_os("RIP_TUI_DISABLE_OSC52").is_some() {
-            state.set_status_message("clipboard: stored (OSC52 disabled)");
-        } else {
-            state.set_status_message("clipboard: stored (too large for OSC52)");
-        }
-        return Ok(());
-    }
 
     let seq = osc52_sequence(payload.as_bytes());
     terminal.backend_mut().write_all(seq.as_bytes())?;
@@ -556,6 +539,41 @@ fn copy_selected(
     state.clipboard_buffer = None;
     state.set_status_message("clipboard: osc52");
     Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CopySelectedAction {
+    None,
+    Store,
+    Osc52(String),
+}
+
+fn prepare_copy_selected(state: &mut TuiState) -> CopySelectedAction {
+    let Some(event) = state.selected_event() else {
+        state.set_status_message("clipboard: no frame selected");
+        return CopySelectedAction::None;
+    };
+
+    let payload = match serde_json::to_string_pretty(event) {
+        Ok(json) => json,
+        Err(_) => {
+            state.set_status_message("clipboard: failed to serialize frame");
+            return CopySelectedAction::None;
+        }
+    };
+
+    let osc52_disabled = std::env::var_os("RIP_TUI_DISABLE_OSC52").is_some();
+    if osc52_disabled || payload.len() > OSC52_MAX_BYTES {
+        state.clipboard_buffer = Some(payload);
+        if osc52_disabled {
+            state.set_status_message("clipboard: stored (OSC52 disabled)");
+        } else {
+            state.set_status_message("clipboard: stored (too large for OSC52)");
+        }
+        return CopySelectedAction::Store;
+    }
+
+    CopySelectedAction::Osc52(payload)
 }
 
 fn osc52_sequence(bytes: &[u8]) -> String {
@@ -602,8 +620,13 @@ fn base64_encode(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_env;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use httpmock::Method::GET;
+    use httpmock::MockServer;
     use rip_kernel::{EventKind, ProviderEventStatus};
+    use std::ffi::OsString;
+    use tokio::time::timeout;
 
     fn seed_state() -> TuiState {
         let mut state = TuiState::new(100, 1024);
@@ -654,6 +677,11 @@ mod tests {
             Some(rip_tui::ThemeId::DefaultLight)
         );
         assert!(parse_theme("nope").is_err());
+    }
+
+    #[test]
+    fn parse_theme_empty_returns_none() {
+        assert_eq!(parse_theme("   ").unwrap(), None);
     }
 
     #[test]
@@ -765,5 +793,352 @@ mod tests {
         );
         assert_eq!(action, UiAction::None);
         assert_eq!(input, "");
+    }
+
+    #[test]
+    fn handle_term_event_ignores_resize() {
+        let keymap = Keymap::default();
+        let mut state = seed_state();
+        let mut mode = RenderMode::Json;
+        let mut input = String::new();
+        let action = handle_term_event(
+            TermEvent::Resize(10, 10),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(action, UiAction::None);
+    }
+
+    #[test]
+    fn handle_term_event_routes_key() {
+        let keymap = Keymap::default();
+        let mut state = seed_state();
+        let mut mode = RenderMode::Json;
+        let mut input = String::new();
+        let action = handle_term_event(
+            TermEvent::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::empty())),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(action, UiAction::Submit);
+    }
+
+    #[test]
+    fn handle_key_event_toggles_mode_follow_theme() {
+        let keymap = Keymap::default();
+        let mut state = seed_state();
+        let mut mode = RenderMode::Json;
+        let mut input = String::new();
+
+        let action = handle_key_event(
+            KeyEvent::new(KeyCode::Tab, KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            true,
+            &keymap,
+        );
+        assert_eq!(action, UiAction::None);
+        assert_eq!(mode, RenderMode::Decoded);
+
+        let action = handle_key_event(
+            KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL),
+            &mut state,
+            &mut mode,
+            &mut input,
+            true,
+            &keymap,
+        );
+        assert_eq!(action, UiAction::None);
+        assert!(!state.auto_follow);
+
+        let previous_theme = state.theme;
+        let action = handle_key_event(
+            KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL),
+            &mut state,
+            &mut mode,
+            &mut input,
+            true,
+            &keymap,
+        );
+        assert_eq!(action, UiAction::None);
+        assert_ne!(state.theme, previous_theme);
+    }
+
+    #[test]
+    fn move_selected_sets_last_seq_and_clamps() {
+        let mut state = seed_state();
+        state.selected_seq = None;
+        move_selected(&mut state, -1);
+        assert_eq!(state.selected_seq, Some(2));
+
+        move_selected(&mut state, 10);
+        assert_eq!(state.selected_seq, Some(2));
+
+        move_selected(&mut state, -10);
+        assert_eq!(state.selected_seq, Some(0));
+    }
+
+    #[tokio::test]
+    async fn next_frame_reads_and_handles_close() {
+        let (tx, rx) = broadcast::channel(2);
+        let mut receiver = Some(rx);
+        let frame = FrameEvent {
+            id: "e3".to_string(),
+            session_id: "s1".to_string(),
+            timestamp_ms: 0,
+            seq: 3,
+            kind: EventKind::SessionEnded {
+                reason: "done".to_string(),
+            },
+        };
+        tx.send(frame.clone()).expect("send");
+        let got = timeout(Duration::from_millis(50), next_frame(&mut receiver))
+            .await
+            .expect("timeout");
+        assert_eq!(got.unwrap().seq, 3);
+
+        drop(tx);
+        let got = timeout(Duration::from_millis(50), next_frame(&mut receiver))
+            .await
+            .expect("timeout");
+        assert!(got.is_none());
+        assert!(receiver.is_none());
+    }
+
+    #[tokio::test]
+    async fn next_frame_skips_lagged() {
+        let (tx, rx) = broadcast::channel(1);
+        let mut receiver = Some(rx);
+        let first = FrameEvent {
+            id: "e1".to_string(),
+            session_id: "s1".to_string(),
+            timestamp_ms: 0,
+            seq: 1,
+            kind: EventKind::SessionStarted {
+                input: "one".to_string(),
+            },
+        };
+        let second = FrameEvent {
+            id: "e2".to_string(),
+            session_id: "s1".to_string(),
+            timestamp_ms: 0,
+            seq: 2,
+            kind: EventKind::SessionEnded {
+                reason: "done".to_string(),
+            },
+        };
+        tx.send(first).expect("send first");
+        tx.send(second.clone()).expect("send second");
+        let got = timeout(Duration::from_millis(50), next_frame(&mut receiver))
+            .await
+            .expect("timeout")
+            .expect("frame");
+        assert_eq!(got.seq, second.seq);
+    }
+
+    #[tokio::test]
+    async fn next_sse_event_returns_open() {
+        let server = MockServer::start();
+        let _events = server.mock(|when, then| {
+            when.method(GET).path("/events");
+            then.status(200)
+                .header("content-type", "text/event-stream")
+                .body("data: {}\n\n");
+        });
+
+        let client = Client::new();
+        let url = format!("{}/events", server.base_url());
+        let mut source = Some(client.get(url).eventsource().expect("eventsource"));
+        let next = timeout(Duration::from_millis(200), next_sse_event(&mut source))
+            .await
+            .expect("timeout");
+        assert!(next.is_some());
+    }
+
+    #[tokio::test]
+    async fn next_sse_event_pending_when_none() {
+        let mut source: Option<EventSource> = None;
+        let result = timeout(Duration::from_millis(10), next_sse_event(&mut source)).await;
+        assert!(result.is_err());
+    }
+
+    struct EnvGuard {
+        key: &'static str,
+        previous: Option<OsString>,
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            if let Some(value) = self.previous.take() {
+                std::env::set_var(self.key, value);
+            } else {
+                std::env::remove_var(self.key);
+            }
+        }
+    }
+
+    fn set_env(key: &'static str, value: impl Into<OsString>) -> EnvGuard {
+        let previous = std::env::var_os(key);
+        let value = value.into();
+        std::env::set_var(key, &value);
+        EnvGuard { key, previous }
+    }
+
+    fn remove_env(key: &'static str) -> EnvGuard {
+        let previous = std::env::var_os(key);
+        std::env::remove_var(key);
+        EnvGuard { key, previous }
+    }
+
+    #[test]
+    fn load_theme_reads_env_and_file() {
+        let _lock = test_env::lock_env();
+        let _clear_theme = remove_env("RIP_TUI_THEME");
+        let temp_root = std::env::temp_dir().join(format!("rip_theme_test_{}", std::process::id()));
+        std::fs::create_dir_all(&temp_root).expect("temp dir");
+        let theme_path = temp_root.join("theme.json");
+
+        let _config = set_env("RIP_CONFIG_HOME", temp_root.as_os_str());
+        std::fs::write(&theme_path, "\"default-dark\"").expect("theme");
+        assert_eq!(
+            load_theme().expect("theme load"),
+            Some(rip_tui::ThemeId::DefaultDark)
+        );
+
+        std::fs::write(&theme_path, "{ \"theme\": \"light\" }").expect("theme");
+        assert_eq!(
+            load_theme().expect("theme load"),
+            Some(rip_tui::ThemeId::DefaultLight)
+        );
+
+        let _theme_env = set_env("RIP_TUI_THEME", "dark");
+        assert_eq!(
+            load_theme().expect("theme load"),
+            Some(rip_tui::ThemeId::DefaultDark)
+        );
+        drop(_theme_env);
+
+        std::fs::write(&theme_path, "{").expect("theme");
+        assert!(load_theme().is_err());
+    }
+
+    #[test]
+    fn load_theme_missing_file_returns_none() {
+        let _lock = test_env::lock_env();
+        let _clear_theme = remove_env("RIP_TUI_THEME");
+        let temp_root =
+            std::env::temp_dir().join(format!("rip_theme_missing_{}", std::process::id()));
+        let _config = set_env("RIP_CONFIG_HOME", temp_root.as_os_str());
+        let value = load_theme().expect("load theme");
+        assert!(value.is_none());
+    }
+
+    #[test]
+    fn config_dir_prefers_env_override() {
+        let _lock = test_env::lock_env();
+        let temp_root =
+            std::env::temp_dir().join(format!("rip_config_test_{}", std::process::id()));
+        let _config = set_env("RIP_CONFIG_HOME", temp_root.as_os_str());
+        let _home = set_env("HOME", "/tmp");
+        assert_eq!(config_dir().expect("config dir"), temp_root);
+        assert_eq!(
+            theme_path().expect("theme path"),
+            temp_root.join("theme.json")
+        );
+    }
+
+    #[test]
+    fn config_dir_falls_back_to_home() {
+        let _lock = test_env::lock_env();
+        let _config = remove_env("RIP_CONFIG_HOME");
+        let temp_home = std::env::temp_dir().join(format!("rip_home_{}", std::process::id()));
+        let _home = set_env("HOME", temp_home.as_os_str());
+        assert_eq!(config_dir().expect("config dir"), temp_home.join(".rip"));
+    }
+
+    #[test]
+    fn init_fullscreen_state_sets_warning_on_theme_error() {
+        let _lock = test_env::lock_env();
+        let _bad_theme = set_env("RIP_TUI_THEME", "unknown-theme");
+        let init = init_fullscreen_state(Some("hello".to_string()));
+        assert_eq!(init.mode, RenderMode::Json);
+        assert_eq!(init.input, "hello");
+        let status = init.state.status_message.unwrap_or_default();
+        assert!(status.contains("theme:"));
+    }
+
+    #[test]
+    fn init_fullscreen_state_includes_keymap_warning() {
+        let _lock = test_env::lock_env();
+        let _clear_theme = set_env("RIP_TUI_THEME", "dark");
+        let temp_root = std::env::temp_dir().join(format!("rip_keys_{}", std::process::id()));
+        std::fs::create_dir_all(&temp_root).expect("temp dir");
+        let keymap_path = temp_root.join("keybindings.json");
+        std::fs::write(&keymap_path, "{").expect("keymap");
+        let _keymap = set_env("RIP_KEYBINDINGS_PATH", keymap_path.as_os_str());
+
+        let init = init_fullscreen_state(None);
+        let status = init.state.status_message.unwrap_or_default();
+        assert!(status.contains("keybindings: invalid json"));
+    }
+
+    #[test]
+    fn prepare_copy_selected_reports_no_selection() {
+        let mut state = TuiState::default();
+        let action = prepare_copy_selected(&mut state);
+        assert_eq!(action, CopySelectedAction::None);
+        assert_eq!(
+            state.status_message.as_deref(),
+            Some("clipboard: no frame selected")
+        );
+    }
+
+    #[test]
+    fn prepare_copy_selected_uses_osc52_for_small_payload() {
+        let _lock = test_env::lock_env();
+        let _disable = remove_env("RIP_TUI_DISABLE_OSC52");
+        let mut state = seed_state();
+        let action = prepare_copy_selected(&mut state);
+        assert!(matches!(action, CopySelectedAction::Osc52(_)));
+    }
+
+    #[test]
+    fn prepare_copy_selected_stores_when_disabled() {
+        let _lock = test_env::lock_env();
+        let _disable = set_env("RIP_TUI_DISABLE_OSC52", "1");
+        let mut state = seed_state();
+        let action = prepare_copy_selected(&mut state);
+        assert_eq!(action, CopySelectedAction::Store);
+        assert!(state.clipboard_buffer.is_some());
+        let status = state.status_message.unwrap_or_default();
+        assert!(status.contains("OSC52 disabled"));
+    }
+
+    #[test]
+    fn prepare_copy_selected_stores_when_large() {
+        let _lock = test_env::lock_env();
+        let _disable = remove_env("RIP_TUI_DISABLE_OSC52");
+        let mut state = TuiState::default();
+        let payload = "x".repeat(OSC52_MAX_BYTES + 100);
+        state.update(FrameEvent {
+            id: "big".to_string(),
+            session_id: "s1".to_string(),
+            timestamp_ms: 0,
+            seq: 0,
+            kind: EventKind::SessionStarted { input: payload },
+        });
+        state.selected_seq = Some(0);
+
+        let action = prepare_copy_selected(&mut state);
+        assert_eq!(action, CopySelectedAction::Store);
+        let status = state.status_message.unwrap_or_default();
+        assert!(status.contains("too large"));
     }
 }

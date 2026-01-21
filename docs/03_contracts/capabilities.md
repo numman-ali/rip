@@ -16,7 +16,7 @@ Contract structure (per capability)
 
 Registry rules
 - Capabilities live in a single registry doc (source of truth): docs/03_contracts/capability_registry.md
-- Adding a capability requires: contract + tests + surface adapters.
+- The registry may include **planned** capabilities (phase-scoped). Before a capability can be marked `supported` on any surface, it must have: contract + tests + surface adapters.
 - Breaking changes require a version bump and an ADR.
 
 Compliance

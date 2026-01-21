@@ -18,7 +18,8 @@ use crate::provider_openresponses::OpenResponsesConfig;
 use crate::runner::{SessionEngine, SessionHandle};
 use crate::tasks::{
     TaskCancelPayload, TaskCreated, TaskEngine, TaskHandle, TaskOutputQuery, TaskOutputResponse,
-    TaskSpawnPayload, TaskStatusResponse,
+    TaskResizePayload, TaskSignalPayload, TaskSpawnPayload, TaskStatusResponse,
+    TaskWriteStdinPayload,
 };
 
 #[cfg(not(test))]
@@ -32,6 +33,7 @@ pub(crate) struct AppState {
     tasks: Arc<Mutex<HashMap<String, TaskHandle>>>,
     engine: Arc<SessionEngine>,
     openapi_json: Arc<String>,
+    allow_pty_tasks: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
@@ -85,6 +87,20 @@ pub(crate) fn build_app_with_workspace_root_and_provider(
     workspace_root: std::path::PathBuf,
     openresponses: Option<OpenResponsesConfig>,
 ) -> Router {
+    build_app_with_workspace_root_and_provider_and_task_policy(
+        data_dir,
+        workspace_root,
+        openresponses,
+        allow_pty_tasks_from_env(),
+    )
+}
+
+pub(crate) fn build_app_with_workspace_root_and_provider_and_task_policy(
+    data_dir: std::path::PathBuf,
+    workspace_root: std::path::PathBuf,
+    openresponses: Option<OpenResponsesConfig>,
+    allow_pty_tasks: bool,
+) -> Router {
     let (router, openapi_json) = build_openapi_router();
 
     let engine = Arc::new(
@@ -96,6 +112,7 @@ pub(crate) fn build_app_with_workspace_root_and_provider(
         tasks: Arc::new(Mutex::new(HashMap::new())),
         engine,
         openapi_json: Arc::new(openapi_json),
+        allow_pty_tasks,
     };
 
     router
@@ -115,6 +132,9 @@ pub(crate) fn build_openapi_router() -> (Router<AppState>, String) {
         .routes(routes!(task_output))
         .routes(routes!(stream_task_events))
         .routes(routes!(cancel_task))
+        .routes(routes!(task_write_stdin))
+        .routes(routes!(task_resize))
+        .routes(routes!(task_signal))
         .split_for_parts();
     let json = api
         .to_pretty_json()
@@ -265,7 +285,7 @@ async fn create_task(
     let mode = payload
         .execution_mode
         .unwrap_or(crate::tasks::ApiToolTaskExecutionMode::Pipes);
-    if mode != crate::tasks::ApiToolTaskExecutionMode::Pipes {
+    if mode == crate::tasks::ApiToolTaskExecutionMode::Pty && !state.allow_pty_tasks {
         return StatusCode::BAD_REQUEST.into_response();
     }
     if payload.tool != "bash" && payload.tool != "shell" {
@@ -451,6 +471,102 @@ async fn cancel_task(
     StatusCode::ACCEPTED.into_response()
 }
 
+#[utoipa::path(
+    post,
+    path = "/tasks/{id}/stdin",
+    params(
+        ("id" = String, Path, description = "Task id")
+    ),
+    request_body = TaskWriteStdinPayload,
+    responses(
+        (status = 202, description = "Stdin accepted"),
+        (status = 400, description = "Invalid stdin request"),
+        (status = 404, description = "Task not found")
+    )
+)]
+async fn task_write_stdin(
+    Path(task_id): Path<String>,
+    State(state): State<AppState>,
+    Json(payload): Json<TaskWriteStdinPayload>,
+) -> impl IntoResponse {
+    let handle = {
+        let tasks = state.tasks.lock().await;
+        match tasks.get(&task_id) {
+            Some(handle) => handle.clone(),
+            None => return StatusCode::NOT_FOUND.into_response(),
+        }
+    };
+
+    match handle.write_stdin(payload).await {
+        Ok(()) => StatusCode::ACCEPTED.into_response(),
+        Err(_) => StatusCode::BAD_REQUEST.into_response(),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/tasks/{id}/resize",
+    params(
+        ("id" = String, Path, description = "Task id")
+    ),
+    request_body = TaskResizePayload,
+    responses(
+        (status = 202, description = "Resize accepted"),
+        (status = 400, description = "Invalid resize request"),
+        (status = 404, description = "Task not found")
+    )
+)]
+async fn task_resize(
+    Path(task_id): Path<String>,
+    State(state): State<AppState>,
+    Json(payload): Json<TaskResizePayload>,
+) -> impl IntoResponse {
+    let handle = {
+        let tasks = state.tasks.lock().await;
+        match tasks.get(&task_id) {
+            Some(handle) => handle.clone(),
+            None => return StatusCode::NOT_FOUND.into_response(),
+        }
+    };
+
+    match handle.resize(payload).await {
+        Ok(()) => StatusCode::ACCEPTED.into_response(),
+        Err(_) => StatusCode::BAD_REQUEST.into_response(),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/tasks/{id}/signal",
+    params(
+        ("id" = String, Path, description = "Task id")
+    ),
+    request_body = TaskSignalPayload,
+    responses(
+        (status = 202, description = "Signal accepted"),
+        (status = 400, description = "Invalid signal request"),
+        (status = 404, description = "Task not found")
+    )
+)]
+async fn task_signal(
+    Path(task_id): Path<String>,
+    State(state): State<AppState>,
+    Json(payload): Json<TaskSignalPayload>,
+) -> impl IntoResponse {
+    let handle = {
+        let tasks = state.tasks.lock().await;
+        match tasks.get(&task_id) {
+            Some(handle) => handle.clone(),
+            None => return StatusCode::NOT_FOUND.into_response(),
+        }
+    };
+
+    match handle.signal(payload).await {
+        Ok(()) => StatusCode::ACCEPTED.into_response(),
+        Err(_) => StatusCode::BAD_REQUEST.into_response(),
+    }
+}
+
 async fn openapi_spec(State(state): State<AppState>) -> impl IntoResponse {
     (
         StatusCode::OK,
@@ -473,4 +589,14 @@ pub(crate) fn workspace_root() -> std::path::PathBuf {
         return std::path::PathBuf::from(value);
     }
     std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+}
+
+fn allow_pty_tasks_from_env() -> bool {
+    let Ok(value) = std::env::var("RIP_TASKS_ALLOW_PTY") else {
+        return false;
+    };
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
 }

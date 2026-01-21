@@ -7,8 +7,10 @@ Summary
 
 Navigation
 - North star and success metrics: docs/01_north_star.md
+- Continuity OS (one chat forever): docs/02_architecture/continuity_os.md
 - Doc map (fast navigation): docs/00_doc_map.md
 - Architecture map and data flow: docs/02_architecture/component_map.md
+- Terminology (runtime vs control plane): docs/02_architecture/runtime_and_control_plane.md
 - Capability baseline: docs/02_architecture/capability_baseline.md
 - Capability matrix (phases + hook points): docs/02_architecture/capability_matrix.md
 - Surface layers + parity rules: docs/02_architecture/surfaces.md

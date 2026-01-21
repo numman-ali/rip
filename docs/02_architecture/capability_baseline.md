@@ -6,8 +6,10 @@ Summary
 - Coverage and surface parity are tracked in the capability registry and roadmap.
 - Surface-specific items still require explicit support/unsupported declarations.
 
-Sessions & Threads
-- Start, continue, and resume sessions from prior state.
+Continuities (one chat) & Runs (sessions)
+- Users operate on a continuity (default: one continuity forever); sessions are compute runs.
+- Provider state (previous_response_id / vendor threads) is a cache; cursor rotation is allowed/expected.
+- Start, continue, and resume runs from prior continuity state.
 - Session tree with branching/forking from any prior point.
 - Handoff: move work to a new thread with curated context.
 - Reference other threads by ID/URL and extract relevant context.

@@ -10,6 +10,9 @@ use serde_json::Value;
 use tokio::sync::broadcast;
 
 mod fullscreen;
+mod tasks_watch;
+#[cfg(test)]
+mod test_env;
 
 #[derive(Parser)]
 #[command(name = "rip")]
@@ -104,6 +107,8 @@ enum TaskCommand {
         args: String,
         #[arg(long)]
         title: Option<String>,
+        #[arg(long, value_enum, default_value_t = TaskExecutionMode::Pipes)]
+        execution_mode: TaskExecutionMode,
     },
     List,
     Status {
@@ -113,6 +118,29 @@ enum TaskCommand {
         id: String,
         #[arg(long)]
         reason: Option<String>,
+    },
+    Stdin {
+        id: String,
+        /// UTF-8 text to send to stdin (encoded to base64 for transport).
+        #[arg(long, conflicts_with = "chunk_b64")]
+        text: Option<String>,
+        /// Raw stdin bytes (base64) to send.
+        #[arg(long, conflicts_with = "text")]
+        chunk_b64: Option<String>,
+        /// If using --text, do not append a trailing newline.
+        #[arg(long, requires = "text")]
+        no_newline: bool,
+    },
+    Resize {
+        id: String,
+        #[arg(long)]
+        rows: u16,
+        #[arg(long)]
+        cols: u16,
+    },
+    Signal {
+        id: String,
+        signal: String,
     },
     Output {
         id: String,
@@ -126,12 +154,23 @@ enum TaskCommand {
     Events {
         id: String,
     },
+    Watch {
+        #[arg(long, default_value_t = 1000)]
+        interval_ms: u64,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 enum TaskStream {
     Stdout,
     Stderr,
+    Pty,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum TaskExecutionMode {
+    Pipes,
+    Pty,
 }
 
 #[cfg(not(test))]
@@ -219,17 +258,26 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         Some(Commands::Tasks { server, command }) => {
             let client = Client::new();
             match command {
-                TaskCommand::Spawn { tool, args, title } => {
+                TaskCommand::Spawn {
+                    tool,
+                    args,
+                    title,
+                    execution_mode,
+                } => {
                     let args_value: Value = serde_json::from_str(&args)
                         .map_err(|err| anyhow::anyhow!("invalid --args json: {err}"))?;
                     let url = format!("{server}/tasks");
+                    let execution_mode_str = match execution_mode {
+                        TaskExecutionMode::Pipes => "pipes",
+                        TaskExecutionMode::Pty => "pty",
+                    };
                     let response = client
                         .post(url)
                         .json(&serde_json::json!({
                             "tool": tool,
                             "args": args_value,
                             "title": title,
-                            "execution_mode": "pipes"
+                            "execution_mode": execution_mode_str
                         }))
                         .send()
                         .await?;
@@ -272,6 +320,59 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                         anyhow::bail!("task cancel failed: {status}");
                     }
                 }
+                TaskCommand::Stdin {
+                    id,
+                    text,
+                    chunk_b64,
+                    no_newline,
+                } => {
+                    let url = format!("{server}/tasks/{id}/stdin");
+                    let chunk_b64 = match (text, chunk_b64) {
+                        (Some(text), None) => {
+                            let payload = if no_newline {
+                                text
+                            } else {
+                                format!("{text}\n")
+                            };
+                            base64_encode(payload.as_bytes())
+                        }
+                        (None, Some(chunk_b64)) => chunk_b64,
+                        _ => anyhow::bail!("use exactly one of --text or --chunk-b64"),
+                    };
+                    let response = client
+                        .post(url)
+                        .json(&serde_json::json!({"chunk_b64": chunk_b64}))
+                        .send()
+                        .await?;
+                    let status = response.status();
+                    if !status.is_success() {
+                        anyhow::bail!("task stdin failed: {status}");
+                    }
+                }
+                TaskCommand::Resize { id, rows, cols } => {
+                    let url = format!("{server}/tasks/{id}/resize");
+                    let response = client
+                        .post(url)
+                        .json(&serde_json::json!({"rows": rows, "cols": cols}))
+                        .send()
+                        .await?;
+                    let status = response.status();
+                    if !status.is_success() {
+                        anyhow::bail!("task resize failed: {status}");
+                    }
+                }
+                TaskCommand::Signal { id, signal } => {
+                    let url = format!("{server}/tasks/{id}/signal");
+                    let response = client
+                        .post(url)
+                        .json(&serde_json::json!({"signal": signal}))
+                        .send()
+                        .await?;
+                    let status = response.status();
+                    if !status.is_success() {
+                        anyhow::bail!("task signal failed: {status}");
+                    }
+                }
                 TaskCommand::Output {
                     id,
                     stream,
@@ -281,6 +382,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                     let stream_str = match stream {
                         TaskStream::Stdout => "stdout",
                         TaskStream::Stderr => "stderr",
+                        TaskStream::Pty => "pty",
                     };
                     let mut url = format!(
                         "{server}/tasks/{id}/output?stream={stream_str}&offset_bytes={offset_bytes}"
@@ -324,6 +426,9 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                             Err(err) => return Err(err.into()),
                         }
                     }
+                }
+                TaskCommand::Watch { interval_ms } => {
+                    tasks_watch::run_tasks_watch(server, interval_ms).await?;
                 }
             }
         }
@@ -375,6 +480,42 @@ fn apply_openresponses_env(
         Provider::Openrouter => "OPENROUTER_API_KEY",
     };
     anyhow::bail!("missing API key: set {missing_hint} or RIP_OPENRESPONSES_API_KEY")
+}
+
+fn base64_encode(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    let mut out = String::with_capacity((bytes.len().saturating_add(2) / 3) * 4);
+    let mut i = 0;
+    while i + 3 <= bytes.len() {
+        let n = ((bytes[i] as u32) << 16) | ((bytes[i + 1] as u32) << 8) | (bytes[i + 2] as u32);
+        out.push(TABLE[((n >> 18) & 0x3f) as usize] as char);
+        out.push(TABLE[((n >> 12) & 0x3f) as usize] as char);
+        out.push(TABLE[((n >> 6) & 0x3f) as usize] as char);
+        out.push(TABLE[(n & 0x3f) as usize] as char);
+        i += 3;
+    }
+
+    match bytes.len().saturating_sub(i) {
+        0 => {}
+        1 => {
+            let n = (bytes[i] as u32) << 16;
+            out.push(TABLE[((n >> 18) & 0x3f) as usize] as char);
+            out.push(TABLE[((n >> 12) & 0x3f) as usize] as char);
+            out.push('=');
+            out.push('=');
+        }
+        2 => {
+            let n = ((bytes[i] as u32) << 16) | ((bytes[i + 1] as u32) << 8);
+            out.push(TABLE[((n >> 18) & 0x3f) as usize] as char);
+            out.push(TABLE[((n >> 12) & 0x3f) as usize] as char);
+            out.push(TABLE[((n >> 6) & 0x3f) as usize] as char);
+            out.push('=');
+        }
+        _ => unreachable!("len mod 3 is always 0..=2"),
+    }
+
+    out
 }
 
 async fn run_headless_remote(

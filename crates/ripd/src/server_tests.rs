@@ -13,7 +13,8 @@ use rip_provider_openresponses::ToolChoiceParam;
 use crate::provider_openresponses::{parse_tool_choice_env, OpenResponsesConfig};
 use crate::server::{
     build_app_with_workspace_root, build_app_with_workspace_root_and_provider,
-    build_openapi_router, workspace_root, SessionCreated,
+    build_app_with_workspace_root_and_provider_and_task_policy, build_openapi_router,
+    workspace_root, SessionCreated,
 };
 
 fn build_test_app(dir: &tempfile::TempDir) -> Router {
@@ -21,6 +22,18 @@ fn build_test_app(dir: &tempfile::TempDir) -> Router {
     let workspace_dir = dir.path().join("workspace");
     fs::create_dir_all(&workspace_dir).expect("workspace dir");
     build_app_with_workspace_root(data_dir, workspace_dir)
+}
+
+fn build_test_app_with_task_policy(dir: &tempfile::TempDir, allow_pty_tasks: bool) -> Router {
+    let data_dir = dir.path().join("data");
+    let workspace_dir = dir.path().join("workspace");
+    fs::create_dir_all(&workspace_dir).expect("workspace dir");
+    build_app_with_workspace_root_and_provider_and_task_policy(
+        data_dir,
+        workspace_dir,
+        None,
+        allow_pty_tasks,
+    )
 }
 
 fn build_test_app_with_openresponses_provider(
@@ -70,13 +83,17 @@ async fn create_session_id(app: &Router) -> String {
 }
 
 async fn create_task_id(app: &Router, command: &str) -> String {
+    create_task_id_with_mode(app, command, "pipes").await
+}
+
+async fn create_task_id_with_mode(app: &Router, command: &str, execution_mode: &str) -> String {
     let payload = serde_json::json!({
         "tool": "bash",
         "args": {
             "command": command
         },
         "title": "test-task",
-        "execution_mode": "pipes",
+        "execution_mode": execution_mode,
     });
 
     let response = app
@@ -257,6 +274,149 @@ async fn create_task_rejects_pty_mode() {
     assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
 }
 
+#[cfg(not(windows))]
+#[tokio::test]
+async fn pty_task_supports_control_operations() {
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app_with_task_policy(&dir, true);
+    let task_id = create_task_id_with_mode(&app, "stty -echo; cat", "pty").await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/tasks/{task_id}/events"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let mut reader = TestSseReader::new(response.into_body());
+
+    timeout(Duration::from_secs(2), async {
+        while let Some(message) = reader.next_data_message().await {
+            if let Some(value) = extract_data_json(&message) {
+                if value.get("type").and_then(|value| value.as_str()) == Some("tool_task_status")
+                    && value.get("status").and_then(|value| value.as_str()) == Some("running")
+                {
+                    break;
+                }
+            }
+        }
+    })
+    .await
+    .expect("timeout");
+
+    let write = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tasks/{task_id}/stdin"))
+                .header("content-type", "application/json")
+                .body(Body::from("{\"chunk_b64\":\"aGkK\"}"))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(write.status(), axum::http::StatusCode::ACCEPTED);
+
+    let resize = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tasks/{task_id}/resize"))
+                .header("content-type", "application/json")
+                .body(Body::from("{\"rows\":30,\"cols\":100}"))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(resize.status(), axum::http::StatusCode::ACCEPTED);
+
+    let signal = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tasks/{task_id}/signal"))
+                .header("content-type", "application/json")
+                .body(Body::from("{\"signal\":\"SIGTERM\"}"))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(signal.status(), axum::http::StatusCode::ACCEPTED);
+
+    let mut saw_stdin = false;
+    let mut saw_resize = false;
+    let mut saw_signal = false;
+    let mut saw_output = false;
+    let mut saw_terminal = false;
+
+    timeout(Duration::from_secs(2), async {
+        while let Some(message) = reader.next_data_message().await {
+            if let Some(value) = extract_data_json(&message) {
+                match value.get("type").and_then(|value| value.as_str()) {
+                    Some("tool_task_stdin_written") => saw_stdin = true,
+                    Some("tool_task_resized") => saw_resize = true,
+                    Some("tool_task_signalled") => saw_signal = true,
+                    Some("tool_task_output_delta") => {
+                        if value
+                            .get("chunk")
+                            .and_then(|value| value.as_str())
+                            .unwrap_or("")
+                            .contains("hi")
+                        {
+                            saw_output = true;
+                        }
+                    }
+                    Some("tool_task_status") => {
+                        let status = value.get("status").and_then(|value| value.as_str());
+                        if matches!(status, Some("exited") | Some("cancelled") | Some("failed")) {
+                            saw_terminal = true;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    })
+    .await
+    .expect("timeout");
+
+    assert!(saw_stdin, "expected tool_task_stdin_written");
+    assert!(saw_resize, "expected tool_task_resized");
+    assert!(saw_signal, "expected tool_task_signalled");
+    assert!(saw_output, "expected tool_task_output_delta");
+    assert!(saw_terminal, "expected terminal tool_task_status");
+
+    let output = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/tasks/{task_id}/output?stream=pty&offset_bytes=0&max_bytes=64"
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(output.status(), axum::http::StatusCode::OK);
+    let body = output.into_body().collect().await.expect("body").to_bytes();
+    let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
+    assert!(value
+        .get("content")
+        .and_then(|value| value.as_str())
+        .unwrap_or("")
+        .contains("hi"));
+}
+
 #[tokio::test]
 async fn list_tasks_includes_created_task() {
     let dir = tempdir().expect("tmp");
@@ -430,26 +590,37 @@ async fn task_events_stream_emits_output_and_termination() {
         .join(format!("{task_id}.json"));
     assert!(snapshot_path.exists(), "expected task snapshot file");
 
-    let output = app
-        .oneshot(
-            Request::builder()
-                .method("GET")
-                .uri(format!(
-                    "/tasks/{task_id}/output?stream=stdout&offset_bytes=0&max_bytes=128"
-                ))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .expect("response");
-    assert_eq!(output.status(), axum::http::StatusCode::OK);
-    let body = output.into_body().collect().await.expect("body").to_bytes();
-    let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
-    assert!(value
-        .get("content")
-        .and_then(|value| value.as_str())
-        .unwrap_or("")
-        .contains("hello-task"));
+    timeout(Duration::from_secs(2), async {
+        loop {
+            let output = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("GET")
+                        .uri(format!(
+                            "/tasks/{task_id}/output?stream=stdout&offset_bytes=0&max_bytes=128"
+                        ))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .expect("response");
+            assert_eq!(output.status(), axum::http::StatusCode::OK);
+            let body = output.into_body().collect().await.expect("body").to_bytes();
+            let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
+            if value
+                .get("content")
+                .and_then(|value| value.as_str())
+                .unwrap_or("")
+                .contains("hello-task")
+            {
+                break;
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("output");
 }
 
 #[tokio::test]

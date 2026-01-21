@@ -27,6 +27,10 @@ Tests
 - OpenAPI schema generation/validation tests.
 
 Phase 2 planned extensions
+- Continuities (“threads”) as the user-facing entity:
+  - ensure/get/list + post message
+  - continuity-level event streams (messages, summaries, links) independent of session runs
+  - branch/handoff/reference/share semantics
 - Background tool tasks (task entities) with their own event streams and control APIs:
   - spawn/status/cancel + stream events
   - interactive PTY control (stdin/resize/signal) when enabled by policy

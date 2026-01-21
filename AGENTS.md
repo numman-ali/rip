@@ -19,6 +19,18 @@ Operator intent (non‑negotiables)
 - Open Responses is used only at the provider boundary.
 - Programmatic SDK (TypeScript first) is a required surface, not an optional add-on.
 
+Continuity OS posture (non-negotiable)
+- RIP is a **continuity OS**, not a chat app: default UX is “one chat forever”.
+- The continuity event log is the source of truth (append-only + replayable). Provider conversation state (`previous_response_id`, vendor thread ids) is a cache and may be rotated/rebuilt at any time.
+- “Sessions” are compute runs/turns; they are not user-facing by default (surfaces “continue” by targeting a continuity and spawning runs behind the scenes).
+- Background/subconscious agents are just jobs over event streams (summarizers, indexers, auditors, subagents). They must emit structured events + artifacts; no hidden mutable state.
+- Multi-actor/shared continuities are first-class: every input/action must carry provenance (`actor_id`, `origin`) so team workflows remain replayable and auditable.
+
+Agent mindset (avoid monotony)
+- Optimize for the end-state architecture (complexity is allowed); implement in slices but **never** introduce “temporary” concepts that fight the Continuity OS model.
+- For any feature, explicitly sanity-check: 1M+ events, provider cursor rotation, parallel jobs, multi-actor/shared continuities, remote control plane, replay determinism, and surface parity.
+- When you notice a mismatch between docs/vision and implementation, treat it as a defect: fix docs and/or add a roadmap item in the same change.
+
 Success metrics
 - TTFT overhead, parse overhead per event, tool dispatch latency, patch throughput, end‑to‑end loop latency.
 - CI gates must fail on regressions.
@@ -40,6 +52,15 @@ Surface parity principle
 - Surface packages are adapters only; no business logic or core decisions live in UI or transport layers.
 - Surface-specific capabilities still require explicit support/unsupported declarations on every surface.
 - Parity matrix + gap list are required artifacts; CI enforces them.
+
+Capability delivery order (operator directive)
+- For any new capability/feature work, implement and validate in this order (treat earlier stages as gates):
+  1) Headless CLI **local runtime** (in-process; no server required)
+  2) TUI (frame-driven UX over the same capability)
+  3) Server (HTTP/SSE exposure)
+  4) Remote mode (CLI/TUI targeting `--server <url>`)
+  5) SDK (programmatic surface; local + remote as applicable)
+- If a capability is implemented server-first for expedience, it is **not** “done” until (1) is complete; record the gap in `docs/07_tasks/roadmap.md` and `agent_step.md`.
 
 Capability contract
 - Capabilities are the canonical, versioned API; the registry is the source of truth (`docs/03_contracts/capability_registry.md`).
@@ -115,6 +136,9 @@ Definitions (avoid confusion)
 - Provider adapters: Open Responses boundary only.
 - CLI: interactive and headless front‑ends to the same runtime.
 - SDK: programmatic surface over the server API (TypeScript first).
+- Continuity (“thread”): user-facing, durable identity/state (“one chat forever”); internal truth is the continuity event log.
+- Session (“run”): a single execution unit/turn attached to a continuity; sessions emit frames and end (`session_ended` remains terminal).
+- Provider cursor: provider-side conversation handle used as an optimization only; can be reset without changing continuity truth.
 
 Decision log
 - Material changes require an ADR in docs/06_decisions/.

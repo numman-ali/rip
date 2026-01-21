@@ -24,7 +24,12 @@ Rules
 - Surface-specific capabilities must still list explicit surface statuses.
 - Breaking changes require a version bump and an ADR.
 
-## Sessions & Threads
+## Continuities (Threads) & Sessions (Runs)
+
+Notes
+- A “thread” is a **continuity** (user-facing identity/state). Default UX: one continuity forever.
+- A “session” is a **run** (one compute job/turn) attached to a continuity.
+- Provider state (`previous_response_id`, vendor thread ids) is a cache; continuities remain stable when provider cursors rotate.
 | id | v | phase | cli_i | cli_h | server | sdk | tui | mcp | intent |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | session.create | v1 | P1 | planned | supported | supported | planned | planned | planned | Start a new session. |
@@ -32,8 +37,13 @@ Rules
 | session.set_model | v1 | P2 | planned | planned | planned | planned | planned | planned | Change the active session's provider/model selection (applies forward only). |
 | session.stream_events | v1 | P1 | planned | supported | supported | planned | planned | planned | Stream session events. |
 | session.cancel | v1 | P1 | planned | supported | supported | planned | planned | planned | Cancel an active session. |
-| session.resume | v1 | P2 | planned | planned | planned | planned | planned | planned | Resume a prior session by id. |
+| session.resume | v1 | P2 | planned | planned | planned | planned | planned | planned | Resume a prior session/run by id (debug/power feature; not the primary UX). |
 | session.previous_response | v1 | P2 | planned | planned | planned | planned | planned | planned | Continue from a prior response id (previous_response_id semantics). |
+| thread.ensure | v1 | P2 | planned | planned | planned | planned | planned | planned | Ensure a default continuity exists for the current workspace/user and return its id. |
+| thread.post_message | v1 | P2 | planned | planned | planned | planned | planned | planned | Append an actor message to a continuity; may trigger a new run and returns linkage. |
+| thread.stream_events | v1 | P2 | planned | planned | planned | planned | planned | planned | Stream continuity-level events (messages, summaries, links) independent of session runs. |
+| thread.list | v1 | P2 | planned | planned | planned | planned | planned | planned | List continuities (power/debug; filters by tags/query). |
+| thread.get | v1 | P2 | planned | planned | planned | planned | planned | planned | Get continuity metadata by id. |
 | thread.branch | v1 | P2 | planned | planned | planned | planned | planned | planned | Branch/fork from a prior point. |
 | thread.handoff | v1 | P2 | planned | planned | planned | planned | planned | planned | Handoff work to a new thread with curated context. |
 | thread.reference | v1 | P2 | planned | planned | planned | planned | planned | planned | Reference another thread by id and extract context. |
@@ -144,9 +154,9 @@ Rules
 | tool.task_status | v1 | P2 | planned | supported | supported | planned | planned | planned | Query background tool task status/metadata independent of the live stream. |
 | tool.task_cancel | v1 | P2 | planned | supported | supported | planned | planned | planned | Cancel/kill a running tool task (best-effort, logged). |
 | tool.task_stream_events | v1 | P2 | planned | supported | supported | planned | planned | planned | Subscribe to a background tool task event stream (SSE/JSONL) by `task_id`. |
-| tool.task_write_stdin | v1 | P2 | planned | planned | planned | planned | planned | planned | Send stdin bytes/keys to an interactive tool task (PTY mode only). |
-| tool.task_resize | v1 | P2 | planned | planned | planned | planned | planned | planned | Resize an interactive tool task terminal (rows/cols; PTY mode only). |
-| tool.task_signal | v1 | P2 | planned | planned | planned | planned | planned | planned | Send a signal to a running tool task (SIGINT/SIGTERM/etc; platform-mapped). |
+| tool.task_write_stdin | v1 | P2 | planned | supported | supported | planned | planned | planned | Send stdin bytes/keys to an interactive tool task (PTY mode only). |
+| tool.task_resize | v1 | P2 | planned | supported | supported | planned | planned | planned | Resize an interactive tool task terminal (rows/cols; PTY mode only). |
+| tool.task_signal | v1 | P2 | planned | supported | supported | planned | planned | planned | Send a signal to a running tool task (SIGINT/SIGTERM/etc; platform-mapped). |
 | tool.choice | v1 | P1 | planned | planned | planned | planned | planned | planned | Tool choice policy (auto/required/none/force). |
 | tool.call_limits | v1 | P1 | planned | planned | planned | planned | planned | planned | Max tool calls + parallel tool call limits. |
 | tool.allowed_tools | v1 | P1 | planned | planned | planned | planned | planned | planned | Allowed-tools lists for noninteractive runs. |

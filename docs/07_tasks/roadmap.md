@@ -19,25 +19,29 @@ Now
   - `docs/06_decisions/ADR-0007-tool-tasks-pty.md`
   - `docs/03_contracts/modules/phase-2/03_tool_tasks.md`
   - `docs/03_contracts/event_frames.md`
+  - `docs/02_architecture/runtime_and_control_plane.md` (terminology: runtime vs control plane)
   - `docs/03_contracts/capability_registry.md`
   - `docs/02_architecture/capability_matrix.md`
 - Status (2026-01-21):
   - Implemented: `pipes` tasks (spawn/list/status/cancel + SSE events) + artifact-backed log tailing (range fetch).
   - Implemented: CLI adapter (`rip tasks --server ...`) + TS SDK wrappers (spawn via `rip`).
-  - Pending: PTY mode + stdin/resize/signal control ops + task UI affordances beyond attach.
+  - Implemented: `pty` tasks (policy-gated via `RIP_TASKS_ALLOW_PTY`) + stdin/resize/signal + `stream=pty` log tailing.
+  - Implemented: deterministic replay fixtures for `pipes` exit/cancel + PTY control ordering + artifact refs.
+  - Implemented: CLI watch (`rip tasks --server <url> watch`) for list/select/tail/cancel (minimal key support; no PTY attach).
+  - Blocker: `scripts/check` currently fails at coverage gates (`cargo llvm-cov` totals < 90%).
+  - Parity gap (operator gate): task entities are currently exercised via the server-backed task API; local headless (`rip run --headless`, no server) does not yet have an equivalent task runner/registry surface.
 - Spec snapshot:
   - Background work is a **task entity** (`task_id`) with its own event stream; Phase 1 session invariant remains (one session == one run).
   - Execution modes: `pipes` (default) and `pty` (opt-in; stdin/resize/signal).
   - Artifact-backed logs prevent context/log explosion; frames carry previews + artifact refs.
   - “Wake the agent” is orchestration: watchers start a new session referencing `{task_id, artifact_refs}`.
 - Ready:
-  - Implement PTY mode (policy-gated) with stdin/resize/signal operations.
-  - Add deterministic replay fixtures for: PTY task + stdin/resize/signal ordering.
-  - Add UI affordances for tasks beyond attach (list + select + tail + cancel).
+  - TUI tasks panel (Ctrl+T) remains Phase 2.
 - Done:
   - `tool.task_*` capabilities are exposed via server + SDK; CLI/TUI can list, stream, and control tasks.
   - Replay fixtures cover: spawn→output→exit, spawn→cancel, PTY stdin/resize/signal, and artifact refs.
   - Bench budgets cover task overhead (registry + per-delta emit) and do not regress TTFT/loop latency.
+  - `scripts/check` passes (including llvm-cov thresholds).
 
 Next
 
@@ -64,24 +68,26 @@ Next
   - The above UI capabilities are available in the default fullscreen UX and are replay-testable via golden snapshots.
 
 Later
-- Sessions/Threads: resume + branch (multi-turn workspaces) [needs work]
-  - Refs: `docs/03_contracts/capability_registry.md` (`session.resume`, `thread.branch`, `thread.handoff`), `docs/03_contracts/modules/phase-1/06_server.md`
-  - Decision packet:
-    - Decision: how “continue later” is represented and exposed across surfaces without breaking Phase 1 replay invariants.
-    - Options:
-      1) Multi-turn session: allow repeated `session.send_input` on the same session id; redefine `session_ended` as end-of-turn.
-         - Pros: simplest mental model for users.
-         - Cons: breaks Phase 1 invariants (`session_ended` terminal); harder replay/compaction; complicates background tasks insertion.
-      2) Thread entity: keep Phase 1 sessions as single-run “turns”; introduce `thread_id` and attach new session runs to a thread.
-         - Pros: preserves Phase 1 session invariants; clean replay; enables branch/handoff/compaction naturally.
-         - Cons: requires new server endpoints + SDK/CLI/TUI wiring.
-    - Recommendation: Option 2 (thread entity). Keep “session == run” stable; implement “continue later” as threads built from session runs.
-    - Reversibility: multi-turn sessions can later be added as a thin compatibility layer that creates/targets a thread behind the scenes.
+- Continuities (Threads): one chat forever (resume/branch, cursor rotation, multi-actor) [needs work]
+  - Refs:
+    - `docs/02_architecture/continuity_os.md`
+    - `docs/06_decisions/ADR-0008-continuity-os.md`
+    - `docs/03_contracts/capability_registry.md` (`thread.*`, `context.compile`, `compaction.*`)
+    - `docs/03_contracts/event_frames.md` (Phase 2: stream-scoped v2 envelope)
+    - `docs/03_contracts/modules/phase-1/06_server.md`
+  - Decisions (accepted):
+    - Provider conversation state is a cache; continuity log is truth (cursor rotation is allowed/expected).
+    - Keep Phase 1 invariant: `session == run/turn` (single-run sessions). “Continue later” targets a continuity.
   - Ready:
-    - Define server API endpoints for thread create/list/resume/branch and how they map to session runs.
-    - Define event-log entries for thread metadata + turn links (replayable).
+    - Define v2 stream envelope + continuity stream frame types + provenance (`actor_id`, `origin`).
+    - Define server endpoints: ensure/get/list/post_message/stream_events/branch/handoff and how they map to runs.
+    - Define deterministic compaction checkpoints (e.g., 10k/20k/30k summaries) and provider cursor rotation logging.
+    - Define concurrency rules: multiple jobs per continuity; workspace side-effects are scheduled/serialized.
   - Done:
-    - “Continue later” works the same in CLI/TUI/SDK (parity enforced), with deterministic replay of a resumed thread.
+    - Default UX is one continuity; surfaces “continue” by posting messages (sessions hidden by default).
+    - Resume/branch/handoff works with deterministic replay and parity across CLI/TUI/server/SDK.
+    - Provider cursor rotation is invisible to users, logged, and replay-safe.
+    - Background workers (summarizer/indexer/etc.) run as jobs over the continuity stream and emit artifact refs; replay reproduces identical snapshots.
 - OpenResponses: parallel tool calls + background responses [needs work]
   - Refs: `docs/06_decisions/ADR-0005-openresponses-tool-loop.md`, `crates/ripd/src/provider_openresponses.rs`
   - Decision packet:
@@ -135,7 +141,7 @@ Later
   - Done: TS SDK supports session lifecycle + streaming
 
 Capability coverage map (index)
-- Sessions & threads [confirm spec] - Phase 1 core + server + CLI; TUI/SDK parity later.
+- Continuities (threads) & runs (sessions) [confirm spec] - Phase 1 core + server + CLI; TUI/SDK parity later.
 - Session storage & replay [confirm spec] - Phase 1 event log + snapshots; surfaces consume.
 - Context & guidance [needs work] - Phase 2 context compiler + guidance loader.
 - Configuration & policy [needs work] - Phase 2 layered config + permission engine.

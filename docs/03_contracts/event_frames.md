@@ -84,7 +84,7 @@ Phase 2 (planned additions)
 Schema (v2 — stream-scoped; planned)
 - Phase 2 introduces additional event streams beyond sessions (notably tool tasks). Frames remain the canonical interchange, but the envelope gains an explicit stream scope.
 - `id`: string (uuid)
-- `stream_kind`: `"session"` | `"task"` | `"thread"` | `"artifact"` (extensible)
+- `stream_kind`: `"session"` | `"task"` | `"continuity"` | `"artifact"` (extensible)
 - `stream_id`: string (e.g. session id, task id)
 - `seq`: u64 (monotonic per `{stream_kind, stream_id}`)
 - `timestamp_ms`: u64 (unix epoch ms)
@@ -93,6 +93,10 @@ Schema (v2 — stream-scoped; planned)
 - Compatibility:
   - Session streams may continue to include `session_id` as an alias of `{stream_id}` while v1 is still supported.
   - Task streams never emit `session_started/session_ended`; their lifecycle is expressed via task/tool frames.
+  - “Thread” in older docs/capabilities is a synonym for **continuity** (user-facing “one chat” identity).
+
+- Provenance (planned):
+  - Frames that represent an input/action should carry `actor_id` and `origin` metadata so shared/team continuities remain replayable.
 
 - Background tool tasks:
   - `tool_task_spawned`: `{task_id, tool_name, args, cwd?, title?, execution_mode: pipes|pty, origin_session_id?, artifacts?}`

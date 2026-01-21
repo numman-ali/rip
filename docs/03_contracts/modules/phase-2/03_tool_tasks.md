@@ -11,9 +11,11 @@ Decision
 Current status (implemented)
 - Pipes-mode background tasks are implemented and exposed via server + CLI:
   - Task lifecycle/events: `POST /tasks`, `GET /tasks`, `GET /tasks/{id}`, `GET /tasks/{id}/events`, `POST /tasks/{id}/cancel`.
-  - Artifact-backed log tailing: `GET /tasks/{id}/output?stream=stdout|stderr&offset_bytes=...&max_bytes=...`.
+  - Artifact-backed log tailing: `GET /tasks/{id}/output?stream=stdout|stderr|pty&offset_bytes=...&max_bytes=...` (stream depends on task mode).
   - Frames: `tool_task_*` (see `docs/03_contracts/event_frames.md`).
-- PTY mode and interactive control operations (`stdin/resize/signal`) are still pending.
+- PTY mode and interactive control operations (`stdin/resize/signal`) are implemented but policy-gated:
+  - Spawn PTY tasks: `POST /tasks` with `execution_mode=pty`.
+  - Control ops (PTY only): `POST /tasks/{id}/stdin`, `POST /tasks/{id}/resize`, `POST /tasks/{id}/signal`.
 
 Related capabilities
 - `tool.task_spawn`, `tool.task_status`, `tool.task_cancel`

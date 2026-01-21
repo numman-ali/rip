@@ -6,9 +6,11 @@ Purpose
 
 Entry points (read order for reorientation)
 - `docs/01_north_star.md` (why + constraints)
+- `docs/02_architecture/continuity_os.md` (the “one chat forever” operating model)
 - `docs/07_tasks/roadmap.md` (now/next/later, with confidence tags)
 - `docs/03_contracts/capability_registry.md` (canonical capability ids + surface support)
 - `docs/02_architecture/capability_matrix.md` (phase placement + hook points)
+- `docs/02_architecture/runtime_and_control_plane.md` (runtime vs control plane vs remote runtime)
 - `docs/03_contracts/event_frames.md` (internal event schema)
 - `docs/05_quality/feature_flow.md` (how we turn ideas into shipped capabilities)
 - OpenResponses boundary:
@@ -42,6 +44,7 @@ Doc index (authoritative docs only)
 | area | doc | what it answers |
 | --- | --- | --- |
 | north star | `docs/01_north_star.md` | What we’re building and why. |
+| continuity OS | `docs/02_architecture/continuity_os.md` | What “one chat forever” means and how we keep it replayable + provider-agnostic. |
 | roadmap | `docs/07_tasks/roadmap.md` | What’s next and what “done” means. |
 | capabilities | `docs/03_contracts/capabilities.md` | What a capability contract contains. |
 | capability registry | `docs/03_contracts/capability_registry.md` | Full capability id list + surface statuses. |

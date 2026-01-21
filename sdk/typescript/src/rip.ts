@@ -40,6 +40,7 @@ export type RipTaskSpawnRequest = {
   tool: string;
   args: unknown;
   title?: string;
+  execution_mode?: "pipes" | "pty";
 };
 
 export type RipTaskCreated = {
@@ -61,7 +62,7 @@ export type RipTaskStatus = {
 
 export type RipTaskOutput = {
   task_id: string;
-  stream: "stdout" | "stderr";
+  stream: "stdout" | "stderr" | "pty";
   content: string;
   offset_bytes: number;
   bytes: number;
@@ -215,13 +216,23 @@ export class Rip {
   }
 
   async taskSpawn(request: RipTaskSpawnRequest, options: RipTaskOptions): Promise<RipTaskCreated> {
-    const payload = {
-      tool: request.tool,
-      args: request.args,
-      title: request.title ?? null,
-      execution_mode: "pipes",
-    };
-    const out = await this.execJson(["tasks", "--server", options.server, "spawn", "--tool", request.tool, "--args", JSON.stringify(payload.args), ...(request.title ? ["--title", request.title] : [])], options);
+    const executionMode = request.execution_mode ?? "pipes";
+    const out = await this.execJson(
+      [
+        "tasks",
+        "--server",
+        options.server,
+        "spawn",
+        "--tool",
+        request.tool,
+        "--args",
+        JSON.stringify(request.args),
+        ...(request.title ? ["--title", request.title] : []),
+        "--execution-mode",
+        executionMode,
+      ],
+      options,
+    );
     return out as RipTaskCreated;
   }
 
@@ -242,13 +253,43 @@ export class Rip {
     );
   }
 
-  async taskOutput(taskId: string, options: RipTaskOptions, query: { stream?: "stdout" | "stderr"; offsetBytes?: number; maxBytes?: number } = {}): Promise<RipTaskOutput> {
+  async taskOutput(
+    taskId: string,
+    options: RipTaskOptions,
+    query: { stream?: "stdout" | "stderr" | "pty"; offsetBytes?: number; maxBytes?: number } = {},
+  ): Promise<RipTaskOutput> {
     const stream = query.stream ?? "stdout";
     const offset = query.offsetBytes ?? 0;
     const args = ["tasks", "--server", options.server, "output", taskId, "--stream", stream, "--offset-bytes", String(offset)];
     if (typeof query.maxBytes === "number") args.push("--max-bytes", String(query.maxBytes));
     const out = await this.execJson(args, options);
     return out as RipTaskOutput;
+  }
+
+  async taskWriteStdin(taskId: string, options: RipTaskOptions, chunk: Uint8Array): Promise<void> {
+    const chunkB64 = Buffer.from(chunk).toString("base64");
+    await this.execRaw(["tasks", "--server", options.server, "stdin", taskId, "--chunk-b64", chunkB64], options);
+  }
+
+  async taskWriteStdinText(
+    taskId: string,
+    options: RipTaskOptions,
+    text: string,
+    opts: { noNewline?: boolean } = {},
+  ): Promise<void> {
+    const payload = opts.noNewline ? text : `${text}\n`;
+    await this.execRaw(["tasks", "--server", options.server, "stdin", taskId, "--text", payload, "--no-newline"], options);
+  }
+
+  async taskResize(taskId: string, options: RipTaskOptions, size: { rows: number; cols: number }): Promise<void> {
+    await this.execRaw(
+      ["tasks", "--server", options.server, "resize", taskId, "--rows", String(size.rows), "--cols", String(size.cols)],
+      options,
+    );
+  }
+
+  async taskSignal(taskId: string, options: RipTaskOptions, signal: string): Promise<void> {
+    await this.execRaw(["tasks", "--server", options.server, "signal", taskId, signal], options);
   }
 
   async taskEventsStreamed(

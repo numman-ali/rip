@@ -1,17 +1,18 @@
 # Component Map
 
 Summary
-- One core runtime (ripd) powers CLI, headless CLI, TUI, and server API.
+- One core runtime powers CLI, headless CLI, and TUI; the control plane is an API surface over the same runtime.
 - The server exposes the coding agent (session API), not Open Responses.
 - Open Responses is only the provider adapter layer.
 
 System map
 
 [ rip ] (interactive TUI) -----\
-[ rip run --headless ] --------+--> [ ripd (agent runtime + server API) ] --> [ provider adapters ] --> [ model providers ]
-[ rip-sdk-ts ] (TypeScript) ---/
-[ rip-tui ] (richer UI, P2) ---/          |
-[ rip-mcp ] (Phase 2) <---MCP-/          |
+[ rip run --headless ] --------+--> [ runtime (agent loop + tools + logging) ] --> [ provider adapters ] --> [ model providers ]
+[ rip-sdk-ts ] (TypeScript) ---/                    |
+[ rip-tui ] (richer UI, P2) ---/                    |
+[ rip-mcp ] (Phase 2) <---MCP-/                     |
+                                                   +--> [ control plane (HTTP/SSE; session API) ] <--- remote clients (`--server <url>`)
                                             |--> scheduler + subagent manager
                                             |--> tool runtime + registry
                                             |--> context compiler
@@ -25,11 +26,11 @@ System map
                                             +--> event log + snapshots
 
 Responsibilities
-- ripd: agent loop, routing, scheduling, tool dispatch, logging, replay.
+- runtime: agent loop, routing, scheduling, tool dispatch, logging, replay.
 - rip: interactive terminal UI (Phase 1: session runner + observability-first UI).
 - rip run --headless: machine-friendly JSON output.
 - rip-sdk-ts: programmatic surface (transport + frame parsing; no business logic).
-- ripd server API: session HTTP/SSE + OpenAPI spec.
+- control plane: session HTTP/SSE + OpenAPI spec.
 - rip-tui: richer terminal UI rendering (Phase 2).
 - rip-mcp: MCP surface for capability exposure (Phase 2).
 - provider adapters: Open Responses ingress/egress to model providers.
@@ -39,3 +40,6 @@ Key constraints
 - All inter-module traffic is structured events, not raw text.
 - Every module is replaceable via strict contracts.
 - Determinism: event log + snapshots enable full replay.
+
+Implementation note (Phase 1)
+- The `ripd` crate currently contains both runtime and control plane code; treat them as conceptually separate components for design and parity work.

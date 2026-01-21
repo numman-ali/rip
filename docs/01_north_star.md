@@ -30,3 +30,8 @@ Design stance
 - Open Responses used only for provider adapters (ingress/egress).
 - Internal runtime uses compact frames for speed.
 - Deterministic replay via event log + snapshots.
+
+Continuity OS stance
+- RIP is a **continuity OS**, not a chat app: the default UX is “one chat forever”.
+- The continuity event log is the source of truth; provider conversation state is a cache (cursor rotation is allowed/expected).
+- Sessions are compute jobs/runs (one run/turn) and are not user-visible by default.

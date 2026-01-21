@@ -20,12 +20,17 @@ Task attach mode (remote)
 - Attaches the fullscreen UI to an existing background task and streams task frames over SSE.
 
 Task commands (remote)
-- `rip tasks --server <url> spawn --tool bash --args '{"command":"<cmd>"}'`
+- `rip tasks --server <url> spawn --tool bash --args '{"command":"<cmd>"}'` (default `--execution-mode pipes`)
+- `rip tasks --server <url> spawn --tool bash --args '{"command":"<cmd>"}' --execution-mode pty` (requires server `RIP_TASKS_ALLOW_PTY=1`)
 - `rip tasks --server <url> list`
 - `rip tasks --server <url> status <task_id>`
 - `rip tasks --server <url> cancel <task_id> --reason "<why>"`
-- `rip tasks --server <url> output <task_id> --stream stdout --offset-bytes 0 --max-bytes 4096`
+- `rip tasks --server <url> stdin <task_id> --text "<line>"` (PTY only; sends `<line>\n`)
+- `rip tasks --server <url> resize <task_id> --rows 24 --cols 80` (PTY only)
+- `rip tasks --server <url> signal <task_id> SIGINT` (PTY only today)
+- `rip tasks --server <url> output <task_id> --stream stdout --offset-bytes 0 --max-bytes 4096` (`--stream stderr|pty`)
 - `rip tasks --server <url> events <task_id>` (prints JSON frames until terminal `tool_task_status`)
+- `rip tasks --server <url> watch` (interactive list + tail + cancel; `--interval-ms` controls refresh; keys: `q`/`Esc`/`Ctrl+C` quit, `↑/↓` or `j/k` select, `c` cancel, `s` toggle stdout/stderr)
 
 Headless mode (draft)
 - rip run <task> --headless --view raw

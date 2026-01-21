@@ -1,0 +1,140 @@
+[
+  {
+    "id": "e0",
+    "session_id": "task_pipes_cancel",
+    "timestamp_ms": 0,
+    "seq": 0,
+    "type": "tool_task_spawned",
+    "task_id": "task_pipes_cancel",
+    "tool_name": "bash",
+    "args": {
+      "command": "printf 'tick\\n'; printf 'warn\\n' >&2; sleep 5"
+    },
+    "cwd": null,
+    "title": "fixture-pipes-cancel",
+    "execution_mode": "pipes",
+    "origin_session_id": null,
+    "artifacts": {
+      "logs": {
+        "stdout": {
+          "id": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "path": ".rip/artifacts/blobs/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        },
+        "stderr": {
+          "id": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "path": ".rip/artifacts/blobs/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        }
+      },
+      "artifact_max_bytes": 1024,
+      "max_bytes": 128
+    }
+  },
+  {
+    "id": "e1",
+    "session_id": "task_pipes_cancel",
+    "timestamp_ms": 1,
+    "seq": 1,
+    "type": "tool_task_status",
+    "task_id": "task_pipes_cancel",
+    "status": "running",
+    "exit_code": null,
+    "started_at_ms": 1,
+    "ended_at_ms": null,
+    "artifacts": null,
+    "error": null
+  },
+  {
+    "id": "e2",
+    "session_id": "task_pipes_cancel",
+    "timestamp_ms": 2,
+    "seq": 2,
+    "type": "tool_task_output_delta",
+    "task_id": "task_pipes_cancel",
+    "stream": "stdout",
+    "chunk": "tick\n",
+    "artifacts": {
+      "log": {
+        "id": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "path": ".rip/artifacts/blobs/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "offset_bytes": 0,
+        "bytes": 5,
+        "bytes_total": 5,
+        "bytes_stored": 5,
+        "truncated": false
+      }
+    }
+  },
+  {
+    "id": "e3",
+    "session_id": "task_pipes_cancel",
+    "timestamp_ms": 2,
+    "seq": 3,
+    "type": "tool_task_output_delta",
+    "task_id": "task_pipes_cancel",
+    "stream": "stderr",
+    "chunk": "warn\n",
+    "artifacts": {
+      "log": {
+        "id": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "path": ".rip/artifacts/blobs/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "offset_bytes": 0,
+        "bytes": 5,
+        "bytes_total": 5,
+        "bytes_stored": 5,
+        "truncated": false
+      }
+    }
+  },
+  {
+    "id": "e4",
+    "session_id": "task_pipes_cancel",
+    "timestamp_ms": 3,
+    "seq": 4,
+    "type": "tool_task_cancel_requested",
+    "task_id": "task_pipes_cancel",
+    "reason": "stop"
+  },
+  {
+    "id": "e5",
+    "session_id": "task_pipes_cancel",
+    "timestamp_ms": 4,
+    "seq": 5,
+    "type": "tool_task_cancelled",
+    "task_id": "task_pipes_cancel",
+    "reason": "stop",
+    "wall_time_ms": 123
+  },
+  {
+    "id": "e6",
+    "session_id": "task_pipes_cancel",
+    "timestamp_ms": 5,
+    "seq": 6,
+    "type": "tool_task_status",
+    "task_id": "task_pipes_cancel",
+    "status": "cancelled",
+    "exit_code": 1,
+    "started_at_ms": 1,
+    "ended_at_ms": 5,
+    "artifacts": {
+      "logs": {
+        "stdout": {
+          "id": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "path": ".rip/artifacts/blobs/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "bytes_total": 5,
+          "bytes_stored": 5,
+          "truncated": false,
+          "error": null
+        },
+        "stderr": {
+          "id": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "path": ".rip/artifacts/blobs/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "bytes_total": 5,
+          "bytes_stored": 5,
+          "truncated": false,
+          "error": null
+        }
+      }
+    },
+    "error": null
+  }
+]
