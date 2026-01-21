@@ -14,6 +14,27 @@ How to use
 
 Now
 
+## Continuities (Threads): one chat forever (resume/branch, cursor rotation, multi-actor) [needs work]
+- Refs:
+  - `docs/02_architecture/continuity_os.md`
+  - `docs/06_decisions/ADR-0008-continuity-os.md`
+  - `docs/03_contracts/capability_registry.md` (`thread.*`, `context.compile`, `compaction.*`)
+  - `docs/03_contracts/event_frames.md` (Phase 2: stream-scoped v2 envelope)
+  - `docs/03_contracts/modules/phase-1/06_server.md`
+- Decisions (accepted):
+  - Provider conversation state is a cache; continuity log is truth (cursor rotation is allowed/expected).
+  - Keep Phase 1 invariant: `session == run/turn` (single-run sessions). "Continue later" targets a continuity.
+- Ready:
+  - Define v2 stream envelope + continuity stream frame types + provenance (`actor_id`, `origin`).
+  - Define server endpoints: ensure/get/list/post_message/stream_events/branch/handoff and how they map to runs.
+  - Define deterministic compaction checkpoints (e.g., 10k/20k/30k summaries) and provider cursor rotation logging.
+  - Define concurrency rules: multiple jobs per continuity; workspace side-effects are scheduled/serialized.
+- Done:
+  - Default UX is one continuity; surfaces "continue" by posting messages (sessions hidden by default).
+  - Resume/branch/handoff works with deterministic replay and parity across CLI/TUI/server/SDK.
+  - Provider cursor rotation is invisible to users, logged, and replay-safe.
+  - Background workers (summarizer/indexer/etc.) run as jobs over the continuity stream and emit artifact refs; replay reproduces identical snapshots.
+
 ## Tools: background tool tasks + interactive PTY control [confirm spec]
 - Refs:
   - `docs/06_decisions/ADR-0007-tool-tasks-pty.md`
@@ -34,37 +55,16 @@ Now
   - Background work is a **task entity** (`task_id`) with its own event stream; Phase 1 session invariant remains (one session == one run).
   - Execution modes: `pipes` (default) and `pty` (opt-in; stdin/resize/signal).
   - Artifact-backed logs prevent context/log explosion; frames carry previews + artifact refs.
-  - “Wake the agent” is orchestration: watchers start a new session referencing `{task_id, artifact_refs}`.
+  - "Wake the agent" is orchestration: watchers start a new session referencing `{task_id, artifact_refs}`.
 - Ready:
   - TUI tasks panel (Ctrl+T) remains Phase 2.
 - Done:
   - `tool.task_*` capabilities are exposed via server + SDK; CLI/TUI can list, stream, and control tasks.
-  - Replay fixtures cover: spawn→output→exit, spawn→cancel, PTY stdin/resize/signal, and artifact refs.
+  - Replay fixtures cover: spawn->output->exit, spawn->cancel, PTY stdin/resize/signal, and artifact refs.
   - Bench budgets cover task overhead (registry + per-delta emit) and do not regress TTFT/loop latency.
   - `scripts/check` passes (including llvm-cov thresholds).
 
 Next
-
-## Continuities (Threads): one chat forever (resume/branch, cursor rotation, multi-actor) [needs work]
-- Refs:
-  - `docs/02_architecture/continuity_os.md`
-  - `docs/06_decisions/ADR-0008-continuity-os.md`
-  - `docs/03_contracts/capability_registry.md` (`thread.*`, `context.compile`, `compaction.*`)
-  - `docs/03_contracts/event_frames.md` (Phase 2: stream-scoped v2 envelope)
-  - `docs/03_contracts/modules/phase-1/06_server.md`
-- Decisions (accepted):
-  - Provider conversation state is a cache; continuity log is truth (cursor rotation is allowed/expected).
-  - Keep Phase 1 invariant: `session == run/turn` (single-run sessions). “Continue later” targets a continuity.
-- Ready:
-  - Define v2 stream envelope + continuity stream frame types + provenance (`actor_id`, `origin`).
-  - Define server endpoints: ensure/get/list/post_message/stream_events/branch/handoff and how they map to runs.
-  - Define deterministic compaction checkpoints (e.g., 10k/20k/30k summaries) and provider cursor rotation logging.
-  - Define concurrency rules: multiple jobs per continuity; workspace side-effects are scheduled/serialized.
-- Done:
-  - Default UX is one continuity; surfaces “continue” by posting messages (sessions hidden by default).
-  - Resume/branch/handoff works with deterministic replay and parity across CLI/TUI/server/SDK.
-  - Provider cursor rotation is invisible to users, logged, and replay-safe.
-  - Background workers (summarizer/indexer/etc.) run as jobs over the continuity stream and emit artifact refs; replay reproduces identical snapshots.
 
 ## SDK: transport + distribution (direct HTTP, packaging) [needs work]
 - Refs: `docs/06_decisions/ADR-0006-sdk-transport.md`, `docs/04_execution/sdk.md`
@@ -84,7 +84,7 @@ Next
   - `docs/03_contracts/capability_registry.md`
 - Ready:
   - Implement `ui.theme`, `ui.keybindings`, `ui.raw_events`, and `ui.clipboard` in `rip-tui` without adding business logic (frame-driven).
-  - Add ratatui golden snapshots covering: rendered↔raw toggle, theme switch, and copy-to-clipboard fallback behavior.
+  - Add ratatui golden snapshots covering: rendered<->raw toggle, theme switch, and copy-to-clipboard fallback behavior.
 - Done:
   - The above UI capabilities are available in the default fullscreen UX and are replay-testable via golden snapshots.
 

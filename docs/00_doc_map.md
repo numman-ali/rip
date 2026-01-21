@@ -6,6 +6,7 @@ Purpose
 
 Entry points (read order for reorientation)
 - `docs/01_north_star.md` (why + constraints)
+- `docs/00_resonance_pack.md` (agent rehydration pack; Continuity OS posture + current priorities)
 - `docs/02_architecture/continuity_os.md` (the “one chat forever” operating model)
 - `docs/07_tasks/roadmap.md` (now/next/later, with confidence tags)
 - `docs/03_contracts/capability_registry.md` (canonical capability ids + surface support)

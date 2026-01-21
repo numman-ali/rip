@@ -7,6 +7,7 @@ Summary
 
 Navigation
 - North star and success metrics: docs/01_north_star.md
+- Resonance pack (agent rehydration): docs/00_resonance_pack.md
 - Continuity OS (one chat forever): docs/02_architecture/continuity_os.md
 - Doc map (fast navigation): docs/00_doc_map.md
 - Architecture map and data flow: docs/02_architecture/component_map.md
