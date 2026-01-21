@@ -1,29 +1,38 @@
-# Agent Step
+# Agent State (Working Log)
+
+Last updated: 2026-01-21
+
+How to use
+- Update this file whenever focus shifts, before ending a work session, and when blocked.
+- Keep it short and decision-focused; link to docs/roadmap/ADRs instead of duplicating.
 
 Current focus
-- Phase 1: shared session runner across server + CLI (frames are canonical).
-- Continuity OS posture: continuity log is truth; provider state is cache (cursor rotation allowed); sessions are runs/turns (not user-facing by default).
+- Continuity OS posture is locked: continuity log is truth; provider state is cache; sessions are runs/turns (not user-facing by default).
+- Now: Continuities (threads) are the primary user-facing entity ("one chat forever") and must be implemented end-to-end across surfaces.
+- Phase 1 baseline remains: shared session runner across server + CLI (frames are canonical).
 - Default local execution: `rip` launches fullscreen TUI (in-process); `rip run` stays headless; `--server <url>` enables remote runs; `rip serve` stays the remote control plane.
 - OpenResponses provider compatibility: stateless history mode + tool schema strict=false; fix provider_errors without dropping raw fidelity.
 - Output view: human-friendly aggregation (no tool arg deltas), aligned with Codex exec expectations.
-- Now: background tool tasks **as task entities** are implemented in `pipes` mode (spawn/status/stream/cancel + artifact-backed log tailing).
-- Now: PTY mode + interactive control ops (stdin/resize/signal) are implemented (policy-gated); deterministic task replay fixtures added.
-- Now: CLI task watch UI exists (`rip tasks --server <url> watch`) for list/select/tail/cancel (minimal keys; no PTY attach yet).
-- Operator gate: capability delivery order is `cli_h(local)` → `tui` → `server` → `remote` → `sdk`.
+- Background tool tasks are implemented (`pipes` + policy-gated `pty`) with deterministic replay fixtures.
+- Operator gate: capability delivery order is `cli_h(local)` -> `tui` -> `server` -> `remote` -> `sdk`.
 - Terminology: see `docs/02_architecture/runtime_and_control_plane.md` (runtime vs control plane vs remote runtime).
-- Next up: get `scripts/check` green again (llvm-cov thresholds), then continuities (threads): resume/branch + cursor rotation design.
+- Next up: implement continuity stream + provenance + "post message" flow (local first) per `docs/07_tasks/roadmap.md`.
 - Keep CI/bench gates green; ratchet budgets only with replay coverage.
 
 Reorientation (read in order after compaction)
 - `AGENTS.md`
-- `agent_step.md`
+- `agent_state.md`
 - `docs/00_index.md`
 - `docs/00_doc_map.md`
 - `docs/01_north_star.md`
+- `docs/02_architecture/continuity_os.md`
 - `docs/07_tasks/roadmap.md`
 - `docs/03_contracts/openresponses_coverage.md`
 - `docs/03_contracts/openresponses_capability_map.md`
 - `docs/07_tasks/openresponses_coverage.md`
+
+Open risks / notes
+- `cargo test -p ripd` can create an untracked `crates/ripd/data/` directory (cleanup or fix default test data dir).
 
 Active priorities
 - Keep roadmap Now/Next aligned with the implementation work.

@@ -60,7 +60,7 @@ Capability delivery order (operator directive)
   3) Server (HTTP/SSE exposure)
   4) Remote mode (CLI/TUI targeting `--server <url>`)
   5) SDK (programmatic surface; local + remote as applicable)
-- If a capability is implemented server-first for expedience, it is **not** “done” until (1) is complete; record the gap in `docs/07_tasks/roadmap.md` and `agent_step.md`.
+- If a capability is implemented server-first for expedience, it is **not** “done” until (1) is complete; record the gap in `docs/07_tasks/roadmap.md` and `agent_state.md`.
 
 Capability contract
 - Capabilities are the canonical, versioned API; the registry is the source of truth (`docs/03_contracts/capability_registry.md`).
@@ -91,7 +91,7 @@ Working style
 - Prefer simple, verifiable steps over broad refactors.
 - Keep Rust source files small and single-purpose; split modules when files exceed ~600–700 lines unless there's a clear reason not to.
 - Batch related checklist items when they share schemas/logic; avoid unnecessary micro-changes.
-- Reorient by reading `AGENTS.md`, `agent_step.md`, `docs/00_index.md`, `docs/00_doc_map.md`, `docs/01_north_star.md`, `docs/02_architecture/continuity_os.md`, and `docs/07_tasks/roadmap.md` before resuming after compaction.
+- Reorient by reading `AGENTS.md`, `agent_state.md`, `docs/00_index.md`, `docs/00_doc_map.md`, `docs/01_north_star.md`, `docs/02_architecture/continuity_os.md`, and `docs/07_tasks/roadmap.md` before resuming after compaction.
 - Also read `docs/00_resonance_pack.md` first if you need the full "why" and current posture in one place.
 - Use `scripts/check` before reporting a task as complete.
 - Use `scripts/install-hooks` once to enable repo hooks.
@@ -148,4 +148,4 @@ Maintenance
 - AGENTS.md must be kept current as the system evolves; update it whenever intent, scope, or architecture changes.
 - External research artifacts (web-sourced evidence only) live in `temp/docs`, with an index at `temp/docs/references.md`. Committed docs live in `docs/`.
 - Doc drift is a defect: if you notice docs diverging from each other or the implementation, fix it in the same change. If the fix is non-trivial, flag it and get approval before proceeding.
-- Maintain `agent_step.md` as the current working focus and reorientation checklist; update it whenever the focus shifts.
+- Maintain `agent_state.md` as the mutable working log and reorientation checklist; update it whenever the focus shifts, when blocked, and before ending a work session.
