@@ -28,7 +28,7 @@ Now
   - Implemented: `pty` tasks (policy-gated via `RIP_TASKS_ALLOW_PTY`) + stdin/resize/signal + `stream=pty` log tailing.
   - Implemented: deterministic replay fixtures for `pipes` exit/cancel + PTY control ordering + artifact refs.
   - Implemented: CLI watch (`rip tasks --server <url> watch`) for list/select/tail/cancel (minimal key support; no PTY attach).
-  - Blocker: `scripts/check` currently fails at coverage gates (`cargo llvm-cov` totals < 90%).
+  - Cleared: `scripts/check` passes (including llvm-cov thresholds >= 90%).
   - Parity gap (operator gate): task entities are currently exercised via the server-backed task API; local headless (`rip run --headless`, no server) does not yet have an equivalent task runner/registry surface.
 - Spec snapshot:
   - Background work is a **task entity** (`task_id`) with its own event stream; Phase 1 session invariant remains (one session == one run).
@@ -44,6 +44,27 @@ Now
   - `scripts/check` passes (including llvm-cov thresholds).
 
 Next
+
+## Continuities (Threads): one chat forever (resume/branch, cursor rotation, multi-actor) [needs work]
+- Refs:
+  - `docs/02_architecture/continuity_os.md`
+  - `docs/06_decisions/ADR-0008-continuity-os.md`
+  - `docs/03_contracts/capability_registry.md` (`thread.*`, `context.compile`, `compaction.*`)
+  - `docs/03_contracts/event_frames.md` (Phase 2: stream-scoped v2 envelope)
+  - `docs/03_contracts/modules/phase-1/06_server.md`
+- Decisions (accepted):
+  - Provider conversation state is a cache; continuity log is truth (cursor rotation is allowed/expected).
+  - Keep Phase 1 invariant: `session == run/turn` (single-run sessions). “Continue later” targets a continuity.
+- Ready:
+  - Define v2 stream envelope + continuity stream frame types + provenance (`actor_id`, `origin`).
+  - Define server endpoints: ensure/get/list/post_message/stream_events/branch/handoff and how they map to runs.
+  - Define deterministic compaction checkpoints (e.g., 10k/20k/30k summaries) and provider cursor rotation logging.
+  - Define concurrency rules: multiple jobs per continuity; workspace side-effects are scheduled/serialized.
+- Done:
+  - Default UX is one continuity; surfaces “continue” by posting messages (sessions hidden by default).
+  - Resume/branch/handoff works with deterministic replay and parity across CLI/TUI/server/SDK.
+  - Provider cursor rotation is invisible to users, logged, and replay-safe.
+  - Background workers (summarizer/indexer/etc.) run as jobs over the continuity stream and emit artifact refs; replay reproduces identical snapshots.
 
 ## SDK: transport + distribution (direct HTTP, packaging) [needs work]
 - Refs: `docs/06_decisions/ADR-0006-sdk-transport.md`, `docs/04_execution/sdk.md`
@@ -68,26 +89,6 @@ Next
   - The above UI capabilities are available in the default fullscreen UX and are replay-testable via golden snapshots.
 
 Later
-- Continuities (Threads): one chat forever (resume/branch, cursor rotation, multi-actor) [needs work]
-  - Refs:
-    - `docs/02_architecture/continuity_os.md`
-    - `docs/06_decisions/ADR-0008-continuity-os.md`
-    - `docs/03_contracts/capability_registry.md` (`thread.*`, `context.compile`, `compaction.*`)
-    - `docs/03_contracts/event_frames.md` (Phase 2: stream-scoped v2 envelope)
-    - `docs/03_contracts/modules/phase-1/06_server.md`
-  - Decisions (accepted):
-    - Provider conversation state is a cache; continuity log is truth (cursor rotation is allowed/expected).
-    - Keep Phase 1 invariant: `session == run/turn` (single-run sessions). “Continue later” targets a continuity.
-  - Ready:
-    - Define v2 stream envelope + continuity stream frame types + provenance (`actor_id`, `origin`).
-    - Define server endpoints: ensure/get/list/post_message/stream_events/branch/handoff and how they map to runs.
-    - Define deterministic compaction checkpoints (e.g., 10k/20k/30k summaries) and provider cursor rotation logging.
-    - Define concurrency rules: multiple jobs per continuity; workspace side-effects are scheduled/serialized.
-  - Done:
-    - Default UX is one continuity; surfaces “continue” by posting messages (sessions hidden by default).
-    - Resume/branch/handoff works with deterministic replay and parity across CLI/TUI/server/SDK.
-    - Provider cursor rotation is invisible to users, logged, and replay-safe.
-    - Background workers (summarizer/indexer/etc.) run as jobs over the continuity stream and emit artifact refs; replay reproduces identical snapshots.
 - OpenResponses: parallel tool calls + background responses [needs work]
   - Refs: `docs/06_decisions/ADR-0005-openresponses-tool-loop.md`, `crates/ripd/src/provider_openresponses.rs`
   - Decision packet:
