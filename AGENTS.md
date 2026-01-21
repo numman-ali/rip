@@ -91,7 +91,7 @@ Working style
 - Prefer simple, verifiable steps over broad refactors.
 - Keep Rust source files small and single-purpose; split modules when files exceed ~600–700 lines unless there's a clear reason not to.
 - Batch related checklist items when they share schemas/logic; avoid unnecessary micro-changes.
-- Reorient by reading `AGENTS.md`, `agent_step.md`, `docs/00_index.md`, `docs/00_doc_map.md`, `docs/01_north_star.md`, and `docs/07_tasks/roadmap.md` before resuming after compaction.
+- Reorient by reading `AGENTS.md`, `agent_step.md`, `docs/00_index.md`, `docs/00_doc_map.md`, `docs/01_north_star.md`, `docs/02_architecture/continuity_os.md`, and `docs/07_tasks/roadmap.md` before resuming after compaction.
 - Use `scripts/check` before reporting a task as complete.
 - Use `scripts/install-hooks` once to enable repo hooks.
 - Sync the canonical Open Responses OpenAPI spec via `scripts/update-openresponses-types` when schemas change.
