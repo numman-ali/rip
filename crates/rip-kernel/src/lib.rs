@@ -127,9 +127,12 @@ pub enum CheckpointAction {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EventKind {
     SessionStarted {
+        #[serde(default, alias = "prompt")]
         input: String,
     },
+    #[serde(alias = "output")]
     OutputTextDelta {
+        #[serde(alias = "content")]
         delta: String,
     },
     SessionEnded {
@@ -490,6 +493,32 @@ mod tests {
         let json = serde_json::to_string(&event).expect("json");
         assert!(json.contains("session_started"));
         assert!(json.contains("input"));
+    }
+
+    #[test]
+    fn legacy_event_formats_deserialize() {
+        let legacy_session_started =
+            r#"{"id":"e1","session_id":"s1","timestamp_ms":0,"seq":0,"type":"session_started"}"#;
+        let event: Event = serde_json::from_str(legacy_session_started).expect("deserialize");
+        assert!(matches!(
+            event.kind,
+            EventKind::SessionStarted { input } if input.is_empty()
+        ));
+
+        let legacy_session_started_with_prompt = r#"{"id":"e2","session_id":"s1","timestamp_ms":0,"seq":0,"type":"session_started","prompt":"hello"}"#;
+        let event: Event =
+            serde_json::from_str(legacy_session_started_with_prompt).expect("deserialize");
+        assert!(matches!(
+            event.kind,
+            EventKind::SessionStarted { input } if input == "hello"
+        ));
+
+        let legacy_output = r#"{"id":"e3","session_id":"s1","timestamp_ms":0,"seq":1,"type":"output","content":"ack: hello"}"#;
+        let event: Event = serde_json::from_str(legacy_output).expect("deserialize");
+        assert!(matches!(
+            event.kind,
+            EventKind::OutputTextDelta { delta } if delta == "ack: hello"
+        ));
     }
 
     #[test]
