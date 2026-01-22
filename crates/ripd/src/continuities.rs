@@ -22,6 +22,14 @@ pub struct ContinuityMeta {
     pub archived: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct ContinuityRunLink {
+    pub continuity_id: String,
+    pub message_id: String,
+    pub actor_id: String,
+    pub origin: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ContinuityIndexV1 {
     version: u32,
@@ -111,43 +119,222 @@ impl ContinuityStore {
         }
 
         let continuity_id = Uuid::new_v4().to_string();
-        let timestamp_ms = now_ms();
-        let created = Event {
+        self.create_continuity(workspace, Some(continuity_id), None, true)
+    }
+
+    pub fn branch(
+        &self,
+        parent_thread_id: &str,
+        title: Option<String>,
+        from_message_id: Option<String>,
+        from_seq: Option<u64>,
+        actor_id: String,
+        origin: String,
+    ) -> Result<(String, u64, Option<String>), String> {
+        if from_message_id.is_some() && from_seq.is_some() {
+            return Err("branch requires only one of from_message_id or from_seq".to_string());
+        }
+
+        let parent_events = self
+            .replay_events(parent_thread_id)
+            .map_err(|err| format!("branch parent replay failed: {err}"))?;
+        if parent_events.is_empty() {
+            return Err("branch parent continuity stream does not exist".to_string());
+        }
+
+        let head_seq = parent_events
+            .last()
+            .map(|event| event.seq)
+            .unwrap_or_default();
+
+        let (parent_seq, parent_message_id) = if let Some(from_seq) = from_seq {
+            if from_seq > head_seq {
+                return Err(format!(
+                    "branch from_seq out of range: max_seq={head_seq}, got {from_seq}"
+                ));
+            }
+            let last_message = parent_events
+                .iter()
+                .rev()
+                .find(|event| {
+                    event.seq <= from_seq
+                        && matches!(event.kind, EventKind::ContinuityMessageAppended { .. })
+                })
+                .map(|event| event.id.clone());
+            (from_seq, last_message)
+        } else if let Some(message_id) = from_message_id.clone() {
+            let mut message_seq: Option<u64> = None;
+            let mut max_related_seq: Option<u64> = None;
+
+            for event in &parent_events {
+                match &event.kind {
+                    EventKind::ContinuityMessageAppended { .. } if event.id == message_id => {
+                        message_seq = Some(event.seq);
+                        max_related_seq = Some(event.seq);
+                    }
+                    EventKind::ContinuityRunSpawned {
+                        message_id: mid, ..
+                    }
+                    | EventKind::ContinuityRunEnded {
+                        message_id: mid, ..
+                    } if mid == &message_id => {
+                        max_related_seq = Some(max_related_seq.unwrap_or(0).max(event.seq));
+                    }
+                    _ => {}
+                }
+            }
+
+            if message_seq.is_none() {
+                return Err(format!("branch from_message_id not found: {message_id}"));
+            }
+            (max_related_seq.unwrap_or(0), Some(message_id))
+        } else {
+            let last_message = parent_events
+                .iter()
+                .rev()
+                .find(|event| matches!(event.kind, EventKind::ContinuityMessageAppended { .. }))
+                .map(|event| event.id.clone());
+            (head_seq, last_message)
+        };
+
+        let workspace = workspace_key(&self.workspace_root);
+        let thread_id = self.create_continuity(workspace, None, title, false)?;
+
+        let event = Event {
             id: Uuid::new_v4().to_string(),
-            session_id: continuity_id.clone(),
-            timestamp_ms,
-            seq: 0,
-            kind: EventKind::ContinuityCreated {
-                workspace: workspace.clone(),
-                title: None,
+            session_id: thread_id.clone(),
+            timestamp_ms: now_ms(),
+            seq: 1,
+            kind: EventKind::ContinuityBranched {
+                parent_thread_id: parent_thread_id.to_string(),
+                parent_seq,
+                parent_message_id: parent_message_id.clone(),
+                actor_id,
+                origin,
             },
         };
         self.event_log
-            .append(&created)
-            .map_err(|err| format!("append continuity_created: {err}"))?;
-        let _ = self.sender.send(created.clone());
-
-        {
-            let mut index = self.index.lock().expect("continuity index mutex");
-            index.workspaces.insert(workspace, continuity_id.clone());
-            index.continuities.insert(
-                continuity_id.clone(),
-                ContinuityMetaV1 {
-                    created_at_ms: timestamp_ms,
-                    title: None,
-                    archived: false,
-                },
-            );
-            save_index(&index_path(&self.data_dir), &index)
-                .map_err(|err| format!("save continuity index: {err}"))?;
-        }
+            .append(&event)
+            .map_err(|err| format!("append continuity_branched: {err}"))?;
+        let _ = self.sender.send(event.clone());
 
         self.next_seq
             .lock()
             .expect("continuity seq mutex")
-            .insert(continuity_id.clone(), 1);
+            .insert(thread_id.clone(), 2);
 
-        Ok(continuity_id)
+        Ok((thread_id, parent_seq, parent_message_id))
+    }
+
+    pub fn handoff(
+        &self,
+        from_thread_id: &str,
+        title: Option<String>,
+        summary: (Option<String>, Option<String>),
+        from_message_id: Option<String>,
+        from_seq: Option<u64>,
+        provenance: (String, String),
+    ) -> Result<(String, u64, Option<String>), String> {
+        let (summary_markdown, summary_artifact_id) = summary;
+        let (actor_id, origin) = provenance;
+        if summary_markdown.is_none() && summary_artifact_id.is_none() {
+            return Err("handoff requires summary_markdown and/or summary_artifact_id".to_string());
+        }
+        if from_message_id.is_some() && from_seq.is_some() {
+            return Err("handoff requires only one of from_message_id or from_seq".to_string());
+        }
+
+        let from_events = self
+            .replay_events(from_thread_id)
+            .map_err(|err| format!("handoff parent replay failed: {err}"))?;
+        if from_events.is_empty() {
+            return Err("handoff parent continuity stream does not exist".to_string());
+        }
+
+        let head_seq = from_events
+            .last()
+            .map(|event| event.seq)
+            .unwrap_or_default();
+
+        let (from_seq, from_message_id) = if let Some(from_seq) = from_seq {
+            if from_seq > head_seq {
+                return Err(format!(
+                    "handoff from_seq out of range: max_seq={head_seq}, got {from_seq}"
+                ));
+            }
+            let last_message = from_events
+                .iter()
+                .rev()
+                .find(|event| {
+                    event.seq <= from_seq
+                        && matches!(event.kind, EventKind::ContinuityMessageAppended { .. })
+                })
+                .map(|event| event.id.clone());
+            (from_seq, last_message)
+        } else if let Some(message_id) = from_message_id.clone() {
+            let mut message_seq: Option<u64> = None;
+            let mut max_related_seq: Option<u64> = None;
+
+            for event in &from_events {
+                match &event.kind {
+                    EventKind::ContinuityMessageAppended { .. } if event.id == message_id => {
+                        message_seq = Some(event.seq);
+                        max_related_seq = Some(event.seq);
+                    }
+                    EventKind::ContinuityRunSpawned {
+                        message_id: mid, ..
+                    }
+                    | EventKind::ContinuityRunEnded {
+                        message_id: mid, ..
+                    } if mid == &message_id => {
+                        max_related_seq = Some(max_related_seq.unwrap_or(0).max(event.seq));
+                    }
+                    _ => {}
+                }
+            }
+
+            if message_seq.is_none() {
+                return Err(format!("handoff from_message_id not found: {message_id}"));
+            }
+            (max_related_seq.unwrap_or(0), Some(message_id))
+        } else {
+            let last_message = from_events
+                .iter()
+                .rev()
+                .find(|event| matches!(event.kind, EventKind::ContinuityMessageAppended { .. }))
+                .map(|event| event.id.clone());
+            (head_seq, last_message)
+        };
+
+        let workspace = workspace_key(&self.workspace_root);
+        let thread_id = self.create_continuity(workspace, None, title, false)?;
+
+        let event = Event {
+            id: Uuid::new_v4().to_string(),
+            session_id: thread_id.clone(),
+            timestamp_ms: now_ms(),
+            seq: 1,
+            kind: EventKind::ContinuityHandoffCreated {
+                from_thread_id: from_thread_id.to_string(),
+                from_seq,
+                from_message_id: from_message_id.clone(),
+                summary_artifact_id,
+                summary_markdown,
+                actor_id,
+                origin,
+            },
+        };
+        self.event_log
+            .append(&event)
+            .map_err(|err| format!("append continuity_handoff_created: {err}"))?;
+        let _ = self.sender.send(event.clone());
+
+        self.next_seq
+            .lock()
+            .expect("continuity seq mutex")
+            .insert(thread_id.clone(), 2);
+
+        Ok((thread_id, from_seq, from_message_id))
     }
 
     pub fn list(&self) -> Vec<ContinuityMeta> {
@@ -221,6 +408,8 @@ impl ContinuityStore {
         continuity_id: &str,
         message_id: &str,
         session_id: &str,
+        actor_id: String,
+        origin: String,
     ) -> Result<String, String> {
         let mut next_seq = self.next_seq.lock().expect("continuity seq mutex");
         let seq = match next_seq.get(continuity_id).cloned() {
@@ -243,11 +432,57 @@ impl ContinuityStore {
             kind: EventKind::ContinuityRunSpawned {
                 run_session_id: session_id.to_string(),
                 message_id: message_id.to_string(),
+                actor_id: Some(actor_id),
+                origin: Some(origin),
             },
         };
         self.event_log
             .append(&event)
             .map_err(|err| format!("append continuity run spawned: {err}"))?;
+        let _ = self.sender.send(event.clone());
+
+        next_seq.insert(continuity_id.to_string(), seq + 1);
+        Ok(id)
+    }
+
+    pub fn append_run_ended(
+        &self,
+        continuity_id: &str,
+        message_id: &str,
+        session_id: &str,
+        reason: String,
+        actor_id: String,
+        origin: String,
+    ) -> Result<String, String> {
+        let mut next_seq = self.next_seq.lock().expect("continuity seq mutex");
+        let seq = match next_seq.get(continuity_id).cloned() {
+            Some(seq) => seq,
+            None => {
+                let seq = self
+                    .load_next_seq_for(continuity_id)
+                    .map_err(|err| format!("resolve continuity seq: {err}"))?;
+                next_seq.insert(continuity_id.to_string(), seq);
+                seq
+            }
+        };
+
+        let id = Uuid::new_v4().to_string();
+        let event = Event {
+            id: id.clone(),
+            session_id: continuity_id.to_string(),
+            timestamp_ms: now_ms(),
+            seq,
+            kind: EventKind::ContinuityRunEnded {
+                run_session_id: session_id.to_string(),
+                message_id: message_id.to_string(),
+                reason,
+                actor_id: Some(actor_id),
+                origin: Some(origin),
+            },
+        };
+        self.event_log
+            .append(&event)
+            .map_err(|err| format!("append continuity run ended: {err}"))?;
         let _ = self.sender.send(event.clone());
 
         next_seq.insert(continuity_id.to_string(), seq + 1);
@@ -284,6 +519,55 @@ impl ContinuityStore {
             }
         }
         Ok(best.map(|(_, id)| id))
+    }
+
+    fn create_continuity(
+        &self,
+        workspace: String,
+        continuity_id: Option<String>,
+        title: Option<String>,
+        set_as_default: bool,
+    ) -> Result<String, String> {
+        let continuity_id = continuity_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+        let timestamp_ms = now_ms();
+        let created = Event {
+            id: Uuid::new_v4().to_string(),
+            session_id: continuity_id.clone(),
+            timestamp_ms,
+            seq: 0,
+            kind: EventKind::ContinuityCreated {
+                workspace: workspace.clone(),
+                title: title.clone(),
+            },
+        };
+        self.event_log
+            .append(&created)
+            .map_err(|err| format!("append continuity_created: {err}"))?;
+        let _ = self.sender.send(created.clone());
+
+        {
+            let mut index = self.index.lock().expect("continuity index mutex");
+            if set_as_default {
+                index.workspaces.insert(workspace, continuity_id.clone());
+            }
+            index.continuities.insert(
+                continuity_id.clone(),
+                ContinuityMetaV1 {
+                    created_at_ms: timestamp_ms,
+                    title,
+                    archived: false,
+                },
+            );
+            save_index(&index_path(&self.data_dir), &index)
+                .map_err(|err| format!("save continuity index: {err}"))?;
+        }
+
+        self.next_seq
+            .lock()
+            .expect("continuity seq mutex")
+            .insert(continuity_id.clone(), 1);
+
+        Ok(continuity_id)
     }
 }
 
@@ -430,7 +714,13 @@ mod tests {
             )
             .expect("append");
         store
-            .append_run_spawned(&continuity_id, &message_id, "session-1")
+            .append_run_spawned(
+                &continuity_id,
+                &message_id,
+                "session-1",
+                "user".to_string(),
+                "cli".to_string(),
+            )
             .expect("run spawned");
 
         let events = event_log
@@ -441,11 +731,333 @@ mod tests {
         assert_eq!(events[1].seq, 1);
         assert_eq!(events[2].seq, 2);
         match &events[2].kind {
-            EventKind::ContinuityRunSpawned { run_session_id, .. } => {
-                assert_eq!(run_session_id, "session-1")
+            EventKind::ContinuityRunSpawned {
+                run_session_id,
+                actor_id,
+                origin,
+                ..
+            } => {
+                assert_eq!(run_session_id, "session-1");
+                assert_eq!(actor_id.as_deref(), Some("user"));
+                assert_eq!(origin.as_deref(), Some("cli"));
             }
             other => panic!("expected run_spawned, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn append_run_ended_advances_seq() {
+        let dir = tempdir().expect("tmp");
+        let (event_log, store, _data_dir) = store_for(&dir);
+
+        let continuity_id = store.ensure_default().expect("ensure");
+        let message_id = store
+            .append_message(
+                &continuity_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "hello".to_string(),
+            )
+            .expect("append");
+        store
+            .append_run_spawned(
+                &continuity_id,
+                &message_id,
+                "session-1",
+                "user".to_string(),
+                "cli".to_string(),
+            )
+            .expect("run spawned");
+        store
+            .append_run_ended(
+                &continuity_id,
+                &message_id,
+                "session-1",
+                "completed".to_string(),
+                "user".to_string(),
+                "cli".to_string(),
+            )
+            .expect("run ended");
+
+        let events = event_log
+            .replay_stream(StreamKind::Continuity, &continuity_id)
+            .expect("replay");
+        assert_eq!(events.len(), 4);
+        assert_eq!(events[0].seq, 0);
+        assert_eq!(events[1].seq, 1);
+        assert_eq!(events[2].seq, 2);
+        assert_eq!(events[3].seq, 3);
+        match &events[3].kind {
+            EventKind::ContinuityRunEnded {
+                run_session_id,
+                message_id: mid,
+                reason,
+                actor_id,
+                origin,
+            } => {
+                assert_eq!(run_session_id, "session-1");
+                assert_eq!(mid, &message_id);
+                assert_eq!(reason, "completed");
+                assert_eq!(actor_id.as_deref(), Some("user"));
+                assert_eq!(origin.as_deref(), Some("cli"));
+            }
+            other => panic!("expected run_ended, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn branch_creates_child_with_cutpoint_and_provenance() {
+        let dir = tempdir().expect("tmp");
+        let (event_log, store, _data_dir) = store_for(&dir);
+
+        let parent_thread_id = store.ensure_default().expect("ensure");
+        let m1 = store
+            .append_message(
+                &parent_thread_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "turn1".to_string(),
+            )
+            .expect("append");
+        store
+            .append_run_spawned(
+                &parent_thread_id,
+                &m1,
+                "session-1",
+                "user".to_string(),
+                "cli".to_string(),
+            )
+            .expect("run spawned");
+        store
+            .append_run_ended(
+                &parent_thread_id,
+                &m1,
+                "session-1",
+                "completed".to_string(),
+                "user".to_string(),
+                "cli".to_string(),
+            )
+            .expect("run ended");
+        let _m2 = store
+            .append_message(
+                &parent_thread_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "turn2".to_string(),
+            )
+            .expect("append");
+
+        let (child_thread_id, parent_seq, parent_message_id) = store
+            .branch(
+                &parent_thread_id,
+                Some("child".to_string()),
+                Some(m1.clone()),
+                None,
+                "alice".to_string(),
+                "team".to_string(),
+            )
+            .expect("branch");
+
+        assert_eq!(parent_seq, 3, "expected cut to include run_ended");
+        assert_eq!(parent_message_id.as_deref(), Some(m1.as_str()));
+
+        let child_events = event_log
+            .replay_stream(StreamKind::Continuity, &child_thread_id)
+            .expect("replay child");
+        assert_eq!(child_events.len(), 2);
+        assert_eq!(child_events[0].seq, 0);
+        assert_eq!(child_events[1].seq, 1);
+        match &child_events[1].kind {
+            EventKind::ContinuityBranched {
+                parent_thread_id: parent_id,
+                parent_seq: cut_seq,
+                parent_message_id: cut_message_id,
+                actor_id,
+                origin,
+            } => {
+                assert_eq!(parent_id, &parent_thread_id);
+                assert_eq!(*cut_seq, 3);
+                assert_eq!(cut_message_id.as_deref(), Some(m1.as_str()));
+                assert_eq!(actor_id, "alice");
+                assert_eq!(origin, "team");
+            }
+            other => panic!("expected continuity_branched, got {other:?}"),
+        }
+
+        store
+            .append_message(
+                &child_thread_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "child turn".to_string(),
+            )
+            .expect("append child");
+        let child_events = event_log
+            .replay_stream(StreamKind::Continuity, &child_thread_id)
+            .expect("replay child");
+        assert_eq!(child_events.len(), 3);
+        assert_eq!(
+            child_events[2].seq, 2,
+            "expected seq to continue after branch"
+        );
+    }
+
+    #[test]
+    fn branch_rejects_conflicting_cut_selectors() {
+        let dir = tempdir().expect("tmp");
+        let (_event_log, store, _data_dir) = store_for(&dir);
+
+        let parent_thread_id = store.ensure_default().expect("ensure");
+        let err = store
+            .branch(
+                &parent_thread_id,
+                None,
+                Some("m1".to_string()),
+                Some(1),
+                "user".to_string(),
+                "cli".to_string(),
+            )
+            .expect_err("expected error");
+        assert!(err.contains("from_message_id") && err.contains("from_seq"));
+    }
+
+    #[test]
+    fn handoff_creates_child_with_cutpoint_provenance_and_summary() {
+        let dir = tempdir().expect("tmp");
+        let (event_log, store, _data_dir) = store_for(&dir);
+
+        let from_thread_id = store.ensure_default().expect("ensure");
+        let m1 = store
+            .append_message(
+                &from_thread_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "turn1".to_string(),
+            )
+            .expect("append");
+        store
+            .append_run_spawned(
+                &from_thread_id,
+                &m1,
+                "session-1",
+                "user".to_string(),
+                "cli".to_string(),
+            )
+            .expect("run spawned");
+        store
+            .append_run_ended(
+                &from_thread_id,
+                &m1,
+                "session-1",
+                "completed".to_string(),
+                "user".to_string(),
+                "cli".to_string(),
+            )
+            .expect("run ended");
+        let _m2 = store
+            .append_message(
+                &from_thread_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "turn2".to_string(),
+            )
+            .expect("append");
+
+        let (child_thread_id, from_seq, from_message_id) = store
+            .handoff(
+                &from_thread_id,
+                Some("handoff".to_string()),
+                (Some("summary".to_string()), None),
+                Some(m1.clone()),
+                None,
+                ("alice".to_string(), "team".to_string()),
+            )
+            .expect("handoff");
+
+        assert_eq!(from_seq, 3, "expected cut to include run_ended");
+        assert_eq!(from_message_id.as_deref(), Some(m1.as_str()));
+
+        let child_events = event_log
+            .replay_stream(StreamKind::Continuity, &child_thread_id)
+            .expect("replay child");
+        assert_eq!(child_events.len(), 2);
+        assert_eq!(child_events[0].seq, 0);
+        assert_eq!(child_events[1].seq, 1);
+        match &child_events[1].kind {
+            EventKind::ContinuityHandoffCreated {
+                from_thread_id: event_from_id,
+                from_seq: cut_seq,
+                from_message_id: cut_message_id,
+                summary_artifact_id,
+                summary_markdown,
+                actor_id,
+                origin,
+            } => {
+                assert_eq!(event_from_id, &from_thread_id);
+                assert_eq!(*cut_seq, 3);
+                assert_eq!(cut_message_id.as_deref(), Some(m1.as_str()));
+                assert_eq!(summary_artifact_id.as_deref(), None);
+                assert_eq!(summary_markdown.as_deref(), Some("summary"));
+                assert_eq!(actor_id, "alice");
+                assert_eq!(origin, "team");
+            }
+            other => panic!("expected continuity_handoff_created, got {other:?}"),
+        }
+
+        store
+            .append_message(
+                &child_thread_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "child turn".to_string(),
+            )
+            .expect("append child");
+        let child_events = event_log
+            .replay_stream(StreamKind::Continuity, &child_thread_id)
+            .expect("replay child");
+        assert_eq!(child_events.len(), 3);
+        assert_eq!(
+            child_events[2].seq, 2,
+            "expected seq to continue after handoff"
+        );
+    }
+
+    #[test]
+    fn handoff_rejects_missing_summary() {
+        let dir = tempdir().expect("tmp");
+        let (_event_log, store, _data_dir) = store_for(&dir);
+
+        let from_thread_id = store.ensure_default().expect("ensure");
+        let err = store
+            .handoff(
+                &from_thread_id,
+                None,
+                (None, None),
+                None,
+                None,
+                ("user".to_string(), "cli".to_string()),
+            )
+            .expect_err("expected error");
+        assert!(err.contains("summary"), "expected summary validation");
+    }
+
+    #[test]
+    fn handoff_rejects_conflicting_cut_selectors() {
+        let dir = tempdir().expect("tmp");
+        let (_event_log, store, _data_dir) = store_for(&dir);
+
+        let from_thread_id = store.ensure_default().expect("ensure");
+        let err = store
+            .handoff(
+                &from_thread_id,
+                None,
+                (Some("summary".to_string()), None),
+                Some("m1".to_string()),
+                Some(1),
+                ("user".to_string(), "cli".to_string()),
+            )
+            .expect_err("expected error");
+        assert!(err.contains("from_message_id") && err.contains("from_seq"));
     }
 
     #[test]
@@ -485,7 +1097,13 @@ mod tests {
         let (_event_log, store, _data_dir) = store_for(&dir);
 
         let err = store
-            .append_run_spawned("missing-thread-id", "message-1", "session-1")
+            .append_run_spawned(
+                "missing-thread-id",
+                "message-1",
+                "session-1",
+                "user".to_string(),
+                "cli".to_string(),
+            )
             .expect_err("expected error");
         assert!(err.contains("continuity stream does not exist"));
     }

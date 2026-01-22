@@ -170,4 +170,4 @@ Things that are explicitly *not* performance requirements:
 - **Sub-millisecond response** — 16ms (60fps) is the target, not faster
 - **Unlimited history** — Bounded is fine; users can access logs
 - **Offline-first** — TUI assumes server connection
-- **Mobile/constrained devices** — Target is development machines
+- **Pixel-perfect on every constrained device** — Phone/SSH/web terminals are supported, but the goal is usability + graceful degradation, not perfection

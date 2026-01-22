@@ -28,8 +28,17 @@ Surface responsibilities (no business logic in surfaces)
 - **Remote mode** (`--server <url>`): a transport choice for clients; must not change semantics.
 - **SDK**: adapter over canonical frames + control plane; no business logic.
 
+Capabilities vs tools (important distinction)
+- **Capability**: a named, versioned feature of the harness (see `docs/03_contracts/capability_registry.md`) exposed across surfaces (CLI/TUI/control plane/SDK). Capabilities are how we mutate/observe Continuity OS truth deterministically.
+  - Examples: `thread.post_message`, `thread.branch`, `thread.handoff`, `thread.stream_events`, `checkpoint.*`, `tool.task_*`.
+- **Tool**: a model-invoked runtime primitive executed *within a session/run* by the tool runtime (e.g., shell/file tools). Tools produce `tool_*` frames and are always subject to policy/budgets.
+  - Tools are not the primary interface for manipulating Continuity OS structure (threads/compaction/lineage).
+- Default posture:
+  - Continuity OS “internal management” operations ship as **capabilities** first, available through every surface adapter.
+  - If we later want subagents/workers to perform management actions autonomously, we add **explicit tool wrappers** that call the same capability implementation, are policy-gated, and emit replayable tool + continuity frames (no bypass paths).
+
 Rules to avoid confusion
-- Tools and background tasks are **runtime capabilities**. Transports (control plane endpoints, stdio protocols, etc.) are adapters.
+- Tool runtime and background tasks (task entities) are **runtime capabilities**. Transports (control plane endpoints, stdio protocols, etc.) are adapters.
 - Prefer phrasing:
   - "local runtime" vs "remote runtime"
   - "control plane (server)" vs "runtime"

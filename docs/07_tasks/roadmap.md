@@ -18,6 +18,7 @@ Now
 - Refs:
   - `docs/02_architecture/continuity_os.md`
   - `docs/06_decisions/ADR-0008-continuity-os.md`
+  - `docs/06_decisions/ADR-0009-thread-branch-handoff.md`
   - `docs/03_contracts/capability_registry.md` (`thread.*`, `context.compile`, `compaction.*`)
   - `docs/03_contracts/event_frames.md` (Phase 2: stream-scoped v2 envelope)
   - `docs/03_contracts/modules/phase-1/06_server.md`
@@ -26,11 +27,11 @@ Now
   - Keep Phase 1 invariant: `session == run/turn` (single-run sessions). "Continue later" targets a continuity.
 - Status (2026-01-22):
   - Frames are now stream-aware on the wire (`stream_kind`, `stream_id`); replay validation is per-stream.
-  - Continuity store exists (`ensure_default`, `append_message`, `append_run_spawned`) and local `rip run` posts to the default continuity before spawning a run.
-  - Server exposes `thread.*` (ensure/list/get/post_message/stream_events); headless CLI exposes `rip threads ...` (local + `--server`); TypeScript SDK exposes `thread.*` by spawning `rip` (ADR-0006).
+  - Continuity store exists (`ensure_default`, `append_message`, `append_run_spawned`, `append_run_ended`, `branch`, `handoff`) and local `rip run` posts to the default continuity before spawning a run.
+  - Server exposes `thread.*` (ensure/list/get/post_message/branch/handoff/stream_events); headless CLI exposes `rip threads ...` (local + `--server`); TypeScript SDK exposes `thread.*` by spawning `rip` (ADR-0006).
 - Ready:
   - Expand continuity frame types + provenance coverage beyond messages (runs, tool side-effects) and document the remaining envelope migration (eventually drop non-session `session_id`).
-  - Define server endpoints: ensure/get/list/post_message/stream_events/branch/handoff and how they map to runs.
+  - Define handoff context bundle artifacts (summaries + refs) and how it maps to runs.
   - Define deterministic compaction checkpoints (e.g., 10k/20k/30k summaries) and provider cursor rotation logging.
   - Define concurrency rules: multiple jobs per continuity; workspace side-effects are scheduled/serialized.
 - Done:
@@ -87,6 +88,7 @@ Next
   - `docs/02_architecture/tui/screens/11_command_palette.md`
   - `docs/03_contracts/capability_registry.md`
 - Ready:
+  - Add an explicit **experience review** gate: “conversational-first + drill-down”, ambient background signals (tools/tasks/agents), responsive layouts (phone/SSH/web terminals), and a visual language (icons/colors) with graceful degradation.
   - Implement `ui.theme`, `ui.keybindings`, `ui.raw_events`, and `ui.clipboard` in `rip-tui` without adding business logic (frame-driven).
   - Add ratatui golden snapshots covering: rendered<->raw toggle, theme switch, and copy-to-clipboard fallback behavior.
 - Done:

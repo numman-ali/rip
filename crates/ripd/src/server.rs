@@ -69,6 +69,44 @@ pub(crate) struct ThreadPostMessageResponse {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+pub(crate) struct ThreadBranchPayload {
+    pub(crate) title: Option<String>,
+    pub(crate) from_message_id: Option<String>,
+    pub(crate) from_seq: Option<u64>,
+    pub(crate) actor_id: Option<String>,
+    pub(crate) origin: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+pub(crate) struct ThreadBranchResponse {
+    pub(crate) thread_id: String,
+    pub(crate) parent_thread_id: String,
+    pub(crate) parent_seq: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) parent_message_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub(crate) struct ThreadHandoffPayload {
+    pub(crate) title: Option<String>,
+    pub(crate) summary_markdown: Option<String>,
+    pub(crate) summary_artifact_id: Option<String>,
+    pub(crate) from_message_id: Option<String>,
+    pub(crate) from_seq: Option<u64>,
+    pub(crate) actor_id: Option<String>,
+    pub(crate) origin: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+pub(crate) struct ThreadHandoffResponse {
+    pub(crate) thread_id: String,
+    pub(crate) from_thread_id: String,
+    pub(crate) from_seq: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) from_message_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
 struct InputPayload {
     input: String,
 }
@@ -157,6 +195,8 @@ pub(crate) fn build_openapi_router() -> (Router<AppState>, String) {
         .routes(routes!(thread_list))
         .routes(routes!(thread_get))
         .routes(routes!(thread_post_message))
+        .routes(routes!(thread_branch))
+        .routes(routes!(thread_handoff))
         .routes(routes!(thread_stream_events))
         .routes(routes!(create_task))
         .routes(routes!(list_tasks))
@@ -217,7 +257,7 @@ async fn send_input(
         }
     };
 
-    state.engine.spawn_session(handle, payload.input);
+    state.engine.spawn_session(handle, payload.input, None);
 
     StatusCode::ACCEPTED.into_response()
 }
@@ -386,11 +426,15 @@ async fn thread_post_message(
     let origin = payload.origin.unwrap_or_else(|| "server".to_string());
 
     let store = state.engine.continuities();
-    let message_id =
-        match store.append_message(&thread_id, actor_id, origin, payload.content.clone()) {
-            Ok(id) => id,
-            Err(_) => return StatusCode::NOT_FOUND.into_response(),
-        };
+    let message_id = match store.append_message(
+        &thread_id,
+        actor_id.clone(),
+        origin.clone(),
+        payload.content.clone(),
+    ) {
+        Ok(id) => id,
+        Err(_) => return StatusCode::NOT_FOUND.into_response(),
+    };
 
     let handle = state.engine.create_session();
     let session_id = handle.session_id.clone();
@@ -399,13 +443,21 @@ async fn thread_post_message(
         sessions.insert(session_id.clone(), handle.clone());
     }
 
+    let run_link = crate::continuities::ContinuityRunLink {
+        continuity_id: thread_id.clone(),
+        message_id: message_id.clone(),
+        actor_id: actor_id.clone(),
+        origin: origin.clone(),
+    };
     if store
-        .append_run_spawned(&thread_id, &message_id, &session_id)
+        .append_run_spawned(&thread_id, &message_id, &session_id, actor_id, origin)
         .is_err()
     {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
-    state.engine.spawn_session(handle, payload.content);
+    state
+        .engine
+        .spawn_session(handle, payload.content, Some(run_link));
 
     (
         StatusCode::ACCEPTED,
@@ -416,6 +468,115 @@ async fn thread_post_message(
         }),
     )
         .into_response()
+}
+
+#[utoipa::path(
+    post,
+    path = "/threads/{id}/branch",
+    params(
+        ("id" = String, Path, description = "Parent thread id")
+    ),
+    request_body = ThreadBranchPayload,
+    responses(
+        (status = 201, description = "Branch created", body = ThreadBranchResponse),
+        (status = 400, description = "Invalid branch request"),
+        (status = 404, description = "Thread or branch point not found")
+    )
+)]
+async fn thread_branch(
+    Path(parent_thread_id): Path<String>,
+    State(state): State<AppState>,
+    Json(payload): Json<ThreadBranchPayload>,
+) -> impl IntoResponse {
+    let actor_id = payload.actor_id.unwrap_or_else(|| "user".to_string());
+    let origin = payload.origin.unwrap_or_else(|| "server".to_string());
+
+    let store = state.engine.continuities();
+    match store.branch(
+        &parent_thread_id,
+        payload.title,
+        payload.from_message_id,
+        payload.from_seq,
+        actor_id,
+        origin,
+    ) {
+        Ok((thread_id, parent_seq, parent_message_id)) => (
+            StatusCode::CREATED,
+            Json(ThreadBranchResponse {
+                thread_id,
+                parent_thread_id,
+                parent_seq,
+                parent_message_id,
+            }),
+        )
+            .into_response(),
+        Err(err) => {
+            let err_lower = err.to_ascii_lowercase();
+            if err_lower.contains("out of range") || err_lower.contains("requires only one of") {
+                return StatusCode::BAD_REQUEST.into_response();
+            }
+            if err_lower.contains("does not exist") || err_lower.contains("not found") {
+                return StatusCode::NOT_FOUND.into_response();
+            }
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/threads/{id}/handoff",
+    params(
+        ("id" = String, Path, description = "Source thread id")
+    ),
+    request_body = ThreadHandoffPayload,
+    responses(
+        (status = 201, description = "Handoff thread created", body = ThreadHandoffResponse),
+        (status = 400, description = "Invalid handoff request"),
+        (status = 404, description = "Thread or handoff point not found")
+    )
+)]
+async fn thread_handoff(
+    Path(from_thread_id): Path<String>,
+    State(state): State<AppState>,
+    Json(payload): Json<ThreadHandoffPayload>,
+) -> impl IntoResponse {
+    let actor_id = payload.actor_id.unwrap_or_else(|| "user".to_string());
+    let origin = payload.origin.unwrap_or_else(|| "server".to_string());
+
+    let store = state.engine.continuities();
+    match store.handoff(
+        &from_thread_id,
+        payload.title,
+        (payload.summary_markdown, payload.summary_artifact_id),
+        payload.from_message_id,
+        payload.from_seq,
+        (actor_id, origin),
+    ) {
+        Ok((thread_id, from_seq, from_message_id)) => (
+            StatusCode::CREATED,
+            Json(ThreadHandoffResponse {
+                thread_id,
+                from_thread_id,
+                from_seq,
+                from_message_id,
+            }),
+        )
+            .into_response(),
+        Err(err) => {
+            let err_lower = err.to_ascii_lowercase();
+            if err_lower.contains("out of range")
+                || err_lower.contains("requires only one of")
+                || err_lower.contains("requires summary")
+            {
+                return StatusCode::BAD_REQUEST.into_response();
+            }
+            if err_lower.contains("does not exist") || err_lower.contains("not found") {
+                return StatusCode::NOT_FOUND.into_response();
+            }
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
 }
 
 #[utoipa::path(

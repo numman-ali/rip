@@ -18,6 +18,52 @@ pub(crate) enum ThreadsCommand {
         /// Thread id (continuity id).
         id: String,
     },
+    /// Create a new thread branched from a parent.
+    Branch {
+        /// Parent thread id (continuity id).
+        id: String,
+        /// Optional title/name for the new thread.
+        #[arg(long)]
+        title: Option<String>,
+        /// Branch from a specific message id (turn anchor).
+        #[arg(long)]
+        from_message_id: Option<String>,
+        /// Branch from an explicit parent continuity seq (power/debug).
+        #[arg(long)]
+        from_seq: Option<u64>,
+        /// Actor id (provenance).
+        #[arg(long)]
+        actor_id: Option<String>,
+        /// Origin (provenance).
+        #[arg(long)]
+        origin: Option<String>,
+    },
+    /// Create a new thread as a handoff from a parent, carrying curated context.
+    Handoff {
+        /// Source thread id (continuity id).
+        id: String,
+        /// Optional title/name for the new thread.
+        #[arg(long)]
+        title: Option<String>,
+        /// Curated summary/context bundle as markdown.
+        #[arg(long)]
+        summary_markdown: Option<String>,
+        /// Curated summary/context bundle as an artifact id.
+        #[arg(long)]
+        summary_artifact_id: Option<String>,
+        /// Handoff from a specific message id (turn anchor).
+        #[arg(long)]
+        from_message_id: Option<String>,
+        /// Handoff from an explicit parent continuity seq (power/debug).
+        #[arg(long)]
+        from_seq: Option<u64>,
+        /// Actor id (provenance).
+        #[arg(long)]
+        actor_id: Option<String>,
+        /// Origin (provenance).
+        #[arg(long)]
+        origin: Option<String>,
+    },
     /// Append a message to a continuity and start a run; print linkage JSON.
     PostMessage {
         /// Thread id (continuity id).
@@ -62,6 +108,22 @@ pub(crate) struct ThreadPostMessageResponse {
     pub(crate) session_id: String,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct ThreadBranchResponse {
+    pub(crate) thread_id: String,
+    pub(crate) parent_thread_id: String,
+    pub(crate) parent_seq: u64,
+    pub(crate) parent_message_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct ThreadHandoffResponse {
+    pub(crate) thread_id: String,
+    pub(crate) from_thread_id: String,
+    pub(crate) from_seq: u64,
+    pub(crate) from_message_id: Option<String>,
+}
+
 pub(crate) async fn run_threads(
     server: Option<String>,
     command: ThreadsCommand,
@@ -101,6 +163,64 @@ async fn run_threads_remote(server: String, command: ThreadsCommand) -> anyhow::
             let status = response.status();
             if !status.is_success() {
                 anyhow::bail!("thread get failed: {status}");
+            }
+            let body = response.text().await?;
+            println!("{body}");
+        }
+        ThreadsCommand::Branch {
+            id,
+            title,
+            from_message_id,
+            from_seq,
+            actor_id,
+            origin,
+        } => {
+            let url = format!("{server}/threads/{id}/branch");
+            let response = client
+                .post(url)
+                .json(&serde_json::json!({
+                    "title": title,
+                    "from_message_id": from_message_id,
+                    "from_seq": from_seq,
+                    "actor_id": actor_id,
+                    "origin": origin
+                }))
+                .send()
+                .await?;
+            let status = response.status();
+            if !status.is_success() {
+                anyhow::bail!("thread branch failed: {status}");
+            }
+            let body = response.text().await?;
+            println!("{body}");
+        }
+        ThreadsCommand::Handoff {
+            id,
+            title,
+            summary_markdown,
+            summary_artifact_id,
+            from_message_id,
+            from_seq,
+            actor_id,
+            origin,
+        } => {
+            let url = format!("{server}/threads/{id}/handoff");
+            let response = client
+                .post(url)
+                .json(&serde_json::json!({
+                    "title": title,
+                    "summary_markdown": summary_markdown,
+                    "summary_artifact_id": summary_artifact_id,
+                    "from_message_id": from_message_id,
+                    "from_seq": from_seq,
+                    "actor_id": actor_id,
+                    "origin": origin
+                }))
+                .send()
+                .await?;
+            let status = response.status();
+            if !status.is_success() {
+                anyhow::bail!("thread handoff failed: {status}");
             }
             let body = response.text().await?;
             println!("{body}");
@@ -183,6 +303,57 @@ async fn run_threads_local_with_engine(
             }
             None => anyhow::bail!("thread get failed: not found"),
         },
+        ThreadsCommand::Branch {
+            id,
+            title,
+            from_message_id,
+            from_seq,
+            actor_id,
+            origin,
+        } => {
+            let actor_id = actor_id.unwrap_or_else(|| "user".to_string());
+            let origin = origin.unwrap_or_else(|| "cli".to_string());
+            let (thread_id, parent_seq, parent_message_id) = store
+                .branch(&id, title, from_message_id, from_seq, actor_id, origin)
+                .map_err(|err| anyhow::anyhow!("thread branch failed: {err}"))?;
+            let payload = ThreadBranchResponse {
+                thread_id,
+                parent_thread_id: id,
+                parent_seq,
+                parent_message_id,
+            };
+            println!("{}", serde_json::to_string(&payload)?);
+        }
+        ThreadsCommand::Handoff {
+            id,
+            title,
+            summary_markdown,
+            summary_artifact_id,
+            from_message_id,
+            from_seq,
+            actor_id,
+            origin,
+        } => {
+            let actor_id = actor_id.unwrap_or_else(|| "user".to_string());
+            let origin = origin.unwrap_or_else(|| "cli".to_string());
+            let (thread_id, from_seq, from_message_id) = store
+                .handoff(
+                    &id,
+                    title,
+                    (summary_markdown, summary_artifact_id),
+                    from_message_id,
+                    from_seq,
+                    (actor_id, origin),
+                )
+                .map_err(|err| anyhow::anyhow!("thread handoff failed: {err}"))?;
+            let payload = ThreadHandoffResponse {
+                thread_id,
+                from_thread_id: id,
+                from_seq,
+                from_message_id,
+            };
+            println!("{}", serde_json::to_string(&payload)?);
+        }
         ThreadsCommand::PostMessage {
             id,
             content,
@@ -192,17 +363,23 @@ async fn run_threads_local_with_engine(
             let actor_id = actor_id.unwrap_or_else(|| "user".to_string());
             let origin = origin.unwrap_or_else(|| "cli".to_string());
             let message_id = store
-                .append_message(&id, actor_id, origin, content.clone())
+                .append_message(&id, actor_id.clone(), origin.clone(), content.clone())
                 .map_err(|err| anyhow::anyhow!("thread post_message failed: {err}"))?;
 
             let handle = engine.create_session();
             let session_id = handle.session_id.clone();
 
+            let run_link = ripd::ContinuityRunLink {
+                continuity_id: id.clone(),
+                message_id: message_id.clone(),
+                actor_id: actor_id.clone(),
+                origin: origin.clone(),
+            };
             store
-                .append_run_spawned(&id, &message_id, &session_id)
+                .append_run_spawned(&id, &message_id, &session_id, actor_id, origin)
                 .map_err(|err| anyhow::anyhow!("thread post_message run link failed: {err}"))?;
 
-            engine.spawn_session(handle, content);
+            engine.spawn_session(handle, content, Some(run_link));
 
             let payload = ThreadPostMessageResponse {
                 thread_id: id,
@@ -339,7 +516,13 @@ mod tests {
             .expect("append message");
         let handle = engine.create_session();
         store
-            .append_run_spawned(&thread_id, &message_id, &handle.session_id)
+            .append_run_spawned(
+                &thread_id,
+                &message_id,
+                &handle.session_id,
+                "user".to_string(),
+                "sdk-ts".to_string(),
+            )
             .expect("append run spawned");
 
         let past = store.replay_events(&thread_id).expect("replay");
@@ -534,6 +717,7 @@ mod tests {
         .expect("thread post_message");
 
         let mut saw_message = false;
+        let mut saw_run_spawned = false;
         let mut run_session_id: Option<String> = None;
         for _ in 0..2 {
             let event = receiver.recv().await.expect("recv");
@@ -550,14 +734,21 @@ mod tests {
                     }
                 }
                 EventKind::ContinuityRunSpawned {
-                    run_session_id: id, ..
+                    run_session_id: id,
+                    actor_id,
+                    origin,
+                    ..
                 } => {
+                    assert_eq!(actor_id.as_deref(), Some("user"));
+                    assert_eq!(origin.as_deref(), Some("cli"));
                     run_session_id = Some(id);
+                    saw_run_spawned = true;
                 }
                 _ => {}
             }
         }
         assert!(saw_message, "expected continuity_message_appended");
+        assert!(saw_run_spawned, "expected continuity_run_spawned");
 
         let log_path = data_dir.join("events.jsonl");
         if let Some(run_session_id) = run_session_id {
@@ -578,6 +769,186 @@ mod tests {
                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;
             }
         }
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn run_threads_local_branch_defaults_provenance() {
+        let root = unique_tmp_root("rip-cli-threads-local-branch");
+        let data_dir = root.join("data");
+        let workspace_dir = root.join("workspace");
+        std::fs::create_dir_all(&workspace_dir).expect("workspace");
+
+        let engine = ripd::SessionEngine::new(data_dir, workspace_dir, None).expect("engine");
+        let store = engine.continuities();
+        let parent_thread_id = store.ensure_default().expect("ensure");
+        let m1 = store
+            .append_message(
+                &parent_thread_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "hello".to_string(),
+            )
+            .expect("append");
+        store
+            .append_run_spawned(
+                &parent_thread_id,
+                &m1,
+                "session-1",
+                "user".to_string(),
+                "cli".to_string(),
+            )
+            .expect("run spawned");
+        store
+            .append_run_ended(
+                &parent_thread_id,
+                &m1,
+                "session-1",
+                "completed".to_string(),
+                "user".to_string(),
+                "cli".to_string(),
+            )
+            .expect("run ended");
+
+        let mut receiver = store.subscribe();
+
+        run_threads_local_with_engine(
+            &engine,
+            ThreadsCommand::Branch {
+                id: parent_thread_id.clone(),
+                title: Some("child".to_string()),
+                from_message_id: Some(m1.clone()),
+                from_seq: None,
+                actor_id: None,
+                origin: None,
+            },
+        )
+        .await
+        .expect("thread branch");
+
+        let mut saw_created = false;
+        let mut saw_branched = false;
+        for _ in 0..2 {
+            let event = receiver.recv().await.expect("recv");
+            match event.kind {
+                EventKind::ContinuityCreated { title, .. } => {
+                    if title.as_deref() == Some("child") {
+                        saw_created = true;
+                    }
+                }
+                EventKind::ContinuityBranched {
+                    parent_thread_id: event_parent_id,
+                    parent_message_id,
+                    actor_id,
+                    origin,
+                    ..
+                } => {
+                    assert_eq!(event_parent_id, parent_thread_id);
+                    assert_eq!(parent_message_id.as_deref(), Some(m1.as_str()));
+                    assert_eq!(actor_id, "user");
+                    assert_eq!(origin, "cli");
+                    saw_branched = true;
+                }
+                _ => {}
+            }
+        }
+        assert!(saw_created, "expected continuity_created for branch");
+        assert!(saw_branched, "expected continuity_branched");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn run_threads_local_handoff_defaults_provenance() {
+        let root = unique_tmp_root("rip-cli-threads-local-handoff");
+        let data_dir = root.join("data");
+        let workspace_dir = root.join("workspace");
+        std::fs::create_dir_all(&workspace_dir).expect("workspace");
+
+        let engine = ripd::SessionEngine::new(data_dir, workspace_dir, None).expect("engine");
+        let store = engine.continuities();
+        let parent_thread_id = store.ensure_default().expect("ensure");
+        let m1 = store
+            .append_message(
+                &parent_thread_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "hello".to_string(),
+            )
+            .expect("append");
+        store
+            .append_run_spawned(
+                &parent_thread_id,
+                &m1,
+                "session-1",
+                "user".to_string(),
+                "cli".to_string(),
+            )
+            .expect("run spawned");
+        store
+            .append_run_ended(
+                &parent_thread_id,
+                &m1,
+                "session-1",
+                "completed".to_string(),
+                "user".to_string(),
+                "cli".to_string(),
+            )
+            .expect("run ended");
+
+        let mut receiver = store.subscribe();
+
+        run_threads_local_with_engine(
+            &engine,
+            ThreadsCommand::Handoff {
+                id: parent_thread_id.clone(),
+                title: Some("handoff".to_string()),
+                summary_markdown: Some("summary".to_string()),
+                summary_artifact_id: None,
+                from_message_id: Some(m1.clone()),
+                from_seq: None,
+                actor_id: None,
+                origin: None,
+            },
+        )
+        .await
+        .expect("thread handoff");
+
+        let mut saw_created = false;
+        let mut saw_handoff = false;
+        for _ in 0..2 {
+            let event = receiver.recv().await.expect("recv");
+            match event.kind {
+                EventKind::ContinuityCreated { title, .. } => {
+                    if title.as_deref() == Some("handoff") {
+                        saw_created = true;
+                    }
+                }
+                EventKind::ContinuityHandoffCreated {
+                    from_thread_id: event_from_id,
+                    from_seq,
+                    from_message_id,
+                    summary_markdown,
+                    summary_artifact_id,
+                    actor_id,
+                    origin,
+                    ..
+                } => {
+                    assert_eq!(event_from_id, parent_thread_id);
+                    assert_eq!(from_seq, 3);
+                    assert_eq!(from_message_id.as_deref(), Some(m1.as_str()));
+                    assert_eq!(summary_markdown.as_deref(), Some("summary"));
+                    assert_eq!(summary_artifact_id.as_deref(), None);
+                    assert_eq!(actor_id, "user");
+                    assert_eq!(origin, "cli");
+                    saw_handoff = true;
+                }
+                _ => {}
+            }
+        }
+        assert!(saw_created, "expected continuity_created for handoff");
+        assert!(saw_handoff, "expected continuity_handoff_created");
 
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -748,6 +1119,18 @@ mod tests {
                 .header("content-type", "text/event-stream")
                 .body(format!("data: {payload}\n\n"));
         });
+        let _branch = server.mock(|when, then| {
+            when.method(POST).path("/threads/t1/branch");
+            then.status(201)
+                .header("content-type", "application/json")
+                .body(r#"{"thread_id":"t2","parent_thread_id":"t1","parent_seq":0}"#);
+        });
+        let _handoff = server.mock(|when, then| {
+            when.method(POST).path("/threads/t1/handoff");
+            then.status(201)
+                .header("content-type", "application/json")
+                .body(r#"{"thread_id":"t3","from_thread_id":"t1","from_seq":0}"#);
+        });
 
         run_threads(Some(server.base_url()), ThreadsCommand::Ensure)
             .await
@@ -783,6 +1166,34 @@ mod tests {
         )
         .await
         .expect("remote events");
+        run_threads(
+            Some(server.base_url()),
+            ThreadsCommand::Branch {
+                id: "t1".to_string(),
+                title: Some("child".to_string()),
+                from_message_id: None,
+                from_seq: None,
+                actor_id: Some("user".to_string()),
+                origin: Some("sdk-ts".to_string()),
+            },
+        )
+        .await
+        .expect("remote branch");
+        run_threads(
+            Some(server.base_url()),
+            ThreadsCommand::Handoff {
+                id: "t1".to_string(),
+                title: Some("handoff".to_string()),
+                summary_markdown: Some("summary".to_string()),
+                summary_artifact_id: None,
+                from_message_id: None,
+                from_seq: None,
+                actor_id: Some("user".to_string()),
+                origin: Some("sdk-ts".to_string()),
+            },
+        )
+        .await
+        .expect("remote handoff");
     }
 
     #[tokio::test]
@@ -842,5 +1253,45 @@ mod tests {
         .await
         .unwrap_err();
         assert!(err.to_string().contains("thread post_message failed"));
+
+        let _branch = server.mock(|when, then| {
+            when.method(POST).path("/threads/t1/branch");
+            then.status(500);
+        });
+        let err = run_threads(
+            Some(server.base_url()),
+            ThreadsCommand::Branch {
+                id: "t1".to_string(),
+                title: None,
+                from_message_id: None,
+                from_seq: None,
+                actor_id: None,
+                origin: None,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("thread branch failed"));
+
+        let _handoff = server.mock(|when, then| {
+            when.method(POST).path("/threads/t1/handoff");
+            then.status(500);
+        });
+        let err = run_threads(
+            Some(server.base_url()),
+            ThreadsCommand::Handoff {
+                id: "t1".to_string(),
+                title: None,
+                summary_markdown: Some("summary".to_string()),
+                summary_artifact_id: None,
+                from_message_id: None,
+                from_seq: None,
+                actor_id: None,
+                origin: None,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("thread handoff failed"));
     }
 }

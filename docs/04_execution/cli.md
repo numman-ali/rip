@@ -36,6 +36,14 @@ Task commands (remote)
 - `rip tasks --server <url> events <task_id>` (prints JSON frames until terminal `tool_task_status`)
 - `rip tasks --server <url> watch` (interactive list + tail + cancel; `--interval-ms` controls refresh; keys: `q`/`Esc`/`Ctrl+C` quit, `↑/↓` or `j/k` select, `c` cancel, `s` toggle stdout/stderr)
 
+Thread commands (local or remote)
+- `rip threads ensure` (ensure default continuity)
+- `rip threads list` / `rip threads get <thread_id>`
+- `rip threads post-message <thread_id> --content "<text>" [--actor-id <id>] [--origin <origin>]`
+- `rip threads branch <parent_thread_id> [--title <title>] [--from-message-id <id>] [--from-seq <n>] [--actor-id <id>] [--origin <origin>]`
+- `rip threads handoff <from_thread_id> [--title <title>] (--summary-markdown "<md>" | --summary-artifact-id <id>) [--from-message-id <id>] [--from-seq <n>] [--actor-id <id>] [--origin <origin>]`
+- Add `--server <url>` after `threads` to target a remote server: `rip threads --server <url> ...`
+
 Headless mode (draft)
 - rip run <task> --headless --view raw
 - emits newline-delimited JSON event frames

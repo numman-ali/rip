@@ -44,8 +44,8 @@ Notes
 | thread.stream_events | v1 | P1 | planned | supported | supported | supported | planned | planned | Stream continuity-level events (messages, summaries, links) independent of session runs. |
 | thread.list | v1 | P1 | planned | supported | supported | supported | planned | planned | List continuities (power/debug; filters by tags/query). |
 | thread.get | v1 | P1 | planned | supported | supported | supported | planned | planned | Get continuity metadata by id. |
-| thread.branch | v1 | P2 | planned | planned | planned | planned | planned | planned | Branch/fork from a prior point. |
-| thread.handoff | v1 | P2 | planned | planned | planned | planned | planned | planned | Handoff work to a new thread with curated context. |
+| thread.branch | v1 | P2 | planned | supported | supported | supported | planned | planned | Branch/fork from a prior point. |
+| thread.handoff | v1 | P2 | planned | supported | supported | supported | planned | planned | Handoff work to a new thread with curated context. |
 | thread.reference | v1 | P2 | planned | planned | planned | planned | planned | planned | Reference another thread by id and extract context. |
 | thread.archive | v1 | P2 | planned | planned | planned | planned | planned | planned | Archive threads without deleting history. |
 | thread.tags | v1 | P2 | planned | planned | planned | planned | planned | planned | Thread labels/tags. |

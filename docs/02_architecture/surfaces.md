@@ -27,6 +27,11 @@ Adapter rule
 - Surfaces must not implement core behaviors, policies, or capability semantics.
 - All behaviors originate in the core runtime + capability registry.
 
+Capabilities vs tools
+- Continuity OS “internal management” (threads/compaction/lineage) ships as **capabilities** exposed across surfaces.
+- Model-invoked **tools** remain session-scoped primitives; they are not the default interface for controlling Continuity OS structure.
+- If we add subagent/worker automation for management operations, do it via policy-gated tool wrappers that call the same underlying capability implementation and emit deterministic frames (see `docs/02_architecture/runtime_and_control_plane.md`).
+
 Parity rule
 - A feature is "done" only if it is:
   - Defined in the core capability contract, and

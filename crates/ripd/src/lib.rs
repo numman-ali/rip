@@ -6,7 +6,7 @@ mod server;
 mod session;
 mod tasks;
 
-pub use continuities::{ContinuityMeta, ContinuityStore};
+pub use continuities::{ContinuityMeta, ContinuityRunLink, ContinuityStore};
 pub use runner::{SessionEngine, SessionHandle};
 
 #[cfg(not(test))]

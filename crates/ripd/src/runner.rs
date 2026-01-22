@@ -9,7 +9,7 @@ use tokio::sync::{broadcast, Mutex};
 use uuid::Uuid;
 
 use crate::checkpoints::WorkspaceCheckpointHook;
-use crate::continuities::ContinuityStore;
+use crate::continuities::{ContinuityRunLink, ContinuityStore};
 use crate::provider_openresponses::OpenResponsesConfig;
 use crate::session::{run_session, SessionContext};
 use crate::tasks::{TaskEngine, TaskEngineConfig};
@@ -116,7 +116,12 @@ impl SessionEngine {
         }
     }
 
-    pub fn spawn_session(&self, handle: SessionHandle, input: String) {
+    pub fn spawn_session(
+        &self,
+        handle: SessionHandle,
+        input: String,
+        continuity: Option<ContinuityRunLink>,
+    ) {
         tokio::spawn(run_session(SessionContext {
             runtime: self.runtime.clone(),
             tool_runner: self.tool_runner.clone(),
@@ -126,6 +131,8 @@ impl SessionEngine {
             events: handle.events.clone(),
             event_log: self.event_log.clone(),
             snapshot_dir: self.snapshot_dir.clone(),
+            continuities: self.continuity_store.clone(),
+            continuity_run: continuity,
             server_session_id: handle.session_id.clone(),
             input,
         }));
@@ -256,7 +263,7 @@ mod tests {
 
         let handle = engine.create_session();
         let mut receiver = handle.subscribe();
-        engine.spawn_session(handle, "hello".to_string());
+        engine.spawn_session(handle, "hello".to_string(), None);
 
         let mut saw_started = false;
         let mut saw_ended = false;

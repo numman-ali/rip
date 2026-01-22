@@ -4,9 +4,11 @@ import readline from "node:readline";
 import type { RipEventFrame } from "./frames.js";
 import {
   buildRipRunArgs,
+  buildRipThreadBranchArgs,
   buildRipThreadEnsureArgs,
   buildRipThreadEventsArgs,
   buildRipThreadGetArgs,
+  buildRipThreadHandoffArgs,
   buildRipThreadListArgs,
   buildRipThreadPostMessageArgs,
 } from "./util.js";
@@ -73,6 +75,38 @@ export type RipThreadPostMessageResponse = {
   thread_id: string;
   message_id: string;
   session_id: string;
+};
+
+export type RipThreadBranchRequest = {
+  title?: string;
+  from_message_id?: string;
+  from_seq?: number;
+  actor_id?: string;
+  origin?: string;
+};
+
+export type RipThreadBranchResponse = {
+  thread_id: string;
+  parent_thread_id: string;
+  parent_seq: number;
+  parent_message_id?: string;
+};
+
+export type RipThreadHandoffRequest = {
+  title?: string;
+  summary_markdown?: string;
+  summary_artifact_id?: string;
+  from_message_id?: string;
+  from_seq?: number;
+  actor_id?: string;
+  origin?: string;
+};
+
+export type RipThreadHandoffResponse = {
+  thread_id: string;
+  from_thread_id: string;
+  from_seq: number;
+  from_message_id?: string;
 };
 
 export type RipTaskSpawnRequest = {
@@ -267,6 +301,53 @@ export class Rip {
   async threadGet(threadId: string, options: RipThreadOptions = {}): Promise<RipThreadMeta> {
     const out = await this.execJson(buildRipThreadGetArgs(threadId, { server: options.server }), options);
     return out as RipThreadMeta;
+  }
+
+  async threadBranch(
+    parentThreadId: string,
+    request: RipThreadBranchRequest = {},
+    options: RipThreadOptions = {},
+  ): Promise<RipThreadBranchResponse> {
+    const actorId = request.actor_id ?? "user";
+    const origin = request.origin ?? "sdk-ts";
+    const out = await this.execJson(
+      buildRipThreadBranchArgs(parentThreadId, {
+        server: options.server,
+        title: request.title,
+        fromMessageId: request.from_message_id,
+        fromSeq: request.from_seq,
+        actorId,
+        origin,
+      }),
+      options,
+    );
+    return out as RipThreadBranchResponse;
+  }
+
+  async threadHandoff(
+    fromThreadId: string,
+    request: RipThreadHandoffRequest,
+    options: RipThreadOptions = {},
+  ): Promise<RipThreadHandoffResponse> {
+    if (!request.summary_markdown && !request.summary_artifact_id) {
+      throw new Error("threadHandoff requires summary_markdown and/or summary_artifact_id");
+    }
+    const actorId = request.actor_id ?? "user";
+    const origin = request.origin ?? "sdk-ts";
+    const out = await this.execJson(
+      buildRipThreadHandoffArgs(fromThreadId, {
+        server: options.server,
+        title: request.title,
+        summaryMarkdown: request.summary_markdown,
+        summaryArtifactId: request.summary_artifact_id,
+        fromMessageId: request.from_message_id,
+        fromSeq: request.from_seq,
+        actorId,
+        origin,
+      }),
+      options,
+    );
+    return out as RipThreadHandoffResponse;
   }
 
   async threadPostMessage(

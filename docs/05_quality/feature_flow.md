@@ -13,6 +13,9 @@ Canonical process (do this in order)
   - provider boundary (OpenResponses)
   - tool runtime / workspace engine
   - surfaces (CLI/server/SDK/TUI/MCP)
+- Explicitly decide whether this is:
+  - a **capability** (surface-exposed, continuity-safe), and/or
+  - a **tool wrapper** (model-invoked, policy-gated) over an existing capability.
 - If there’s ambiguity, write a decision packet (AGENTS.md) and proceed with the recommendation unless an approval gate applies.
 
 2) Upstream spec sync (if applicable)

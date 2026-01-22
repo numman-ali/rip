@@ -7,7 +7,7 @@ Summary
 
 Inputs
 - Session lifecycle requests (start, send input, cancel).
-- Thread ("continuity") requests (ensure/list/get/post message).
+- Thread ("continuity") requests (ensure/list/get/post message/branch/handoff).
 - Tool/checkpoint command envelopes via session input (for deterministic testing).
 
 Outputs
@@ -30,7 +30,8 @@ Tests
 
 Phase 2 planned extensions
 - Continuities (“threads”) advanced semantics:
-  - branch/handoff/reference/share semantics
+  - reference/share semantics (beyond branch/handoff)
+  - artifact-backed handoff bundles (summaries + refs)
   - compaction + summarization checkpoints + cursor rotation logs
 - Background tool tasks (task entities) with their own event streams and control APIs:
   - spawn/status/cancel + stream events

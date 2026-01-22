@@ -8,6 +8,9 @@ pub fn event_type(event: &Event) -> &'static str {
         EventKind::ContinuityCreated { .. } => "continuity_created",
         EventKind::ContinuityMessageAppended { .. } => "continuity_message_appended",
         EventKind::ContinuityRunSpawned { .. } => "continuity_run_spawned",
+        EventKind::ContinuityRunEnded { .. } => "continuity_run_ended",
+        EventKind::ContinuityBranched { .. } => "continuity_branched",
+        EventKind::ContinuityHandoffCreated { .. } => "continuity_handoff_created",
         EventKind::ToolStarted { .. } => "tool_started",
         EventKind::ToolStdout { .. } => "tool_stdout",
         EventKind::ToolStderr { .. } => "tool_stderr",
@@ -46,6 +49,25 @@ pub fn event_summary(event: &Event) -> String {
         EventKind::ContinuityRunSpawned { run_session_id, .. } => {
             format!("run={}", truncate(run_session_id, 16))
         }
+        EventKind::ContinuityRunEnded {
+            run_session_id,
+            reason,
+            ..
+        } => format!(
+            "run={} ({})",
+            truncate(run_session_id, 16),
+            truncate(reason, 32)
+        ),
+        EventKind::ContinuityBranched {
+            parent_thread_id,
+            parent_seq,
+            ..
+        } => format!("from={} @{}", truncate(parent_thread_id, 16), parent_seq),
+        EventKind::ContinuityHandoffCreated {
+            from_thread_id,
+            from_seq,
+            ..
+        } => format!("from={} @{}", truncate(from_thread_id, 16), from_seq),
         EventKind::ToolStarted { name, .. } => name.to_string(),
         EventKind::ToolStdout { chunk, .. } | EventKind::ToolStderr { chunk, .. } => {
             format!("{:?}", truncate(chunk, 64))
@@ -151,8 +173,30 @@ mod tests {
                 EventKind::ContinuityRunSpawned {
                     run_session_id: "s1".to_string(),
                     message_id: "m1".to_string(),
+                    actor_id: None,
+                    origin: None,
                 },
                 "continuity_run_spawned",
+            ),
+            (
+                EventKind::ContinuityRunEnded {
+                    run_session_id: "s1".to_string(),
+                    message_id: "m1".to_string(),
+                    reason: "completed".to_string(),
+                    actor_id: None,
+                    origin: None,
+                },
+                "continuity_run_ended",
+            ),
+            (
+                EventKind::ContinuityBranched {
+                    parent_thread_id: "t1".to_string(),
+                    parent_seq: 3,
+                    parent_message_id: None,
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                },
+                "continuity_branched",
             ),
             (
                 EventKind::ToolStarted {

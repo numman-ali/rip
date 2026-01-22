@@ -1,6 +1,6 @@
 # RIP TUI Design Index
 
-Status: **Early Design** | Phase: 2 | Last updated: 2026-01-20
+Status: **Early Design** | Phase: 2 | Last updated: 2026-01-22
 
 ---
 
@@ -136,6 +136,7 @@ Complete mapping of capability IDs to TUI elements with phase and parity notes.
 - [Interaction Patterns](03_interaction_patterns.md) — Keys, focus, palettes, input conventions
 - [Graceful Degradation](04_graceful_degradation.md) — How TUI features map to simpler surfaces
 - [Performance Considerations](05_performance_considerations.md) — What needs to feel fast, scale concerns
+- [Experience Review](06_experience_review.md) — What “wow” means for RIP, mobile/web/SSH constraints, and design gates
 
 **Screens**
 - [Screens](screens/) — Individual screen specifications (12 screens)

@@ -35,7 +35,10 @@ impl Event {
         match &self.kind {
             EventKind::ContinuityCreated { .. }
             | EventKind::ContinuityMessageAppended { .. }
-            | EventKind::ContinuityRunSpawned { .. } => StreamKind::Continuity,
+            | EventKind::ContinuityRunSpawned { .. }
+            | EventKind::ContinuityRunEnded { .. }
+            | EventKind::ContinuityBranched { .. }
+            | EventKind::ContinuityHandoffCreated { .. } => StreamKind::Continuity,
             EventKind::ToolTaskSpawned { .. }
             | EventKind::ToolTaskStatus { .. }
             | EventKind::ToolTaskCancelRequested { .. }
@@ -151,6 +154,39 @@ pub enum EventKind {
     ContinuityRunSpawned {
         run_session_id: String,
         message_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        actor_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        origin: Option<String>,
+    },
+    ContinuityRunEnded {
+        run_session_id: String,
+        message_id: String,
+        reason: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        actor_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        origin: Option<String>,
+    },
+    ContinuityBranched {
+        parent_thread_id: String,
+        parent_seq: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        parent_message_id: Option<String>,
+        actor_id: String,
+        origin: String,
+    },
+    ContinuityHandoffCreated {
+        from_thread_id: String,
+        from_seq: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        from_message_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        summary_artifact_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        summary_markdown: Option<String>,
+        actor_id: String,
+        origin: String,
     },
     ToolStarted {
         tool_id: String,
@@ -400,7 +436,10 @@ impl Session {
             EventKind::SessionEnded { .. } => (Some(HookEventKind::SessionEnded), None),
             EventKind::ContinuityCreated { .. }
             | EventKind::ContinuityMessageAppended { .. }
-            | EventKind::ContinuityRunSpawned { .. } => (None, None),
+            | EventKind::ContinuityRunSpawned { .. }
+            | EventKind::ContinuityRunEnded { .. }
+            | EventKind::ContinuityBranched { .. }
+            | EventKind::ContinuityHandoffCreated { .. } => (None, None),
             EventKind::ProviderEvent { .. }
             | EventKind::ToolStarted { .. }
             | EventKind::ToolStdout { .. }

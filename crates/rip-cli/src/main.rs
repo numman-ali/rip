@@ -645,21 +645,35 @@ async fn run_local_with_engine(
     let continuity_id = continuities
         .ensure_default()
         .map_err(|err| anyhow::anyhow!("continuity ensure: {err}"))?;
+    let actor_id = "user".to_string();
+    let origin = "cli".to_string();
     let message_id = continuities
         .append_message(
             &continuity_id,
-            "user".to_string(),
-            "cli".to_string(),
+            actor_id.clone(),
+            origin.clone(),
             prompt.clone(),
         )
         .map_err(|err| anyhow::anyhow!("continuity post message: {err}"))?;
 
     let handle = engine.create_session();
+    let run_link = ripd::ContinuityRunLink {
+        continuity_id: continuity_id.clone(),
+        message_id: message_id.clone(),
+        actor_id: actor_id.clone(),
+        origin: origin.clone(),
+    };
     continuities
-        .append_run_spawned(&continuity_id, &message_id, &handle.session_id)
+        .append_run_spawned(
+            &continuity_id,
+            &message_id,
+            &handle.session_id,
+            actor_id,
+            origin,
+        )
         .map_err(|err| anyhow::anyhow!("continuity run spawned: {err}"))?;
     let mut receiver = handle.subscribe();
-    engine.spawn_session(handle, prompt);
+    engine.spawn_session(handle, prompt, Some(run_link));
     stream_events_from_receiver(&mut receiver, view, out).await
 }
 

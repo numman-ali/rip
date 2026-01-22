@@ -92,11 +92,38 @@ test("Rip SDK exposes continuity-first thread.* via `rip threads`", async () => 
     assert.ok(posted.message_id.length > 0);
     assert.ok(posted.session_id.length > 0);
 
+    const branched = await rip.threadBranch(ensured.thread_id, { title: "child", from_message_id: posted.message_id }, opts);
+    assert.equal(branched.parent_thread_id, ensured.thread_id);
+    assert.ok(branched.thread_id.length > 0);
+
+    const handed = await rip.threadHandoff(
+      ensured.thread_id,
+      { title: "handoff", summary_markdown: "summary", from_message_id: posted.message_id },
+      opts,
+    );
+    assert.equal(handed.from_thread_id, ensured.thread_id);
+    assert.ok(handed.thread_id.length > 0);
+
     const { result } = await rip.threadEventsStreamed(ensured.thread_id, opts, { maxEvents: 3 });
     const frames = await result;
     assert.ok(frames.some((frame) => frame.type === "continuity_created"));
     assert.ok(frames.some((frame) => frame.type === "continuity_message_appended"));
     assert.ok(frames.some((frame) => frame.type === "continuity_run_spawned"));
+
+    const { result: branchResult } = await rip.threadEventsStreamed(branched.thread_id, opts, { maxEvents: 2 });
+    const branchFrames = await branchResult;
+    assert.ok(branchFrames.some((frame) => frame.type === "continuity_created"));
+    assert.ok(branchFrames.some((frame) => frame.type === "continuity_branched"));
+
+    const { result: handoffResult } = await rip.threadEventsStreamed(handed.thread_id, opts, { maxEvents: 2 });
+    const handoffFrames = await handoffResult;
+    assert.ok(handoffFrames.some((frame) => frame.type === "continuity_created"));
+    const handoffFrame = handoffFrames.find((frame) => frame.type === "continuity_handoff_created") as
+      | Record<string, unknown>
+      | undefined;
+    assert.ok(handoffFrame);
+    assert.equal(handoffFrame.from_thread_id, ensured.thread_id);
+    assert.equal(handoffFrame.summary_markdown, "summary");
   } finally {
     await rm(dataDir, { recursive: true, force: true });
   }

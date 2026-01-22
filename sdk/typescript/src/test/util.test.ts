@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   buildRipRunArgs,
   buildRipThreadEnsureArgs,
+  buildRipThreadBranchArgs,
+  buildRipThreadHandoffArgs,
   buildRipThreadEventsArgs,
   buildRipThreadGetArgs,
   buildRipThreadListArgs,
@@ -48,6 +50,62 @@ test("buildRipThreadListArgs builds list command", () => {
 test("buildRipThreadGetArgs builds get command", () => {
   const args = buildRipThreadGetArgs("t1");
   assert.deepEqual(args, ["threads", "get", "t1"]);
+});
+
+test("buildRipThreadBranchArgs includes selectors and provenance flags", () => {
+  const args = buildRipThreadBranchArgs("t1", {
+    title: "child",
+    fromMessageId: "m1",
+    fromSeq: 3,
+    actorId: "alice",
+    origin: "sdk-ts",
+  });
+  assert.deepEqual(args, [
+    "threads",
+    "branch",
+    "t1",
+    "--title",
+    "child",
+    "--from-message-id",
+    "m1",
+    "--from-seq",
+    "3",
+    "--actor-id",
+    "alice",
+    "--origin",
+    "sdk-ts",
+  ]);
+});
+
+test("buildRipThreadHandoffArgs includes summary, selectors, and provenance flags", () => {
+  const args = buildRipThreadHandoffArgs("t1", {
+    title: "handoff",
+    summaryMarkdown: "summary",
+    summaryArtifactId: "a1",
+    fromMessageId: "m1",
+    fromSeq: 3,
+    actorId: "alice",
+    origin: "sdk-ts",
+  });
+  assert.deepEqual(args, [
+    "threads",
+    "handoff",
+    "t1",
+    "--title",
+    "handoff",
+    "--summary-markdown",
+    "summary",
+    "--summary-artifact-id",
+    "a1",
+    "--from-message-id",
+    "m1",
+    "--from-seq",
+    "3",
+    "--actor-id",
+    "alice",
+    "--origin",
+    "sdk-ts",
+  ]);
 });
 
 test("buildRipThreadPostMessageArgs includes provenance flags", () => {

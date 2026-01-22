@@ -277,17 +277,31 @@ fn start_local_session(
 ) -> Result<broadcast::Receiver<FrameEvent>, String> {
     let continuities = engine.continuities();
     let continuity_id = continuities.ensure_default()?;
+    let actor_id = "user".to_string();
+    let origin = "tui".to_string();
     let message_id = continuities.append_message(
         &continuity_id,
-        "user".to_string(),
-        "tui".to_string(),
+        actor_id.clone(),
+        origin.clone(),
         prompt.clone(),
     )?;
 
     let handle = engine.create_session();
-    continuities.append_run_spawned(&continuity_id, &message_id, &handle.session_id)?;
+    let run_link = ripd::ContinuityRunLink {
+        continuity_id: continuity_id.clone(),
+        message_id: message_id.clone(),
+        actor_id: actor_id.clone(),
+        origin: origin.clone(),
+    };
+    continuities.append_run_spawned(
+        &continuity_id,
+        &message_id,
+        &handle.session_id,
+        actor_id,
+        origin,
+    )?;
     let receiver = handle.subscribe();
-    engine.spawn_session(handle, prompt);
+    engine.spawn_session(handle, prompt, Some(run_link));
     Ok(receiver)
 }
 

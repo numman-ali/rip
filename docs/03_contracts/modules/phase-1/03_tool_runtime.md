@@ -3,6 +3,7 @@
 Summary
 - Executes tools with resource limits and streaming outputs.
 - Tool registry may expose aliases for compatibility (e.g., `shell` -> `bash`).
+- Tools are session-scoped primitives; Continuity OS management is modeled as capabilities and exposed via surfaces (not via implicit tool-side mutations).
 
 Inputs
 - Tool invocation events (name, args, budget).

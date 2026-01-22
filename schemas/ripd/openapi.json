@@ -455,6 +455,50 @@
         }
       }
     },
+    "/threads/{id}/branch": {
+      "post": {
+        "operationId": "thread_branch",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Parent thread id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreadBranchPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Branch created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadBranchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid branch request"
+          },
+          "404": {
+            "description": "Thread or branch point not found"
+          }
+        }
+      }
+    },
     "/threads/{id}/events": {
       "get": {
         "operationId": "thread_stream_events",
@@ -475,6 +519,50 @@
           },
           "404": {
             "description": "Thread not found"
+          }
+        }
+      }
+    },
+    "/threads/{id}/handoff": {
+      "post": {
+        "operationId": "thread_handoff",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Source thread id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreadHandoffPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Handoff thread created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadHandoffResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid handoff request"
+          },
+          "404": {
+            "description": "Thread or handoff point not found"
           }
         }
       }
@@ -774,12 +862,152 @@
           }
         }
       },
+      "ThreadBranchPayload": {
+        "type": "object",
+        "properties": {
+          "actor_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "from_message_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "from_seq": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "origin": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ThreadBranchResponse": {
+        "type": "object",
+        "required": [
+          "thread_id",
+          "parent_thread_id",
+          "parent_seq"
+        ],
+        "properties": {
+          "parent_message_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parent_seq": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "parent_thread_id": {
+            "type": "string"
+          },
+          "thread_id": {
+            "type": "string"
+          }
+        }
+      },
       "ThreadEnsureResponse": {
         "type": "object",
         "required": [
           "thread_id"
         ],
         "properties": {
+          "thread_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ThreadHandoffPayload": {
+        "type": "object",
+        "properties": {
+          "actor_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "from_message_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "from_seq": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "origin": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "summary_artifact_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "summary_markdown": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ThreadHandoffResponse": {
+        "type": "object",
+        "required": [
+          "thread_id",
+          "from_thread_id",
+          "from_seq"
+        ],
+        "properties": {
+          "from_message_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "from_seq": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "from_thread_id": {
+            "type": "string"
+          },
           "thread_id": {
             "type": "string"
           }

@@ -31,6 +31,29 @@ Frame types
 - `continuity_run_spawned`
   - `run_session_id`: string (uuid)
   - `message_id`: string (uuid)
+  - `actor_id`: string (optional; may be absent in older logs)
+  - `origin`: string (optional; may be absent in older logs)
+- `continuity_run_ended`
+  - `run_session_id`: string (uuid)
+  - `message_id`: string (uuid)
+  - `reason`: string
+  - `actor_id`: string (optional; may be absent in older logs)
+  - `origin`: string (optional; may be absent in older logs)
+- `continuity_branched`
+  - `parent_thread_id`: string (continuity id)
+  - `parent_seq`: u64 (inclusive cut point in the parent continuity stream)
+  - `parent_message_id`: string | null
+  - `actor_id`: string
+  - `origin`: string
+- `continuity_handoff_created`
+  - `from_thread_id`: string (continuity id)
+  - `from_seq`: u64 (inclusive source point in the parent continuity stream)
+  - `from_message_id`: string | null
+  - `summary_artifact_id`: string | null
+  - `summary_markdown`: string | null
+  - `actor_id`: string
+  - `origin`: string
+  - Invariant: at least one of `summary_artifact_id` or `summary_markdown` is non-null.
 - `tool_started`
   - `tool_id`: string (uuid)
   - `name`: string
@@ -100,6 +123,9 @@ Schema (planned tightening)
 
 - Provenance (planned):
   - Frames that represent an input/action should carry `actor_id` and `origin` metadata so shared/team continuities remain replayable.
+
+- Continuities (planned):
+  - `continuity_thread_referenced`: `{from_thread_id, to_thread_id, selector, extracted_artifact_id, actor_id, origin}`
 
 - Background tool tasks:
   - `tool_task_spawned`: `{task_id, tool_name, args, cwd?, title?, execution_mode: pipes|pty, origin_session_id?, artifacts?}`

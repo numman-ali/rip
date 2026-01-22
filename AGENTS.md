@@ -53,6 +53,13 @@ Surface parity principle
 - Surface-specific capabilities still require explicit support/unsupported declarations on every surface.
 - Parity matrix + gap list are required artifacts; CI enforces them.
 
+Capabilities vs Tools (internal management posture)
+- **Capabilities** are the canonical runtime/control-plane API (versioned ids in `docs/03_contracts/capability_registry.md`) that operate on Continuity OS truth (event log, continuities, tasks, artifacts, checkpoints).
+- **Tools** are *in-session* primitives the model can invoke (shell/file tools, etc.) executed by the tool runtime; they emit `tool_*` frames and are policy/budget gated.
+- Default rule: Continuity OS “internal management” operations (e.g., `thread.*`, `compaction.*`, cursor rotation logs) ship as **capabilities exposed across surfaces**, not as model-invocable tools.
+- Tool wrappers are allowed **only** when there is a clear autonomous-worker/subagent use case; they must call the same underlying capability implementation, be policy-gated, and emit fully replayable frames + artifacts (no hidden mutation).
+- CLI subcommands like `rip threads ...` are **surface adapters** for `thread.*` capabilities (local runtime or `--server <url>`); they are intentionally “external” because CLI is a first-class surface and the TypeScript SDK shells out to `rip` (ADR-0006).
+
 Capability delivery order (operator directive)
 - For any new capability/feature work, implement and validate in this order (treat earlier stages as gates):
   1) Headless CLI **local runtime** (in-process; no server required)

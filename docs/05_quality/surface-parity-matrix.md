@@ -16,8 +16,8 @@ Generated from docs/03_contracts/capability_registry.md.
 | thread.stream_events | planned | supported | supported | supported | planned | planned |
 | thread.list | planned | supported | supported | supported | planned | planned |
 | thread.get | planned | supported | supported | supported | planned | planned |
-| thread.branch | planned | planned | planned | planned | planned | planned |
-| thread.handoff | planned | planned | planned | planned | planned | planned |
+| thread.branch | planned | supported | supported | supported | planned | planned |
+| thread.handoff | planned | supported | supported | supported | planned | planned |
 | thread.reference | planned | planned | planned | planned | planned | planned |
 | thread.archive | planned | planned | planned | planned | planned | planned |
 | thread.tags | planned | planned | planned | planned | planned | planned |

@@ -15,6 +15,7 @@ use serde_json::Value;
 use tokio::sync::{broadcast, Mutex};
 use uuid::Uuid;
 
+use crate::continuities::{ContinuityRunLink, ContinuityStore};
 use crate::provider_openresponses::{
     build_streaming_followup_request, build_streaming_request, build_streaming_request_items,
     OpenResponsesConfig, DEFAULT_MAX_TOOL_CALLS,
@@ -55,6 +56,8 @@ pub struct SessionContext {
     pub events: Arc<Mutex<Vec<Event>>>,
     pub event_log: Arc<EventLog>,
     pub snapshot_dir: Arc<PathBuf>,
+    pub continuities: Arc<ContinuityStore>,
+    pub continuity_run: Option<ContinuityRunLink>,
     pub server_session_id: String,
     pub input: String,
 }
@@ -69,6 +72,8 @@ pub async fn run_session(context: SessionContext) {
         events,
         event_log,
         snapshot_dir,
+        continuities,
+        continuity_run,
         server_session_id,
         input,
     } = context;
@@ -157,7 +162,27 @@ pub async fn run_session(context: SessionContext) {
     }
 
     let guard = events.lock().await;
+    let reason = guard
+        .iter()
+        .rev()
+        .find_map(|event| match &event.kind {
+            EventKind::SessionEnded { reason } => Some(reason.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| "unknown".to_string());
     let _ = write_snapshot(&*snapshot_dir, &server_session_id, &guard);
+    drop(guard);
+
+    if let Some(link) = continuity_run {
+        let _ = continuities.append_run_ended(
+            &link.continuity_id,
+            &link.message_id,
+            &runtime_session_id,
+            reason,
+            link.actor_id,
+            link.origin,
+        );
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -1670,7 +1695,13 @@ data: [DONE]\n\n";
     #[tokio::test]
     async fn run_session_with_tool_invocation_emits_events() {
         let dir = tempdir().expect("tmp");
-        let log = EventLog::new(dir.path().join("events.jsonl")).expect("log");
+        let data_dir = dir.path().join("data");
+        let workspace_dir = dir.path().join("workspace");
+        std::fs::create_dir_all(&workspace_dir).expect("workspace");
+        let event_log = Arc::new(EventLog::new(data_dir.join("events.jsonl")).expect("log"));
+        let continuities = Arc::new(
+            ContinuityStore::new(data_dir, workspace_dir, event_log.clone()).expect("continuities"),
+        );
         let snapshot_dir = Arc::new(dir.path().join("snapshots"));
         let runtime = Arc::new(Runtime::new());
 
@@ -1690,8 +1721,10 @@ data: [DONE]\n\n";
             openresponses: None,
             sender,
             events: events.clone(),
-            event_log: Arc::new(log),
+            event_log,
             snapshot_dir,
+            continuities,
+            continuity_run: None,
             server_session_id: "s1".to_string(),
             input: "{\"tool\":\"noop\",\"args\":{}}".to_string(),
         };

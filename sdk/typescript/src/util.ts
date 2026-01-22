@@ -40,6 +40,52 @@ export function buildRipThreadGetArgs(threadId: string, options: RipThreadsArgsO
   return [...buildRipThreadsBaseArgs(options), "get", threadId];
 }
 
+export type RipThreadBranchArgsOptions = RipThreadsArgsOptions & {
+  title?: string;
+  fromMessageId?: string;
+  fromSeq?: number;
+  actorId?: string;
+  origin?: string;
+};
+
+export function buildRipThreadBranchArgs(
+  parentThreadId: string,
+  options: RipThreadBranchArgsOptions = {},
+): string[] {
+  const args = [...buildRipThreadsBaseArgs(options), "branch", parentThreadId];
+  if (options.title) args.push("--title", options.title);
+  if (options.fromMessageId) args.push("--from-message-id", options.fromMessageId);
+  if (typeof options.fromSeq === "number") args.push("--from-seq", String(options.fromSeq));
+  if (options.actorId) args.push("--actor-id", options.actorId);
+  if (options.origin) args.push("--origin", options.origin);
+  return args;
+}
+
+export type RipThreadHandoffArgsOptions = RipThreadsArgsOptions & {
+  title?: string;
+  summaryMarkdown?: string;
+  summaryArtifactId?: string;
+  fromMessageId?: string;
+  fromSeq?: number;
+  actorId?: string;
+  origin?: string;
+};
+
+export function buildRipThreadHandoffArgs(
+  fromThreadId: string,
+  options: RipThreadHandoffArgsOptions = {},
+): string[] {
+  const args = [...buildRipThreadsBaseArgs(options), "handoff", fromThreadId];
+  if (options.title) args.push("--title", options.title);
+  if (options.summaryMarkdown) args.push("--summary-markdown", options.summaryMarkdown);
+  if (options.summaryArtifactId) args.push("--summary-artifact-id", options.summaryArtifactId);
+  if (options.fromMessageId) args.push("--from-message-id", options.fromMessageId);
+  if (typeof options.fromSeq === "number") args.push("--from-seq", String(options.fromSeq));
+  if (options.actorId) args.push("--actor-id", options.actorId);
+  if (options.origin) args.push("--origin", options.origin);
+  return args;
+}
+
 export type RipThreadPostMessageArgsOptions = RipThreadsArgsOptions & {
   actorId?: string;
   origin?: string;

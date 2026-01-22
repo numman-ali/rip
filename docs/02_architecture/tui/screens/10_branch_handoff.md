@@ -242,7 +242,7 @@ When branching from a specific point:
 
 | TUI | CLI | Headless | SDK |
 |-----|-----|----------|-----|
-| Visual flow | `rip branch --from <turn>` | Same with `--json` | `client.branch(opts)` |
-| Handoff | `rip handoff --summary` | Same | `client.handoff(opts)` |
+| Visual flow | `rip threads branch <thread_id> --from-message-id <message_id> --title <title>` | Same + `--server <url>` | `rip.threadBranch(parentThreadId, req, opts)` |
+| Handoff | `rip threads handoff <thread_id> --summary-markdown "<text>" --title <title>` | Same + `--server <url>` | `rip.threadHandoff(fromThreadId, req, opts)` |
 | Context selection | Checkboxes | `--context minimal/standard/full` | Options param |
-| Summary edit | Editor | `--summary "text"` | String param |
+| Summary edit | Editor | `--summary-markdown "<text>"` | `summary_markdown` |

@@ -11,15 +11,18 @@ Current focus
 - Now: Continuities (threads) are the primary user-facing entity ("one chat forever") and must be implemented end-to-end across surfaces.
 - Phase 1 baseline remains: shared session runner across server + CLI (frames are canonical).
 - Default local execution: `rip` launches fullscreen TUI (in-process); `rip run` stays headless; `--server <url>` enables remote runs; `rip serve` stays the remote control plane.
+- TUI UX is explicitly “conversational-first + drill-down”: ambient background signals (tools/tasks/agents), responsive layouts (phone/SSH/web terminals), and an experience review gate are tracked in `docs/02_architecture/tui/06_experience_review.md`.
 - OpenResponses provider compatibility: stateless history mode + tool schema strict=false; fix provider_errors without dropping raw fidelity.
 - Output view: human-friendly aggregation (no tool arg deltas), aligned with Codex exec expectations.
 - Background tool tasks are implemented (`pipes` + policy-gated `pty`) with deterministic replay fixtures.
 - Operator gate: capability delivery order is `cli_h(local)` -> `tui` -> `server` -> `remote` -> `sdk`.
 - Terminology: see `docs/02_architecture/runtime_and_control_plane.md` (runtime vs control plane vs remote runtime).
 - Implemented: stream-aware frame envelope on the wire (`stream_kind`, `stream_id`) + per-stream replay validation.
-- Implemented: continuity store (`ensure_default`, `append_message`, `append_run_spawned`) + local `rip run` posts to the default continuity before spawning a run.
-- Implemented: server exposes `thread.*` (ensure/list/get/post_message/stream_events) and OpenAPI is updated.
-- Implemented: `rip threads ...` CLI adapter + TypeScript SDK `thread.*` wrappers (ensure/list/get/post_message/stream_events) while keeping ADR-0006 transport (SDK spawns `rip`; no TS HTTP/SSE client).
+- Implemented: continuity store (`ensure_default`, `append_message`, `append_run_spawned`, `append_run_ended`, `branch`, `handoff`) + local `rip run` posts to the default continuity before spawning a run.
+- Implemented: continuity run lifecycle frames carry provenance (`continuity_run_spawned.actor_id/origin`) and completion (`continuity_run_ended.reason`).
+- Implemented: branch/handoff posture is “link-only” in the continuity log (no history copying) (ADR-0009) + relationship frames (`continuity_branched`, `continuity_handoff_created`).
+- Implemented: server exposes `thread.*` (ensure/list/get/post_message/branch/handoff/stream_events) and OpenAPI is updated.
+- Implemented: `rip threads ...` CLI adapter + TypeScript SDK `thread.*` wrappers (ensure/list/get/post_message/branch/handoff/stream_events) while keeping ADR-0006 transport (SDK spawns `rip`; no TS HTTP/SSE client).
 - Keep CI/bench gates green; ratchet budgets only with replay coverage.
 
 Reorientation (read in order after compaction)
