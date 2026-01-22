@@ -92,8 +92,13 @@ enum Provider {
     Openrouter,
 }
 
-#[derive(Deserialize)]
-struct SessionCreated {
+#[derive(Debug, Deserialize)]
+struct ThreadEnsureResponse {
+    thread_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ThreadPostMessageResponse {
     session_id: String,
 }
 
@@ -181,14 +186,11 @@ async fn main() -> anyhow::Result<()> {
 
 async fn run(cli: Cli) -> anyhow::Result<()> {
     match cli.command {
-        None => {
-            if cli.server.is_some() || cli.session.is_some() || cli.task.is_some() {
-                let server = cli
-                    .server
-                    .ok_or_else(|| anyhow::anyhow!("missing --server"))?;
-                if cli.session.is_some() && cli.task.is_some() {
-                    anyhow::bail!("use exactly one of --session or --task");
-                }
+        None => match (cli.server, cli.session, cli.task) {
+            (None, None, None) => {
+                fullscreen::run_fullscreen_tui(cli.prompt).await?;
+            }
+            (Some(server), Some(session_id), None) => {
                 if let Some(prompt) = cli.prompt {
                     if !prompt.trim().is_empty() {
                         anyhow::bail!(
@@ -196,17 +198,22 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                         );
                     }
                 }
-                if let Some(session_id) = cli.session {
-                    fullscreen::run_fullscreen_tui_attach(server, session_id).await?;
-                } else if let Some(task_id) = cli.task {
-                    fullscreen::run_fullscreen_tui_attach_task(server, task_id).await?;
-                } else {
-                    anyhow::bail!("missing --session or --task");
-                }
-            } else {
-                fullscreen::run_fullscreen_tui(cli.prompt).await?;
+                fullscreen::run_fullscreen_tui_attach(server, session_id).await?;
             }
-        }
+            (Some(server), None, Some(task_id)) => {
+                if let Some(prompt) = cli.prompt {
+                    if !prompt.trim().is_empty() {
+                        anyhow::bail!("unexpected prompt when attaching to a task; omit <prompt>");
+                    }
+                }
+                fullscreen::run_fullscreen_tui_attach_task(server, task_id).await?;
+            }
+            (Some(server), None, None) => {
+                fullscreen::run_fullscreen_tui_remote(server, cli.prompt).await?;
+            }
+            (Some(_), Some(_), Some(_)) => anyhow::bail!("use exactly one of --session or --task"),
+            (None, Some(_), _) | (None, _, Some(_)) => anyhow::bail!("missing --server"),
+        },
         Some(Commands::Run {
             prompt,
             server,
@@ -523,11 +530,7 @@ async fn run_headless_remote(
     server: String,
     view: OutputView,
 ) -> anyhow::Result<()> {
-    let client = Client::new();
-    let session_id = create_session(&client, &server).await?;
-    send_input(&client, &server, &session_id, &prompt).await?;
-    stream_events(&client, &server, &session_id, view).await?;
-    Ok(())
+    run_remote(prompt, server, view).await
 }
 
 async fn run_interactive_remote(
@@ -535,10 +538,15 @@ async fn run_interactive_remote(
     server: String,
     view: OutputView,
 ) -> anyhow::Result<()> {
+    run_remote(prompt, server, view).await
+}
+
+async fn run_remote(prompt: String, server: String, view: OutputView) -> anyhow::Result<()> {
     let client = Client::new();
-    let session_id = create_session(&client, &server).await?;
-    send_input(&client, &server, &session_id, &prompt).await?;
-    stream_events(&client, &server, &session_id, view).await?;
+    let thread_id = ensure_thread(&client, &server).await?;
+    let response =
+        post_thread_message(&client, &server, &thread_id, &prompt, "user", "cli").await?;
+    stream_events(&client, &server, &response.session_id, view).await?;
     Ok(())
 }
 
@@ -554,34 +562,41 @@ async fn run_interactive_local(prompt: String, view: OutputView) -> anyhow::Resu
     run_headless_local(prompt, view).await
 }
 
-async fn create_session(client: &Client, server: &str) -> anyhow::Result<String> {
-    let url = format!("{server}/sessions");
+async fn ensure_thread(client: &Client, server: &str) -> anyhow::Result<String> {
+    let url = format!("{server}/threads/ensure");
     let response = client.post(url).send().await?;
     let status = response.status();
     if !status.is_success() {
-        anyhow::bail!("create session failed: {status}");
+        anyhow::bail!("ensure thread failed: {status}");
     }
-    let payload: SessionCreated = response.json().await?;
-    Ok(payload.session_id)
+    let payload: ThreadEnsureResponse = response.json().await?;
+    Ok(payload.thread_id)
 }
 
-async fn send_input(
+async fn post_thread_message(
     client: &Client,
     server: &str,
-    session_id: &str,
-    input: &str,
-) -> anyhow::Result<()> {
-    let url = format!("{server}/sessions/{session_id}/input");
+    thread_id: &str,
+    content: &str,
+    actor_id: &str,
+    origin: &str,
+) -> anyhow::Result<ThreadPostMessageResponse> {
+    let url = format!("{server}/threads/{thread_id}/messages");
     let response = client
         .post(url)
-        .json(&serde_json::json!({ "input": input }))
+        .json(&serde_json::json!({
+            "content": content,
+            "actor_id": actor_id,
+            "origin": origin
+        }))
         .send()
         .await?;
     let status = response.status();
     if !status.is_success() {
-        anyhow::bail!("send input failed: {status}");
+        anyhow::bail!("post message failed: {status}");
     }
-    Ok(())
+    let payload: ThreadPostMessageResponse = response.json().await?;
+    Ok(payload)
 }
 
 async fn stream_events(
@@ -870,63 +885,66 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_session_success() {
+    async fn ensure_thread_success() {
         let server = MockServer::start();
         let mock = server.mock(|when, then| {
-            when.method(POST).path("/sessions");
-            then.status(201)
+            when.method(POST).path("/threads/ensure");
+            then.status(200)
                 .header("content-type", "application/json")
-                .body(r#"{"session_id":"abc"}"#);
+                .body(r#"{"thread_id":"t1"}"#);
         });
 
         let client = Client::new();
-        let session_id = create_session(&client, &server.base_url()).await.unwrap();
-        assert_eq!(session_id, "abc");
+        let thread_id = ensure_thread(&client, &server.base_url()).await.unwrap();
+        assert_eq!(thread_id, "t1");
         mock.assert();
     }
 
     #[tokio::test]
-    async fn create_session_failure() {
+    async fn ensure_thread_failure() {
         let server = MockServer::start();
         let _mock = server.mock(|when, then| {
-            when.method(POST).path("/sessions");
+            when.method(POST).path("/threads/ensure");
             then.status(500);
         });
 
         let client = Client::new();
-        let err = create_session(&client, &server.base_url())
+        let err = ensure_thread(&client, &server.base_url())
             .await
             .unwrap_err();
-        assert!(err.to_string().contains("create session failed"));
+        assert!(err.to_string().contains("ensure thread failed"));
     }
 
     #[tokio::test]
-    async fn send_input_failure() {
+    async fn post_thread_message_failure() {
         let server = MockServer::start();
         let _mock = server.mock(|when, then| {
-            when.method(POST).path("/sessions/s1/input");
-            then.status(400);
+            when.method(POST).path("/threads/t1/messages");
+            then.status(404);
         });
 
         let client = Client::new();
-        let err = send_input(&client, &server.base_url(), "s1", "hi")
+        let err = post_thread_message(&client, &server.base_url(), "t1", "hi", "user", "cli")
             .await
             .unwrap_err();
-        assert!(err.to_string().contains("send input failed"));
+        assert!(err.to_string().contains("post message failed"));
     }
 
     #[tokio::test]
-    async fn send_input_success() {
+    async fn post_thread_message_success() {
         let server = MockServer::start();
         let _mock = server.mock(|when, then| {
-            when.method(POST).path("/sessions/s1/input");
-            then.status(202);
+            when.method(POST).path("/threads/t1/messages");
+            then.status(202)
+                .header("content-type", "application/json")
+                .body(r#"{"thread_id":"t1","message_id":"m1","session_id":"s1"}"#);
         });
 
         let client = Client::new();
-        send_input(&client, &server.base_url(), "s1", "hi")
+        let response = post_thread_message(&client, &server.base_url(), "t1", "hi", "user", "cli")
             .await
-            .expect("send");
+            .expect("post message");
+        assert_eq!(response.session_id, "s1");
     }
 
     #[tokio::test]
@@ -1010,15 +1028,17 @@ mod tests {
     #[tokio::test]
     async fn run_headless_with_interactive_flag() {
         let server = MockServer::start();
-        let _create = server.mock(|when, then| {
-            when.method(POST).path("/sessions");
-            then.status(201)
+        let _ensure = server.mock(|when, then| {
+            when.method(POST).path("/threads/ensure");
+            then.status(200)
                 .header("content-type", "application/json")
-                .body(r#"{"session_id":"abc"}"#);
+                .body(r#"{"thread_id":"t1"}"#);
         });
-        let _input = server.mock(|when, then| {
-            when.method(POST).path("/sessions/abc/input");
-            then.status(202);
+        let _post = server.mock(|when, then| {
+            when.method(POST).path("/threads/t1/messages");
+            then.status(202)
+                .header("content-type", "application/json")
+                .body(r#"{"thread_id":"t1","message_id":"m1","session_id":"abc"}"#);
         });
         let _events = server.mock(|when, then| {
             when.method(GET).path("/sessions/abc/events");
@@ -1051,15 +1071,17 @@ mod tests {
     #[tokio::test]
     async fn run_headless_remote() {
         let server = MockServer::start();
-        let _create = server.mock(|when, then| {
-            when.method(POST).path("/sessions");
-            then.status(201)
+        let _ensure = server.mock(|when, then| {
+            when.method(POST).path("/threads/ensure");
+            then.status(200)
                 .header("content-type", "application/json")
-                .body(r#"{"session_id":"abc"}"#);
+                .body(r#"{"thread_id":"t1"}"#);
         });
-        let _input = server.mock(|when, then| {
-            when.method(POST).path("/sessions/abc/input");
-            then.status(202);
+        let _post = server.mock(|when, then| {
+            when.method(POST).path("/threads/t1/messages");
+            then.status(202)
+                .header("content-type", "application/json")
+                .body(r#"{"thread_id":"t1","message_id":"m1","session_id":"abc"}"#);
         });
         let _events = server.mock(|when, then| {
             when.method(GET).path("/sessions/abc/events");

@@ -11,9 +11,13 @@ Interactive mode (default)
 - Local-first: runs the session engine in-process (no HTTP required).
 - Phase 1 posture: single-run sessions; enter a prompt to start a run, then submit another prompt for a new run.
 
+Remote interactive mode
+- `rip --server <url> [<prompt>]`
+- Continuity-first: posts to the default thread (continuity) and streams the resulting session frames over SSE (sessions remain hidden by default).
+
 Attach mode (remote)
 - `rip --server <url> --session <id>`
-- Attaches the fullscreen UI to an existing server session and streams canonical event frames over SSE.
+- Attaches the fullscreen UI to an existing server session and streams canonical event frames over SSE (debug/power mode).
 
 Task attach mode (remote)
 - `rip --server <url> --task <id>`
@@ -52,7 +56,7 @@ Examples:
 Notes
 - CLI is a thin adapter over the shared session engine.
 - Default: interactive `rip` and headless `rip run` execute in-process (no HTTP required).
-- Remote: `rip run ... --server <url>` streams the same event frames over HTTP/SSE.
+- Remote: `rip run ... --server <url>` posts to the default thread (continuity) and streams the resulting session frames over HTTP/SSE.
 - `rip serve` (or `ripd`) starts the agent server for remote clients (SDKs can target it via `--server <url>`).
 - Default output: `rip run ...` uses `--view output` (human-readable). Use `--view raw` for newline-delimited JSON frames.
 - Phase 1 is single-run sessions (no multi-turn/thread resume yet); OpenResponses tool execution is sequential and capped (`max_tool_calls=32`, `parallel_tool_calls=false`) per ADR-0005.

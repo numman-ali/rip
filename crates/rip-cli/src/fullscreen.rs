@@ -112,11 +112,19 @@ pub async fn run_fullscreen_tui(initial_prompt: Option<String>) -> anyhow::Resul
     Ok(())
 }
 
-pub async fn run_fullscreen_tui_attach(server: String, session_id: String) -> anyhow::Result<()> {
-    let client = Client::new();
-    let url = format!("{server}/sessions/{session_id}/events");
-    let mut stream = Some(client.get(url).eventsource()?);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SseUiMode {
+    Interactive,
+    Attach,
+}
 
+async fn run_fullscreen_tui_sse(
+    client: &Client,
+    server: String,
+    initial_prompt: Option<String>,
+    mut stream: Option<EventSource>,
+    ui_mode: SseUiMode,
+) -> anyhow::Result<()> {
     let mut stdout = io::stdout();
     enable_raw_mode()?;
     stdout.execute(EnterAlternateScreen)?;
@@ -131,7 +139,14 @@ pub async fn run_fullscreen_tui_attach(server: String, session_id: String) -> an
         mut mode,
         mut input,
         keymap,
-    } = init_fullscreen_state(None);
+    } = init_fullscreen_state(initial_prompt);
+
+    if ui_mode == SseUiMode::Interactive && stream.is_none() && !input.trim().is_empty() {
+        match start_remote_session(client, &server, std::mem::take(&mut input)).await {
+            Ok(next) => stream = Some(next),
+            Err(err) => state.set_status_message(format!("start failed: {err}")),
+        }
+    }
 
     let mut term_events = EventStream::new();
     let mut tick = tokio::time::interval(Duration::from_millis(33));
@@ -143,6 +158,11 @@ pub async fn run_fullscreen_tui_attach(server: String, session_id: String) -> an
             dirty = false;
         }
 
+        let session_running = match ui_mode {
+            SseUiMode::Attach => true,
+            SseUiMode::Interactive => stream.is_some(),
+        };
+
         tokio::select! {
             _ = tick.tick() => {
                 dirty = true;
@@ -151,13 +171,31 @@ pub async fn run_fullscreen_tui_attach(server: String, session_id: String) -> an
                 let Some(Ok(event)) = maybe_event else {
                     continue;
                 };
-                match handle_term_event(event, &mut state, &mut mode, &mut input, true, &keymap) {
-                    UiAction::None | UiAction::Submit => {}
+                match handle_term_event(event, &mut state, &mut mode, &mut input, session_running, &keymap) {
+                    UiAction::None => {}
+                    UiAction::Quit => break,
+                    UiAction::Submit => {
+                        if ui_mode == SseUiMode::Interactive && stream.is_none() {
+                            let prompt = input.trim().to_string();
+                            if !prompt.is_empty() {
+                                input.clear();
+                                let theme = state.theme;
+                                let status_message = state.status_message.clone();
+                                state = TuiState::default();
+                                state.theme = theme;
+                                state.status_message = status_message;
+                                match start_remote_session(client, &server, prompt).await {
+                                    Ok(next) => stream = Some(next),
+                                    Err(err) => state.set_status_message(format!("start failed: {err}")),
+                                }
+                            }
+                        }
+                    }
                     UiAction::CopySelected => {
                         copy_selected(&mut terminal, &mut state)?;
                     }
-                    UiAction::Quit => break,
                 };
+
                 dirty = true;
             }
             maybe_sse = next_sse_event(&mut stream) => {
@@ -169,7 +207,11 @@ pub async fn run_fullscreen_tui_attach(server: String, session_id: String) -> an
                     Ok(SseEvent::Open) => {}
                     Ok(SseEvent::Message(msg)) => {
                         if let Ok(frame) = serde_json::from_str::<FrameEvent>(&msg.data) {
+                            let ended = matches!(frame.kind, rip_kernel::EventKind::SessionEnded { .. });
                             state.update(frame);
+                            if ui_mode == SseUiMode::Interactive && ended {
+                                stream.take();
+                            }
                         }
                     }
                     Err(EventSourceError::StreamEnded) => {
@@ -188,80 +230,45 @@ pub async fn run_fullscreen_tui_attach(server: String, session_id: String) -> an
     Ok(())
 }
 
+pub async fn run_fullscreen_tui_remote(
+    server: String,
+    initial_prompt: Option<String>,
+) -> anyhow::Result<()> {
+    let client = Client::new();
+    run_fullscreen_tui_sse(
+        &client,
+        server,
+        initial_prompt,
+        None,
+        SseUiMode::Interactive,
+    )
+    .await
+}
+
+pub async fn run_fullscreen_tui_attach(server: String, session_id: String) -> anyhow::Result<()> {
+    let client = Client::new();
+    let url = format!("{server}/sessions/{session_id}/events");
+    run_fullscreen_tui_sse(
+        &client,
+        server,
+        None,
+        Some(client.get(url).eventsource()?),
+        SseUiMode::Attach,
+    )
+    .await
+}
+
 pub async fn run_fullscreen_tui_attach_task(server: String, task_id: String) -> anyhow::Result<()> {
     let client = Client::new();
     let url = format!("{server}/tasks/{task_id}/events");
-    let mut stream = Some(client.get(url).eventsource()?);
-
-    let mut stdout = io::stdout();
-    enable_raw_mode()?;
-    stdout.execute(EnterAlternateScreen)?;
-    let mut terminal = Terminal::new(CrosstermBackend::new(stdout))?;
-
-    let mut guard = TerminalGuard::active();
-
-    terminal.clear()?;
-
-    let InitState {
-        mut state,
-        mut mode,
-        mut input,
-        keymap,
-    } = init_fullscreen_state(None);
-
-    let mut term_events = EventStream::new();
-    let mut tick = tokio::time::interval(Duration::from_millis(33));
-    let mut dirty = true;
-
-    loop {
-        if dirty {
-            terminal.draw(|f| render(f, &state, mode, &input))?;
-            dirty = false;
-        }
-
-        tokio::select! {
-            _ = tick.tick() => {
-                dirty = true;
-            }
-            maybe_event = term_events.next() => {
-                let Some(Ok(event)) = maybe_event else {
-                    continue;
-                };
-                match handle_term_event(event, &mut state, &mut mode, &mut input, true, &keymap) {
-                    UiAction::None | UiAction::Submit => {}
-                    UiAction::CopySelected => {
-                        copy_selected(&mut terminal, &mut state)?;
-                    }
-                    UiAction::Quit => break,
-                };
-                dirty = true;
-            }
-            maybe_sse = next_sse_event(&mut stream) => {
-                let Some(next) = maybe_sse else {
-                    dirty = true;
-                    continue;
-                };
-                match next {
-                    Ok(SseEvent::Open) => {}
-                    Ok(SseEvent::Message(msg)) => {
-                        if let Ok(frame) = serde_json::from_str::<FrameEvent>(&msg.data) {
-                            state.update(frame);
-                        }
-                    }
-                    Err(EventSourceError::StreamEnded) => {
-                        stream.take();
-                    }
-                    Err(_) => {
-                        stream.take();
-                    }
-                }
-                dirty = true;
-            }
-        }
-    }
-
-    guard.deactivate(&mut terminal)?;
-    Ok(())
+    run_fullscreen_tui_sse(
+        &client,
+        server,
+        None,
+        Some(client.get(url).eventsource()?),
+        SseUiMode::Attach,
+    )
+    .await
 }
 
 fn start_local_session(
@@ -282,6 +289,18 @@ fn start_local_session(
     let receiver = handle.subscribe();
     engine.spawn_session(handle, prompt);
     Ok(receiver)
+}
+
+async fn start_remote_session(
+    client: &Client,
+    server: &str,
+    prompt: String,
+) -> anyhow::Result<EventSource> {
+    let thread_id = crate::ensure_thread(client, server).await?;
+    let response =
+        crate::post_thread_message(client, server, &thread_id, &prompt, "user", "tui").await?;
+    let url = format!("{server}/sessions/{}/events", response.session_id);
+    Ok(client.get(url).eventsource()?)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

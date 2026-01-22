@@ -19,7 +19,7 @@ Current focus
 - Implemented: stream-aware frame envelope on the wire (`stream_kind`, `stream_id`) + per-stream replay validation.
 - Implemented: continuity store (`ensure_default`, `append_message`, `append_run_spawned`) + local `rip run` posts to the default continuity before spawning a run.
 - Implemented: server exposes `thread.*` (ensure/list/get/post_message/stream_events) and OpenAPI is updated.
-- Next up: remote mode parity (`rip run --server ...` should call `thread.post_message` by default) and continuity-first TUI/SDK flows.
+- Next up: TypeScript SDK continuity-first API surface for `thread.*` (ensure/post_message/stream_events) while keeping ADR-0006 transport (spawn `rip` for runs; sessions remain hidden by default).
 - Keep CI/bench gates green; ratchet budgets only with replay coverage.
 
 Reorientation (read in order after compaction)
