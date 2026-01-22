@@ -41,6 +41,33 @@ pub(crate) struct SessionCreated {
     pub(crate) session_id: String,
 }
 
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+pub(crate) struct ThreadEnsureResponse {
+    pub(crate) thread_id: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+pub(crate) struct ThreadMeta {
+    pub(crate) thread_id: String,
+    pub(crate) created_at_ms: u64,
+    pub(crate) title: Option<String>,
+    pub(crate) archived: bool,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub(crate) struct ThreadPostMessagePayload {
+    pub(crate) content: String,
+    pub(crate) actor_id: Option<String>,
+    pub(crate) origin: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+pub(crate) struct ThreadPostMessageResponse {
+    pub(crate) thread_id: String,
+    pub(crate) message_id: String,
+    pub(crate) session_id: String,
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 struct InputPayload {
     input: String,
@@ -126,6 +153,11 @@ pub(crate) fn build_openapi_router() -> (Router<AppState>, String) {
         .routes(routes!(send_input))
         .routes(routes!(stream_events))
         .routes(routes!(cancel_session))
+        .routes(routes!(thread_ensure))
+        .routes(routes!(thread_list))
+        .routes(routes!(thread_get))
+        .routes(routes!(thread_post_message))
+        .routes(routes!(thread_stream_events))
         .routes(routes!(create_task))
         .routes(routes!(list_tasks))
         .routes(routes!(task_status))
@@ -267,6 +299,188 @@ async fn cancel_session(
     } else {
         StatusCode::NOT_FOUND
     }
+}
+
+#[utoipa::path(
+    post,
+    path = "/threads/ensure",
+    responses(
+        (status = 200, description = "Default thread ensured", body = ThreadEnsureResponse)
+    )
+)]
+async fn thread_ensure(State(state): State<AppState>) -> impl IntoResponse {
+    let store = state.engine.continuities();
+    match store.ensure_default() {
+        Ok(thread_id) => Json(ThreadEnsureResponse { thread_id }).into_response(),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/threads",
+    responses(
+        (status = 200, description = "List threads", body = [ThreadMeta])
+    )
+)]
+async fn thread_list(State(state): State<AppState>) -> impl IntoResponse {
+    let store = state.engine.continuities();
+    let mut out = Vec::new();
+    for meta in store.list() {
+        out.push(ThreadMeta {
+            thread_id: meta.continuity_id,
+            created_at_ms: meta.created_at_ms,
+            title: meta.title,
+            archived: meta.archived,
+        });
+    }
+    Json(out).into_response()
+}
+
+#[utoipa::path(
+    get,
+    path = "/threads/{id}",
+    params(
+        ("id" = String, Path, description = "Thread id")
+    ),
+    responses(
+        (status = 200, description = "Thread metadata", body = ThreadMeta),
+        (status = 404, description = "Thread not found")
+    )
+)]
+async fn thread_get(
+    Path(thread_id): Path<String>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    let store = state.engine.continuities();
+    match store.get(&thread_id) {
+        Some(meta) => Json(ThreadMeta {
+            thread_id,
+            created_at_ms: meta.created_at_ms,
+            title: meta.title,
+            archived: meta.archived,
+        })
+        .into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/threads/{id}/messages",
+    params(
+        ("id" = String, Path, description = "Thread id")
+    ),
+    request_body = ThreadPostMessagePayload,
+    responses(
+        (status = 202, description = "Message accepted and run started", body = ThreadPostMessageResponse),
+        (status = 404, description = "Thread not found")
+    )
+)]
+async fn thread_post_message(
+    Path(thread_id): Path<String>,
+    State(state): State<AppState>,
+    Json(payload): Json<ThreadPostMessagePayload>,
+) -> impl IntoResponse {
+    let actor_id = payload.actor_id.unwrap_or_else(|| "user".to_string());
+    let origin = payload.origin.unwrap_or_else(|| "server".to_string());
+
+    let store = state.engine.continuities();
+    let message_id =
+        match store.append_message(&thread_id, actor_id, origin, payload.content.clone()) {
+            Ok(id) => id,
+            Err(_) => return StatusCode::NOT_FOUND.into_response(),
+        };
+
+    let handle = state.engine.create_session();
+    let session_id = handle.session_id.clone();
+    {
+        let mut sessions = state.sessions.lock().await;
+        sessions.insert(session_id.clone(), handle.clone());
+    }
+
+    if store
+        .append_run_spawned(&thread_id, &message_id, &session_id)
+        .is_err()
+    {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    }
+    state.engine.spawn_session(handle, payload.content);
+
+    (
+        StatusCode::ACCEPTED,
+        Json(ThreadPostMessageResponse {
+            thread_id,
+            message_id,
+            session_id,
+        }),
+    )
+        .into_response()
+}
+
+#[utoipa::path(
+    get,
+    path = "/threads/{id}/events",
+    params(
+        ("id" = String, Path, description = "Thread id")
+    ),
+    responses(
+        (status = 200, description = "SSE stream of thread event frames"),
+        (status = 404, description = "Thread not found")
+    )
+)]
+async fn thread_stream_events(
+    Path(thread_id): Path<String>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    let store = state.engine.continuities();
+    let receiver = store.subscribe();
+
+    let past = match store.replay_events(&thread_id) {
+        Ok(events) => events,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return StatusCode::NOT_FOUND.into_response();
+        }
+        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    };
+    // If there are no frames in the stream, treat the thread id as unknown.
+    // (The truth of thread existence is its continuity event stream.)
+    if past.is_empty() {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+
+    let last_seq = past.last().map(|event| event.seq);
+    let past_stream = tokio_stream::iter(past).filter_map(|event| async move {
+        let json = serde_json::to_string(&event).ok()?;
+        Some(Ok::<SseEvent, Infallible>(SseEvent::default().data(json)))
+    });
+
+    let thread_id_live = thread_id.clone();
+    let last_seq_live = last_seq;
+    let live_stream = BroadcastStream::new(receiver).filter_map(move |result| {
+        let last_seq = last_seq_live;
+        let thread_id = thread_id_live.clone();
+        async move {
+            match result {
+                Ok(event) => {
+                    if event.session_id != thread_id {
+                        return None;
+                    }
+                    if last_seq.map(|last| event.seq <= last).unwrap_or(false) {
+                        return None;
+                    }
+                    let json = serde_json::to_string(&event).ok()?;
+                    Some(Ok::<SseEvent, Infallible>(SseEvent::default().data(json)))
+                }
+                Err(_) => None,
+            }
+        }
+    });
+
+    let stream = past_stream.chain(live_stream);
+    Sse::new(stream)
+        .keep_alive(axum::response::sse::KeepAlive::new().text("ping"))
+        .into_response()
 }
 
 #[utoipa::path(

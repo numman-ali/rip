@@ -432,7 +432,18 @@ fn normalize_signal(signal: &str) -> Option<SignalAction> {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_signal, SignalAction};
+    use std::sync::Arc;
+
+    use rip_log::EventLog;
+    use serde_json::json;
+    use tempfile::tempdir;
+
+    use super::super::logs::TaskLog;
+    use super::super::{
+        ApiToolTaskExecutionMode, ApiToolTaskStatus, ShellArgs, TaskEmitter, TaskEngine,
+        TaskEngineConfig, TaskLogs, TaskRunContext, TaskSpawnPayload,
+    };
+    use super::{normalize_signal, run_pty_task, SignalAction};
 
     #[test]
     fn normalize_signal_accepts_known_values() {
@@ -443,5 +454,137 @@ mod tests {
         assert_eq!(normalize_signal("QUIT"), Some(SignalAction::CtrlBackslash));
         assert_eq!(normalize_signal("SIGTERM"), Some(SignalAction::Kill));
         assert_eq!(normalize_signal("SIGUSR1"), None);
+    }
+
+    #[tokio::test]
+    async fn run_pty_task_fails_when_pty_log_missing() {
+        let dir = tempdir().expect("tmp");
+        let data_dir = dir.path().join("data");
+        let workspace_root = dir.path().join("workspace");
+        std::fs::create_dir_all(&workspace_root).expect("workspace");
+
+        let event_log = Arc::new(EventLog::new(data_dir.join("events.jsonl")).expect("log"));
+        let snapshot_dir = Arc::new(data_dir.join("task_snapshots"));
+        let config = TaskEngineConfig {
+            workspace_root,
+            artifact_max_bytes: 128,
+            max_bytes: 64,
+        };
+        let engine = TaskEngine::new(config.clone(), event_log.clone(), snapshot_dir);
+
+        let payload = TaskSpawnPayload {
+            tool: "bash".to_string(),
+            args: json!({"command": ""}),
+            title: None,
+            execution_mode: Some(ApiToolTaskExecutionMode::Pty),
+            origin_session_id: None,
+        };
+        let mut handle = engine.create_task(&payload);
+        handle.logs = Arc::new(TaskLogs {
+            stdout: None,
+            stderr: None,
+            pty: None,
+        });
+
+        let emitter = TaskEmitter::new(&handle, event_log);
+        let args = ShellArgs {
+            command: "".to_string(),
+            cwd: None,
+            env: None,
+            artifact_max_bytes: None,
+            max_bytes: None,
+            rows: None,
+            cols: None,
+        };
+        let (_cancel_tx, cancel_rx) = tokio::sync::watch::channel(None);
+
+        run_pty_task(
+            &handle,
+            TaskRunContext {
+                config,
+                emitter,
+                args,
+                artifact_max_bytes: 128,
+                max_bytes: 64,
+                spawn_time_ms: 0,
+                cancel_rx,
+            },
+        )
+        .await;
+
+        let status = handle.status().await;
+        assert_eq!(status.status, ApiToolTaskStatus::Failed);
+        assert_eq!(status.error.as_deref(), Some("pty log missing"));
+    }
+
+    #[tokio::test]
+    async fn run_pty_task_fails_when_log_writer_cannot_open() {
+        let dir = tempdir().expect("tmp");
+        let data_dir = dir.path().join("data");
+        let workspace_root = dir.path().join("workspace");
+        std::fs::create_dir_all(&workspace_root).expect("workspace");
+
+        let event_log = Arc::new(EventLog::new(data_dir.join("events.jsonl")).expect("log"));
+        let snapshot_dir = Arc::new(data_dir.join("task_snapshots"));
+        let config = TaskEngineConfig {
+            workspace_root,
+            artifact_max_bytes: 128,
+            max_bytes: 64,
+        };
+        let engine = TaskEngine::new(config.clone(), event_log.clone(), snapshot_dir);
+
+        // Ensure the base artifacts dir exists so failure comes from the nested path (`bad/id`).
+        std::fs::create_dir_all(config.artifacts_blobs_dir()).expect("artifacts dir");
+
+        let payload = TaskSpawnPayload {
+            tool: "bash".to_string(),
+            args: json!({"command": ""}),
+            title: None,
+            execution_mode: Some(ApiToolTaskExecutionMode::Pty),
+            origin_session_id: None,
+        };
+        let mut handle = engine.create_task(&payload);
+        handle.logs = Arc::new(TaskLogs {
+            stdout: None,
+            stderr: None,
+            pty: Some(TaskLog {
+                artifact_id: "bad/id".to_string(),
+                path: "bad/id".to_string(),
+            }),
+        });
+
+        let emitter = TaskEmitter::new(&handle, event_log);
+        let args = ShellArgs {
+            command: "".to_string(),
+            cwd: None,
+            env: None,
+            artifact_max_bytes: None,
+            max_bytes: None,
+            rows: None,
+            cols: None,
+        };
+        let (_cancel_tx, cancel_rx) = tokio::sync::watch::channel(None);
+
+        run_pty_task(
+            &handle,
+            TaskRunContext {
+                config,
+                emitter,
+                args,
+                artifact_max_bytes: 128,
+                max_bytes: 64,
+                spawn_time_ms: 0,
+                cancel_rx,
+            },
+        )
+        .await;
+
+        let status = handle.status().await;
+        assert_eq!(status.status, ApiToolTaskStatus::Failed);
+        assert!(status
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .starts_with("artifact create failed:"));
     }
 }

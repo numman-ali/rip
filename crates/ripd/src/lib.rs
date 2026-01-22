@@ -1,10 +1,12 @@
 mod checkpoints;
+mod continuities;
 mod provider_openresponses;
 mod runner;
 mod server;
 mod session;
 mod tasks;
 
+pub use continuities::{ContinuityMeta, ContinuityStore};
 pub use runner::{SessionEngine, SessionHandle};
 
 #[cfg(not(test))]
@@ -21,7 +23,11 @@ mod tests {
 
     #[test]
     fn exports_are_accessible() {
-        let engine = SessionEngine::new_default().expect("engine");
+        let dir = tempfile::tempdir().expect("tmp");
+        let data_dir = dir.path().join("data");
+        let workspace_root = dir.path().join("workspace");
+        std::fs::create_dir_all(&workspace_root).expect("workspace");
+        let engine = SessionEngine::new(data_dir, workspace_root, None).expect("engine");
         let _handle = engine.create_session();
     }
 }

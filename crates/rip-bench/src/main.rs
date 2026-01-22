@@ -761,6 +761,13 @@ mod tests {
     }
 
     #[test]
+    fn load_budgets_reports_missing_file() {
+        let dir = tempdir().expect("tmp");
+        let path = dir.path().join("missing.json");
+        assert!(load_budgets(&path).is_err());
+    }
+
+    #[test]
     fn enforce_budgets_errors_on_missing_budget() {
         let budgets = Vec::new();
         let results = vec![BenchResult {

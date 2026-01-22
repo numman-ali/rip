@@ -9,6 +9,7 @@ use tokio::sync::{broadcast, Mutex};
 use uuid::Uuid;
 
 use crate::checkpoints::WorkspaceCheckpointHook;
+use crate::continuities::ContinuityStore;
 use crate::provider_openresponses::OpenResponsesConfig;
 use crate::session::{run_session, SessionContext};
 use crate::tasks::{TaskEngine, TaskEngineConfig};
@@ -41,6 +42,7 @@ pub struct SessionEngine {
     event_log: Arc<EventLog>,
     snapshot_dir: Arc<PathBuf>,
     task_engine: Arc<TaskEngine>,
+    continuity_store: Arc<ContinuityStore>,
 }
 
 impl SessionEngine {
@@ -79,6 +81,11 @@ impl SessionEngine {
             event_log.clone(),
             task_snapshot_dir,
         ));
+        let continuity_store = Arc::new(ContinuityStore::new(
+            data_dir.clone(),
+            workspace_root.clone(),
+            event_log.clone(),
+        )?);
 
         Ok(Self {
             runtime: Arc::new(Runtime::new()),
@@ -88,6 +95,7 @@ impl SessionEngine {
             event_log,
             snapshot_dir,
             task_engine,
+            continuity_store,
         })
     }
 
@@ -129,6 +137,10 @@ impl SessionEngine {
 
     pub(crate) fn tasks(&self) -> Arc<TaskEngine> {
         self.task_engine.clone()
+    }
+
+    pub fn continuities(&self) -> Arc<ContinuityStore> {
+        self.continuity_store.clone()
     }
 }
 

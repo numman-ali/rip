@@ -11,7 +11,7 @@ use uuid::Uuid;
 pub use commands::{Command, CommandContext, CommandHandler, CommandRegistry, CommandResult};
 pub use hooks::{Hook, HookContext, HookEngine, HookEventKind, HookHandler, HookOutcome};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Event {
     pub id: String,
     pub session_id: String,
@@ -19,6 +19,68 @@ pub struct Event {
     pub seq: u64,
     #[serde(flatten)]
     pub kind: EventKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StreamKind {
+    Session,
+    Task,
+    Continuity,
+    Artifact,
+}
+
+impl Event {
+    pub fn stream_kind(&self) -> StreamKind {
+        match &self.kind {
+            EventKind::ContinuityCreated { .. }
+            | EventKind::ContinuityMessageAppended { .. }
+            | EventKind::ContinuityRunSpawned { .. } => StreamKind::Continuity,
+            EventKind::ToolTaskSpawned { .. }
+            | EventKind::ToolTaskStatus { .. }
+            | EventKind::ToolTaskCancelRequested { .. }
+            | EventKind::ToolTaskCancelled { .. }
+            | EventKind::ToolTaskOutputDelta { .. }
+            | EventKind::ToolTaskStdinWritten { .. }
+            | EventKind::ToolTaskResized { .. }
+            | EventKind::ToolTaskSignalled { .. } => StreamKind::Task,
+            _ => StreamKind::Session,
+        }
+    }
+
+    pub fn stream_id(&self) -> &str {
+        &self.session_id
+    }
+}
+
+#[derive(Serialize)]
+struct EventWire<'a> {
+    id: &'a str,
+    session_id: &'a str,
+    stream_kind: StreamKind,
+    stream_id: &'a str,
+    timestamp_ms: u64,
+    seq: u64,
+    #[serde(flatten)]
+    kind: &'a EventKind,
+}
+
+impl Serialize for Event {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        EventWire {
+            id: &self.id,
+            session_id: &self.session_id,
+            stream_kind: self.stream_kind(),
+            stream_id: self.stream_id(),
+            timestamp_ms: self.timestamp_ms,
+            seq: self.seq,
+            kind: &self.kind,
+        }
+        .serialize(serializer)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -72,6 +134,20 @@ pub enum EventKind {
     },
     SessionEnded {
         reason: String,
+    },
+    ContinuityCreated {
+        /// Stable workspace identifier (currently the workspace root path as a string).
+        workspace: String,
+        title: Option<String>,
+    },
+    ContinuityMessageAppended {
+        actor_id: String,
+        origin: String,
+        content: String,
+    },
+    ContinuityRunSpawned {
+        run_session_id: String,
+        message_id: String,
     },
     ToolStarted {
         tool_id: String,
@@ -319,6 +395,9 @@ impl Session {
                 (Some(HookEventKind::Output), Some(delta.clone()))
             }
             EventKind::SessionEnded { .. } => (Some(HookEventKind::SessionEnded), None),
+            EventKind::ContinuityCreated { .. }
+            | EventKind::ContinuityMessageAppended { .. }
+            | EventKind::ContinuityRunSpawned { .. } => (None, None),
             EventKind::ProviderEvent { .. }
             | EventKind::ToolStarted { .. }
             | EventKind::ToolStdout { .. }

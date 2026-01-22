@@ -39,11 +39,11 @@ Notes
 | session.cancel | v1 | P1 | planned | supported | supported | planned | planned | planned | Cancel an active session. |
 | session.resume | v1 | P2 | planned | planned | planned | planned | planned | planned | Resume a prior session/run by id (debug/power feature; not the primary UX). |
 | session.previous_response | v1 | P2 | planned | planned | planned | planned | planned | planned | Continue from a prior response id (previous_response_id semantics). |
-| thread.ensure | v1 | P2 | planned | planned | planned | planned | planned | planned | Ensure a default continuity exists for the current workspace/user and return its id. |
-| thread.post_message | v1 | P2 | planned | planned | planned | planned | planned | planned | Append an actor message to a continuity; may trigger a new run and returns linkage. |
-| thread.stream_events | v1 | P2 | planned | planned | planned | planned | planned | planned | Stream continuity-level events (messages, summaries, links) independent of session runs. |
-| thread.list | v1 | P2 | planned | planned | planned | planned | planned | planned | List continuities (power/debug; filters by tags/query). |
-| thread.get | v1 | P2 | planned | planned | planned | planned | planned | planned | Get continuity metadata by id. |
+| thread.ensure | v1 | P1 | planned | supported | supported | planned | planned | planned | Ensure a default continuity exists for the current workspace/user and return its id. |
+| thread.post_message | v1 | P1 | planned | supported | supported | planned | planned | planned | Append an actor message to a continuity; may trigger a new run and returns linkage. |
+| thread.stream_events | v1 | P1 | planned | planned | supported | planned | planned | planned | Stream continuity-level events (messages, summaries, links) independent of session runs. |
+| thread.list | v1 | P1 | planned | planned | supported | planned | planned | planned | List continuities (power/debug; filters by tags/query). |
+| thread.get | v1 | P1 | planned | planned | supported | planned | planned | planned | Get continuity metadata by id. |
 | thread.branch | v1 | P2 | planned | planned | planned | planned | planned | planned | Branch/fork from a prior point. |
 | thread.handoff | v1 | P2 | planned | planned | planned | planned | planned | planned | Handoff work to a new thread with curated context. |
 | thread.reference | v1 | P2 | planned | planned | planned | planned | planned | planned | Reference another thread by id and extract context. |

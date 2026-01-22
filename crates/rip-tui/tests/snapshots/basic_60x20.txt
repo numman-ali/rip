@@ -6,10 +6,10 @@
 │  0     session_s "hi"      ││{                           │
 │  1     output_te "hello"   ││  "id": "e6",               │
 │  2     tool_star bash      ││  "session_id": "s1",       │
-│  3     tool_stdo "ok\n"    ││  "timestamp_ms": 1500,     │
-│  4     tool_ende exit=0    ││  "seq": 6,                 │
-│  5     provider_ done      ││  "type": "session_ended",  │
-│▸ 6     session_e "completed││  "reason": "completed"     │
+│  3     tool_stdo "ok\n"    ││  "stream_kind": "session", │
+│  4     tool_ende exit=0    ││  "stream_id": "s1",        │
+│  5     provider_ done      ││  "timestamp_ms": 1500,     │
+│▸ 6     session_e "completed││  "seq": 6,                 │
 └────────────────────────────┘└────────────────────────────┘
 ┌Output────────────────────────────────────────────────────┐
 │hello                                                     │

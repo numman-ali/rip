@@ -24,8 +24,12 @@ Now
 - Decisions (accepted):
   - Provider conversation state is a cache; continuity log is truth (cursor rotation is allowed/expected).
   - Keep Phase 1 invariant: `session == run/turn` (single-run sessions). "Continue later" targets a continuity.
+- Status (2026-01-22):
+  - Frames are now stream-aware on the wire (`stream_kind`, `stream_id`); replay validation is per-stream.
+  - Continuity store exists (`ensure_default`, `append_message`, `append_run_spawned`) and local `rip run` posts to the default continuity before spawning a run.
+  - Server now exposes `thread.*` (ensure/list/get/post_message/stream_events); parity gap remains for remote CLI default flow + SDK and continuity-first TUI UX.
 - Ready:
-  - Define v2 stream envelope + continuity stream frame types + provenance (`actor_id`, `origin`).
+  - Expand continuity frame types + provenance coverage beyond messages (runs, tool side-effects) and document the remaining envelope migration (eventually drop non-session `session_id`).
   - Define server endpoints: ensure/get/list/post_message/stream_events/branch/handoff and how they map to runs.
   - Define deterministic compaction checkpoints (e.g., 10k/20k/30k summaries) and provider cursor rotation logging.
   - Define concurrency rules: multiple jobs per continuity; workspace side-effects are scheduled/serialized.

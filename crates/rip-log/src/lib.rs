@@ -6,7 +6,7 @@ use std::{
     sync::Mutex,
 };
 
-use rip_kernel::Event;
+use rip_kernel::{Event, StreamKind};
 
 pub struct EventLog {
     path: PathBuf,
@@ -55,12 +55,20 @@ impl EventLog {
         Ok(events)
     }
 
-    pub fn replay_session(&self, session_id: &str) -> io::Result<Vec<Event>> {
+    pub fn replay_stream(
+        &self,
+        stream_kind: StreamKind,
+        stream_id: &str,
+    ) -> io::Result<Vec<Event>> {
         let events = self.replay_validated()?;
         Ok(events
             .into_iter()
-            .filter(|event| event.session_id == session_id)
+            .filter(|event| event.stream_kind() == stream_kind && event.stream_id() == stream_id)
             .collect())
+    }
+
+    pub fn replay_session(&self, session_id: &str) -> io::Result<Vec<Event>> {
+        self.replay_stream(StreamKind::Session, session_id)
     }
 }
 
@@ -96,31 +104,37 @@ pub fn verify_snapshot(log: &EventLog, snapshot_path: impl AsRef<Path>) -> io::R
         ));
     }
 
-    let session_id = snapshot_events[0].session_id.clone();
+    let stream_kind = snapshot_events[0].stream_kind();
+    let stream_id = snapshot_events[0].stream_id().to_string();
     if snapshot_events
         .iter()
-        .any(|event| event.session_id != session_id)
+        .any(|event| event.stream_kind() != stream_kind || event.stream_id() != stream_id)
     {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "snapshot contains multiple session ids",
+            "snapshot contains multiple stream ids",
         ));
     }
 
-    let replayed = log.replay_session(&session_id)?;
+    let replayed = log.replay_stream(stream_kind, &stream_id)?;
     compare_events(&replayed, &snapshot_events)
 }
 
 fn validate_event_order(events: &[Event]) -> io::Result<()> {
-    let mut expected: HashMap<&str, u64> = HashMap::new();
+    let mut expected: HashMap<(StreamKind, &str), u64> = HashMap::new();
     for event in events {
-        let entry = expected.entry(&event.session_id).or_insert(0);
+        let entry = expected
+            .entry((event.stream_kind(), event.stream_id()))
+            .or_insert(0);
         if event.seq != *entry {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!(
-                    "sequence mismatch for session {}: expected {}, got {}",
-                    event.session_id, entry, event.seq
+                    "sequence mismatch for stream {:?}/{}: expected {}, got {}",
+                    event.stream_kind(),
+                    event.stream_id(),
+                    entry,
+                    event.seq
                 ),
             ));
         }

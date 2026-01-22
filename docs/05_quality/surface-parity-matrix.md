@@ -11,11 +11,11 @@ Generated from docs/03_contracts/capability_registry.md.
 | session.cancel | planned | supported | supported | planned | planned | planned |
 | session.resume | planned | planned | planned | planned | planned | planned |
 | session.previous_response | planned | planned | planned | planned | planned | planned |
-| thread.ensure | planned | planned | planned | planned | planned | planned |
-| thread.post_message | planned | planned | planned | planned | planned | planned |
-| thread.stream_events | planned | planned | planned | planned | planned | planned |
-| thread.list | planned | planned | planned | planned | planned | planned |
-| thread.get | planned | planned | planned | planned | planned | planned |
+| thread.ensure | planned | supported | supported | planned | planned | planned |
+| thread.post_message | planned | supported | supported | planned | planned | planned |
+| thread.stream_events | planned | planned | supported | planned | planned | planned |
+| thread.list | planned | planned | supported | planned | planned | planned |
+| thread.get | planned | planned | supported | planned | planned | planned |
 | thread.branch | planned | planned | planned | planned | planned | planned |
 | thread.handoff | planned | planned | planned | planned | planned | planned |
 | thread.reference | planned | planned | planned | planned | planned | planned |

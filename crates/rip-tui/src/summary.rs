@@ -5,6 +5,9 @@ pub fn event_type(event: &Event) -> &'static str {
         EventKind::SessionStarted { .. } => "session_started",
         EventKind::OutputTextDelta { .. } => "output_text_delta",
         EventKind::SessionEnded { .. } => "session_ended",
+        EventKind::ContinuityCreated { .. } => "continuity_created",
+        EventKind::ContinuityMessageAppended { .. } => "continuity_message_appended",
+        EventKind::ContinuityRunSpawned { .. } => "continuity_run_spawned",
         EventKind::ToolStarted { .. } => "tool_started",
         EventKind::ToolStdout { .. } => "tool_stdout",
         EventKind::ToolStderr { .. } => "tool_stderr",
@@ -30,6 +33,19 @@ pub fn event_summary(event: &Event) -> String {
         EventKind::SessionStarted { input } => format!("{:?}", truncate(input, 64)),
         EventKind::OutputTextDelta { delta } => format!("{:?}", truncate(delta, 64)),
         EventKind::SessionEnded { reason } => format!("{:?}", truncate(reason, 64)),
+        EventKind::ContinuityCreated { workspace, title } => {
+            if let Some(title) = title.as_deref().filter(|t| !t.is_empty()) {
+                format!("{:?}", truncate(title, 64))
+            } else {
+                format!("{:?}", truncate(workspace, 64))
+            }
+        }
+        EventKind::ContinuityMessageAppended { content, .. } => {
+            format!("{:?}", truncate(content, 64))
+        }
+        EventKind::ContinuityRunSpawned { run_session_id, .. } => {
+            format!("run={}", truncate(run_session_id, 16))
+        }
         EventKind::ToolStarted { name, .. } => name.to_string(),
         EventKind::ToolStdout { chunk, .. } | EventKind::ToolStderr { chunk, .. } => {
             format!("{:?}", truncate(chunk, 64))
@@ -115,6 +131,28 @@ mod tests {
                     reason: "done".to_string(),
                 },
                 "session_ended",
+            ),
+            (
+                EventKind::ContinuityCreated {
+                    workspace: "/workspace".to_string(),
+                    title: None,
+                },
+                "continuity_created",
+            ),
+            (
+                EventKind::ContinuityMessageAppended {
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                    content: "hi".to_string(),
+                },
+                "continuity_message_appended",
+            ),
+            (
+                EventKind::ContinuityRunSpawned {
+                    run_session_id: "s1".to_string(),
+                    message_id: "m1".to_string(),
+                },
+                "continuity_run_spawned",
             ),
             (
                 EventKind::ToolStarted {

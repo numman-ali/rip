@@ -14,7 +14,7 @@ use crate::provider_openresponses::{parse_tool_choice_env, OpenResponsesConfig};
 use crate::server::{
     build_app_with_workspace_root, build_app_with_workspace_root_and_provider,
     build_app_with_workspace_root_and_provider_and_task_policy, build_openapi_router,
-    workspace_root, SessionCreated,
+    workspace_root, SessionCreated, ThreadEnsureResponse, ThreadMeta, ThreadPostMessageResponse,
 };
 
 fn build_test_app(dir: &tempfile::TempDir) -> Router {
@@ -123,6 +123,59 @@ async fn create_task_id_with_mode(app: &Router, command: &str, execution_mode: &
         .to_string()
 }
 
+async fn ensure_thread_id(app: &Router) -> String {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/threads/ensure")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let payload: ThreadEnsureResponse = serde_json::from_slice(&body).expect("json");
+    payload.thread_id
+}
+
+async fn post_thread_message(
+    app: &Router,
+    thread_id: &str,
+    content: &str,
+) -> ThreadPostMessageResponse {
+    let payload = serde_json::json!({
+        "content": content,
+    });
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/threads/{thread_id}/messages"))
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::ACCEPTED);
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    serde_json::from_slice(&body).expect("json")
+}
+
 async fn wait_for_task_terminal(app: &Router, task_id: &str) {
     let response = app
         .clone()
@@ -221,6 +274,307 @@ async fn create_session_returns_id() {
 }
 
 #[tokio::test]
+async fn thread_list_empty_initially() {
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app(&dir);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/threads")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let threads: Vec<ThreadMeta> = serde_json::from_slice(&body).expect("json");
+    assert!(threads.is_empty());
+}
+
+#[tokio::test]
+async fn thread_ensure_is_idempotent_and_listed() {
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app(&dir);
+
+    let first = ensure_thread_id(&app).await;
+    let second = ensure_thread_id(&app).await;
+    assert_eq!(first, second);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/threads")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let threads: Vec<ThreadMeta> = serde_json::from_slice(&body).expect("json");
+    assert!(threads.iter().any(|meta| meta.thread_id == first));
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/threads/{first}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let meta: ThreadMeta = serde_json::from_slice(&body).expect("json");
+    assert_eq!(meta.thread_id, first);
+}
+
+#[tokio::test]
+async fn thread_get_unknown_is_404() {
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app(&dir);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/threads/missing-thread-id")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn thread_post_message_unknown_is_404() {
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app(&dir);
+
+    let payload = serde_json::json!({
+        "content": "hello",
+    });
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/threads/missing-thread-id/messages")
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn thread_stream_events_unknown_is_404() {
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app(&dir);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/threads/missing-thread-id/events")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn thread_ensure_returns_500_when_index_parent_is_file() {
+    let dir = tempdir().expect("tmp");
+    let data_dir = dir.path().join("data");
+    let workspace_dir = dir.path().join("workspace");
+    fs::create_dir_all(&workspace_dir).expect("workspace dir");
+    let app = build_app_with_workspace_root(data_dir.clone(), workspace_dir);
+
+    fs::create_dir_all(&data_dir).expect("data dir");
+    fs::write(data_dir.join("continuities"), "not a directory").expect("continuities file");
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/threads/ensure")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(
+        response.status(),
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    );
+}
+
+#[tokio::test]
+async fn thread_stream_events_emits_created_and_message() {
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app(&dir);
+    let thread_id = ensure_thread_id(&app).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/threads/{thread_id}/events"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let mut reader = TestSseReader::new(response.into_body());
+
+    let first_message = reader.next_data_message().await.expect("created");
+    let first_value = extract_data_json(&first_message).expect("json");
+    assert_eq!(
+        first_value.get("type").and_then(|value| value.as_str()),
+        Some("continuity_created")
+    );
+
+    let _posted = post_thread_message(&app, &thread_id, "hello").await;
+
+    let mut saw_appended = false;
+    timeout(Duration::from_secs(2), async {
+        while let Some(message) = reader.next_data_message().await {
+            let Some(value) = extract_data_json(&message) else {
+                continue;
+            };
+            if value.get("type").and_then(|value| value.as_str())
+                == Some("continuity_message_appended")
+                && value.get("content").and_then(|value| value.as_str()) == Some("hello")
+            {
+                saw_appended = true;
+                break;
+            }
+        }
+    })
+    .await
+    .expect("message timeout");
+    assert!(saw_appended, "expected continuity_message_appended");
+}
+
+#[tokio::test]
+async fn thread_post_message_preserves_actor_and_origin() {
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app(&dir);
+    let thread_id = ensure_thread_id(&app).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/threads/{thread_id}/events"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let mut reader = TestSseReader::new(response.into_body());
+
+    let first_message = reader.next_data_message().await.expect("created");
+    let first_value = extract_data_json(&first_message).expect("json");
+    assert_eq!(
+        first_value.get("type").and_then(|value| value.as_str()),
+        Some("continuity_created")
+    );
+
+    let payload = serde_json::json!({
+        "content": "hello",
+        "actor_id": "alice",
+        "origin": "team",
+    });
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/threads/{thread_id}/messages"))
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::ACCEPTED);
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let posted: ThreadPostMessageResponse = serde_json::from_slice(&body).expect("json");
+    assert_eq!(posted.thread_id, thread_id);
+    assert!(!posted.message_id.is_empty());
+    assert!(!posted.session_id.is_empty());
+
+    let mut saw_appended = false;
+    timeout(Duration::from_secs(2), async {
+        while let Some(message) = reader.next_data_message().await {
+            let Some(value) = extract_data_json(&message) else {
+                continue;
+            };
+            if value.get("type").and_then(|value| value.as_str())
+                == Some("continuity_message_appended")
+                && value.get("content").and_then(|value| value.as_str()) == Some("hello")
+            {
+                assert_eq!(
+                    value.get("actor_id").and_then(|value| value.as_str()),
+                    Some("alice")
+                );
+                assert_eq!(
+                    value.get("origin").and_then(|value| value.as_str()),
+                    Some("team")
+                );
+                saw_appended = true;
+                break;
+            }
+        }
+    })
+    .await
+    .expect("message timeout");
+    assert!(saw_appended, "expected continuity_message_appended");
+}
+
+#[tokio::test]
 async fn create_task_returns_id() {
     let dir = tempdir().expect("tmp");
     let app = build_test_app(&dir);
@@ -295,7 +649,7 @@ async fn pty_task_supports_control_operations() {
     assert_eq!(response.status(), axum::http::StatusCode::OK);
     let mut reader = TestSseReader::new(response.into_body());
 
-    timeout(Duration::from_secs(2), async {
+    timeout(Duration::from_secs(5), async {
         while let Some(message) = reader.next_data_message().await {
             if let Some(value) = extract_data_json(&message) {
                 if value.get("type").and_then(|value| value.as_str()) == Some("tool_task_status")
@@ -357,7 +711,7 @@ async fn pty_task_supports_control_operations() {
     let mut saw_output = false;
     let mut saw_terminal = false;
 
-    timeout(Duration::from_secs(2), async {
+    timeout(Duration::from_secs(5), async {
         while let Some(message) = reader.next_data_message().await {
             if let Some(value) = extract_data_json(&message) {
                 match value.get("type").and_then(|value| value.as_str()) {

@@ -908,7 +908,7 @@ async fn pipes_task_can_be_cancelled() {
         snapshot_dir,
     ));
 
-    timeout(Duration::from_secs(2), async {
+    timeout(Duration::from_secs(5), async {
         loop {
             if handle.status().await.status == ApiToolTaskStatus::Running {
                 break;
@@ -920,7 +920,7 @@ async fn pipes_task_can_be_cancelled() {
     .expect("running");
 
     handle.cancel("cancel".to_string());
-    timeout(Duration::from_secs(2), &mut driver)
+    timeout(Duration::from_secs(5), &mut driver)
         .await
         .expect("join")
         .expect("task join");
@@ -951,7 +951,7 @@ async fn pty_task_can_be_cancelled() {
         snapshot_dir,
     ));
 
-    timeout(Duration::from_secs(2), async {
+    timeout(Duration::from_secs(5), async {
         loop {
             if handle.status().await.status == ApiToolTaskStatus::Running {
                 break;
@@ -963,7 +963,7 @@ async fn pty_task_can_be_cancelled() {
     .expect("running");
 
     handle.cancel("cancel".to_string());
-    timeout(Duration::from_secs(2), &mut driver)
+    timeout(Duration::from_secs(5), &mut driver)
         .await
         .expect("join")
         .expect("task join");

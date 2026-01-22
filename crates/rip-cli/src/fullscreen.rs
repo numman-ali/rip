@@ -46,7 +46,10 @@ pub async fn run_fullscreen_tui(initial_prompt: Option<String>) -> anyhow::Resul
 
     let mut receiver: Option<broadcast::Receiver<FrameEvent>> = None;
     if !input.trim().is_empty() {
-        receiver = Some(start_local_session(&engine, std::mem::take(&mut input)));
+        match start_local_session(&engine, std::mem::take(&mut input)) {
+            Ok(next) => receiver = Some(next),
+            Err(err) => state.set_status_message(format!("start failed: {err}")),
+        }
     }
 
     let mut term_events = EventStream::new();
@@ -80,7 +83,10 @@ pub async fn run_fullscreen_tui(initial_prompt: Option<String>) -> anyhow::Resul
                                 state = TuiState::default();
                                 state.theme = theme;
                                 state.status_message = status_message;
-                                receiver = Some(start_local_session(&engine, prompt));
+                                match start_local_session(&engine, prompt) {
+                                    Ok(next) => receiver = Some(next),
+                                    Err(err) => state.set_status_message(format!("start failed: {err}")),
+                                }
                             }
                         }
                     }
@@ -261,11 +267,21 @@ pub async fn run_fullscreen_tui_attach_task(server: String, task_id: String) -> 
 fn start_local_session(
     engine: &ripd::SessionEngine,
     prompt: String,
-) -> broadcast::Receiver<FrameEvent> {
+) -> Result<broadcast::Receiver<FrameEvent>, String> {
+    let continuities = engine.continuities();
+    let continuity_id = continuities.ensure_default()?;
+    let message_id = continuities.append_message(
+        &continuity_id,
+        "user".to_string(),
+        "tui".to_string(),
+        prompt.clone(),
+    )?;
+
     let handle = engine.create_session();
+    continuities.append_run_spawned(&continuity_id, &message_id, &handle.session_id)?;
     let receiver = handle.subscribe();
     engine.spawn_session(handle, prompt);
-    receiver
+    Ok(receiver)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

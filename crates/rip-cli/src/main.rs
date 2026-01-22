@@ -627,7 +627,23 @@ async fn run_local_with_engine(
     view: OutputView,
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
+    let continuities = engine.continuities();
+    let continuity_id = continuities
+        .ensure_default()
+        .map_err(|err| anyhow::anyhow!("continuity ensure: {err}"))?;
+    let message_id = continuities
+        .append_message(
+            &continuity_id,
+            "user".to_string(),
+            "cli".to_string(),
+            prompt.clone(),
+        )
+        .map_err(|err| anyhow::anyhow!("continuity post message: {err}"))?;
+
     let handle = engine.create_session();
+    continuities
+        .append_run_spawned(&continuity_id, &message_id, &handle.session_id)
+        .map_err(|err| anyhow::anyhow!("continuity run spawned: {err}"))?;
     let mut receiver = handle.subscribe();
     engine.spawn_session(handle, prompt);
     stream_events_from_receiver(&mut receiver, view, out).await
@@ -1279,6 +1295,67 @@ mod tests {
         let rendered = String::from_utf8(buffer).expect("utf8");
         assert!(rendered.contains("\"type\":\"session_started\""));
         assert!(rendered.contains("\"type\":\"session_ended\""));
+
+        let log_path = root.join("data").join("events.jsonl");
+        let log = std::fs::read_to_string(&log_path).expect("event log");
+        let events: Vec<rip_kernel::Event> = log
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| serde_json::from_str(line).expect("event json"))
+            .collect();
+
+        let continuity_id = events
+            .iter()
+            .find_map(|event| match &event.kind {
+                rip_kernel::EventKind::ContinuityCreated { .. } => Some(event.session_id.clone()),
+                _ => None,
+            })
+            .expect("continuity created");
+        let message_event = events
+            .iter()
+            .find(|event| {
+                event.session_id == continuity_id
+                    && matches!(
+                        &event.kind,
+                        rip_kernel::EventKind::ContinuityMessageAppended { content, .. }
+                            if content == "hello"
+                    )
+            })
+            .expect("continuity message");
+        let message_id = message_event.id.clone();
+        let run_event = events
+            .iter()
+            .find(|event| {
+                event.session_id == continuity_id
+                    && matches!(
+                        &event.kind,
+                        rip_kernel::EventKind::ContinuityRunSpawned { message_id: mid, .. }
+                            if mid == &message_id
+                    )
+            })
+            .expect("continuity run spawned");
+        let rip_kernel::EventKind::ContinuityRunSpawned { run_session_id, .. } = &run_event.kind
+        else {
+            unreachable!("continuity run spawned match")
+        };
+
+        let session_events: Vec<&rip_kernel::EventKind> = events
+            .iter()
+            .filter(|event| event.session_id == *run_session_id)
+            .map(|event| &event.kind)
+            .collect();
+        assert!(
+            session_events
+                .iter()
+                .any(|kind| matches!(kind, rip_kernel::EventKind::SessionStarted { .. })),
+            "expected linked run to emit session_started"
+        );
+        assert!(
+            session_events
+                .iter()
+                .any(|kind| matches!(kind, rip_kernel::EventKind::SessionEnded { .. })),
+            "expected linked run to emit session_ended"
+        );
 
         let _ = std::fs::remove_dir_all(&root);
     }

@@ -104,6 +104,7 @@ fn tool_param_variants_are_valid() {
     let tools = vec![
         ToolParam::code_interpreter("cntr_123"),
         ToolParam::code_interpreter_auto(Some(vec!["file_1".to_string()]), Some("4g".to_string())),
+        ToolParam::code_interpreter_auto(None, None),
         ToolParam::custom("custom"),
         ToolParam::web_search(),
         ToolParam::web_search_2025_08_26(),

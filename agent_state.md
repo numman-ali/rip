@@ -1,6 +1,6 @@
 # Agent State (Working Log)
 
-Last updated: 2026-01-21
+Last updated: 2026-01-22
 
 How to use
 - Update this file whenever focus shifts, before ending a work session, and when blocked.
@@ -16,7 +16,10 @@ Current focus
 - Background tool tasks are implemented (`pipes` + policy-gated `pty`) with deterministic replay fixtures.
 - Operator gate: capability delivery order is `cli_h(local)` -> `tui` -> `server` -> `remote` -> `sdk`.
 - Terminology: see `docs/02_architecture/runtime_and_control_plane.md` (runtime vs control plane vs remote runtime).
-- Next up: implement continuity stream + provenance + "post message" flow (local first) per `docs/07_tasks/roadmap.md`.
+- Implemented: stream-aware frame envelope on the wire (`stream_kind`, `stream_id`) + per-stream replay validation.
+- Implemented: continuity store (`ensure_default`, `append_message`, `append_run_spawned`) + local `rip run` posts to the default continuity before spawning a run.
+- Implemented: server exposes `thread.*` (ensure/list/get/post_message/stream_events) and OpenAPI is updated.
+- Next up: remote mode parity (`rip run --server ...` should call `thread.post_message` by default) and continuity-first TUI/SDK flows.
 - Keep CI/bench gates green; ratchet budgets only with replay coverage.
 
 Reorientation (read in order after compaction)
@@ -32,7 +35,8 @@ Reorientation (read in order after compaction)
 - `docs/07_tasks/openresponses_coverage.md`
 
 Open risks / notes
-- `cargo test -p ripd` can create an untracked `crates/ripd/data/` directory (cleanup or fix default test data dir).
+- Tests no longer write `./data` under the repo (ripd export test uses temp dirs).
+- Note: local runs still default to `./data` unless `RIP_DATA_DIR` is set.
 
 Active priorities
 - Keep roadmap Now/Next aligned with the implementation work.

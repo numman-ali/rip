@@ -4,10 +4,12 @@ Summary
 - Canonical internal event schema for all surfaces.
 - Frames are compact structs in Rust; JSON only at the edges (SSE/logging).
 
-Schema (v1 — session-scoped)
+Schema (Phase 1 — stream-aware envelope)
 - `id`: string (uuid)
-- `session_id`: string (uuid)
-- `seq`: u64 (monotonic per session)
+- `session_id`: string (uuid) (legacy alias; equals `stream_id`)
+- `stream_kind`: `"session"` | `"task"` | `"continuity"` | `"artifact"` (extensible)
+- `stream_id`: string (e.g. session id, task id, continuity id)
+- `seq`: u64 (monotonic per `{stream_kind, stream_id}`)
 - `timestamp_ms`: u64 (unix epoch ms)
 - `type`: string (frame type)
 - `payload`: fields defined by `type` (serialized alongside `type`)
@@ -19,6 +21,16 @@ Frame types
   - `delta`: string
 - `session_ended`
   - `reason`: string
+- `continuity_created`
+  - `workspace`: string (current: workspace root path)
+  - `title`: string | null
+- `continuity_message_appended`
+  - `actor_id`: string
+  - `origin`: string
+  - `content`: string
+- `continuity_run_spawned`
+  - `run_session_id`: string (uuid)
+  - `message_id`: string (uuid)
 - `tool_started`
   - `tool_id`: string (uuid)
   - `name`: string
@@ -62,38 +74,29 @@ Frame types
   - `error`: string
 
 Invariants
-- `seq` starts at 0 and increments by 1 for each emitted frame.
-- Frames are append-only and ordered within a session.
+- `seq` starts at 0 and increments by 1 for each emitted frame in the same stream.
+- Frames are append-only and ordered within a stream (`{stream_kind, stream_id}`).
 - `session_ended` is the terminal frame for a runtime-generated session.
-- Background tool tasks are modeled as **task event streams** and are encoded using the v1 envelope for now:
-  - `session_id` holds the `task_id` (stream id) for task streams.
+- Background tool tasks are modeled as **task event streams**:
+  - `stream_kind="task"`, `stream_id=task_id` (`session_id` remains an alias for compatibility).
   - Task streams do not emit `session_started/session_ended`; lifecycle is expressed via `tool_task_*` frames.
+- Continuities (“threads”) are modeled as **continuity event streams**:
+  - `stream_kind="continuity"`, `stream_id=continuity_id` (`session_id` remains an alias for compatibility).
 - Provider adapters emit `provider_event` for every SSE event (no drops).
 - Automatic checkpoint events for file-edit tools are emitted before the tool starts.
 
 Example
 ```
-{"id":"...","session_id":"...","timestamp_ms":0,"seq":0,"type":"session_started","input":"hi"}
-{"id":"...","session_id":"...","timestamp_ms":1,"seq":1,"type":"provider_event","provider":"openresponses","status":"event","event_name":"response.output_text.delta","data":{"type":"response.output_text.delta","delta":"hi"},"raw":null,"errors":[],"response_errors":[]}
-{"id":"...","session_id":"...","timestamp_ms":2,"seq":2,"type":"output_text_delta","delta":"ack: hi"}
-{"id":"...","session_id":"...","timestamp_ms":3,"seq":3,"type":"session_ended","reason":"completed"}
+{"id":"...","session_id":"...","stream_kind":"session","stream_id":"...","timestamp_ms":0,"seq":0,"type":"session_started","input":"hi"}
+{"id":"...","session_id":"...","stream_kind":"session","stream_id":"...","timestamp_ms":1,"seq":1,"type":"provider_event","provider":"openresponses","status":"event","event_name":"response.output_text.delta","data":{"type":"response.output_text.delta","delta":"hi"},"raw":null,"errors":[],"response_errors":[]}
+{"id":"...","session_id":"...","stream_kind":"session","stream_id":"...","timestamp_ms":2,"seq":2,"type":"output_text_delta","delta":"ack: hi"}
+{"id":"...","session_id":"...","stream_kind":"session","stream_id":"...","timestamp_ms":3,"seq":3,"type":"session_ended","reason":"completed"}
 ```
 
 Phase 2 (planned additions)
 
-Schema (v2 — stream-scoped; planned)
-- Phase 2 introduces additional event streams beyond sessions (notably tool tasks). Frames remain the canonical interchange, but the envelope gains an explicit stream scope.
-- `id`: string (uuid)
-- `stream_kind`: `"session"` | `"task"` | `"continuity"` | `"artifact"` (extensible)
-- `stream_id`: string (e.g. session id, task id)
-- `seq`: u64 (monotonic per `{stream_kind, stream_id}`)
-- `timestamp_ms`: u64 (unix epoch ms)
-- `type`: string (frame type)
-- `payload`: fields defined by `type`
-- Compatibility:
-  - Session streams may continue to include `session_id` as an alias of `{stream_id}` while v1 is still supported.
-  - Task streams never emit `session_started/session_ended`; their lifecycle is expressed via task/tool frames.
-  - “Thread” in older docs/capabilities is a synonym for **continuity** (user-facing “one chat” identity).
+Schema (planned tightening)
+- Phase 2 removes v1-only ambiguity by making `session_id` session-only (dropping it from non-session streams) once all surfaces consume `{stream_kind, stream_id}`.
 
 - Provenance (planned):
   - Frames that represent an input/action should carry `actor_id` and `origin` metadata so shared/team continuities remain replayable.

@@ -7,11 +7,13 @@ Summary
 
 Inputs
 - Session lifecycle requests (start, send input, cancel).
+- Thread ("continuity") requests (ensure/list/get/post message).
 - Tool/checkpoint command envelopes via session input (for deterministic testing).
 
 Outputs
 - Structured event stream over SSE (event frames: `docs/03_contracts/event_frames.md`).
 - Session status and artifacts.
+- Thread ("continuity") event streams over SSE (messages, run links, summaries).
 - OpenAPI spec generated from server code and exposed at a canonical endpoint.
 
 Config
@@ -27,10 +29,9 @@ Tests
 - OpenAPI schema generation/validation tests.
 
 Phase 2 planned extensions
-- Continuities (“threads”) as the user-facing entity:
-  - ensure/get/list + post message
-  - continuity-level event streams (messages, summaries, links) independent of session runs
+- Continuities (“threads”) advanced semantics:
   - branch/handoff/reference/share semantics
+  - compaction + summarization checkpoints + cursor rotation logs
 - Background tool tasks (task entities) with their own event streams and control APIs:
   - spawn/status/cancel + stream events
   - interactive PTY control (stdin/resize/signal) when enabled by policy

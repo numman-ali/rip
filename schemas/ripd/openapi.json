@@ -386,6 +386,139 @@
           }
         }
       }
+    },
+    "/threads": {
+      "get": {
+        "operationId": "thread_list",
+        "responses": {
+          "200": {
+            "description": "List threads",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ThreadMeta"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/threads/ensure": {
+      "post": {
+        "operationId": "thread_ensure",
+        "responses": {
+          "200": {
+            "description": "Default thread ensured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadEnsureResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/threads/{id}": {
+      "get": {
+        "operationId": "thread_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Thread id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Thread metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadMeta"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Thread not found"
+          }
+        }
+      }
+    },
+    "/threads/{id}/events": {
+      "get": {
+        "operationId": "thread_stream_events",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Thread id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE stream of thread event frames"
+          },
+          "404": {
+            "description": "Thread not found"
+          }
+        }
+      }
+    },
+    "/threads/{id}/messages": {
+      "post": {
+        "operationId": "thread_post_message",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Thread id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreadPostMessagePayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Message accepted and run started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadPostMessageResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Thread not found"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -637,6 +770,86 @@
         ],
         "properties": {
           "chunk_b64": {
+            "type": "string"
+          }
+        }
+      },
+      "ThreadEnsureResponse": {
+        "type": "object",
+        "required": [
+          "thread_id"
+        ],
+        "properties": {
+          "thread_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ThreadMeta": {
+        "type": "object",
+        "required": [
+          "thread_id",
+          "created_at_ms",
+          "archived"
+        ],
+        "properties": {
+          "archived": {
+            "type": "boolean"
+          },
+          "created_at_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "thread_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ThreadPostMessagePayload": {
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "properties": {
+          "actor_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "content": {
+            "type": "string"
+          },
+          "origin": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ThreadPostMessageResponse": {
+        "type": "object",
+        "required": [
+          "thread_id",
+          "message_id",
+          "session_id"
+        ],
+        "properties": {
+          "message_id": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "thread_id": {
             "type": "string"
           }
         }
