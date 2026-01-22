@@ -3,6 +3,11 @@ export type {
   RipOptions,
   RipRunOptions,
   RipTurn,
+  RipThreadOptions,
+  RipThreadEnsureResponse,
+  RipThreadMeta,
+  RipThreadPostMessageRequest,
+  RipThreadPostMessageResponse,
   RipTaskOptions,
   RipTaskSpawnRequest,
   RipTaskCreated,
@@ -10,4 +15,12 @@ export type {
   RipTaskOutput,
 } from "./rip.js";
 export { Rip, RipExecError } from "./rip.js";
-export { buildRipRunArgs, collectOutputText } from "./util.js";
+export {
+  buildRipRunArgs,
+  buildRipThreadEnsureArgs,
+  buildRipThreadListArgs,
+  buildRipThreadGetArgs,
+  buildRipThreadPostMessageArgs,
+  buildRipThreadEventsArgs,
+  collectOutputText,
+} from "./util.js";

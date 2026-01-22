@@ -53,3 +53,51 @@ test("Rip SDK runs `rip` locally and parses JSONL frames", async () => {
     await rm(dataDir, { recursive: true, force: true });
   }
 });
+
+test("Rip SDK exposes continuity-first thread.* via `rip threads`", async () => {
+  const repoRoot = repoRootFromSdkCwd();
+  const ripPath = ripExecutablePath(repoRoot);
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-threads-"));
+
+  const opts = {
+    cwd: repoRoot,
+    env: {
+      RIP_DATA_DIR: dataDir,
+      RIP_WORKSPACE_ROOT: path.join(repoRoot, "fixtures", "repo_small"),
+    },
+    unsetEnv: [
+      "RIP_OPENRESPONSES_ENDPOINT",
+      "RIP_OPENRESPONSES_API_KEY",
+      "RIP_OPENRESPONSES_MODEL",
+      "RIP_OPENRESPONSES_TOOL_CHOICE",
+      "RIP_OPENRESPONSES_STATELESS_HISTORY",
+      "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
+      "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
+    ],
+  } as const;
+
+  try {
+    const rip = new Rip({ executablePath: ripPath });
+    const ensured = await rip.threadEnsure(opts);
+    assert.ok(ensured.thread_id.length > 0);
+
+    const list = await rip.threadList(opts);
+    assert.ok(list.some((thread) => thread.thread_id === ensured.thread_id));
+
+    const meta = await rip.threadGet(ensured.thread_id, opts);
+    assert.equal(meta.thread_id, ensured.thread_id);
+
+    const posted = await rip.threadPostMessage(ensured.thread_id, { content: "hello" }, opts);
+    assert.equal(posted.thread_id, ensured.thread_id);
+    assert.ok(posted.message_id.length > 0);
+    assert.ok(posted.session_id.length > 0);
+
+    const { result } = await rip.threadEventsStreamed(ensured.thread_id, opts, { maxEvents: 3 });
+    const frames = await result;
+    assert.ok(frames.some((frame) => frame.type === "continuity_created"));
+    assert.ok(frames.some((frame) => frame.type === "continuity_message_appended"));
+    assert.ok(frames.some((frame) => frame.type === "continuity_run_spawned"));
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});

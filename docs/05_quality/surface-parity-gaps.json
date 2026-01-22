@@ -22,25 +22,25 @@
       "expires_on": "2026-03-01"
     },
     {
-      "capability_id": "thread.list",
-      "surface": "cli_h",
-      "owner": "surfaces",
-      "reason": "Headless CLI defaults to the single-thread UX and does not expose power/debug thread listing yet; use the server API for now.",
-      "expires_on": "2026-03-15"
+      "capability_id": "checkpoint.auto",
+      "surface": "sdk",
+      "owner": "sdk",
+      "reason": "SDK consumes checkpoint frames, but does not yet expose checkpoint controls (rewind/persist) as a first-class API surface.",
+      "expires_on": "2026-03-01"
     },
     {
-      "capability_id": "thread.get",
-      "surface": "cli_h",
-      "owner": "surfaces",
-      "reason": "Headless CLI does not expose explicit thread inspection yet; use the server API for now.",
-      "expires_on": "2026-03-15"
+      "capability_id": "checkpoint.rewind",
+      "surface": "sdk",
+      "owner": "sdk",
+      "reason": "SDK does not yet expose checkpoint rewind controls; add explicit checkpoint APIs once the capability contract is finalized.",
+      "expires_on": "2026-03-01"
     },
     {
-      "capability_id": "thread.stream_events",
-      "surface": "cli_h",
-      "owner": "surfaces",
-      "reason": "Headless CLI does not expose continuity event streaming yet (server supports it); add a `rip thread events` surface later.",
-      "expires_on": "2026-03-15"
+      "capability_id": "checkpoint.persist",
+      "surface": "sdk",
+      "owner": "sdk",
+      "reason": "SDK does not yet expose checkpoint persistence management; consumers rely on event log + snapshots indirectly today.",
+      "expires_on": "2026-03-01"
     }
   ]
 }

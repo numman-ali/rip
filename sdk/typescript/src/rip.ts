@@ -2,20 +2,27 @@ import { spawn } from "node:child_process";
 import readline from "node:readline";
 
 import type { RipEventFrame } from "./frames.js";
-import { buildRipRunArgs } from "./util.js";
+import {
+  buildRipRunArgs,
+  buildRipThreadEnsureArgs,
+  buildRipThreadEventsArgs,
+  buildRipThreadGetArgs,
+  buildRipThreadListArgs,
+  buildRipThreadPostMessageArgs,
+} from "./util.js";
 
 export type RipOptions = {
   executablePath?: string;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
-  unsetEnv?: string[];
+  unsetEnv?: readonly string[];
 };
 
 export type RipRunOptions = {
   server?: string;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
-  unsetEnv?: string[];
+  unsetEnv?: readonly string[];
   executablePath?: string;
   signal?: AbortSignal;
   extraArgs?: string[];
@@ -25,7 +32,16 @@ export type RipTaskOptions = {
   server: string;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
-  unsetEnv?: string[];
+  unsetEnv?: readonly string[];
+  executablePath?: string;
+  signal?: AbortSignal;
+};
+
+export type RipThreadOptions = {
+  server?: string;
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  unsetEnv?: readonly string[];
   executablePath?: string;
   signal?: AbortSignal;
 };
@@ -34,6 +50,29 @@ export type RipTurn = {
   frames: RipEventFrame[];
   finalOutput: string;
   exitCode: number;
+};
+
+export type RipThreadEnsureResponse = {
+  thread_id: string;
+};
+
+export type RipThreadMeta = {
+  thread_id: string;
+  created_at_ms: number;
+  title: string | null;
+  archived: boolean;
+};
+
+export type RipThreadPostMessageRequest = {
+  content: string;
+  actor_id?: string;
+  origin?: string;
+};
+
+export type RipThreadPostMessageResponse = {
+  thread_id: string;
+  message_id: string;
+  session_id: string;
 };
 
 export type RipTaskSpawnRequest = {
@@ -215,6 +254,52 @@ export class Rip {
     return { events: events(), result };
   }
 
+  async threadEnsure(options: RipThreadOptions = {}): Promise<RipThreadEnsureResponse> {
+    const out = await this.execJson(buildRipThreadEnsureArgs({ server: options.server }), options);
+    return out as RipThreadEnsureResponse;
+  }
+
+  async threadList(options: RipThreadOptions = {}): Promise<RipThreadMeta[]> {
+    const out = await this.execJson(buildRipThreadListArgs({ server: options.server }), options);
+    return out as RipThreadMeta[];
+  }
+
+  async threadGet(threadId: string, options: RipThreadOptions = {}): Promise<RipThreadMeta> {
+    const out = await this.execJson(buildRipThreadGetArgs(threadId, { server: options.server }), options);
+    return out as RipThreadMeta;
+  }
+
+  async threadPostMessage(
+    threadId: string,
+    request: RipThreadPostMessageRequest,
+    options: RipThreadOptions = {},
+  ): Promise<RipThreadPostMessageResponse> {
+    const actorId = request.actor_id ?? "user";
+    const origin = request.origin ?? "sdk-ts";
+    const out = await this.execJson(
+      buildRipThreadPostMessageArgs(threadId, request.content, {
+        server: options.server,
+        actorId,
+        origin,
+      }),
+      options,
+    );
+    return out as RipThreadPostMessageResponse;
+  }
+
+  async threadEventsStreamed(
+    threadId: string,
+    options: RipThreadOptions = {},
+    query: { maxEvents?: number } = {},
+  ): Promise<{ events: AsyncGenerator<RipEventFrame>; result: Promise<RipEventFrame[]> }> {
+    const args = buildRipThreadEventsArgs(threadId, {
+      server: options.server,
+      maxEvents: query.maxEvents,
+    });
+    const { events, result } = await this.execJsonlFrames(args, options);
+    return { events, result };
+  }
+
   async taskSpawn(request: RipTaskSpawnRequest, options: RipTaskOptions): Promise<RipTaskCreated> {
     const executionMode = request.execution_mode ?? "pipes";
     const out = await this.execJson(
@@ -301,7 +386,10 @@ export class Rip {
     return { events, result };
   }
 
-  private async execRaw(args: string[], options: RipTaskOptions | RipRunOptions): Promise<{ stdout: string; stderr: string }> {
+  private async execRaw(
+    args: string[],
+    options: RipTaskOptions | RipRunOptions | RipThreadOptions,
+  ): Promise<{ stdout: string; stderr: string }> {
     const executablePath = options.executablePath ?? this.base.executablePath ?? "rip";
     const cwd = options.cwd ?? this.base.cwd;
     const env = mergeEnv(process.env, this.base.env, options.env);
@@ -338,7 +426,7 @@ export class Rip {
     return { stdout, stderr };
   }
 
-  private async execJson(args: string[], options: RipTaskOptions | RipRunOptions): Promise<unknown> {
+  private async execJson(args: string[], options: RipTaskOptions | RipRunOptions | RipThreadOptions): Promise<unknown> {
     const { stdout } = await this.execRaw(args, options);
     const trimmed = stdout.trim();
     if (!trimmed) return null;
@@ -347,7 +435,7 @@ export class Rip {
 
   private async execJsonlFrames(
     args: string[],
-    options: RipTaskOptions | RipRunOptions,
+    options: RipTaskOptions | RipRunOptions | RipThreadOptions,
   ): Promise<{ events: AsyncGenerator<RipEventFrame>; result: Promise<RipEventFrame[]> }> {
     const executablePath = options.executablePath ?? this.base.executablePath ?? "rip";
     const cwd = options.cwd ?? this.base.cwd;
@@ -468,7 +556,7 @@ function mergeEnv(...envs: Array<NodeJS.ProcessEnv | undefined>): Record<string,
   return merged;
 }
 
-function unsetEnvVars(env: Record<string, string>, unset: string[] | undefined) {
+function unsetEnvVars(env: Record<string, string>, unset: readonly string[] | undefined) {
   if (!unset?.length) return;
   for (const key of unset) {
     delete env[key];

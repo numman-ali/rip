@@ -32,18 +32,18 @@ Notes
 - Provider state (`previous_response_id`, vendor thread ids) is a cache; continuities remain stable when provider cursors rotate.
 | id | v | phase | cli_i | cli_h | server | sdk | tui | mcp | intent |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| session.create | v1 | P1 | planned | supported | supported | planned | planned | planned | Start a new session. |
-| session.send_input | v1 | P1 | planned | supported | supported | planned | planned | planned | Send input to an active session. |
+| session.create | v1 | P1 | planned | supported | supported | supported | planned | planned | Start a new session. |
+| session.send_input | v1 | P1 | planned | supported | supported | supported | planned | planned | Send input to an active session. |
 | session.set_model | v1 | P2 | planned | planned | planned | planned | planned | planned | Change the active session's provider/model selection (applies forward only). |
-| session.stream_events | v1 | P1 | planned | supported | supported | planned | planned | planned | Stream session events. |
-| session.cancel | v1 | P1 | planned | supported | supported | planned | planned | planned | Cancel an active session. |
+| session.stream_events | v1 | P1 | planned | supported | supported | supported | planned | planned | Stream session events. |
+| session.cancel | v1 | P1 | planned | supported | supported | supported | planned | planned | Cancel an active session. |
 | session.resume | v1 | P2 | planned | planned | planned | planned | planned | planned | Resume a prior session/run by id (debug/power feature; not the primary UX). |
 | session.previous_response | v1 | P2 | planned | planned | planned | planned | planned | planned | Continue from a prior response id (previous_response_id semantics). |
-| thread.ensure | v1 | P1 | planned | supported | supported | planned | planned | planned | Ensure a default continuity exists for the current workspace/user and return its id. |
-| thread.post_message | v1 | P1 | planned | supported | supported | planned | planned | planned | Append an actor message to a continuity; may trigger a new run and returns linkage. |
-| thread.stream_events | v1 | P1 | planned | planned | supported | planned | planned | planned | Stream continuity-level events (messages, summaries, links) independent of session runs. |
-| thread.list | v1 | P1 | planned | planned | supported | planned | planned | planned | List continuities (power/debug; filters by tags/query). |
-| thread.get | v1 | P1 | planned | planned | supported | planned | planned | planned | Get continuity metadata by id. |
+| thread.ensure | v1 | P1 | planned | supported | supported | supported | planned | planned | Ensure a default continuity exists for the current workspace/user and return its id. |
+| thread.post_message | v1 | P1 | planned | supported | supported | supported | planned | planned | Append an actor message to a continuity; may trigger a new run and returns linkage. |
+| thread.stream_events | v1 | P1 | planned | supported | supported | supported | planned | planned | Stream continuity-level events (messages, summaries, links) independent of session runs. |
+| thread.list | v1 | P1 | planned | supported | supported | supported | planned | planned | List continuities (power/debug; filters by tags/query). |
+| thread.get | v1 | P1 | planned | supported | supported | supported | planned | planned | Get continuity metadata by id. |
 | thread.branch | v1 | P2 | planned | planned | planned | planned | planned | planned | Branch/fork from a prior point. |
 | thread.handoff | v1 | P2 | planned | planned | planned | planned | planned | planned | Handoff work to a new thread with curated context. |
 | thread.reference | v1 | P2 | planned | planned | planned | planned | planned | planned | Reference another thread by id and extract context. |
@@ -111,7 +111,7 @@ Notes
 | execution.interactive_cli | v1 | P1 | planned | not_applicable | not_applicable | not_applicable | not_applicable | not_applicable | Interactive CLI mode. |
 | execution.interactive_tui | v1 | P2 | not_applicable | not_applicable | not_applicable | not_applicable | planned | not_applicable | Interactive TUI mode. |
 | execution.headless | v1 | P1 | not_applicable | supported | not_applicable | not_applicable | not_applicable | not_applicable | Headless execute mode. |
-| execution.json_stream | v1 | P1 | planned | supported | supported | planned | planned | planned | Streaming JSON output. |
+| execution.json_stream | v1 | P1 | planned | supported | supported | supported | planned | planned | Streaming JSON output. |
 | execution.stream_options | v1 | P1 | planned | planned | planned | planned | planned | planned | Stream options for usage/extras emission. |
 | execution.json_schema | v1 | P1 | planned | planned | planned | planned | planned | planned | JSONL output schema validation. |
 | execution.print | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable | Formatted print mode. |
@@ -150,13 +150,13 @@ Notes
 | tool.override | v1 | P2 | planned | planned | planned | planned | planned | planned | Override built-in tools with custom impls. |
 | tool.remote | v1 | P2 | planned | planned | planned | planned | planned | planned | Remote tool execution backend. |
 | tool.arg_rules | v1 | P2 | planned | planned | planned | planned | planned | planned | Per-tool argument rules. |
-| tool.task_spawn | v1 | P2 | planned | supported | supported | planned | planned | planned | Run a tool invocation in the background (returns task id; streams events). |
-| tool.task_status | v1 | P2 | planned | supported | supported | planned | planned | planned | Query background tool task status/metadata independent of the live stream. |
-| tool.task_cancel | v1 | P2 | planned | supported | supported | planned | planned | planned | Cancel/kill a running tool task (best-effort, logged). |
-| tool.task_stream_events | v1 | P2 | planned | supported | supported | planned | planned | planned | Subscribe to a background tool task event stream (SSE/JSONL) by `task_id`. |
-| tool.task_write_stdin | v1 | P2 | planned | supported | supported | planned | planned | planned | Send stdin bytes/keys to an interactive tool task (PTY mode only). |
-| tool.task_resize | v1 | P2 | planned | supported | supported | planned | planned | planned | Resize an interactive tool task terminal (rows/cols; PTY mode only). |
-| tool.task_signal | v1 | P2 | planned | supported | supported | planned | planned | planned | Send a signal to a running tool task (SIGINT/SIGTERM/etc; platform-mapped). |
+| tool.task_spawn | v1 | P2 | planned | supported | supported | supported | planned | planned | Run a tool invocation in the background (returns task id; streams events). |
+| tool.task_status | v1 | P2 | planned | supported | supported | supported | planned | planned | Query background tool task status/metadata independent of the live stream. |
+| tool.task_cancel | v1 | P2 | planned | supported | supported | supported | planned | planned | Cancel/kill a running tool task (best-effort, logged). |
+| tool.task_stream_events | v1 | P2 | planned | supported | supported | supported | planned | planned | Subscribe to a background tool task event stream (SSE/JSONL) by `task_id`. |
+| tool.task_write_stdin | v1 | P2 | planned | supported | supported | supported | planned | planned | Send stdin bytes/keys to an interactive tool task (PTY mode only). |
+| tool.task_resize | v1 | P2 | planned | supported | supported | supported | planned | planned | Resize an interactive tool task terminal (rows/cols; PTY mode only). |
+| tool.task_signal | v1 | P2 | planned | supported | supported | supported | planned | planned | Send a signal to a running tool task (SIGINT/SIGTERM/etc; platform-mapped). |
 | tool.choice | v1 | P1 | planned | planned | planned | planned | planned | planned | Tool choice policy (auto/required/none/force). |
 | tool.call_limits | v1 | P1 | planned | planned | planned | planned | planned | planned | Max tool calls + parallel tool call limits. |
 | tool.allowed_tools | v1 | P1 | planned | planned | planned | planned | planned | planned | Allowed-tools lists for noninteractive runs. |

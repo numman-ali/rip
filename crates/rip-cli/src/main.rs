@@ -5,7 +5,6 @@ use futures_util::StreamExt;
 use reqwest::Client;
 use reqwest_eventsource::{Error as EventSourceError, Event, RequestBuilderExt};
 use rip_kernel::{Event as FrameEvent, EventKind};
-use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::broadcast;
 
@@ -13,6 +12,7 @@ mod fullscreen;
 mod tasks_watch;
 #[cfg(test)]
 mod test_env;
+mod threads;
 
 #[derive(Parser)]
 #[command(name = "rip")]
@@ -66,6 +66,12 @@ enum Commands {
         #[command(subcommand)]
         command: TaskCommand,
     },
+    Threads {
+        #[arg(long)]
+        server: Option<String>,
+        #[command(subcommand)]
+        command: threads::ThreadsCommand,
+    },
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum, PartialEq, Eq)]
@@ -90,16 +96,6 @@ struct OutputState {
 enum Provider {
     Openai,
     Openrouter,
-}
-
-#[derive(Debug, Deserialize)]
-struct ThreadEnsureResponse {
-    thread_id: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct ThreadPostMessageResponse {
-    session_id: String,
 }
 
 #[derive(Subcommand)]
@@ -439,6 +435,9 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                 }
             }
         }
+        Some(Commands::Threads { server, command }) => {
+            threads::run_threads(server, command).await?;
+        }
     }
 
     Ok(())
@@ -569,7 +568,7 @@ async fn ensure_thread(client: &Client, server: &str) -> anyhow::Result<String> 
     if !status.is_success() {
         anyhow::bail!("ensure thread failed: {status}");
     }
-    let payload: ThreadEnsureResponse = response.json().await?;
+    let payload: threads::ThreadEnsureResponse = response.json().await?;
     Ok(payload.thread_id)
 }
 
@@ -580,7 +579,7 @@ async fn post_thread_message(
     content: &str,
     actor_id: &str,
     origin: &str,
-) -> anyhow::Result<ThreadPostMessageResponse> {
+) -> anyhow::Result<threads::ThreadPostMessageResponse> {
     let url = format!("{server}/threads/{thread_id}/messages");
     let response = client
         .post(url)
@@ -595,7 +594,7 @@ async fn post_thread_message(
     if !status.is_success() {
         anyhow::bail!("post message failed: {status}");
     }
-    let payload: ThreadPostMessageResponse = response.json().await?;
+    let payload: threads::ThreadPostMessageResponse = response.json().await?;
     Ok(payload)
 }
 
@@ -1210,6 +1209,7 @@ mod tests {
             }
             Some(Commands::Serve) => panic!("expected run"),
             Some(Commands::Tasks { .. }) => panic!("expected run"),
+            Some(Commands::Threads { .. }) => panic!("expected run"),
             None => panic!("expected run"),
         }
     }
@@ -1234,6 +1234,7 @@ mod tests {
             }
             Some(Commands::Serve) => panic!("expected run"),
             Some(Commands::Tasks { .. }) => panic!("expected run"),
+            Some(Commands::Threads { .. }) => panic!("expected run"),
             None => panic!("expected run"),
         }
     }
@@ -1274,6 +1275,7 @@ mod tests {
             }
             Some(Commands::Serve) => panic!("expected run"),
             Some(Commands::Tasks { .. }) => panic!("expected run"),
+            Some(Commands::Threads { .. }) => panic!("expected run"),
             None => panic!("expected run"),
         }
     }
@@ -1291,6 +1293,7 @@ mod tests {
             }
             Some(Commands::Serve) => panic!("expected run"),
             Some(Commands::Tasks { .. }) => panic!("expected run"),
+            Some(Commands::Threads { .. }) => panic!("expected run"),
             None => panic!("expected run"),
         }
     }
@@ -1545,6 +1548,7 @@ mod tests {
             Some(Commands::Run { headless, .. }) => assert!(!headless),
             Some(Commands::Serve) => panic!("expected run"),
             Some(Commands::Tasks { .. }) => panic!("expected run"),
+            Some(Commands::Threads { .. }) => panic!("expected run"),
             None => panic!("expected run"),
         }
     }
@@ -1560,7 +1564,32 @@ mod tests {
             Some(Commands::Serve) => {}
             Some(Commands::Run { .. }) => panic!("expected serve"),
             Some(Commands::Tasks { .. }) => panic!("expected serve"),
+            Some(Commands::Threads { .. }) => panic!("expected serve"),
             None => panic!("expected serve"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_threads_ensure_local() {
+        let cli = Cli::parse_from(["rip", "threads", "ensure"]);
+        match cli.command {
+            Some(Commands::Threads { server, command }) => {
+                assert!(server.is_none());
+                assert!(matches!(command, threads::ThreadsCommand::Ensure));
+            }
+            _ => panic!("expected threads ensure"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_threads_list_remote() {
+        let cli = Cli::parse_from(["rip", "threads", "--server", "http://local", "list"]);
+        match cli.command {
+            Some(Commands::Threads { server, command }) => {
+                assert_eq!(server.as_deref(), Some("http://local"));
+                assert!(matches!(command, threads::ThreadsCommand::List));
+            }
+            _ => panic!("expected threads list"),
         }
     }
 

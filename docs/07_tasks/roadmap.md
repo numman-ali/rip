@@ -27,7 +27,7 @@ Now
 - Status (2026-01-22):
   - Frames are now stream-aware on the wire (`stream_kind`, `stream_id`); replay validation is per-stream.
   - Continuity store exists (`ensure_default`, `append_message`, `append_run_spawned`) and local `rip run` posts to the default continuity before spawning a run.
-  - Server now exposes `thread.*` (ensure/list/get/post_message/stream_events); parity gap remains for the SDK surface.
+  - Server exposes `thread.*` (ensure/list/get/post_message/stream_events); headless CLI exposes `rip threads ...` (local + `--server`); TypeScript SDK exposes `thread.*` by spawning `rip` (ADR-0006).
 - Ready:
   - Expand continuity frame types + provenance coverage beyond messages (runs, tool side-effects) and document the remaining envelope migration (eventually drop non-session `session_id`).
   - Define server endpoints: ensure/get/list/post_message/stream_events/branch/handoff and how they map to runs.
