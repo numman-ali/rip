@@ -326,6 +326,372 @@ mod tests {
         .expect("snapshot timeout");
     }
 
+    #[tokio::test]
+    async fn continuity_logs_context_compiled_between_run_spawned_and_ended() {
+        use axum::extract::Json as AxumJson;
+        use axum::http::header::CONTENT_TYPE;
+        use axum::routing::post;
+        use axum::Router as AxumRouter;
+        use rip_provider_openresponses::ToolChoiceParam;
+        use tokio::net::TcpListener;
+
+        async fn handler(
+            AxumJson(payload): AxumJson<serde_json::Value>,
+        ) -> impl axum::response::IntoResponse {
+            assert!(payload.get("previous_response_id").is_none());
+            let input = payload
+                .get("input")
+                .and_then(|v| v.as_array())
+                .expect("input items");
+            assert!(!input.is_empty());
+            let last = input.last().expect("last item");
+            assert_eq!(last.get("type").and_then(|v| v.as_str()), Some("message"));
+            assert_eq!(last.get("role").and_then(|v| v.as_str()), Some("user"));
+
+            let body = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n\
+data: [DONE]\n\n";
+            ([(CONTENT_TYPE, "text/event-stream")], body.to_string())
+        }
+
+        let provider_app = AxumRouter::new().route("/v1/responses", post(handler));
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        tokio::spawn(async move {
+            axum::serve(listener, provider_app).await.expect("serve");
+        });
+
+        let dir = tempdir().expect("tmp");
+        let data_dir = dir.path().join("data");
+        let workspace_dir = dir.path().join("workspace");
+        std::fs::create_dir_all(&workspace_dir).expect("workspace");
+        let engine = SessionEngine::new(
+            data_dir.clone(),
+            workspace_dir.clone(),
+            Some(OpenResponsesConfig {
+                endpoint: format!("http://{addr}/v1/responses"),
+                api_key: None,
+                model: Some("fixture-model".to_string()),
+                tool_choice: ToolChoiceParam::auto(),
+                followup_user_message: None,
+                stateless_history: false,
+                parallel_tool_calls: false,
+            }),
+        )
+        .expect("engine");
+
+        let store = engine.continuities();
+        let thread_id = store.ensure_default().expect("thread");
+        let actor_id = "alice".to_string();
+        let origin = "cli".to_string();
+
+        let handle = engine.create_session();
+        let mut rx = handle.subscribe();
+        let input = "hi".to_string();
+        let message_id = store
+            .append_message(&thread_id, actor_id.clone(), origin.clone(), input.clone())
+            .expect("append message");
+        store
+            .append_run_spawned(
+                &thread_id,
+                &message_id,
+                &handle.session_id,
+                actor_id.clone(),
+                origin.clone(),
+            )
+            .expect("run spawned");
+        engine.spawn_session(
+            handle.clone(),
+            input,
+            Some(ContinuityRunLink {
+                continuity_id: thread_id.clone(),
+                message_id: message_id.clone(),
+                actor_id: actor_id.clone(),
+                origin: origin.clone(),
+            }),
+        );
+
+        let _ = wait_for_event(&mut rx, |kind| {
+            matches!(kind, EventKind::SessionEnded { .. })
+        })
+        .await;
+
+        let thread_events = store.replay_events(&thread_id).expect("replay thread");
+
+        let spawned_idx = thread_events
+            .iter()
+            .position(|event| {
+                matches!(
+                    &event.kind,
+                    EventKind::ContinuityRunSpawned { run_session_id, .. }
+                        if run_session_id == &handle.session_id
+                )
+            })
+            .expect("run spawned event");
+        let compiled_idx = thread_events
+            .iter()
+            .position(|event| {
+                matches!(
+                    &event.kind,
+                    EventKind::ContinuityContextCompiled { run_session_id, .. }
+                        if run_session_id == &handle.session_id
+                )
+            })
+            .expect("context compiled event");
+        let ended_idx = thread_events
+            .iter()
+            .position(|event| {
+                matches!(
+                    &event.kind,
+                    EventKind::ContinuityRunEnded { run_session_id, .. }
+                        if run_session_id == &handle.session_id
+                )
+            })
+            .expect("run ended event");
+
+        assert!(
+            spawned_idx < compiled_idx && compiled_idx < ended_idx,
+            "expected run_spawned -> context_compiled -> run_ended ordering"
+        );
+
+        let bundle_artifact_id = thread_events
+            .iter()
+            .find_map(|event| match &event.kind {
+                EventKind::ContinuityContextCompiled {
+                    run_session_id,
+                    bundle_artifact_id,
+                    compiler_id,
+                    compiler_strategy,
+                    from_message_id,
+                    actor_id,
+                    origin,
+                    ..
+                } if run_session_id == &handle.session_id => {
+                    assert_eq!(compiler_id, "rip.context_compiler.v1");
+                    assert_eq!(compiler_strategy, "recent_messages_v1");
+                    assert_eq!(from_message_id.as_deref(), Some(message_id.as_str()));
+                    assert_eq!(actor_id, "alice");
+                    assert_eq!(origin, "cli");
+                    Some(bundle_artifact_id.clone())
+                }
+                _ => None,
+            })
+            .expect("bundle id");
+
+        let blob_path = workspace_dir
+            .join(".rip")
+            .join("artifacts")
+            .join("blobs")
+            .join(&bundle_artifact_id);
+        assert!(blob_path.exists(), "bundle blob should exist");
+        let bytes = std::fs::read(&blob_path).expect("read bundle");
+        let json: serde_json::Value = serde_json::from_slice(&bytes).expect("bundle json");
+        assert_eq!(
+            json.get("schema").and_then(|v| v.as_str()),
+            Some("rip.context_bundle.v1")
+        );
+        assert_eq!(
+            json.get("source")
+                .and_then(|v| v.get("thread_id"))
+                .and_then(|v| v.as_str()),
+            Some(thread_id.as_str())
+        );
+        assert_eq!(
+            json.get("provenance")
+                .and_then(|v| v.get("run_session_id"))
+                .and_then(|v| v.as_str()),
+            Some(handle.session_id.as_str())
+        );
+    }
+
+    #[tokio::test]
+    async fn continuity_logs_context_compiled_for_parallel_runs() {
+        use axum::extract::Json as AxumJson;
+        use axum::http::header::CONTENT_TYPE;
+        use axum::routing::post;
+        use axum::Router as AxumRouter;
+        use rip_provider_openresponses::ToolChoiceParam;
+        use tokio::net::TcpListener;
+
+        async fn handler(
+            AxumJson(payload): AxumJson<serde_json::Value>,
+        ) -> impl axum::response::IntoResponse {
+            assert!(payload.get("previous_response_id").is_none());
+            assert!(payload.get("input").and_then(|v| v.as_array()).is_some());
+            let body = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n\
+data: [DONE]\n\n";
+            ([(CONTENT_TYPE, "text/event-stream")], body.to_string())
+        }
+
+        let provider_app = AxumRouter::new().route("/v1/responses", post(handler));
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        tokio::spawn(async move {
+            axum::serve(listener, provider_app).await.expect("serve");
+        });
+
+        let dir = tempdir().expect("tmp");
+        let data_dir = dir.path().join("data");
+        let workspace_dir = dir.path().join("workspace");
+        std::fs::create_dir_all(&workspace_dir).expect("workspace");
+        let engine = SessionEngine::new(
+            data_dir.clone(),
+            workspace_dir.clone(),
+            Some(OpenResponsesConfig {
+                endpoint: format!("http://{addr}/v1/responses"),
+                api_key: None,
+                model: Some("fixture-model".to_string()),
+                tool_choice: ToolChoiceParam::auto(),
+                followup_user_message: None,
+                stateless_history: false,
+                parallel_tool_calls: false,
+            }),
+        )
+        .expect("engine");
+
+        let store = engine.continuities();
+        let thread_id = store.ensure_default().expect("thread");
+        let actor_id = "alice".to_string();
+        let origin = "cli".to_string();
+
+        let handle_one = engine.create_session();
+        let mut rx_one = handle_one.subscribe();
+        let input_one = "hi one".to_string();
+        let message_one = store
+            .append_message(
+                &thread_id,
+                actor_id.clone(),
+                origin.clone(),
+                input_one.clone(),
+            )
+            .expect("append message one");
+        store
+            .append_run_spawned(
+                &thread_id,
+                &message_one,
+                &handle_one.session_id,
+                actor_id.clone(),
+                origin.clone(),
+            )
+            .expect("run spawned one");
+        engine.spawn_session(
+            handle_one.clone(),
+            input_one,
+            Some(ContinuityRunLink {
+                continuity_id: thread_id.clone(),
+                message_id: message_one.clone(),
+                actor_id: actor_id.clone(),
+                origin: origin.clone(),
+            }),
+        );
+
+        let handle_two = engine.create_session();
+        let mut rx_two = handle_two.subscribe();
+        let input_two = "hi two".to_string();
+        let message_two = store
+            .append_message(
+                &thread_id,
+                actor_id.clone(),
+                origin.clone(),
+                input_two.clone(),
+            )
+            .expect("append message two");
+        store
+            .append_run_spawned(
+                &thread_id,
+                &message_two,
+                &handle_two.session_id,
+                actor_id.clone(),
+                origin.clone(),
+            )
+            .expect("run spawned two");
+        engine.spawn_session(
+            handle_two.clone(),
+            input_two,
+            Some(ContinuityRunLink {
+                continuity_id: thread_id.clone(),
+                message_id: message_two.clone(),
+                actor_id: actor_id.clone(),
+                origin: origin.clone(),
+            }),
+        );
+
+        let _ = wait_for_event(&mut rx_one, |kind| {
+            matches!(kind, EventKind::SessionEnded { .. })
+        })
+        .await;
+        let _ = wait_for_event(&mut rx_two, |kind| {
+            matches!(kind, EventKind::SessionEnded { .. })
+        })
+        .await;
+
+        let thread_events = store.replay_events(&thread_id).expect("replay thread");
+        let compiled_runs: Vec<&Event> = thread_events
+            .iter()
+            .filter(|event| matches!(event.kind, EventKind::ContinuityContextCompiled { .. }))
+            .collect();
+        assert_eq!(compiled_runs.len(), 2);
+
+        for (session_id, message_id) in [
+            (&handle_one.session_id, &message_one),
+            (&handle_two.session_id, &message_two),
+        ] {
+            let spawned_idx = thread_events
+                .iter()
+                .position(|event| {
+                    matches!(
+                        &event.kind,
+                        EventKind::ContinuityRunSpawned { run_session_id, .. }
+                            if run_session_id == session_id
+                    )
+                })
+                .expect("spawned");
+            let compiled_idx = thread_events
+                .iter()
+                .position(|event| {
+                    matches!(
+                        &event.kind,
+                        EventKind::ContinuityContextCompiled { run_session_id, .. }
+                            if run_session_id == session_id
+                    )
+                })
+                .expect("compiled");
+            let ended_idx = thread_events
+                .iter()
+                .position(|event| {
+                    matches!(
+                        &event.kind,
+                        EventKind::ContinuityRunEnded { run_session_id, .. }
+                            if run_session_id == session_id
+                    )
+                })
+                .expect("ended");
+            assert!(spawned_idx < compiled_idx && compiled_idx < ended_idx);
+
+            let bundle_artifact_id = thread_events
+                .iter()
+                .find_map(|event| match &event.kind {
+                    EventKind::ContinuityContextCompiled {
+                        run_session_id,
+                        bundle_artifact_id,
+                        from_message_id,
+                        ..
+                    } if run_session_id == session_id => {
+                        assert_eq!(from_message_id.as_deref(), Some(message_id.as_str()));
+                        Some(bundle_artifact_id.clone())
+                    }
+                    _ => None,
+                })
+                .expect("bundle id");
+
+            let blob_path = workspace_dir
+                .join(".rip")
+                .join("artifacts")
+                .join("blobs")
+                .join(&bundle_artifact_id);
+            assert!(blob_path.exists());
+        }
+    }
+
     #[cfg(not(windows))]
     #[tokio::test]
     async fn workspace_mutations_are_serialized_across_sessions() {

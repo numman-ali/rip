@@ -30,13 +30,14 @@ Now
   - Continuity store exists (`ensure_default`, `append_message`, `append_run_spawned`, `append_run_ended`, `branch`, `handoff`) and local `rip run` posts to the default continuity before spawning a run.
   - Handoff now writes an artifact-backed context bundle referenced by `continuity_handoff_created.summary_artifact_id` (`docs/03_contracts/handoff_context_bundle.md`).
   - Decision locked (ADR-0010): compiled context bundles (`context.compile`) are truth-derived and provider-agnostic; provider cursors are optional caches.
+  - Implemented: context compiler kernel v1 (`recent_messages_v1`) writes `rip.context_bundle.v1` artifacts and emits `continuity_context_compiled`; OpenResponses runs start from compiled bundles (fresh provider conversation per run).
   - Server exposes `thread.*` (ensure/list/get/post_message/branch/handoff/stream_events); headless CLI exposes `rip threads ...` (local + `--server`); TypeScript SDK exposes `thread.*` by spawning `rip` (ADR-0006).
   - Workspace mutation serialization enforced across sessions + background tasks; replay/contract tests added.
   - Continuity stream logs workspace-mutating tool side-effects (`continuity_tool_side_effects`) with provenance + replay coverage under parallel runs/tasks.
 - Ready:
-  - Implement `context.compile` kernel v1 (messages-only) with context bundle artifacts (`rip.context_bundle.v1`) + `continuity_context_compiled` frames; wire runs to start from compiled bundles (fresh provider conversation per run).
   - Finish continuity provenance coverage beyond messages/runs/tool side-effects: provider cursor rotation logs, context selection strategy evolution, and compaction checkpoints; document the remaining envelope migration (eventually drop non-session `session_id`).
   - Define deterministic compaction checkpoints (e.g., 10k/20k/30k summaries) and provider cursor rotation logging.
+  - Perf: make `context.compile` O(k) at 1M+ events (avoid full `events.jsonl` scans; add per-stream indexing/segmented logs).
 - Done:
   - Default UX is one continuity; surfaces "continue" by posting messages (sessions hidden by default).
   - Resume/branch/handoff works with deterministic replay and parity across CLI/TUI/server/SDK.

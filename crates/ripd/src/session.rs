@@ -15,7 +15,14 @@ use serde_json::Value;
 use tokio::sync::{broadcast, Mutex};
 use uuid::Uuid;
 
-use crate::continuities::{ContinuityRunLink, ContinuityStore, ToolSideEffects};
+use crate::context_bundle::{write_bundle_v1, ContextBundleItemV1, ContextBundleV1};
+use crate::context_compiler::{
+    compile_recent_messages_v1, CompileRecentMessagesV1Request, CONTEXT_COMPILER_ID_V1,
+    CONTEXT_COMPILER_STRATEGY_RECENT_MESSAGES_V1,
+};
+use crate::continuities::{
+    ContextCompiledPayload, ContinuityRunLink, ContinuityStore, ToolSideEffects,
+};
 use crate::provider_openresponses::{
     build_streaming_followup_request, build_streaming_request, build_streaming_request_items,
     OpenResponsesConfig, DEFAULT_MAX_TOOL_CALLS,
@@ -145,33 +152,81 @@ pub async fn run_session(context: SessionContext) {
                     buffer: &events,
                     event_log: event_log.as_ref(),
                 };
-                let reason = run_openresponses_agent_loop(OpenResponsesRunContext {
-                    http: &http_client,
-                    config,
-                    tool_runner: tool_runner.as_ref(),
-                    workspace_lock: workspace_lock.as_ref(),
-                    continuities: continuities.as_ref(),
-                    continuity_run: continuity_run.as_ref(),
-                    session_id: &runtime_session_id,
-                    prompt: &input,
-                    seq: &mut seq,
-                    sink,
-                })
-                .await;
-                emit_event(
-                    Event {
-                        id: Uuid::new_v4().to_string(),
-                        session_id: runtime_session_id.clone(),
-                        timestamp_ms: now_ms(),
-                        seq,
-                        kind: rip_kernel::EventKind::SessionEnded { reason },
-                    },
-                    &sender,
-                    &events,
-                    &event_log,
-                )
-                .await;
-                skip_runtime_loop = true;
+                let mut initial_items: Option<Vec<ItemParam>> = None;
+                if let Some(link) = continuity_run.as_ref() {
+                    match compile_context_bundle_for_run(
+                        continuities.as_ref(),
+                        event_log.as_ref(),
+                        link,
+                        &runtime_session_id,
+                    ) {
+                        Ok((bundle_artifact_id, items, from_seq, from_message_id)) => {
+                            let _ = continuities.append_context_compiled(
+                                &link.continuity_id,
+                                ContextCompiledPayload {
+                                    run_session_id: runtime_session_id.clone(),
+                                    bundle_artifact_id,
+                                    compiler_id: CONTEXT_COMPILER_ID_V1.to_string(),
+                                    compiler_strategy: CONTEXT_COMPILER_STRATEGY_RECENT_MESSAGES_V1
+                                        .to_string(),
+                                    from_seq,
+                                    from_message_id,
+                                    actor_id: link.actor_id.clone(),
+                                    origin: link.origin.clone(),
+                                },
+                            );
+                            initial_items = Some(items);
+                        }
+                        Err(_) => {
+                            emit_event(
+                                Event {
+                                    id: Uuid::new_v4().to_string(),
+                                    session_id: runtime_session_id.clone(),
+                                    timestamp_ms: now_ms(),
+                                    seq,
+                                    kind: rip_kernel::EventKind::SessionEnded {
+                                        reason: "context_compile_failed".to_string(),
+                                    },
+                                },
+                                &sender,
+                                &events,
+                                &event_log,
+                            )
+                            .await;
+                            skip_runtime_loop = true;
+                        }
+                    }
+                }
+                if !skip_runtime_loop {
+                    let reason = run_openresponses_agent_loop(OpenResponsesRunContext {
+                        http: &http_client,
+                        config,
+                        tool_runner: tool_runner.as_ref(),
+                        workspace_lock: workspace_lock.as_ref(),
+                        continuities: continuities.as_ref(),
+                        continuity_run: continuity_run.as_ref(),
+                        session_id: &runtime_session_id,
+                        initial_items,
+                        prompt: &input,
+                        seq: &mut seq,
+                        sink,
+                    })
+                    .await;
+                    emit_event(
+                        Event {
+                            id: Uuid::new_v4().to_string(),
+                            session_id: runtime_session_id.clone(),
+                            timestamp_ms: now_ms(),
+                            seq,
+                            kind: rip_kernel::EventKind::SessionEnded { reason },
+                        },
+                        &sender,
+                        &events,
+                        &event_log,
+                    )
+                    .await;
+                    skip_runtime_loop = true;
+                }
             }
         }
     }
@@ -724,6 +779,91 @@ fn function_call_output_item(call_id: &str, output_json: String, include_id: boo
     ItemParam::new(Value::Object(obj))
 }
 
+fn openresponses_items_from_context_bundle(bundle: &ContextBundleV1) -> Vec<ItemParam> {
+    bundle
+        .items()
+        .iter()
+        .map(|item| match item {
+            ContextBundleItemV1::Message { role, content, .. } => {
+                ItemParam::message_text(role.clone(), content.clone())
+            }
+        })
+        .collect()
+}
+
+fn compile_context_bundle_for_run(
+    continuities: &ContinuityStore,
+    event_log: &EventLog,
+    run: &ContinuityRunLink,
+    run_session_id: &str,
+) -> Result<(String, Vec<ItemParam>, u64, Option<String>), String> {
+    let continuity_events = continuities
+        .replay_events(&run.continuity_id)
+        .map_err(|err| format!("continuity replay failed: {err}"))?;
+    if continuity_events.is_empty() {
+        return Err("continuity stream does not exist".to_string());
+    }
+
+    let (from_seq, from_message_id) =
+        resolve_context_compile_cutpoint(&continuity_events, &run.message_id)?;
+
+    let bundle = compile_recent_messages_v1(CompileRecentMessagesV1Request {
+        continuity_id: &run.continuity_id,
+        continuity_events: &continuity_events,
+        event_log,
+        from_seq,
+        from_message_id: from_message_id.clone(),
+        run_session_id,
+        actor_id: &run.actor_id,
+        origin: &run.origin,
+    })?;
+    let artifact_id = write_bundle_v1(continuities.workspace_root(), &bundle)?;
+    let items = openresponses_items_from_context_bundle(&bundle);
+    Ok((artifact_id, items, from_seq, from_message_id))
+}
+
+fn resolve_context_compile_cutpoint(
+    continuity_events: &[Event],
+    message_id: &str,
+) -> Result<(u64, Option<String>), String> {
+    let head_seq = continuity_events
+        .last()
+        .map(|event| event.seq)
+        .unwrap_or_default();
+
+    let mut message_seq: Option<u64> = None;
+    let mut next_message_seq: Option<u64> = None;
+
+    for event in continuity_events {
+        if !matches!(event.kind, EventKind::ContinuityMessageAppended { .. }) {
+            continue;
+        }
+
+        if message_seq.is_none() {
+            if event.id == message_id {
+                message_seq = Some(event.seq);
+            }
+            continue;
+        }
+
+        // First message after the anchor.
+        next_message_seq = Some(event.seq);
+        break;
+    }
+
+    let Some(message_seq) = message_seq else {
+        return Err(format!("continuity message not found: {message_id}"));
+    };
+
+    let from_seq = match next_message_seq {
+        Some(next_seq) => next_seq.saturating_sub(1),
+        None => head_seq,
+    };
+
+    // Invariants: always include the anchor message itself.
+    Ok((from_seq.max(message_seq), Some(message_id.to_string())))
+}
+
 struct OpenResponsesRunContext<'a> {
     http: &'a reqwest::Client,
     config: &'a OpenResponsesConfig,
@@ -732,6 +872,7 @@ struct OpenResponsesRunContext<'a> {
     continuities: &'a ContinuityStore,
     continuity_run: Option<&'a ContinuityRunLink>,
     session_id: &'a str,
+    initial_items: Option<Vec<ItemParam>>,
     prompt: &'a str,
     seq: &'a mut u64,
     sink: EventSink<'a>,
@@ -746,6 +887,7 @@ async fn run_openresponses_agent_loop(ctx: OpenResponsesRunContext<'_>) -> Strin
         continuities,
         continuity_run,
         session_id,
+        initial_items,
         prompt,
         seq,
         sink,
@@ -754,8 +896,12 @@ async fn run_openresponses_agent_loop(ctx: OpenResponsesRunContext<'_>) -> Strin
     let mut followup_tool_outputs: Option<Vec<ItemParam>> = None;
     let mut tool_call_count: u64 = 0;
     let stateless_history = config.stateless_history;
+    let mut initial_request_items = initial_items;
     let mut history_items = if stateless_history {
-        vec![ItemParam::user_message_text(prompt)]
+        match initial_request_items.as_ref() {
+            Some(items) => items.clone(),
+            None => vec![ItemParam::user_message_text(prompt)],
+        }
     } else {
         Vec::new()
     };
@@ -774,6 +920,8 @@ async fn run_openresponses_agent_loop(ctx: OpenResponsesRunContext<'_>) -> Strin
                 };
                 build_streaming_followup_request(config, Some(prev), tool_outputs)
             }
+        } else if let Some(items) = initial_request_items.take() {
+            build_streaming_request_items(config, items)
         } else if stateless_history {
             build_streaming_request_items(config, history_items.clone())
         } else {
@@ -1660,6 +1808,7 @@ data: [DONE]\n\n";
             continuities: &continuity_store,
             continuity_run: None,
             session_id: "s1",
+            initial_items: None,
             prompt: "hi",
             seq: &mut seq,
             sink,
@@ -1746,6 +1895,7 @@ data: [DONE]\n\n";
             continuities: &continuity_store,
             continuity_run: None,
             session_id: "s1",
+            initial_items: None,
             prompt: "hi",
             seq: &mut seq,
             sink,
@@ -1844,6 +1994,7 @@ data: [DONE]\n\n";
             continuities: &continuity_store,
             continuity_run: None,
             session_id: "s1",
+            initial_items: None,
             prompt: "hi",
             seq: &mut seq,
             sink,

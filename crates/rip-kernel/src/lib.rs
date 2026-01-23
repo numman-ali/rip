@@ -36,6 +36,7 @@ impl Event {
             EventKind::ContinuityCreated { .. }
             | EventKind::ContinuityMessageAppended { .. }
             | EventKind::ContinuityRunSpawned { .. }
+            | EventKind::ContinuityContextCompiled { .. }
             | EventKind::ContinuityRunEnded { .. }
             | EventKind::ContinuityToolSideEffects { .. }
             | EventKind::ContinuityBranched { .. }
@@ -159,6 +160,17 @@ pub enum EventKind {
         actor_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         origin: Option<String>,
+    },
+    ContinuityContextCompiled {
+        run_session_id: String,
+        bundle_artifact_id: String,
+        compiler_id: String,
+        compiler_strategy: String,
+        from_seq: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        from_message_id: Option<String>,
+        actor_id: String,
+        origin: String,
     },
     ContinuityRunEnded {
         run_session_id: String,
@@ -447,6 +459,7 @@ impl Session {
             EventKind::ContinuityCreated { .. }
             | EventKind::ContinuityMessageAppended { .. }
             | EventKind::ContinuityRunSpawned { .. }
+            | EventKind::ContinuityContextCompiled { .. }
             | EventKind::ContinuityRunEnded { .. }
             | EventKind::ContinuityToolSideEffects { .. }
             | EventKind::ContinuityBranched { .. }

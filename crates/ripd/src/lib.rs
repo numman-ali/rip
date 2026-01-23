@@ -1,4 +1,6 @@
 mod checkpoints;
+mod context_bundle;
+mod context_compiler;
 mod continuities;
 mod handoff_context_bundle;
 mod provider_openresponses;

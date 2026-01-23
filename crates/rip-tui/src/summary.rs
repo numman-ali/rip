@@ -8,6 +8,7 @@ pub fn event_type(event: &Event) -> &'static str {
         EventKind::ContinuityCreated { .. } => "continuity_created",
         EventKind::ContinuityMessageAppended { .. } => "continuity_message_appended",
         EventKind::ContinuityRunSpawned { .. } => "continuity_run_spawned",
+        EventKind::ContinuityContextCompiled { .. } => "continuity_context_compiled",
         EventKind::ContinuityRunEnded { .. } => "continuity_run_ended",
         EventKind::ContinuityToolSideEffects { .. } => "continuity_tool_side_effects",
         EventKind::ContinuityBranched { .. } => "continuity_branched",
@@ -50,6 +51,17 @@ pub fn event_summary(event: &Event) -> String {
         EventKind::ContinuityRunSpawned { run_session_id, .. } => {
             format!("run={}", truncate(run_session_id, 16))
         }
+        EventKind::ContinuityContextCompiled {
+            run_session_id,
+            bundle_artifact_id,
+            compiler_strategy,
+            ..
+        } => format!(
+            "run={} bundle={} ({})",
+            truncate(run_session_id, 16),
+            truncate(bundle_artifact_id, 16),
+            truncate(compiler_strategy, 32)
+        ),
         EventKind::ContinuityRunEnded {
             run_session_id,
             reason,
@@ -195,6 +207,19 @@ mod tests {
                     origin: None,
                 },
                 "continuity_run_spawned",
+            ),
+            (
+                EventKind::ContinuityContextCompiled {
+                    run_session_id: "s1".to_string(),
+                    bundle_artifact_id: "a1".to_string(),
+                    compiler_id: "rip.context_compiler.v1".to_string(),
+                    compiler_strategy: "recent_messages_v1".to_string(),
+                    from_seq: 3,
+                    from_message_id: Some("m1".to_string()),
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                },
+                "continuity_context_compiled",
             ),
             (
                 EventKind::ContinuityRunEnded {

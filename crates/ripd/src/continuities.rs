@@ -33,6 +33,18 @@ pub struct ContinuityRunLink {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct ContextCompiledPayload {
+    pub(crate) run_session_id: String,
+    pub(crate) bundle_artifact_id: String,
+    pub(crate) compiler_id: String,
+    pub(crate) compiler_strategy: String,
+    pub(crate) from_seq: u64,
+    pub(crate) from_message_id: Option<String>,
+    pub(crate) actor_id: String,
+    pub(crate) origin: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct ToolSideEffects {
     pub tool_id: String,
     pub tool_name: String,
@@ -99,6 +111,10 @@ impl ContinuityStore {
     pub fn replay_events(&self, continuity_id: &str) -> io::Result<Vec<Event>> {
         self.event_log
             .replay_stream(StreamKind::Continuity, continuity_id)
+    }
+
+    pub(crate) fn workspace_root(&self) -> &Path {
+        &self.workspace_root
     }
 
     pub fn ensure_default(&self) -> Result<String, String> {
@@ -464,6 +480,49 @@ impl ContinuityStore {
         self.event_log
             .append(&event)
             .map_err(|err| format!("append continuity run spawned: {err}"))?;
+        let _ = self.sender.send(event.clone());
+
+        next_seq.insert(continuity_id.to_string(), seq + 1);
+        Ok(id)
+    }
+
+    pub(crate) fn append_context_compiled(
+        &self,
+        continuity_id: &str,
+        payload: ContextCompiledPayload,
+    ) -> Result<String, String> {
+        let mut next_seq = self.next_seq.lock().expect("continuity seq mutex");
+        let seq = match next_seq.get(continuity_id).cloned() {
+            Some(seq) => seq,
+            None => {
+                let seq = self
+                    .load_next_seq_for(continuity_id)
+                    .map_err(|err| format!("resolve continuity seq: {err}"))?;
+                next_seq.insert(continuity_id.to_string(), seq);
+                seq
+            }
+        };
+
+        let id = Uuid::new_v4().to_string();
+        let event = Event {
+            id: id.clone(),
+            session_id: continuity_id.to_string(),
+            timestamp_ms: now_ms(),
+            seq,
+            kind: EventKind::ContinuityContextCompiled {
+                run_session_id: payload.run_session_id,
+                bundle_artifact_id: payload.bundle_artifact_id,
+                compiler_id: payload.compiler_id,
+                compiler_strategy: payload.compiler_strategy,
+                from_seq: payload.from_seq,
+                from_message_id: payload.from_message_id,
+                actor_id: payload.actor_id,
+                origin: payload.origin,
+            },
+        };
+        self.event_log
+            .append(&event)
+            .map_err(|err| format!("append continuity context compiled: {err}"))?;
         let _ = self.sender.send(event.clone());
 
         next_seq.insert(continuity_id.to_string(), seq + 1);

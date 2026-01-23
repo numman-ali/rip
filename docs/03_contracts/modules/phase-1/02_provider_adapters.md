@@ -28,6 +28,15 @@ Invariants
 - Emit one `provider_event` frame per SSE event (including `[DONE]` and invalid JSON).
 - Provider conversation state (cursors) is cache only (ADR-0010); adapters must never be required to reconstruct continuity truth.
 
+OpenResponses request shape (for `context.compile`)
+- Spec/schema reviewed: `temp/openresponses/src/pages/specification.mdx` and `temp/openresponses/schema/components/schemas/CreateResponseBody.json`.
+- `CreateResponseBody.input` is a union: string (user message) or `ItemParam[]` (structured items).
+- `previous_response_id` semantics are explicitly: `previous_response.input` -> `previous_response.output` -> new `input`.
+- RIP posture:
+  - Cross-run “memory” is provided by `rip.context_bundle.v1` (continuity truth), rendered into `CreateResponseBody.input` as `ItemParam[]`.
+  - Fresh runs omit `previous_response_id` (provider state is not required for continuity truth).
+  - In-run tool follow-ups remain OpenResponses-native: either `previous_response_id`-based (default) or stateless-history (opt-in) per config.
+
 Phase 1 mapping
 - All SSE events map to `provider_event` frames with full payload fidelity.
 - No events are dropped; `[DONE]` is captured as a `provider_event` with `status=done`.
