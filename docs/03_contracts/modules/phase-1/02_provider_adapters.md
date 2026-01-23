@@ -8,6 +8,7 @@ Summary
 
 Inputs
 - Internal request frames (model, instructions, tools, context).
+- Compiled context bundles (`rip.context_bundle.v1`) produced by `context.compile` (provider-agnostic input to the adapter).
 
 Outputs
 - Internal event frames mapped from provider SSE events (`docs/03_contracts/event_frames.md`).
@@ -25,6 +26,7 @@ Invariants
 - Preserve event order and timestamps.
 - No transformation that loses semantic meaning.
 - Emit one `provider_event` frame per SSE event (including `[DONE]` and invalid JSON).
+- Provider conversation state (cursors) is cache only (ADR-0010); adapters must never be required to reconstruct continuity truth.
 
 Phase 1 mapping
 - All SSE events map to `provider_event` frames with full payload fidelity.

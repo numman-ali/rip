@@ -68,6 +68,8 @@ Notes
 | event_log.message_entries | v1 | P2 | planned | planned | planned | planned | planned | planned | Custom message entries affecting context. |
 
 ## Context & Guidance
+Notes
+- `context.compile` is the end-state mechanism for continuity memory (ADR-0010). A minimal “compiler kernel” slice may land early to keep Phase 1 continuity UX provider-agnostic.
 | id | v | phase | cli_i | cli_h | server | sdk | tui | mcp | intent |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | context.guidance.load | v1 | P2 | planned | planned | planned | planned | planned | planned | Load project guidance files by path/subtree. |

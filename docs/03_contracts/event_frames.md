@@ -33,6 +33,16 @@ Frame types
   - `message_id`: string (uuid)
   - `actor_id`: string (optional; may be absent in older logs)
   - `origin`: string (optional; may be absent in older logs)
+- `continuity_context_compiled`
+  - Purpose: record the compiled context bundle used to start a run (provider-agnostic; replayable; enables provider cursor rotation).
+  - `run_session_id`: string (uuid)
+  - `bundle_artifact_id`: string (artifact id; schema `rip.context_bundle.v1`)
+  - `compiler_id`: string (example: `rip.context_compiler.v1`)
+  - `compiler_strategy`: string (example: `recent_messages_v1`)
+  - `from_seq`: u64 (inclusive cut point in the continuity stream used for compilation)
+  - `from_message_id`: string | null (anchor message id when known)
+  - `actor_id`: string
+  - `origin`: string
 - `continuity_run_ended`
   - `run_session_id`: string (uuid)
   - `message_id`: string (uuid)
@@ -119,6 +129,8 @@ Invariants
 - Automatic checkpoint events for file-edit tools are emitted before the tool starts.
 - `continuity_tool_side_effects` is appended to the continuity stream only when the run is linked to a continuity (`continuity_run` exists).
 - `continuity_tool_side_effects` must be emitted after the tool completes (`tool_ended`/`tool_failed`) and before `continuity_run_ended` for the same `run_session_id`.
+- `continuity_context_compiled` is appended to the continuity stream only when the run is linked to a continuity (`continuity_run` exists).
+- `continuity_context_compiled` must be emitted after `continuity_run_spawned` and before `continuity_run_ended` for the same `run_session_id`.
 
 Example
 ```

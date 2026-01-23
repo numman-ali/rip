@@ -62,5 +62,5 @@ Mapping to runs (Phase 2 target)
 - `context.compile` treats the handoff bundle as the thread’s “base context”:
   - include `summary_markdown`
   - optionally resolve `refs.*` into additional compiled context artifacts
+  - emit a compiled context bundle artifact (`rip.context_bundle.v1`) and link it via `continuity_context_compiled` for the run
 - Handoff does **not** inherit full parent history (ADR-0009); only what is referenced via the bundle is included.
-

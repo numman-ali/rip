@@ -32,6 +32,7 @@ Tests
 Phase 2 planned extensions
 - Continuities (“threads”) advanced semantics:
   - reference/share semantics (beyond branch/handoff)
+  - context compiler (`context.compile`) and compiled context bundle artifacts (`rip.context_bundle.v1`)
   - artifact fetch/read surface for handoff bundles (range reads) + richer ref resolution
   - compaction + summarization checkpoints + cursor rotation logs
 - Background tool tasks (task entities) with their own event streams and control APIs:

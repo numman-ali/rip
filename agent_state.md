@@ -26,6 +26,11 @@ Current focus
 - Implemented: `rip threads ...` CLI adapter + TypeScript SDK `thread.*` wrappers (ensure/list/get/post_message/branch/handoff/stream_events) while keeping ADR-0006 transport (SDK spawns `rip`; no TS HTTP/SSE client).
 - Implemented: workspace mutation serialization across sessions + background tasks (workspace lock) with contract + replay tests.
 - Implemented: continuity stream logs workspace-mutating tool side-effects with full provenance (`continuity_tool_side_effects`) and replay coverage under parallel runs/tasks.
+- Decision locked (ADR-0010): `context.compile` is the canonical way runs “remember” across time; provider cursors are optional caches only.
+- Drafted contracts (docs-first):
+  - New continuity frame: `continuity_context_compiled` (`docs/03_contracts/event_frames.md`)
+  - New artifact schema: `rip.context_bundle.v1` (`docs/03_contracts/context_bundle.md`)
+  - Context compiler module contract: `docs/03_contracts/modules/phase-2/05_context_compiler.md`
 - Keep CI/bench gates green; ratchet budgets only with replay coverage.
 
 Reorientation (read in order after compaction)
@@ -46,6 +51,7 @@ Open risks / notes
 
 Active priorities
 - Keep roadmap Now/Next aligned with the implementation work.
+- Next slice (code): implement `context.compile` kernel v1 + `continuity_context_compiled` emission, then wire runs to start from `rip.context_bundle.v1` (fresh provider convo per run).
 - Keep OpenResponses boundary full-fidelity while wiring new surfaces/adapters.
 - Keep OpenResponses follow-ups spec-canonical; any compatibility user message is opt-in.
 - Keep stateless history compatibility opt-in; default remains `previous_response_id`.

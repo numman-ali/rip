@@ -25,6 +25,7 @@ How "one chat forever" works
 - Long histories do **not** expand provider history forever:
   - Background workers produce **summary checkpoints** and other derived artifacts.
   - The **context compiler** builds a replayable "compiled context" from: recent raw events + relevant artifacts (summaries/memory/files) + policy.
+    - It writes a versioned **context bundle artifact** and logs the compilation decision to the continuity stream (`continuity_context_compiled`).
   - When context exceeds thresholds, RIP **rotates provider cursors** (starts a fresh provider conversation) while keeping continuity unchanged internally.
 
 Parallelism (foreground vs "subconscious" work)
