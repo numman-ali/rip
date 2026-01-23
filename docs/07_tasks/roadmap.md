@@ -31,6 +31,7 @@ Now
   - Handoff now writes an artifact-backed context bundle referenced by `continuity_handoff_created.summary_artifact_id` (`docs/03_contracts/handoff_context_bundle.md`).
   - Decision locked (ADR-0010): compiled context bundles (`context.compile`) are truth-derived and provider-agnostic; provider cursors are optional caches.
   - Implemented: context compiler kernel v1 (`recent_messages_v1`) writes `rip.context_bundle.v1` artifacts and emits `continuity_context_compiled`; OpenResponses runs start from compiled bundles (fresh provider conversation per run).
+  - Implemented: context compiler perf v1: snapshot-first assistant aggregation + per-continuity sidecar replay caches (avoid global `events.jsonl` scans on hot path).
   - Server exposes `thread.*` (ensure/list/get/post_message/branch/handoff/stream_events); headless CLI exposes `rip threads ...` (local + `--server`); TypeScript SDK exposes `thread.*` by spawning `rip` (ADR-0006).
   - Workspace mutation serialization enforced across sessions + background tasks; replay/contract tests added.
   - Continuity stream logs workspace-mutating tool side-effects (`continuity_tool_side_effects`) with provenance + replay coverage under parallel runs/tasks.

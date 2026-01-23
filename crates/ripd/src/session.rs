@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use futures_util::StreamExt;
@@ -157,6 +157,7 @@ pub async fn run_session(context: SessionContext) {
                     match compile_context_bundle_for_run(
                         continuities.as_ref(),
                         event_log.as_ref(),
+                        snapshot_dir.as_ref().as_path(),
                         link,
                         &runtime_session_id,
                     ) {
@@ -794,6 +795,7 @@ fn openresponses_items_from_context_bundle(bundle: &ContextBundleV1) -> Vec<Item
 fn compile_context_bundle_for_run(
     continuities: &ContinuityStore,
     event_log: &EventLog,
+    snapshot_dir: &Path,
     run: &ContinuityRunLink,
     run_session_id: &str,
 ) -> Result<(String, Vec<ItemParam>, u64, Option<String>), String> {
@@ -811,6 +813,7 @@ fn compile_context_bundle_for_run(
         continuity_id: &run.continuity_id,
         continuity_events: &continuity_events,
         event_log,
+        snapshot_dir,
         from_seq,
         from_message_id: from_message_id.clone(),
         run_session_id,

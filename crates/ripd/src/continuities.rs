@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
+use crate::continuity_stream_cache::ContinuityStreamCache;
 use crate::handoff_context_bundle::HandoffContextBundleV1;
 
 const INDEX_VERSION: u32 = 1;
@@ -81,6 +82,7 @@ pub struct ContinuityStore {
     data_dir: PathBuf,
     workspace_root: PathBuf,
     event_log: Arc<EventLog>,
+    stream_cache: ContinuityStreamCache,
     sender: broadcast::Sender<Event>,
     index: Mutex<ContinuityIndexV1>,
     next_seq: Mutex<HashMap<String, u64>>,
@@ -94,10 +96,12 @@ impl ContinuityStore {
     ) -> Result<Self, String> {
         let index = load_index(&index_path(&data_dir)).unwrap_or_default();
         let (sender, _receiver) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
+        let stream_cache = ContinuityStreamCache::new(&data_dir);
         Ok(Self {
             data_dir,
             workspace_root,
             event_log,
+            stream_cache,
             sender,
             index: Mutex::new(index),
             next_seq: Mutex::new(HashMap::new()),
@@ -109,8 +113,18 @@ impl ContinuityStore {
     }
 
     pub fn replay_events(&self, continuity_id: &str) -> io::Result<Vec<Event>> {
-        self.event_log
-            .replay_stream(StreamKind::Continuity, continuity_id)
+        if let Ok(Some(events)) = self.stream_cache.try_replay(continuity_id) {
+            return Ok(events);
+        }
+
+        let events = self
+            .event_log
+            .replay_stream(StreamKind::Continuity, continuity_id)?;
+        if !events.is_empty() {
+            self.stream_cache
+                .rebuild_best_effort(continuity_id, &events);
+        }
+        Ok(events)
     }
 
     pub(crate) fn workspace_root(&self) -> &Path {
@@ -242,6 +256,7 @@ impl ContinuityStore {
         self.event_log
             .append(&event)
             .map_err(|err| format!("append continuity_branched: {err}"))?;
+        self.stream_cache.append_best_effort(&event);
         let _ = self.sender.send(event.clone());
 
         self.next_seq
@@ -368,6 +383,7 @@ impl ContinuityStore {
         self.event_log
             .append(&event)
             .map_err(|err| format!("append continuity_handoff_created: {err}"))?;
+        self.stream_cache.append_best_effort(&event);
         let _ = self.sender.send(event.clone());
 
         self.next_seq
@@ -437,6 +453,7 @@ impl ContinuityStore {
         self.event_log
             .append(&event)
             .map_err(|err| format!("append continuity message: {err}"))?;
+        self.stream_cache.append_best_effort(&event);
         let _ = self.sender.send(event.clone());
 
         // Only advance after a successful append to avoid gaps in the truth log.
@@ -480,6 +497,7 @@ impl ContinuityStore {
         self.event_log
             .append(&event)
             .map_err(|err| format!("append continuity run spawned: {err}"))?;
+        self.stream_cache.append_best_effort(&event);
         let _ = self.sender.send(event.clone());
 
         next_seq.insert(continuity_id.to_string(), seq + 1);
@@ -523,6 +541,7 @@ impl ContinuityStore {
         self.event_log
             .append(&event)
             .map_err(|err| format!("append continuity context compiled: {err}"))?;
+        self.stream_cache.append_best_effort(&event);
         let _ = self.sender.send(event.clone());
 
         next_seq.insert(continuity_id.to_string(), seq + 1);
@@ -567,6 +586,7 @@ impl ContinuityStore {
         self.event_log
             .append(&event)
             .map_err(|err| format!("append continuity run ended: {err}"))?;
+        self.stream_cache.append_best_effort(&event);
         let _ = self.sender.send(event.clone());
 
         next_seq.insert(continuity_id.to_string(), seq + 1);
@@ -611,6 +631,7 @@ impl ContinuityStore {
         self.event_log
             .append(&event)
             .map_err(|err| format!("append continuity tool side effects: {err}"))?;
+        self.stream_cache.append_best_effort(&event);
         let _ = self.sender.send(event.clone());
 
         next_seq.insert(continuity_id.to_string(), seq + 1);
@@ -618,9 +639,7 @@ impl ContinuityStore {
     }
 
     fn load_next_seq_for(&self, continuity_id: &str) -> Result<u64, io::Error> {
-        let events = self
-            .event_log
-            .replay_stream(StreamKind::Continuity, continuity_id)?;
+        let events = self.replay_events(continuity_id)?;
         let last = events.last().ok_or_else(|| {
             io::Error::new(io::ErrorKind::NotFound, "continuity stream does not exist")
         })?;
@@ -671,6 +690,7 @@ impl ContinuityStore {
         self.event_log
             .append(&created)
             .map_err(|err| format!("append continuity_created: {err}"))?;
+        self.stream_cache.append_best_effort(&created);
         let _ = self.sender.send(created.clone());
 
         {
@@ -775,6 +795,83 @@ mod tests {
             }
             other => panic!("expected continuity_created, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn continuity_sidecar_contains_appended_frames_and_is_preferred_for_replay() {
+        use std::io::Write;
+
+        let dir = tempdir().expect("tmp");
+        let (_event_log, store, data_dir) = store_for(&dir);
+
+        let continuity_id = store.ensure_default().expect("ensure");
+        let message_id = store
+            .append_message(
+                &continuity_id,
+                "alice".to_string(),
+                "cli".to_string(),
+                "hello".to_string(),
+            )
+            .expect("append message");
+        store
+            .append_run_spawned(
+                &continuity_id,
+                &message_id,
+                "session-1",
+                "alice".to_string(),
+                "cli".to_string(),
+            )
+            .expect("run spawned");
+        store
+            .append_context_compiled(
+                &continuity_id,
+                ContextCompiledPayload {
+                    run_session_id: "session-1".to_string(),
+                    bundle_artifact_id: "artifact-1".to_string(),
+                    compiler_id: "rip.context_compiler.v1".to_string(),
+                    compiler_strategy: "recent_messages_v1".to_string(),
+                    from_seq: 1,
+                    from_message_id: Some(message_id.clone()),
+                    actor_id: "alice".to_string(),
+                    origin: "cli".to_string(),
+                },
+            )
+            .expect("context compiled");
+        store
+            .append_run_ended(
+                &continuity_id,
+                &message_id,
+                "session-1",
+                "completed".to_string(),
+                "alice".to_string(),
+                "cli".to_string(),
+            )
+            .expect("run ended");
+
+        let sidecar_path = data_dir
+            .join("continuity_streams")
+            .join(format!("{continuity_id}.jsonl"));
+        assert!(sidecar_path.exists(), "expected continuity sidecar file");
+        let sidecar = fs::read_to_string(&sidecar_path).expect("read sidecar");
+        assert!(
+            sidecar.contains("continuity_context_compiled"),
+            "expected continuity_context_compiled in sidecar"
+        );
+
+        // Corrupt the global log so a replay_stream() scan would fail if used.
+        let mut file = fs::OpenOptions::new()
+            .append(true)
+            .open(data_dir.join("events.jsonl"))
+            .expect("open global log");
+        writeln!(file, "not json").expect("write corrupt line");
+
+        let events = store.replay_events(&continuity_id).expect("replay");
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event.kind, EventKind::ContinuityContextCompiled { .. })),
+            "expected continuity_context_compiled in replay"
+        );
     }
 
     #[test]
