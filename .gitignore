@@ -10,3 +10,4 @@
 node_modules/
 *.tsbuildinfo
 sdk/typescript/dist/
+.claude
