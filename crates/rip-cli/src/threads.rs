@@ -503,7 +503,8 @@ mod tests {
         let workspace_dir = root.join("workspace");
         std::fs::create_dir_all(&workspace_dir).expect("workspace");
 
-        let engine = ripd::SessionEngine::new(data_dir, workspace_dir, None).expect("engine");
+        let engine =
+            ripd::SessionEngine::new(data_dir, workspace_dir.clone(), None).expect("engine");
         let store = engine.continuities();
         let thread_id = store.ensure_default().expect("ensure");
         let message_id = store
@@ -664,7 +665,8 @@ mod tests {
         let data_dir = root.join("data");
         let workspace_dir = root.join("workspace");
         std::fs::create_dir_all(&workspace_dir).expect("workspace");
-        let engine = ripd::SessionEngine::new(data_dir, workspace_dir, None).expect("engine");
+        let engine =
+            ripd::SessionEngine::new(data_dir, workspace_dir.clone(), None).expect("engine");
 
         let err = run_threads_local_with_engine(
             &engine,
@@ -866,7 +868,8 @@ mod tests {
         let workspace_dir = root.join("workspace");
         std::fs::create_dir_all(&workspace_dir).expect("workspace");
 
-        let engine = ripd::SessionEngine::new(data_dir, workspace_dir, None).expect("engine");
+        let engine =
+            ripd::SessionEngine::new(data_dir, workspace_dir.clone(), None).expect("engine");
         let store = engine.continuities();
         let parent_thread_id = store.ensure_default().expect("ensure");
         let m1 = store
@@ -917,6 +920,7 @@ mod tests {
 
         let mut saw_created = false;
         let mut saw_handoff = false;
+        let mut bundle_artifact_id: Option<String> = None;
         for _ in 0..2 {
             let event = receiver.recv().await.expect("recv");
             match event.kind {
@@ -939,7 +943,9 @@ mod tests {
                     assert_eq!(from_seq, 3);
                     assert_eq!(from_message_id.as_deref(), Some(m1.as_str()));
                     assert_eq!(summary_markdown.as_deref(), Some("summary"));
-                    assert_eq!(summary_artifact_id.as_deref(), None);
+                    let artifact_id = summary_artifact_id.as_deref().expect("summary_artifact_id");
+                    assert_eq!(artifact_id.len(), 64);
+                    bundle_artifact_id = Some(artifact_id.to_string());
                     assert_eq!(actor_id, "user");
                     assert_eq!(origin, "cli");
                     saw_handoff = true;
@@ -949,6 +955,22 @@ mod tests {
         }
         assert!(saw_created, "expected continuity_created for handoff");
         assert!(saw_handoff, "expected continuity_handoff_created");
+        let artifact_id = bundle_artifact_id.expect("bundle artifact id");
+        let blob_path = workspace_dir
+            .join(".rip")
+            .join("artifacts")
+            .join("blobs")
+            .join(&artifact_id);
+        let bytes = std::fs::read(&blob_path).expect("read bundle artifact");
+        let json: serde_json::Value = serde_json::from_slice(&bytes).expect("bundle json");
+        assert_eq!(
+            json.get("schema").and_then(|v| v.as_str()),
+            Some("rip.handoff_context_bundle.v1")
+        );
+        assert_eq!(
+            json.get("summary_markdown").and_then(|v| v.as_str()),
+            Some("summary")
+        );
 
         let _ = std::fs::remove_dir_all(&root);
     }

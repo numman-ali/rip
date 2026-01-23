@@ -3,6 +3,9 @@
 /target/
 /data/
 
+# RIP workspace runtime output (artifacts/checkpoints/cache)
+.rip/
+
 # Node/TypeScript
 node_modules/
 *.tsbuildinfo

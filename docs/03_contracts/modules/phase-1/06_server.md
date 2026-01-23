@@ -22,6 +22,7 @@ Config
 Invariants
 - One session maps to one agent run.
 - Event stream is ordered and replayable.
+- Workspace-mutating operations are serialized across sessions and background tasks; read-only tools may run concurrently.
 
 Tests
 - Session lifecycle integration tests.
@@ -31,7 +32,7 @@ Tests
 Phase 2 planned extensions
 - Continuities (“threads”) advanced semantics:
   - reference/share semantics (beyond branch/handoff)
-  - artifact-backed handoff bundles (summaries + refs)
+  - artifact fetch/read surface for handoff bundles (range reads) + richer ref resolution
   - compaction + summarization checkpoints + cursor rotation logs
 - Background tool tasks (task entities) with their own event streams and control APIs:
   - spawn/status/cancel + stream events

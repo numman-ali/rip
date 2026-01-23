@@ -36,6 +36,7 @@ Decision
   - `thread.handoff` creates a new continuity stream in the same workspace and appends:
     - `continuity_created` (new thread id, title optional)
     - `continuity_handoff_created` (relationship + cut point + provenance + curated context)
+  - If `summary_markdown` is provided, the runtime should also persist an artifact-backed handoff bundle and record its id in `continuity_handoff_created.summary_artifact_id` (`docs/03_contracts/handoff_context_bundle.md`).
 
 Server API (v1)
 - `POST /threads/{id}/branch`
@@ -84,6 +85,7 @@ Surface parity
 References
 - `docs/02_architecture/continuity_os.md`
 - `docs/03_contracts/event_frames.md`
+- `docs/03_contracts/handoff_context_bundle.md`
 - `docs/03_contracts/capability_registry.md`
 - `docs/06_decisions/ADR-0008-continuity-os.md`
 - `docs/06_decisions/ADR-0006-sdk-transport.md`

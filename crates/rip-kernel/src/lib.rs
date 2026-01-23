@@ -37,6 +37,7 @@ impl Event {
             | EventKind::ContinuityMessageAppended { .. }
             | EventKind::ContinuityRunSpawned { .. }
             | EventKind::ContinuityRunEnded { .. }
+            | EventKind::ContinuityToolSideEffects { .. }
             | EventKind::ContinuityBranched { .. }
             | EventKind::ContinuityHandoffCreated { .. } => StreamKind::Continuity,
             EventKind::ToolTaskSpawned { .. }
@@ -167,6 +168,15 @@ pub enum EventKind {
         actor_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         origin: Option<String>,
+    },
+    ContinuityToolSideEffects {
+        run_session_id: String,
+        tool_id: String,
+        tool_name: String,
+        affected_paths: Option<Vec<String>>,
+        checkpoint_id: Option<String>,
+        actor_id: String,
+        origin: String,
     },
     ContinuityBranched {
         parent_thread_id: String,
@@ -438,6 +448,7 @@ impl Session {
             | EventKind::ContinuityMessageAppended { .. }
             | EventKind::ContinuityRunSpawned { .. }
             | EventKind::ContinuityRunEnded { .. }
+            | EventKind::ContinuityToolSideEffects { .. }
             | EventKind::ContinuityBranched { .. }
             | EventKind::ContinuityHandoffCreated { .. } => (None, None),
             EventKind::ProviderEvent { .. }

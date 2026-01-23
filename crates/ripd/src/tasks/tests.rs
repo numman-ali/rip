@@ -15,19 +15,31 @@ use super::*;
 
 fn build_engine(
     dir: &tempfile::TempDir,
-) -> (TaskEngine, TaskEngineConfig, Arc<EventLog>, Arc<PathBuf>) {
+) -> (
+    TaskEngine,
+    TaskEngineConfig,
+    Arc<crate::workspace_lock::WorkspaceLock>,
+    Arc<EventLog>,
+    Arc<PathBuf>,
+) {
     let data_dir = dir.path().join("data");
     let workspace_root = dir.path().join("workspace");
     std::fs::create_dir_all(&workspace_root).expect("workspace");
     let event_log = Arc::new(EventLog::new(data_dir.join("events.jsonl")).expect("log"));
     let snapshot_dir = Arc::new(data_dir.join("task_snapshots"));
+    let workspace_lock = Arc::new(crate::workspace_lock::WorkspaceLock::new());
     let config = TaskEngineConfig {
         workspace_root,
         artifact_max_bytes: 1024,
         max_bytes: 128,
     };
-    let engine = TaskEngine::new(config.clone(), event_log.clone(), snapshot_dir.clone());
-    (engine, config, event_log, snapshot_dir)
+    let engine = TaskEngine::new(
+        config.clone(),
+        workspace_lock.clone(),
+        event_log.clone(),
+        snapshot_dir.clone(),
+    );
+    (engine, config, workspace_lock, event_log, snapshot_dir)
 }
 
 #[test]
@@ -97,12 +109,14 @@ async fn create_task_initializes_status_and_log_refs_for_pipes() {
     std::fs::create_dir_all(&workspace_root).expect("workspace");
     let event_log = Arc::new(EventLog::new(data_dir.join("events.jsonl")).expect("log"));
     let snapshot_dir = Arc::new(data_dir.join("task_snapshots"));
+    let workspace_lock = Arc::new(crate::workspace_lock::WorkspaceLock::new());
     let engine = TaskEngine::new(
         TaskEngineConfig {
             workspace_root: workspace_root.clone(),
             artifact_max_bytes: 1024,
             max_bytes: 128,
         },
+        workspace_lock,
         event_log,
         snapshot_dir,
     );
@@ -141,12 +155,14 @@ async fn create_task_initializes_status_and_log_refs_for_pty() {
     std::fs::create_dir_all(&workspace_root).expect("workspace");
     let event_log = Arc::new(EventLog::new(data_dir.join("events.jsonl")).expect("log"));
     let snapshot_dir = Arc::new(data_dir.join("task_snapshots"));
+    let workspace_lock = Arc::new(crate::workspace_lock::WorkspaceLock::new());
     let engine = TaskEngine::new(
         TaskEngineConfig {
             workspace_root: workspace_root.clone(),
             artifact_max_bytes: 1024,
             max_bytes: 128,
         },
+        workspace_lock,
         event_log,
         snapshot_dir,
     );
@@ -224,7 +240,7 @@ async fn task_log_writer_new_reports_create_error() {
 #[tokio::test]
 async fn run_task_rejects_unsupported_tool() {
     let dir = tempdir().expect("tmp");
-    let (engine, config, event_log, snapshot_dir) = build_engine(&dir);
+    let (engine, config, workspace_lock, event_log, snapshot_dir) = build_engine(&dir);
 
     let payload = TaskSpawnPayload {
         tool: "ls".to_string(),
@@ -234,7 +250,15 @@ async fn run_task_rejects_unsupported_tool() {
         origin_session_id: None,
     };
     let handle = engine.create_task(&payload);
-    run_task(handle.clone(), payload, config, event_log, snapshot_dir).await;
+    run_task(
+        handle.clone(),
+        payload,
+        config,
+        workspace_lock,
+        event_log,
+        snapshot_dir,
+    )
+    .await;
 
     let status = handle.status().await;
     assert_eq!(status.status, ApiToolTaskStatus::Failed);
@@ -247,7 +271,7 @@ async fn run_task_rejects_unsupported_tool() {
 #[tokio::test]
 async fn run_task_rejects_invalid_args() {
     let dir = tempdir().expect("tmp");
-    let (engine, config, event_log, snapshot_dir) = build_engine(&dir);
+    let (engine, config, workspace_lock, event_log, snapshot_dir) = build_engine(&dir);
 
     let payload = TaskSpawnPayload {
         tool: "bash".to_string(),
@@ -257,7 +281,15 @@ async fn run_task_rejects_invalid_args() {
         origin_session_id: None,
     };
     let handle = engine.create_task(&payload);
-    run_task(handle.clone(), payload, config, event_log, snapshot_dir).await;
+    run_task(
+        handle.clone(),
+        payload,
+        config,
+        workspace_lock,
+        event_log,
+        snapshot_dir,
+    )
+    .await;
 
     let status = handle.status().await;
     assert_eq!(status.status, ApiToolTaskStatus::Failed);
@@ -267,7 +299,7 @@ async fn run_task_rejects_invalid_args() {
 #[tokio::test]
 async fn run_task_rejects_cwd_escape() {
     let dir = tempdir().expect("tmp");
-    let (engine, config, event_log, snapshot_dir) = build_engine(&dir);
+    let (engine, config, workspace_lock, event_log, snapshot_dir) = build_engine(&dir);
 
     let payload = TaskSpawnPayload {
         tool: "bash".to_string(),
@@ -277,7 +309,15 @@ async fn run_task_rejects_cwd_escape() {
         origin_session_id: None,
     };
     let handle = engine.create_task(&payload);
-    run_task(handle.clone(), payload, config, event_log, snapshot_dir).await;
+    run_task(
+        handle.clone(),
+        payload,
+        config,
+        workspace_lock,
+        event_log,
+        snapshot_dir,
+    )
+    .await;
 
     let status = handle.status().await;
     assert_eq!(status.status, ApiToolTaskStatus::Failed);
@@ -288,7 +328,7 @@ async fn run_task_rejects_cwd_escape() {
 #[tokio::test]
 async fn run_task_writes_stdout_and_stderr_logs() {
     let dir = tempdir().expect("tmp");
-    let (engine, config, event_log, snapshot_dir) = build_engine(&dir);
+    let (engine, config, workspace_lock, event_log, snapshot_dir) = build_engine(&dir);
 
     let payload = TaskSpawnPayload {
         tool: "bash".to_string(),
@@ -302,6 +342,7 @@ async fn run_task_writes_stdout_and_stderr_logs() {
         handle.clone(),
         payload,
         config.clone(),
+        workspace_lock,
         event_log,
         snapshot_dir,
     )
@@ -502,7 +543,7 @@ fn pipes_cancel_fixture_replays_and_reads_artifacts() {
 #[tokio::test]
 async fn write_stdin_rejects_non_pty_task() {
     let dir = tempdir().expect("tmp");
-    let (engine, _config, _event_log, _snapshot_dir) = build_engine(&dir);
+    let (engine, _config, _workspace_lock, _event_log, _snapshot_dir) = build_engine(&dir);
     let payload = TaskSpawnPayload {
         tool: "bash".to_string(),
         args: json!({"command":"printf 'hi\\n'"}),
@@ -524,7 +565,7 @@ async fn write_stdin_rejects_non_pty_task() {
 #[tokio::test]
 async fn write_stdin_rejects_before_task_ready() {
     let dir = tempdir().expect("tmp");
-    let (engine, _config, _event_log, _snapshot_dir) = build_engine(&dir);
+    let (engine, _config, _workspace_lock, _event_log, _snapshot_dir) = build_engine(&dir);
     let payload = TaskSpawnPayload {
         tool: "bash".to_string(),
         args: json!({"command":"stty -echo; cat"}),
@@ -546,7 +587,7 @@ async fn write_stdin_rejects_before_task_ready() {
 #[tokio::test]
 async fn write_stdin_rejects_invalid_base64() {
     let dir = tempdir().expect("tmp");
-    let (engine, _config, _event_log, _snapshot_dir) = build_engine(&dir);
+    let (engine, _config, _workspace_lock, _event_log, _snapshot_dir) = build_engine(&dir);
     let payload = TaskSpawnPayload {
         tool: "bash".to_string(),
         args: json!({"command":"stty -echo; cat"}),
@@ -568,7 +609,7 @@ async fn write_stdin_rejects_invalid_base64() {
 #[tokio::test]
 async fn write_stdin_rejects_oversize_chunk() {
     let dir = tempdir().expect("tmp");
-    let (engine, _config, _event_log, _snapshot_dir) = build_engine(&dir);
+    let (engine, _config, _workspace_lock, _event_log, _snapshot_dir) = build_engine(&dir);
     let payload = TaskSpawnPayload {
         tool: "bash".to_string(),
         args: json!({"command":"stty -echo; cat"}),
@@ -591,7 +632,7 @@ async fn write_stdin_rejects_oversize_chunk() {
 #[tokio::test]
 async fn resize_rejects_non_pty_task() {
     let dir = tempdir().expect("tmp");
-    let (engine, _config, _event_log, _snapshot_dir) = build_engine(&dir);
+    let (engine, _config, _workspace_lock, _event_log, _snapshot_dir) = build_engine(&dir);
     let payload = TaskSpawnPayload {
         tool: "bash".to_string(),
         args: json!({"command":"printf 'hi\\n'"}),
@@ -611,7 +652,7 @@ async fn resize_rejects_non_pty_task() {
 #[tokio::test]
 async fn resize_rejects_zero_dimensions() {
     let dir = tempdir().expect("tmp");
-    let (engine, _config, _event_log, _snapshot_dir) = build_engine(&dir);
+    let (engine, _config, _workspace_lock, _event_log, _snapshot_dir) = build_engine(&dir);
     let payload = TaskSpawnPayload {
         tool: "bash".to_string(),
         args: json!({"command":"stty -echo; cat"}),
@@ -631,7 +672,7 @@ async fn resize_rejects_zero_dimensions() {
 #[tokio::test]
 async fn signal_rejects_non_pty_task() {
     let dir = tempdir().expect("tmp");
-    let (engine, _config, _event_log, _snapshot_dir) = build_engine(&dir);
+    let (engine, _config, _workspace_lock, _event_log, _snapshot_dir) = build_engine(&dir);
     let payload = TaskSpawnPayload {
         tool: "bash".to_string(),
         args: json!({"command":"printf 'hi\\n'"}),
@@ -653,7 +694,7 @@ async fn signal_rejects_non_pty_task() {
 #[tokio::test]
 async fn signal_rejects_empty_and_unsupported() {
     let dir = tempdir().expect("tmp");
-    let (engine, _config, _event_log, _snapshot_dir) = build_engine(&dir);
+    let (engine, _config, _workspace_lock, _event_log, _snapshot_dir) = build_engine(&dir);
     let payload = TaskSpawnPayload {
         tool: "bash".to_string(),
         args: json!({"command":"stty -echo; cat"}),
@@ -683,7 +724,7 @@ async fn signal_rejects_empty_and_unsupported() {
 #[tokio::test]
 async fn signal_rejects_before_task_ready() {
     let dir = tempdir().expect("tmp");
-    let (engine, _config, _event_log, _snapshot_dir) = build_engine(&dir);
+    let (engine, _config, _workspace_lock, _event_log, _snapshot_dir) = build_engine(&dir);
     let payload = TaskSpawnPayload {
         tool: "bash".to_string(),
         args: json!({"command":"stty -echo; cat"}),
@@ -705,7 +746,7 @@ async fn signal_rejects_before_task_ready() {
 #[tokio::test]
 async fn output_rejects_unavailable_stream() {
     let dir = tempdir().expect("tmp");
-    let (engine, config, _event_log, _snapshot_dir) = build_engine(&dir);
+    let (engine, config, _workspace_lock, _event_log, _snapshot_dir) = build_engine(&dir);
     let payload = TaskSpawnPayload {
         tool: "bash".to_string(),
         args: json!({"command":"printf 'hi\\n'"}),
@@ -726,7 +767,7 @@ async fn output_rejects_unavailable_stream() {
 #[tokio::test]
 async fn pty_task_supports_stdin_resize_and_signal() {
     let dir = tempdir().expect("tmp");
-    let (engine, config, event_log, snapshot_dir) = build_engine(&dir);
+    let (engine, config, workspace_lock, event_log, snapshot_dir) = build_engine(&dir);
 
     let payload = TaskSpawnPayload {
         tool: "bash".to_string(),
@@ -741,6 +782,7 @@ async fn pty_task_supports_stdin_resize_and_signal() {
         handle.clone(),
         payload,
         config.clone(),
+        workspace_lock,
         event_log,
         snapshot_dir.clone(),
     ));
@@ -812,7 +854,7 @@ async fn pty_task_supports_stdin_resize_and_signal() {
 #[tokio::test]
 async fn pipes_task_applies_cwd_and_env() {
     let dir = tempdir().expect("tmp");
-    let (engine, config, event_log, snapshot_dir) = build_engine(&dir);
+    let (engine, config, workspace_lock, event_log, snapshot_dir) = build_engine(&dir);
 
     let cwd = config.workspace_root.join("subdir");
     std::fs::create_dir_all(&cwd).expect("cwd");
@@ -834,6 +876,7 @@ async fn pipes_task_applies_cwd_and_env() {
         handle.clone(),
         payload,
         config.clone(),
+        workspace_lock,
         event_log,
         snapshot_dir,
     )
@@ -851,7 +894,7 @@ async fn pipes_task_applies_cwd_and_env() {
 #[tokio::test]
 async fn pty_task_applies_cwd_and_env() {
     let dir = tempdir().expect("tmp");
-    let (engine, config, event_log, snapshot_dir) = build_engine(&dir);
+    let (engine, config, workspace_lock, event_log, snapshot_dir) = build_engine(&dir);
 
     let cwd = config.workspace_root.join("subdir");
     std::fs::create_dir_all(&cwd).expect("cwd");
@@ -873,6 +916,7 @@ async fn pty_task_applies_cwd_and_env() {
         handle.clone(),
         payload,
         config.clone(),
+        workspace_lock,
         event_log,
         snapshot_dir,
     )
@@ -890,7 +934,7 @@ async fn pty_task_applies_cwd_and_env() {
 #[tokio::test]
 async fn pipes_task_can_be_cancelled() {
     let dir = tempdir().expect("tmp");
-    let (engine, config, event_log, snapshot_dir) = build_engine(&dir);
+    let (engine, config, workspace_lock, event_log, snapshot_dir) = build_engine(&dir);
 
     let payload = TaskSpawnPayload {
         tool: "bash".to_string(),
@@ -904,6 +948,7 @@ async fn pipes_task_can_be_cancelled() {
         handle.clone(),
         payload,
         config.clone(),
+        workspace_lock.clone(),
         event_log,
         snapshot_dir,
     ));
@@ -933,7 +978,7 @@ async fn pipes_task_can_be_cancelled() {
 #[tokio::test]
 async fn pty_task_can_be_cancelled() {
     let dir = tempdir().expect("tmp");
-    let (engine, config, event_log, snapshot_dir) = build_engine(&dir);
+    let (engine, config, workspace_lock, event_log, snapshot_dir) = build_engine(&dir);
 
     let payload = TaskSpawnPayload {
         tool: "bash".to_string(),
@@ -947,6 +992,7 @@ async fn pty_task_can_be_cancelled() {
         handle.clone(),
         payload,
         config.clone(),
+        workspace_lock.clone(),
         event_log,
         snapshot_dir,
     ));
@@ -980,7 +1026,7 @@ async fn pty_task_can_be_cancelled() {
 #[tokio::test]
 async fn pty_task_can_be_signalled_via_ctrl_c() {
     let dir = tempdir().expect("tmp");
-    let (engine, config, event_log, snapshot_dir) = build_engine(&dir);
+    let (engine, config, workspace_lock, event_log, snapshot_dir) = build_engine(&dir);
 
     let payload = TaskSpawnPayload {
         tool: "bash".to_string(),
@@ -995,6 +1041,7 @@ async fn pty_task_can_be_signalled_via_ctrl_c() {
         handle.clone(),
         payload,
         config.clone(),
+        workspace_lock,
         event_log,
         snapshot_dir,
     ));
@@ -1040,7 +1087,7 @@ async fn pty_task_can_be_signalled_via_ctrl_c() {
 #[tokio::test]
 async fn pty_task_can_be_signalled_via_ctrl_backslash() {
     let dir = tempdir().expect("tmp");
-    let (engine, config, event_log, snapshot_dir) = build_engine(&dir);
+    let (engine, config, workspace_lock, event_log, snapshot_dir) = build_engine(&dir);
 
     let payload = TaskSpawnPayload {
         tool: "bash".to_string(),
@@ -1055,6 +1102,7 @@ async fn pty_task_can_be_signalled_via_ctrl_backslash() {
         handle.clone(),
         payload,
         config.clone(),
+        workspace_lock,
         event_log,
         snapshot_dir,
     ));

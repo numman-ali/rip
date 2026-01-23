@@ -39,6 +39,15 @@ Frame types
   - `reason`: string
   - `actor_id`: string (optional; may be absent in older logs)
   - `origin`: string (optional; may be absent in older logs)
+- `continuity_tool_side_effects`
+  - Purpose: continuity-truth logging of workspace mutations performed by in-run tools (provenance-first; replayable ordering).
+  - `run_session_id`: string (uuid)
+  - `tool_id`: string (uuid)
+  - `tool_name`: string
+  - `affected_paths`: string[] | null (normalized relative paths; null when unknown/unbounded, e.g. `bash`)
+  - `checkpoint_id`: string | null (auto-checkpoint id created immediately before the tool, if any)
+  - `actor_id`: string
+  - `origin`: string
 - `continuity_branched`
   - `parent_thread_id`: string (continuity id)
   - `parent_seq`: u64 (inclusive cut point in the parent continuity stream)
@@ -54,6 +63,7 @@ Frame types
   - `actor_id`: string
   - `origin`: string
   - Invariant: at least one of `summary_artifact_id` or `summary_markdown` is non-null.
+  - If `summary_artifact_id` is set, it should reference a handoff context bundle artifact (`docs/03_contracts/handoff_context_bundle.md`).
 - `tool_started`
   - `tool_id`: string (uuid)
   - `name`: string
@@ -107,6 +117,8 @@ Invariants
   - `stream_kind="continuity"`, `stream_id=continuity_id` (`session_id` remains an alias for compatibility).
 - Provider adapters emit `provider_event` for every SSE event (no drops).
 - Automatic checkpoint events for file-edit tools are emitted before the tool starts.
+- `continuity_tool_side_effects` is appended to the continuity stream only when the run is linked to a continuity (`continuity_run` exists).
+- `continuity_tool_side_effects` must be emitted after the tool completes (`tool_ended`/`tool_failed`) and before `continuity_run_ended` for the same `run_session_id`.
 
 Example
 ```

@@ -27,6 +27,7 @@ Config
 Invariants
 - Patch apply is atomic (success or revert).
 - Snapshot IDs are stable and replayable.
+- Workspace mutations are serialized across sessions and background tasks via a single workspace lock to preserve deterministic ordering.
 
 Tests
 - Patch apply/rollback fixtures.

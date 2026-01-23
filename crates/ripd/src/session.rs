@@ -15,11 +15,12 @@ use serde_json::Value;
 use tokio::sync::{broadcast, Mutex};
 use uuid::Uuid;
 
-use crate::continuities::{ContinuityRunLink, ContinuityStore};
+use crate::continuities::{ContinuityRunLink, ContinuityStore, ToolSideEffects};
 use crate::provider_openresponses::{
     build_streaming_followup_request, build_streaming_request, build_streaming_request_items,
     OpenResponsesConfig, DEFAULT_MAX_TOOL_CALLS,
 };
+use crate::workspace_lock::{requires_workspace_lock, WorkspaceLock};
 
 #[derive(Deserialize)]
 struct ToolCommand {
@@ -50,6 +51,7 @@ enum InputAction {
 pub struct SessionContext {
     pub runtime: Arc<Runtime>,
     pub tool_runner: Arc<ToolRunner>,
+    pub workspace_lock: Arc<WorkspaceLock>,
     pub http_client: reqwest::Client,
     pub openresponses: Option<OpenResponsesConfig>,
     pub sender: broadcast::Sender<Event>,
@@ -66,6 +68,7 @@ pub async fn run_session(context: SessionContext) {
     let SessionContext {
         runtime,
         tool_runner,
+        workspace_lock,
         http_client,
         openresponses,
         sender,
@@ -89,22 +92,37 @@ pub async fn run_session(context: SessionContext) {
     match action {
         InputAction::Tool(command) => {
             let mut seq = session.seq();
-            let tool_events = tool_runner
-                .run(
-                    &runtime_session_id,
-                    &mut seq,
-                    ToolInvocation {
-                        name: command.tool,
-                        args: command.args,
-                        timeout_ms: command.timeout_ms,
-                    },
-                )
-                .await;
-            session.set_seq(seq);
-            emit_events(tool_events, &sender, &events, &event_log).await;
+            let invocation = ToolInvocation {
+                name: command.tool,
+                args: command.args,
+                timeout_ms: command.timeout_ms,
+            };
+            if requires_workspace_lock(&invocation.name) {
+                let _guard = workspace_lock.acquire().await;
+                let tool_events = tool_runner
+                    .run(&runtime_session_id, &mut seq, invocation)
+                    .await;
+                let side_effects = summarize_continuity_tool_side_effects(&tool_events);
+                session.set_seq(seq);
+                emit_events(tool_events, &sender, &events, &event_log).await;
+                if let (Some(link), Some(side_effects)) = (continuity_run.as_ref(), side_effects) {
+                    let _ = continuities.append_tool_side_effects(
+                        link,
+                        &runtime_session_id,
+                        side_effects,
+                    );
+                }
+            } else {
+                let tool_events = tool_runner
+                    .run(&runtime_session_id, &mut seq, invocation)
+                    .await;
+                session.set_seq(seq);
+                emit_events(tool_events, &sender, &events, &event_log).await;
+            }
         }
         InputAction::Checkpoint(command) => {
             let mut seq = session.seq();
+            let _guard = workspace_lock.acquire().await;
             let checkpoint_events = match command {
                 CheckpointCommand::Create { label, files } => tool_runner.create_checkpoint(
                     &runtime_session_id,
@@ -127,15 +145,18 @@ pub async fn run_session(context: SessionContext) {
                     buffer: &events,
                     event_log: event_log.as_ref(),
                 };
-                let reason = run_openresponses_agent_loop(
-                    &http_client,
+                let reason = run_openresponses_agent_loop(OpenResponsesRunContext {
+                    http: &http_client,
                     config,
-                    tool_runner.as_ref(),
-                    &runtime_session_id,
-                    &input,
-                    &mut seq,
+                    tool_runner: tool_runner.as_ref(),
+                    workspace_lock: workspace_lock.as_ref(),
+                    continuities: continuities.as_ref(),
+                    continuity_run: continuity_run.as_ref(),
+                    session_id: &runtime_session_id,
+                    prompt: &input,
+                    seq: &mut seq,
                     sink,
-                )
+                })
                 .await;
                 emit_event(
                     Event {
@@ -593,6 +614,80 @@ fn tool_events_to_function_call_output(tool_name: &str, events: &[Event]) -> Val
     Value::Object(obj)
 }
 
+fn summarize_continuity_tool_side_effects(events: &[Event]) -> Option<ToolSideEffects> {
+    let (tool_id, tool_name) = events.iter().find_map(|event| match &event.kind {
+        EventKind::ToolStarted { tool_id, name, .. } => Some((tool_id.clone(), name.clone())),
+        _ => None,
+    })?;
+
+    let mut checkpoint_id: Option<String> = None;
+    let mut checkpoint_files: Option<Vec<String>> = None;
+    for event in events {
+        if let EventKind::CheckpointCreated {
+            checkpoint_id: id,
+            files,
+            auto: true,
+            ..
+        } = &event.kind
+        {
+            checkpoint_id = Some(id.clone());
+            checkpoint_files = Some(files.clone());
+            break;
+        }
+    }
+
+    let mut artifacts: Option<Value> = None;
+    for event in events {
+        if let EventKind::ToolEnded {
+            artifacts: tool_artifacts,
+            ..
+        } = &event.kind
+        {
+            artifacts = tool_artifacts.clone();
+        }
+    }
+
+    let mut affected_paths: Option<Vec<String>> = None;
+    if let Some(Value::Object(map)) = artifacts {
+        if let Some(Value::Array(items)) = map.get("changed_files") {
+            let mut paths = Vec::new();
+            for item in items {
+                if let Some(path) = item.as_str() {
+                    paths.push(normalize_rel_path_string(path));
+                }
+            }
+            affected_paths = Some(paths);
+        } else if let Some(Value::String(path)) = map.get("path") {
+            affected_paths = Some(vec![normalize_rel_path_string(path)]);
+        }
+    }
+
+    if affected_paths.is_none() {
+        affected_paths = checkpoint_files.map(|files| {
+            files
+                .into_iter()
+                .map(|path| normalize_rel_path_string(&path))
+                .collect()
+        });
+    }
+
+    if let Some(paths) = affected_paths.as_mut() {
+        paths.sort();
+        paths.dedup();
+    }
+
+    Some(ToolSideEffects {
+        tool_id,
+        tool_name,
+        affected_paths,
+        checkpoint_id,
+    })
+}
+
+fn normalize_rel_path_string(path: &str) -> String {
+    path.replace('\\', "/")
+}
+
 fn function_call_item_from_call(call: &FunctionCallItem, include_id: bool) -> ItemParam {
     let mut obj = serde_json::Map::new();
     obj.insert(
@@ -629,15 +724,32 @@ fn function_call_output_item(call_id: &str, output_json: String, include_id: boo
     ItemParam::new(Value::Object(obj))
 }
 
-async fn run_openresponses_agent_loop(
-    http: &reqwest::Client,
-    config: &OpenResponsesConfig,
-    tool_runner: &ToolRunner,
-    session_id: &str,
-    prompt: &str,
-    seq: &mut u64,
-    sink: EventSink<'_>,
-) -> String {
+struct OpenResponsesRunContext<'a> {
+    http: &'a reqwest::Client,
+    config: &'a OpenResponsesConfig,
+    tool_runner: &'a ToolRunner,
+    workspace_lock: &'a WorkspaceLock,
+    continuities: &'a ContinuityStore,
+    continuity_run: Option<&'a ContinuityRunLink>,
+    session_id: &'a str,
+    prompt: &'a str,
+    seq: &'a mut u64,
+    sink: EventSink<'a>,
+}
+
+async fn run_openresponses_agent_loop(ctx: OpenResponsesRunContext<'_>) -> String {
+    let OpenResponsesRunContext {
+        http,
+        config,
+        tool_runner,
+        workspace_lock,
+        continuities,
+        continuity_run,
+        session_id,
+        prompt,
+        seq,
+        sink,
+    } = ctx;
     let mut previous_response_id: Option<String> = None;
     let mut followup_tool_outputs: Option<Vec<ItemParam>> = None;
     let mut tool_call_count: u64 = 0;
@@ -710,20 +822,27 @@ async fn run_openresponses_agent_loop(
                 Ok(value) => value,
                 Err(_) => Value::String(call.arguments.clone()),
             };
-            let tool_events = tool_runner
-                .run(
-                    session_id,
-                    seq,
-                    ToolInvocation {
-                        name: call.name.clone(),
-                        args: args_value,
-                        timeout_ms: None,
-                    },
-                )
-                .await;
-            sink.emit_all(tool_events.clone()).await;
-
-            let output_value = tool_events_to_function_call_output(&call.name, &tool_events);
+            let invocation = ToolInvocation {
+                name: call.name.clone(),
+                args: args_value,
+                timeout_ms: None,
+            };
+            let output_value = if requires_workspace_lock(&invocation.name) {
+                let _guard = workspace_lock.acquire().await;
+                let tool_events = tool_runner.run(session_id, seq, invocation).await;
+                let side_effects = summarize_continuity_tool_side_effects(&tool_events);
+                let output_value = tool_events_to_function_call_output(&call.name, &tool_events);
+                sink.emit_all(tool_events).await;
+                if let (Some(link), Some(side_effects)) = (continuity_run, side_effects) {
+                    let _ = continuities.append_tool_side_effects(link, session_id, side_effects);
+                }
+                output_value
+            } else {
+                let tool_events = tool_runner.run(session_id, seq, invocation).await;
+                let output_value = tool_events_to_function_call_output(&call.name, &tool_events);
+                sink.emit_all(tool_events).await;
+                output_value
+            };
             let output_json = serde_json::to_string(&output_value)
                 .unwrap_or_else(|_| "{\"ok\":false}".to_string());
             tool_outputs.push(function_call_output_item(
@@ -1510,6 +1629,17 @@ data: [DONE]\n\n";
             Arc::new(|_invocation| Box::pin(async { rip_tools::ToolOutput::success(vec![]) })),
         );
         let tool_runner = ToolRunner::new(registry, 1);
+        let workspace_lock = crate::workspace_lock::WorkspaceLock::new();
+        let continuity_workspace = dir.path().join("workspace");
+        std::fs::create_dir_all(&continuity_workspace).expect("workspace");
+        let continuity_log =
+            Arc::new(EventLog::new(dir.path().join("continuity_events.jsonl")).expect("log"));
+        let continuity_store = ContinuityStore::new(
+            dir.path().join("continuity_data"),
+            continuity_workspace,
+            continuity_log,
+        )
+        .expect("continuities");
 
         let config = OpenResponsesConfig {
             endpoint: format!("http://{addr}/v1/responses"),
@@ -1521,15 +1651,19 @@ data: [DONE]\n\n";
             parallel_tool_calls: false,
         };
         let mut seq = 0;
-        let reason = run_openresponses_agent_loop(
-            &reqwest::Client::new(),
-            &config,
-            &tool_runner,
-            "s1",
-            "hi",
-            &mut seq,
+        let http = reqwest::Client::new();
+        let reason = run_openresponses_agent_loop(OpenResponsesRunContext {
+            http: &http,
+            config: &config,
+            tool_runner: &tool_runner,
+            workspace_lock: &workspace_lock,
+            continuities: &continuity_store,
+            continuity_run: None,
+            session_id: "s1",
+            prompt: "hi",
+            seq: &mut seq,
             sink,
-        )
+        })
         .await;
         assert_eq!(reason, "completed");
         let events = buffer.lock().await;
@@ -1581,6 +1715,17 @@ data: [DONE]\n\n";
             Arc::new(|_invocation| Box::pin(async { rip_tools::ToolOutput::success(vec![]) })),
         );
         let tool_runner = ToolRunner::new(registry, 1);
+        let workspace_lock = crate::workspace_lock::WorkspaceLock::new();
+        let continuity_workspace = dir.path().join("workspace");
+        std::fs::create_dir_all(&continuity_workspace).expect("workspace");
+        let continuity_log =
+            Arc::new(EventLog::new(dir.path().join("continuity_events.jsonl")).expect("log"));
+        let continuity_store = ContinuityStore::new(
+            dir.path().join("continuity_data"),
+            continuity_workspace,
+            continuity_log,
+        )
+        .expect("continuities");
 
         let config = OpenResponsesConfig {
             endpoint: format!("http://{addr}/v1/responses"),
@@ -1592,15 +1737,19 @@ data: [DONE]\n\n";
             parallel_tool_calls: false,
         };
         let mut seq = 0;
-        let reason = run_openresponses_agent_loop(
-            &reqwest::Client::new(),
-            &config,
-            &tool_runner,
-            "s1",
-            "hi",
-            &mut seq,
+        let http = reqwest::Client::new();
+        let reason = run_openresponses_agent_loop(OpenResponsesRunContext {
+            http: &http,
+            config: &config,
+            tool_runner: &tool_runner,
+            workspace_lock: &workspace_lock,
+            continuities: &continuity_store,
+            continuity_run: None,
+            session_id: "s1",
+            prompt: "hi",
+            seq: &mut seq,
             sink,
-        )
+        })
         .await;
         assert_eq!(reason, "provider_error");
     }
@@ -1664,6 +1813,17 @@ data: [DONE]\n\n";
             Arc::new(|_invocation| Box::pin(async { rip_tools::ToolOutput::success(vec![]) })),
         );
         let tool_runner = ToolRunner::new(registry, 1);
+        let workspace_lock = crate::workspace_lock::WorkspaceLock::new();
+        let continuity_workspace = dir.path().join("workspace");
+        std::fs::create_dir_all(&continuity_workspace).expect("workspace");
+        let continuity_log =
+            Arc::new(EventLog::new(dir.path().join("continuity_events.jsonl")).expect("log"));
+        let continuity_store = ContinuityStore::new(
+            dir.path().join("continuity_data"),
+            continuity_workspace,
+            continuity_log,
+        )
+        .expect("continuities");
 
         let config = OpenResponsesConfig {
             endpoint: format!("http://{addr}/v1/responses"),
@@ -1675,15 +1835,19 @@ data: [DONE]\n\n";
             parallel_tool_calls: false,
         };
         let mut seq = 0;
-        let reason = run_openresponses_agent_loop(
-            &reqwest::Client::new(),
-            &config,
-            &tool_runner,
-            "s1",
-            "hi",
-            &mut seq,
+        let http = reqwest::Client::new();
+        let reason = run_openresponses_agent_loop(OpenResponsesRunContext {
+            http: &http,
+            config: &config,
+            tool_runner: &tool_runner,
+            workspace_lock: &workspace_lock,
+            continuities: &continuity_store,
+            continuity_run: None,
+            session_id: "s1",
+            prompt: "hi",
+            seq: &mut seq,
             sink,
-        )
+        })
         .await;
         assert_eq!(reason, "completed");
         let events = buffer.lock().await;
@@ -1711,12 +1875,14 @@ data: [DONE]\n\n";
             Arc::new(|_invocation| Box::pin(async { rip_tools::ToolOutput::success(vec![]) })),
         );
         let tool_runner = Arc::new(ToolRunner::new(registry, 1));
+        let workspace_lock = Arc::new(crate::workspace_lock::WorkspaceLock::new());
 
         let (sender, _) = broadcast::channel(8);
         let events = Arc::new(Mutex::new(Vec::new()));
         let ctx = SessionContext {
             runtime,
             tool_runner,
+            workspace_lock,
             http_client: reqwest::Client::new(),
             openresponses: None,
             sender,

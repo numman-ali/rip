@@ -43,6 +43,7 @@ Thread commands (local or remote)
 - `rip threads branch <parent_thread_id> [--title <title>] [--from-message-id <id>] [--from-seq <n>] [--actor-id <id>] [--origin <origin>]`
 - `rip threads handoff <from_thread_id> [--title <title>] (--summary-markdown "<md>" | --summary-artifact-id <id>) [--from-message-id <id>] [--from-seq <n>] [--actor-id <id>] [--origin <origin>]`
 - Add `--server <url>` after `threads` to target a remote server: `rip threads --server <url> ...`
+- Note: when using `--summary-markdown`, RIP also writes an artifact-backed handoff bundle and records it in `continuity_handoff_created.summary_artifact_id` (`docs/03_contracts/handoff_context_bundle.md`).
 
 Headless mode (draft)
 - rip run <task> --headless --view raw
@@ -68,3 +69,4 @@ Notes
 - `rip serve` (or `ripd`) starts the agent server for remote clients (SDKs can target it via `--server <url>`).
 - Default output: `rip run ...` uses `--view output` (human-readable). Use `--view raw` for newline-delimited JSON frames.
 - Phase 1 is single-run sessions (no multi-turn/thread resume yet); OpenResponses tool execution is sequential and capped (`max_tool_calls=32`, `parallel_tool_calls=false`) per ADR-0005.
+- Workspace-mutating operations are serialized across sessions and background tasks; read-only tools may run concurrently.

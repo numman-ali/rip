@@ -23,12 +23,22 @@ Task lifecycle (pipes + pty; implemented)
 - POST /tasks/:id/resize -> resize terminal (`rows`,`cols`, PTY only)
 - POST /tasks/:id/signal -> send a signal (`signal`, PTY only today)
 
+Thread lifecycle (continuities; implemented)
+- POST /threads/ensure -> default thread id
+- GET /threads -> list threads (power/debug)
+- GET /threads/:id -> thread metadata
+- POST /threads/:id/messages -> append a message and spawn a run (returns `{thread_id, message_id, session_id}`)
+- POST /threads/:id/branch -> create a child thread linked to a parent cut point
+- POST /threads/:id/handoff -> create a new thread with curated context (`summary_markdown` and/or `summary_artifact_id`)
+- GET /threads/:id/events -> SSE continuity event stream (past + live)
+
 Notes
 - Today: `rip serve` (or `ripd`) exposes the session API for remote clients (SDKs can attach via `--server <url>`).
 - Today: `rip run` defaults to in-process execution; use `--server <url>` to target a remote server.
 - Today: `rip tasks --server <url> ...` is the CLI adapter over the task API.
 - SSE stream emits JSON event frames (`docs/03_contracts/event_frames.md`).
 - OpenAPI spec is exposed at `/openapi.json` (canonical) and may be mirrored in `schemas/`.
+- Workspace-mutating operations are serialized across sessions and background tasks; read-only tools may run concurrently.
 - JSON input envelopes can trigger tool execution and checkpoint actions (used for deterministic tests):
   - Tool: `{"tool":"write","args":{"path":"a.txt","content":"hi"},"timeout_ms":1000}`
   - Checkpoint create: `{"checkpoint":{"action":"create","label":"manual","files":["a.txt"]}}`

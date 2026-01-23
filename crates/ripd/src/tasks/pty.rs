@@ -465,12 +465,18 @@ mod tests {
 
         let event_log = Arc::new(EventLog::new(data_dir.join("events.jsonl")).expect("log"));
         let snapshot_dir = Arc::new(data_dir.join("task_snapshots"));
+        let workspace_lock = Arc::new(crate::workspace_lock::WorkspaceLock::new());
         let config = TaskEngineConfig {
             workspace_root,
             artifact_max_bytes: 128,
             max_bytes: 64,
         };
-        let engine = TaskEngine::new(config.clone(), event_log.clone(), snapshot_dir);
+        let engine = TaskEngine::new(
+            config.clone(),
+            workspace_lock,
+            event_log.clone(),
+            snapshot_dir,
+        );
 
         let payload = TaskSpawnPayload {
             tool: "bash".to_string(),
@@ -526,12 +532,18 @@ mod tests {
 
         let event_log = Arc::new(EventLog::new(data_dir.join("events.jsonl")).expect("log"));
         let snapshot_dir = Arc::new(data_dir.join("task_snapshots"));
+        let workspace_lock = Arc::new(crate::workspace_lock::WorkspaceLock::new());
         let config = TaskEngineConfig {
             workspace_root,
             artifact_max_bytes: 128,
             max_bytes: 64,
         };
-        let engine = TaskEngine::new(config.clone(), event_log.clone(), snapshot_dir);
+        let engine = TaskEngine::new(
+            config.clone(),
+            workspace_lock,
+            event_log.clone(),
+            snapshot_dir,
+        );
 
         // Ensure the base artifacts dir exists so failure comes from the nested path (`bad/id`).
         std::fs::create_dir_all(config.artifacts_blobs_dir()).expect("artifacts dir");

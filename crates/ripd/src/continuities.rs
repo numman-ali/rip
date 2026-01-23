@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
+use crate::handoff_context_bundle::HandoffContextBundleV1;
+
 const INDEX_VERSION: u32 = 1;
 const EVENT_CHANNEL_CAPACITY: usize = 16_384;
 
@@ -28,6 +30,14 @@ pub struct ContinuityRunLink {
     pub message_id: String,
     pub actor_id: String,
     pub origin: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ToolSideEffects {
+    pub tool_id: String,
+    pub tool_name: String,
+    pub affected_paths: Option<Vec<String>>,
+    pub checkpoint_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -235,7 +245,7 @@ impl ContinuityStore {
         from_seq: Option<u64>,
         provenance: (String, String),
     ) -> Result<(String, u64, Option<String>), String> {
-        let (summary_markdown, summary_artifact_id) = summary;
+        let (summary_markdown, mut summary_artifact_id) = summary;
         let (actor_id, origin) = provenance;
         if summary_markdown.is_none() && summary_artifact_id.is_none() {
             return Err("handoff requires summary_markdown and/or summary_artifact_id".to_string());
@@ -308,6 +318,21 @@ impl ContinuityStore {
 
         let workspace = workspace_key(&self.workspace_root);
         let thread_id = self.create_continuity(workspace, None, title, false)?;
+
+        if summary_artifact_id.is_none() {
+            if let Some(markdown) = summary_markdown.as_ref() {
+                let bundle = HandoffContextBundleV1::new_source_cut(
+                    markdown.clone(),
+                    from_thread_id.to_string(),
+                    from_seq,
+                    from_message_id.clone(),
+                );
+                summary_artifact_id = Some(crate::handoff_context_bundle::write_bundle_v1(
+                    &self.workspace_root,
+                    &bundle,
+                )?);
+            }
+        }
 
         let event = Event {
             id: Uuid::new_v4().to_string(),
@@ -483,6 +508,50 @@ impl ContinuityStore {
         self.event_log
             .append(&event)
             .map_err(|err| format!("append continuity run ended: {err}"))?;
+        let _ = self.sender.send(event.clone());
+
+        next_seq.insert(continuity_id.to_string(), seq + 1);
+        Ok(id)
+    }
+
+    pub fn append_tool_side_effects(
+        &self,
+        run: &ContinuityRunLink,
+        run_session_id: &str,
+        effects: ToolSideEffects,
+    ) -> Result<String, String> {
+        let continuity_id = run.continuity_id.as_str();
+        let mut next_seq = self.next_seq.lock().expect("continuity seq mutex");
+        let seq = match next_seq.get(continuity_id).cloned() {
+            Some(seq) => seq,
+            None => {
+                let seq = self
+                    .load_next_seq_for(continuity_id)
+                    .map_err(|err| format!("resolve continuity seq: {err}"))?;
+                next_seq.insert(continuity_id.to_string(), seq);
+                seq
+            }
+        };
+
+        let id = Uuid::new_v4().to_string();
+        let event = Event {
+            id: id.clone(),
+            session_id: continuity_id.to_string(),
+            timestamp_ms: now_ms(),
+            seq,
+            kind: EventKind::ContinuityToolSideEffects {
+                run_session_id: run_session_id.to_string(),
+                tool_id: effects.tool_id,
+                tool_name: effects.tool_name,
+                affected_paths: effects.affected_paths,
+                checkpoint_id: effects.checkpoint_id,
+                actor_id: run.actor_id.clone(),
+                origin: run.origin.clone(),
+            },
+        };
+        self.event_log
+            .append(&event)
+            .map_err(|err| format!("append continuity tool side effects: {err}"))?;
         let _ = self.sender.send(event.clone());
 
         next_seq.insert(continuity_id.to_string(), seq + 1);
@@ -806,6 +875,74 @@ mod tests {
     }
 
     #[test]
+    fn append_tool_side_effects_advances_seq() {
+        let dir = tempdir().expect("tmp");
+        let (event_log, store, _data_dir) = store_for(&dir);
+
+        let continuity_id = store.ensure_default().expect("ensure");
+        let message_id = store
+            .append_message(
+                &continuity_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "hello".to_string(),
+            )
+            .expect("append");
+        store
+            .append_run_spawned(
+                &continuity_id,
+                &message_id,
+                "session-1",
+                "user".to_string(),
+                "cli".to_string(),
+            )
+            .expect("run spawned");
+        store
+            .append_tool_side_effects(
+                &ContinuityRunLink {
+                    continuity_id: continuity_id.clone(),
+                    message_id: message_id.clone(),
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                },
+                "session-1",
+                ToolSideEffects {
+                    tool_id: "tool-1".to_string(),
+                    tool_name: "write".to_string(),
+                    affected_paths: Some(vec!["a.txt".to_string()]),
+                    checkpoint_id: Some("checkpoint-1".to_string()),
+                },
+            )
+            .expect("tool side effects");
+
+        let events = event_log
+            .replay_stream(StreamKind::Continuity, &continuity_id)
+            .expect("replay");
+        assert_eq!(events.len(), 4);
+        assert_eq!(events[3].seq, 3);
+        match &events[3].kind {
+            EventKind::ContinuityToolSideEffects {
+                run_session_id,
+                tool_id,
+                tool_name,
+                affected_paths,
+                checkpoint_id,
+                actor_id,
+                origin,
+            } => {
+                assert_eq!(run_session_id, "session-1");
+                assert_eq!(tool_id, "tool-1");
+                assert_eq!(tool_name, "write");
+                assert_eq!(affected_paths.as_deref(), Some(&["a.txt".to_string()][..]));
+                assert_eq!(checkpoint_id.as_deref(), Some("checkpoint-1"));
+                assert_eq!(actor_id, "user");
+                assert_eq!(origin, "cli");
+            }
+            other => panic!("expected tool side effects, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn branch_creates_child_with_cutpoint_and_provenance() {
         let dir = tempdir().expect("tmp");
         let (event_log, store, _data_dir) = store_for(&dir);
@@ -983,7 +1120,7 @@ mod tests {
         assert_eq!(child_events.len(), 2);
         assert_eq!(child_events[0].seq, 0);
         assert_eq!(child_events[1].seq, 1);
-        match &child_events[1].kind {
+        let artifact_id = match &child_events[1].kind {
             EventKind::ContinuityHandoffCreated {
                 from_thread_id: event_from_id,
                 from_seq: cut_seq,
@@ -996,13 +1133,48 @@ mod tests {
                 assert_eq!(event_from_id, &from_thread_id);
                 assert_eq!(*cut_seq, 3);
                 assert_eq!(cut_message_id.as_deref(), Some(m1.as_str()));
-                assert_eq!(summary_artifact_id.as_deref(), None);
+                let artifact_id = summary_artifact_id.as_deref().expect("summary_artifact_id");
+                assert_eq!(artifact_id.len(), 64);
                 assert_eq!(summary_markdown.as_deref(), Some("summary"));
                 assert_eq!(actor_id, "alice");
                 assert_eq!(origin, "team");
+                artifact_id.to_string()
             }
             other => panic!("expected continuity_handoff_created, got {other:?}"),
-        }
+        };
+
+        let blob_path = dir
+            .path()
+            .join("workspace")
+            .join(".rip")
+            .join("artifacts")
+            .join("blobs")
+            .join(&artifact_id);
+        let bytes = fs::read(&blob_path).expect("read bundle artifact");
+        let json: serde_json::Value = serde_json::from_slice(&bytes).expect("bundle json");
+        assert_eq!(
+            json.get("schema").and_then(|v| v.as_str()),
+            Some("rip.handoff_context_bundle.v1")
+        );
+        assert_eq!(
+            json.get("summary_markdown").and_then(|v| v.as_str()),
+            Some("summary")
+        );
+        let thread_refs = json
+            .get("refs")
+            .and_then(|v| v.get("threads"))
+            .and_then(|v| v.as_array())
+            .expect("thread refs");
+        assert_eq!(thread_refs.len(), 1);
+        assert_eq!(
+            thread_refs[0].get("thread_id").and_then(|v| v.as_str()),
+            Some(from_thread_id.as_str())
+        );
+        assert_eq!(thread_refs[0].get("seq").and_then(|v| v.as_u64()), Some(3));
+        assert_eq!(
+            thread_refs[0].get("message_id").and_then(|v| v.as_str()),
+            Some(m1.as_str())
+        );
 
         store
             .append_message(

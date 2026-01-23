@@ -18,6 +18,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use self::logs::{base64_decode, read_artifact_range, TaskLogs};
+use crate::workspace_lock::WorkspaceLock;
 
 const EVENT_CHANNEL_CAPACITY: usize = 16_384;
 const OUTPUT_EVENT_MAX_BYTES: usize = 8 * 1024;
@@ -244,6 +245,7 @@ pub(crate) struct TaskEngine {
     config: TaskEngineConfig,
     event_log: Arc<EventLog>,
     snapshot_dir: Arc<PathBuf>,
+    workspace_lock: Arc<WorkspaceLock>,
 }
 
 #[derive(Debug, Clone)]
@@ -265,6 +267,7 @@ impl TaskEngineConfig {
 impl TaskEngine {
     pub(crate) fn new(
         config: TaskEngineConfig,
+        workspace_lock: Arc<WorkspaceLock>,
         event_log: Arc<EventLog>,
         snapshot_dir: Arc<PathBuf>,
     ) -> Self {
@@ -272,6 +275,7 @@ impl TaskEngine {
             config,
             event_log,
             snapshot_dir,
+            workspace_lock,
         }
     }
 
@@ -316,8 +320,17 @@ impl TaskEngine {
         let event_log = self.event_log.clone();
         let snapshot_dir = self.snapshot_dir.clone();
         let config = self.config.clone();
+        let workspace_lock = self.workspace_lock.clone();
         tokio::spawn(async move {
-            run_task(handle, payload, config, event_log, snapshot_dir).await;
+            run_task(
+                handle,
+                payload,
+                config,
+                workspace_lock,
+                event_log,
+                snapshot_dir,
+            )
+            .await;
         });
     }
 }
@@ -347,6 +360,7 @@ async fn run_task(
     handle: TaskHandle,
     payload: TaskSpawnPayload,
     config: TaskEngineConfig,
+    workspace_lock: Arc<WorkspaceLock>,
     event_log: Arc<EventLog>,
     snapshot_dir: Arc<PathBuf>,
 ) {
@@ -412,6 +426,7 @@ async fn run_task(
         })
         .await;
 
+    let _workspace_guard = workspace_lock.acquire().await;
     match execution_mode {
         ToolTaskExecutionMode::Pipes => {
             pipes::run_pipes_task(

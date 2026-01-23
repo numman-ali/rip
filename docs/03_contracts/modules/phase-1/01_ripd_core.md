@@ -23,10 +23,12 @@ Invariants
 - Deterministic processing order given the same event stream.
 - No blocking on background workers.
 - All outputs are structured events.
+- Workspace-mutating operations (tool calls + background tasks) are serialized through a single workspace lock; read-only tools may run concurrently.
 
 Tests
 - Replay a golden stream and compare final snapshot.
 - Concurrency tests for sub-agent scheduling.
+- Concurrency tests for workspace mutation serialization across sessions + tasks.
 
 Benchmarks
 - Event routing latency (per event).

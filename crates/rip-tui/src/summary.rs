@@ -9,6 +9,7 @@ pub fn event_type(event: &Event) -> &'static str {
         EventKind::ContinuityMessageAppended { .. } => "continuity_message_appended",
         EventKind::ContinuityRunSpawned { .. } => "continuity_run_spawned",
         EventKind::ContinuityRunEnded { .. } => "continuity_run_ended",
+        EventKind::ContinuityToolSideEffects { .. } => "continuity_tool_side_effects",
         EventKind::ContinuityBranched { .. } => "continuity_branched",
         EventKind::ContinuityHandoffCreated { .. } => "continuity_handoff_created",
         EventKind::ToolStarted { .. } => "tool_started",
@@ -58,6 +59,23 @@ pub fn event_summary(event: &Event) -> String {
             truncate(run_session_id, 16),
             truncate(reason, 32)
         ),
+        EventKind::ContinuityToolSideEffects {
+            run_session_id,
+            tool_name,
+            affected_paths,
+            ..
+        } => {
+            let paths = match affected_paths {
+                Some(paths) => paths.len().to_string(),
+                None => "?".to_string(),
+            };
+            format!(
+                "run={} tool={} (paths={})",
+                truncate(run_session_id, 16),
+                truncate(tool_name, 32),
+                paths
+            )
+        }
         EventKind::ContinuityBranched {
             parent_thread_id,
             parent_seq,
@@ -187,6 +205,18 @@ mod tests {
                     origin: None,
                 },
                 "continuity_run_ended",
+            ),
+            (
+                EventKind::ContinuityToolSideEffects {
+                    run_session_id: "s1".to_string(),
+                    tool_id: "tool_1".to_string(),
+                    tool_name: "write".to_string(),
+                    affected_paths: Some(vec!["a.txt".to_string()]),
+                    checkpoint_id: Some("c1".to_string()),
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                },
+                "continuity_tool_side_effects",
             ),
             (
                 EventKind::ContinuityBranched {

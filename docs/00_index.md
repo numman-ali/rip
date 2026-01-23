@@ -18,6 +18,7 @@ Navigation
 - Module contracts (Phase 1): docs/03_contracts/modules/phase-1/
 - Module contracts (Phase 2): docs/03_contracts/modules/phase-2/
 - Event frame schema: docs/03_contracts/event_frames.md
+- Handoff context bundle artifact: docs/03_contracts/handoff_context_bundle.md
 - Capability contract + registry: docs/03_contracts/capabilities.md
 - Capability registry (source of truth): docs/03_contracts/capability_registry.md
 - OpenResponses coverage map: docs/03_contracts/openresponses_coverage.md

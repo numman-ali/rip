@@ -18,6 +18,7 @@ Config
 Invariants
 - Tool outputs are streamed as structured events.
 - Timeouts are enforced deterministically.
+- Workspace mutation serialization is enforced by the core runtime (not the tool runtime) via a workspace lock; read-only tools may run concurrently.
 
 Tests
 - Tool invocation fixture with deterministic outputs.

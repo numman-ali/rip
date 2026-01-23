@@ -1,12 +1,14 @@
 mod checkpoints;
 mod continuities;
+mod handoff_context_bundle;
 mod provider_openresponses;
 mod runner;
 mod server;
 mod session;
 mod tasks;
+mod workspace_lock;
 
-pub use continuities::{ContinuityMeta, ContinuityRunLink, ContinuityStore};
+pub use continuities::{ContinuityMeta, ContinuityRunLink, ContinuityStore, ToolSideEffects};
 pub use runner::{SessionEngine, SessionHandle};
 
 #[cfg(not(test))]

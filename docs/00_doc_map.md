@@ -13,6 +13,7 @@ Entry points (read order for reorientation)
 - `docs/02_architecture/capability_matrix.md` (phase placement + hook points)
 - `docs/02_architecture/runtime_and_control_plane.md` (runtime vs control plane vs remote runtime)
 - `docs/03_contracts/event_frames.md` (internal event schema)
+- `docs/03_contracts/handoff_context_bundle.md` (artifact schema for `thread.handoff` curated context bundles)
 - `docs/05_quality/feature_flow.md` (how we turn ideas into shipped capabilities)
 - OpenResponses boundary:
   - `docs/03_contracts/openresponses_coverage.md` (exhaustive spec/schema coverage + capability ownership)
@@ -52,6 +53,7 @@ Doc index (authoritative docs only)
 | capability matrix | `docs/02_architecture/capability_matrix.md` | Phases + hook points by capability group. |
 | surfaces | `docs/02_architecture/surfaces.md` | Surface roles and parity expectations. |
 | event frames | `docs/03_contracts/event_frames.md` | Internal event schema; what all surfaces consume. |
+| handoff bundle | `docs/03_contracts/handoff_context_bundle.md` | What artifact `thread.handoff` writes (summary + refs) and how it maps to future `context.compile`. |
 | OpenResponses coverage | `docs/03_contracts/openresponses_coverage.md` | Exhaustive OpenResponses spec/schema coverage + ownership. |
 | OpenResponses capability map | `docs/03_contracts/openresponses_capability_map.md` | Feature groups → internal capability ids. |
 | OpenResponses traceability | `docs/03_contracts/openresponses_traceability.md` | Upstream snapshot + sync/diff procedure. |
