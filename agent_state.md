@@ -1,6 +1,6 @@
 # Agent State (Working Log)
 
-Last updated: 2026-01-23
+Last updated: 2026-01-24
 
 How to use
 - Update this file whenever focus shifts, before ending a work session, and when blocked.
@@ -28,6 +28,7 @@ Current focus
 - Implemented: workspace mutation serialization across sessions + background tasks (workspace lock) with contract + replay tests.
 - Implemented: continuity stream logs workspace-mutating tool side-effects with full provenance (`continuity_tool_side_effects`) and replay coverage under parallel runs/tasks.
 - Decision locked (ADR-0010): `context.compile` is the canonical way runs “remember” across time; provider cursors are optional caches only.
+- Implemented: context compiler perf v1.1: per-continuity sidecar seek indexes + bounded window reads for `recent_messages_v1` non-tail anchors (caches only; replay-safe fallbacks).
 - Drafted contracts (docs-first):
   - New continuity frame: `continuity_context_compiled` (`docs/03_contracts/event_frames.md`)
   - New artifact schema: `rip.context_bundle.v1` (`docs/03_contracts/context_bundle.md`)
@@ -49,7 +50,7 @@ Reorientation (read in order after compaction)
 Open risks / notes
 - Tests no longer write `./data` under the repo (ripd export test uses temp dirs).
 - Note: local runs still default to `./data` unless `RIP_DATA_DIR` is set.
-- Perf: context compiler hot path avoids global `events.jsonl` scans when caches exist (snapshot-first session aggregation + per-continuity sidecar replay) and now avoids full continuity stream loads for latest-message run starts (tail-read continuity v1); remaining work is 1M+ event indexing/segmentation for non-tail anchors.
+- Perf: context compiler hot path avoids global `events.jsonl` scans when caches exist (snapshot-first session aggregation + per-continuity sidecar replay); avoids full continuity stream loads for `recent_messages_v1` both for latest-message run starts (tail-read continuity v1) and non-tail anchors (seekable sidecar window reads v1.1). Remaining work: per-stream segmentation + compaction cutpoints/summaries.
 - Perf: prompt cache friendliness requires deterministic tool ordering + stable instruction blocks + append-only context changes within a run (`docs/03_contracts/modules/phase-1/02_provider_adapters.md`, `https://openai.com/index/unrolling-the-codex-agent-loop/`).
 
 Active priorities

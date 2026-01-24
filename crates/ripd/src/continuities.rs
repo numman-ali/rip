@@ -199,7 +199,20 @@ impl ContinuityStore {
             tail_bytes = (tail_bytes * 2).min(MAX_TAIL_BYTES);
         }
 
-        // Fall back to full replay when the sidecar is missing/invalid or the anchor isn't near the tail.
+        // Fall back to a seekable window read when the anchor isn't near the tail.
+        if let Ok(Some(window)) = self.stream_cache.window_recent_messages_v1_from_message_id(
+            continuity_id,
+            anchor_message_id,
+            RECENT_MESSAGES_V1_LIMIT,
+        ) {
+            return Ok(ContextCompileInput {
+                continuity_events: window.events,
+                from_seq: window.from_seq,
+                from_message_id: window.from_message_id,
+            });
+        }
+
+        // Fall back to full replay when caches are missing/invalid.
         let continuity_events = self
             .replay_events(continuity_id)
             .map_err(|err| format!("continuity replay failed: {err}"))?;
@@ -1354,6 +1367,297 @@ mod tests {
         let full_json = serde_json::to_value(&full_bundle).expect("full json");
         let tail_json = serde_json::to_value(&tail_bundle).expect("tail json");
         assert_eq!(tail_json, full_json);
+    }
+
+    #[test]
+    fn window_context_compile_input_matches_full_replay_for_recent_messages_v1_non_tail_anchor() {
+        let dir = tempdir().expect("tmp");
+        let (event_log, store, _data_dir) = store_for(&dir);
+        let snapshot_dir = dir.path().join("snapshots");
+
+        const MSG_LEN: usize = 60_000;
+        const MSG_COUNT: usize = 200;
+
+        let continuity_id = store.ensure_default().expect("ensure");
+        let mut message_ids: Vec<String> = Vec::new();
+
+        for idx in 0..MSG_COUNT {
+            let message_id = store
+                .append_message(
+                    &continuity_id,
+                    "user".to_string(),
+                    "cli".to_string(),
+                    format!("m{idx}:{}", "x".repeat(MSG_LEN)),
+                )
+                .expect("append message");
+            let session_id = format!("session-{idx}");
+
+            let session_events = vec![
+                Event {
+                    id: format!("se{idx}-0"),
+                    session_id: session_id.clone(),
+                    timestamp_ms: 0,
+                    seq: 0,
+                    kind: EventKind::SessionStarted {
+                        input: "hi".to_string(),
+                    },
+                },
+                Event {
+                    id: format!("se{idx}-1"),
+                    session_id: session_id.clone(),
+                    timestamp_ms: 1,
+                    seq: 1,
+                    kind: EventKind::OutputTextDelta {
+                        delta: format!("a{idx}"),
+                    },
+                },
+                Event {
+                    id: format!("se{idx}-2"),
+                    session_id: session_id.clone(),
+                    timestamp_ms: 2,
+                    seq: 2,
+                    kind: EventKind::SessionEnded {
+                        reason: "completed".to_string(),
+                    },
+                },
+            ];
+            write_snapshot(&snapshot_dir, &session_id, &session_events).expect("snapshot");
+
+            store
+                .append_run_spawned(
+                    &continuity_id,
+                    &message_id,
+                    &session_id,
+                    "user".to_string(),
+                    "cli".to_string(),
+                )
+                .expect("run spawned");
+            store
+                .append_context_compiled(
+                    &continuity_id,
+                    ContextCompiledPayload {
+                        run_session_id: session_id.clone(),
+                        bundle_artifact_id: "artifact-1".to_string(),
+                        compiler_id: "rip.context_compiler.v1".to_string(),
+                        compiler_strategy: "recent_messages_v1".to_string(),
+                        from_seq: 0,
+                        from_message_id: Some(message_id.clone()),
+                        actor_id: "user".to_string(),
+                        origin: "cli".to_string(),
+                    },
+                )
+                .expect("context compiled");
+            store
+                .append_run_ended(
+                    &continuity_id,
+                    &message_id,
+                    &session_id,
+                    "completed".to_string(),
+                    "user".to_string(),
+                    "cli".to_string(),
+                )
+                .expect("run ended");
+
+            message_ids.push(message_id);
+        }
+
+        let anchor_message_id = message_ids.get(40).cloned().expect("anchor message id");
+
+        let full_events = store.replay_events(&continuity_id).expect("replay full");
+        let (full_from_seq, full_from_message_id) =
+            resolve_context_compile_cutpoint_full(&full_events, &anchor_message_id)
+                .expect("cutpoint");
+
+        let full_bundle = compile_recent_messages_v1(CompileRecentMessagesV1Request {
+            continuity_id: &continuity_id,
+            continuity_events: &full_events,
+            event_log: event_log.as_ref(),
+            snapshot_dir: &snapshot_dir,
+            from_seq: full_from_seq,
+            from_message_id: full_from_message_id.clone(),
+            run_session_id: "run-session",
+            actor_id: "user",
+            origin: "cli",
+        })
+        .expect("compile full");
+
+        let window_input = store
+            .load_context_compile_input_recent_messages_v1(&continuity_id, &anchor_message_id)
+            .expect("window input");
+        assert_eq!(window_input.from_seq, full_from_seq);
+        assert_eq!(window_input.from_message_id, full_from_message_id);
+        assert!(
+            window_input.continuity_events.len() <= 128,
+            "expected bounded window, got {} events",
+            window_input.continuity_events.len()
+        );
+
+        let window_bundle = compile_recent_messages_v1(CompileRecentMessagesV1Request {
+            continuity_id: &continuity_id,
+            continuity_events: &window_input.continuity_events,
+            event_log: event_log.as_ref(),
+            snapshot_dir: &snapshot_dir,
+            from_seq: window_input.from_seq,
+            from_message_id: window_input.from_message_id.clone(),
+            run_session_id: "run-session",
+            actor_id: "user",
+            origin: "cli",
+        })
+        .expect("compile window");
+
+        let full_json = serde_json::to_value(&full_bundle).expect("full json");
+        let window_json = serde_json::to_value(&window_bundle).expect("window json");
+        assert_eq!(window_json, full_json);
+    }
+
+    #[test]
+    fn window_context_compile_input_works_when_global_log_is_corrupt() {
+        use std::io::Write;
+
+        let dir = tempdir().expect("tmp");
+        let (event_log, store, data_dir) = store_for(&dir);
+        let snapshot_dir = dir.path().join("snapshots");
+
+        const MSG_LEN: usize = 60_000;
+        const MSG_COUNT: usize = 200;
+
+        let continuity_id = store.ensure_default().expect("ensure");
+        let mut message_ids: Vec<String> = Vec::new();
+
+        for idx in 0..MSG_COUNT {
+            let message_id = store
+                .append_message(
+                    &continuity_id,
+                    "user".to_string(),
+                    "cli".to_string(),
+                    format!("m{idx}:{}", "x".repeat(MSG_LEN)),
+                )
+                .expect("append message");
+            let session_id = format!("session-{idx}");
+
+            let session_events = vec![
+                Event {
+                    id: format!("se{idx}-0"),
+                    session_id: session_id.clone(),
+                    timestamp_ms: 0,
+                    seq: 0,
+                    kind: EventKind::SessionStarted {
+                        input: "hi".to_string(),
+                    },
+                },
+                Event {
+                    id: format!("se{idx}-1"),
+                    session_id: session_id.clone(),
+                    timestamp_ms: 1,
+                    seq: 1,
+                    kind: EventKind::OutputTextDelta {
+                        delta: format!("a{idx}"),
+                    },
+                },
+                Event {
+                    id: format!("se{idx}-2"),
+                    session_id: session_id.clone(),
+                    timestamp_ms: 2,
+                    seq: 2,
+                    kind: EventKind::SessionEnded {
+                        reason: "completed".to_string(),
+                    },
+                },
+            ];
+            write_snapshot(&snapshot_dir, &session_id, &session_events).expect("snapshot");
+
+            store
+                .append_run_spawned(
+                    &continuity_id,
+                    &message_id,
+                    &session_id,
+                    "user".to_string(),
+                    "cli".to_string(),
+                )
+                .expect("run spawned");
+            store
+                .append_context_compiled(
+                    &continuity_id,
+                    ContextCompiledPayload {
+                        run_session_id: session_id.clone(),
+                        bundle_artifact_id: "artifact-1".to_string(),
+                        compiler_id: "rip.context_compiler.v1".to_string(),
+                        compiler_strategy: "recent_messages_v1".to_string(),
+                        from_seq: 0,
+                        from_message_id: Some(message_id.clone()),
+                        actor_id: "user".to_string(),
+                        origin: "cli".to_string(),
+                    },
+                )
+                .expect("context compiled");
+            store
+                .append_run_ended(
+                    &continuity_id,
+                    &message_id,
+                    &session_id,
+                    "completed".to_string(),
+                    "user".to_string(),
+                    "cli".to_string(),
+                )
+                .expect("run ended");
+
+            message_ids.push(message_id);
+        }
+
+        let anchor_message_id = message_ids.get(40).cloned().expect("anchor message id");
+
+        let full_events = store.replay_events(&continuity_id).expect("replay full");
+        let (full_from_seq, full_from_message_id) =
+            resolve_context_compile_cutpoint_full(&full_events, &anchor_message_id)
+                .expect("cutpoint");
+        let expected_bundle = compile_recent_messages_v1(CompileRecentMessagesV1Request {
+            continuity_id: &continuity_id,
+            continuity_events: &full_events,
+            event_log: event_log.as_ref(),
+            snapshot_dir: &snapshot_dir,
+            from_seq: full_from_seq,
+            from_message_id: full_from_message_id.clone(),
+            run_session_id: "run-session",
+            actor_id: "user",
+            origin: "cli",
+        })
+        .expect("compile full");
+        let expected_json = serde_json::to_value(&expected_bundle).expect("bundle json");
+
+        // Corrupt the global log: window reads should still succeed via sidecar + indexes.
+        let mut file = fs::OpenOptions::new()
+            .append(true)
+            .open(data_dir.join("events.jsonl"))
+            .expect("open global log");
+        writeln!(file, "not json").expect("corrupt global log");
+
+        let (event_log2, store2, _data_dir2) = store_for(&dir);
+        let window_input = store2
+            .load_context_compile_input_recent_messages_v1(&continuity_id, &anchor_message_id)
+            .expect("window input after restart");
+        assert_eq!(window_input.from_seq, full_from_seq);
+        assert_eq!(window_input.from_message_id, full_from_message_id);
+        assert!(
+            window_input.continuity_events.len() <= 128,
+            "expected bounded window, got {} events",
+            window_input.continuity_events.len()
+        );
+
+        let window_bundle = compile_recent_messages_v1(CompileRecentMessagesV1Request {
+            continuity_id: &continuity_id,
+            continuity_events: &window_input.continuity_events,
+            // Snapshot-first: event_log is only used as fallback; global log is corrupted here.
+            event_log: event_log2.as_ref(),
+            snapshot_dir: &snapshot_dir,
+            from_seq: window_input.from_seq,
+            from_message_id: window_input.from_message_id.clone(),
+            run_session_id: "run-session",
+            actor_id: "user",
+            origin: "cli",
+        })
+        .expect("compile window");
+        let window_json = serde_json::to_value(&window_bundle).expect("bundle json");
+        assert_eq!(window_json, expected_json);
     }
 
     #[test]

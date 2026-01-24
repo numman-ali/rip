@@ -5,6 +5,14 @@ use std::path::{Path, PathBuf};
 use rip_kernel::{Event, StreamKind};
 use serde::Deserialize;
 
+use crate::continuity_seek_index::{
+    append_seq_index_entry_best_effort, best_offset_for_seq, insert_message_best_effort_v1,
+    load_seq_index_v1, lookup_message_v1, message_index_path,
+    rebuild_message_index_from_sidecar_v1, rebuild_seq_index_from_sidecar_v1, seq_index_path,
+    validate_seq_index_against_sidecar, SeqSeekIndexEntryV1, SidecarIndexBuilderV1,
+    SEEK_INDEX_STRIDE_EVENTS_V1,
+};
+
 const REVERSE_SCAN_CHUNK_BYTES: usize = 8 * 1024;
 
 #[derive(Debug, Clone)]
@@ -13,12 +21,22 @@ pub(crate) struct TailScan {
     pub(crate) complete: bool,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct ContinuityWindow {
+    pub(crate) events: Vec<Event>,
+    pub(crate) from_seq: u64,
+    pub(crate) from_message_id: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 struct SidecarEventHeader {
+    id: String,
     seq: u64,
     session_id: String,
     stream_kind: StreamKind,
     stream_id: String,
+    #[serde(rename = "type")]
+    event_type: String,
 }
 
 /// Best-effort cache for fast continuity replays without scanning the global event log.
@@ -53,13 +71,40 @@ impl ContinuityStreamCache {
         let Ok(file) = OpenOptions::new().create(true).append(true).open(&path) else {
             return;
         };
+        let offset = match file.metadata() {
+            Ok(meta) => meta.len(),
+            Err(_) => return,
+        };
+
         let mut writer = BufWriter::new(file);
         let Ok(line) = serde_json::to_string(event) else {
             return;
         };
-        let _ = writer.write_all(line.as_bytes());
-        let _ = writer.write_all(b"\n");
-        let _ = writer.flush();
+        if writer.write_all(line.as_bytes()).is_err() {
+            return;
+        }
+        if writer.write_all(b"\n").is_err() {
+            return;
+        }
+        if writer.flush().is_err() {
+            return;
+        }
+
+        // Best-effort indexes (rebuildable caches) to avoid full sidecar scans.
+        if event.seq.is_multiple_of(SEEK_INDEX_STRIDE_EVENTS_V1) {
+            let seek_path = seq_index_path(&self.dir, continuity_id);
+            append_seq_index_entry_best_effort(
+                &seek_path,
+                &SeqSeekIndexEntryV1::new(event.seq, offset),
+            );
+        }
+        if matches!(
+            &event.kind,
+            rip_kernel::EventKind::ContinuityMessageAppended { .. }
+        ) {
+            let msg_path = message_index_path(&self.dir, continuity_id);
+            insert_message_best_effort_v1(&msg_path, &path, &event.id, event.seq, offset);
+        }
     }
 
     pub(crate) fn rebuild_best_effort(&self, continuity_id: &str, events: &[Event]) {
@@ -72,6 +117,8 @@ impl ContinuityStreamCache {
             return;
         };
         let mut writer = BufWriter::new(file);
+        let mut offset: u64 = 0;
+        let mut index_builder = SidecarIndexBuilderV1::new();
         for event in events {
             if event.stream_kind() != StreamKind::Continuity || event.stream_id() != continuity_id {
                 continue;
@@ -79,10 +126,14 @@ impl ContinuityStreamCache {
             let Ok(line) = serde_json::to_string(event) else {
                 continue;
             };
+            index_builder.observe_event(event, offset);
             let _ = writer.write_all(line.as_bytes());
             let _ = writer.write_all(b"\n");
+            offset = offset.saturating_add(line.len() as u64 + 1);
         }
         let _ = writer.flush();
+
+        let _ = index_builder.write_best_effort(&self.dir, continuity_id);
     }
 
     /// Returns `Ok(None)` when the cache file doesn't exist.
@@ -151,8 +202,14 @@ impl ContinuityStreamCache {
         let mut max_bytes: usize = REVERSE_SCAN_CHUNK_BYTES * 2;
         let max_cap: usize = 4 * 1024 * 1024;
         loop {
-            let tail =
-                scan_sidecar_backwards(&mut file, continuity_id, 1, max_bytes, ParseMode::Header)?;
+            let tail = scan_sidecar_backwards(
+                &mut file,
+                continuity_id,
+                1,
+                max_bytes,
+                ParseMode::Header,
+                None,
+            )?;
             if let Some(header) = tail.headers.into_iter().next() {
                 return Ok(Some(header.seq));
             }
@@ -196,6 +253,7 @@ impl ContinuityStreamCache {
             max_events,
             max_bytes,
             ParseMode::Event,
+            None,
         )?;
         let mut events = parsed.events;
         events.reverse();
@@ -218,6 +276,338 @@ impl ContinuityStreamCache {
             complete: parsed.complete,
         }))
     }
+
+    /// Read a bounded continuity window sufficient for `recent_messages_v1`, anchored by an
+    /// existing `continuity_message_appended` event id.
+    ///
+    /// Returns `Ok(None)` when the sidecar/index cache is missing or doesn't contain the anchor.
+    pub(crate) fn window_recent_messages_v1_from_message_id(
+        &self,
+        continuity_id: &str,
+        anchor_message_id: &str,
+        message_limit: usize,
+    ) -> io::Result<Option<ContinuityWindow>> {
+        let sidecar_path = self.path_for(continuity_id);
+        let sidecar_file = match File::open(&sidecar_path) {
+            Ok(file) => file,
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(err) => return Err(err),
+        };
+
+        let (anchor_seq, anchor_offset) =
+            match self.lookup_message_anchor_v1(continuity_id, &sidecar_path, anchor_message_id)? {
+                Some(v) => v,
+                None => return Ok(None),
+            };
+
+        // Determine the cut point `from_seq` as: (seq before the next message) or head_seq.
+        let head_seq = self.try_read_last_seq(continuity_id)?.ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, "continuity sidecar empty")
+        })?;
+
+        let mut next_message_seq: Option<u64> = None;
+        {
+            let mut file = sidecar_file;
+            file.seek(SeekFrom::Start(anchor_offset))?;
+            let mut reader = BufReader::new(file);
+            let mut cur_offset = anchor_offset;
+            let mut saw_anchor = false;
+
+            loop {
+                let mut buf = Vec::new();
+                let n = reader.read_until(b'\n', &mut buf)?;
+                if n == 0 {
+                    break;
+                }
+                cur_offset = cur_offset.saturating_add(n as u64);
+                let line = strip_line_terminator(&mut buf);
+                if line.is_empty() {
+                    continue;
+                }
+
+                let header: SidecarEventHeader = serde_json::from_slice(line)
+                    .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+                if header.stream_kind != StreamKind::Continuity
+                    || header.stream_id != continuity_id
+                    || header.session_id != continuity_id
+                {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "continuity sidecar contains non-continuity event",
+                    ));
+                }
+
+                if !saw_anchor {
+                    // Validate that the anchor offset points to the intended message.
+                    if header.seq != anchor_seq
+                        || header.event_type != "continuity_message_appended"
+                        || header.id != anchor_message_id
+                    {
+                        return Ok(None);
+                    }
+                    saw_anchor = true;
+                    continue;
+                }
+
+                if header.seq <= anchor_seq {
+                    continue;
+                }
+                if header.event_type == "continuity_message_appended" {
+                    next_message_seq = Some(header.seq);
+                    break;
+                }
+            }
+        }
+
+        let from_seq = match next_message_seq {
+            Some(seq) => seq.saturating_sub(1).max(anchor_seq),
+            _ => head_seq.max(anchor_seq),
+        };
+
+        let Some(mut window) =
+            self.window_recent_messages_v1_from_seq(continuity_id, from_seq, message_limit)?
+        else {
+            return Ok(None);
+        };
+        window.from_message_id = Some(anchor_message_id.to_string());
+        Ok(Some(window))
+    }
+
+    /// Read a bounded continuity window sufficient for `recent_messages_v1`, anchored by a
+    /// continuity `from_seq` cut point.
+    ///
+    /// Returns `Ok(None)` when the sidecar cache is missing.
+    pub(crate) fn window_recent_messages_v1_from_seq(
+        &self,
+        continuity_id: &str,
+        from_seq: u64,
+        message_limit: usize,
+    ) -> io::Result<Option<ContinuityWindow>> {
+        let sidecar_path = self.path_for(continuity_id);
+        if !sidecar_path.exists() {
+            return Ok(None);
+        }
+
+        let seq_index = self.ensure_seq_index_v1(continuity_id, &sidecar_path)?;
+        let boundary_pos =
+            self.boundary_pos_for_seq_v1(continuity_id, &sidecar_path, &seq_index, from_seq)?;
+
+        self.window_recent_messages_v1_from_cut_v1(
+            continuity_id,
+            &sidecar_path,
+            from_seq,
+            boundary_pos,
+            message_limit,
+            None,
+        )
+        .map(Some)
+    }
+
+    fn lookup_message_anchor_v1(
+        &self,
+        continuity_id: &str,
+        sidecar_path: &Path,
+        message_id: &str,
+    ) -> io::Result<Option<(u64, u64)>> {
+        let idx_path = message_index_path(&self.dir, continuity_id);
+
+        match lookup_message_v1(&idx_path, message_id) {
+            Ok(Some(found)) => Ok(Some(found)),
+            Ok(None) => {
+                // Missing/stale index: rebuild from sidecar (cache-only; do not touch truth log).
+                let _ = rebuild_message_index_from_sidecar_v1(sidecar_path, &idx_path);
+                Ok(lookup_message_v1(&idx_path, message_id)?)
+            }
+            Err(_) => {
+                // Corrupt index: rebuild best-effort and retry.
+                let _ = rebuild_message_index_from_sidecar_v1(sidecar_path, &idx_path);
+                Ok(lookup_message_v1(&idx_path, message_id)?)
+            }
+        }
+    }
+
+    fn ensure_seq_index_v1(
+        &self,
+        continuity_id: &str,
+        sidecar_path: &Path,
+    ) -> io::Result<Vec<SeqSeekIndexEntryV1>> {
+        let idx_path = seq_index_path(&self.dir, continuity_id);
+
+        let entries = match load_seq_index_v1(&idx_path) {
+            Ok(Some(entries)) => entries,
+            Ok(None) => {
+                rebuild_seq_index_from_sidecar_v1(sidecar_path, &idx_path)?;
+                load_seq_index_v1(&idx_path)?.ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidData, "seek index missing")
+                })?
+            }
+            Err(_) => {
+                rebuild_seq_index_from_sidecar_v1(sidecar_path, &idx_path)?;
+                load_seq_index_v1(&idx_path)?.ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidData, "seek index missing")
+                })?
+            }
+        };
+
+        validate_seq_index_against_sidecar(&entries, sidecar_path, continuity_id)?;
+        Ok(entries)
+    }
+
+    fn boundary_pos_for_seq_v1(
+        &self,
+        continuity_id: &str,
+        sidecar_path: &Path,
+        seq_index: &[SeqSeekIndexEntryV1],
+        from_seq: u64,
+    ) -> io::Result<u64> {
+        let start_offset = best_offset_for_seq(seq_index, from_seq);
+        let mut file = File::open(sidecar_path)?;
+        let sidecar_len = file.metadata()?.len();
+        file.seek(SeekFrom::Start(start_offset))?;
+        let mut reader = BufReader::new(file);
+        let mut cur_offset = start_offset;
+
+        loop {
+            let mut buf = Vec::new();
+            let n = reader.read_until(b'\n', &mut buf)?;
+            if n == 0 {
+                return Ok(sidecar_len);
+            }
+            let line_start = cur_offset;
+            cur_offset = cur_offset.saturating_add(n as u64);
+            let line = strip_line_terminator(&mut buf);
+            if line.is_empty() {
+                continue;
+            }
+
+            let header: SidecarEventHeader = serde_json::from_slice(line)
+                .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+            if header.stream_kind != StreamKind::Continuity
+                || header.stream_id != continuity_id
+                || header.session_id != continuity_id
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "continuity sidecar contains non-continuity event",
+                ));
+            }
+            if header.seq > from_seq {
+                return Ok(line_start);
+            }
+        }
+    }
+
+    fn window_recent_messages_v1_from_cut_v1(
+        &self,
+        continuity_id: &str,
+        sidecar_path: &Path,
+        from_seq: u64,
+        boundary_pos: u64,
+        message_limit: usize,
+        from_message_id: Option<String>,
+    ) -> io::Result<ContinuityWindow> {
+        const INITIAL_BACKSCAN_BYTES: usize = 256 * 1024;
+        const MAX_BACKSCAN_BYTES: usize = 256 * 1024 * 1024;
+        const MAX_BACKSCAN_EVENTS: usize = 200_000;
+
+        let seq_index = self.ensure_seq_index_v1(continuity_id, sidecar_path)?;
+
+        // Backward scan (headers-only) to find the earliest seq needed to include `message_limit`
+        // messages at or below `from_seq`.
+        let mut start_seq: u64 = 0;
+        let mut backscan_bytes = INITIAL_BACKSCAN_BYTES.min(MAX_BACKSCAN_BYTES);
+        loop {
+            let mut file = File::open(sidecar_path)?;
+            let scan = scan_sidecar_backwards(
+                &mut file,
+                continuity_id,
+                MAX_BACKSCAN_EVENTS,
+                backscan_bytes,
+                ParseMode::Header,
+                Some(boundary_pos),
+            )?;
+
+            let mut found = 0usize;
+            for header in &scan.headers {
+                if header.seq > from_seq {
+                    continue;
+                }
+                if header.event_type == "continuity_message_appended" {
+                    found = found.saturating_add(1);
+                    if found >= message_limit {
+                        start_seq = header.seq;
+                        break;
+                    }
+                }
+            }
+
+            if found >= message_limit || scan.complete || backscan_bytes >= MAX_BACKSCAN_BYTES {
+                break;
+            }
+            backscan_bytes = (backscan_bytes * 2).min(MAX_BACKSCAN_BYTES);
+        }
+
+        // Forward scan from a nearby seek point, capturing only message + run_ended events in-range.
+        let start_offset = best_offset_for_seq(&seq_index, start_seq);
+        let mut file = File::open(sidecar_path)?;
+        file.seek(SeekFrom::Start(start_offset))?;
+        let mut reader = BufReader::new(file);
+        let mut cur_offset = start_offset;
+
+        let mut events: Vec<Event> = Vec::new();
+        loop {
+            if cur_offset >= boundary_pos {
+                break;
+            }
+            let mut buf = Vec::new();
+            let n = reader.read_until(b'\n', &mut buf)?;
+            if n == 0 {
+                break;
+            }
+            let line_start = cur_offset;
+            cur_offset = cur_offset.saturating_add(n as u64);
+            if line_start >= boundary_pos {
+                break;
+            }
+            let line = strip_line_terminator(&mut buf);
+            if line.is_empty() {
+                continue;
+            }
+
+            let header: SidecarEventHeader = serde_json::from_slice(line)
+                .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+            if header.stream_kind != StreamKind::Continuity
+                || header.stream_id != continuity_id
+                || header.session_id != continuity_id
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "continuity sidecar contains non-continuity event",
+                ));
+            }
+
+            if header.seq < start_seq {
+                continue;
+            }
+            if header.seq > from_seq {
+                break;
+            }
+
+            if header.event_type == "continuity_message_appended"
+                || header.event_type == "continuity_run_ended"
+            {
+                let event: Event = serde_json::from_slice(line)
+                    .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+                events.push(event);
+            }
+        }
+
+        Ok(ContinuityWindow {
+            events,
+            from_seq,
+            from_message_id,
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -239,9 +629,11 @@ fn scan_sidecar_backwards(
     max_events: usize,
     max_bytes: usize,
     mode: ParseMode,
+    end_pos: Option<u64>,
 ) -> io::Result<SidecarBackwardScan> {
     let file_len = file.metadata()?.len();
-    if file_len == 0 {
+    let end_pos = end_pos.unwrap_or(file_len).min(file_len);
+    if end_pos == 0 {
         return Ok(SidecarBackwardScan {
             events: Vec::new(),
             headers: Vec::new(),
@@ -249,7 +641,7 @@ fn scan_sidecar_backwards(
         });
     }
 
-    let mut pos = file_len;
+    let mut pos = end_pos;
     let mut scanned: usize = 0;
     let mut pending: Vec<u8> = Vec::new();
     let mut events_rev: Vec<Event> = Vec::new();

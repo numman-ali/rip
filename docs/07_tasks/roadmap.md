@@ -33,13 +33,14 @@ Now
   - Implemented: context compiler kernel v1 (`recent_messages_v1`) writes `rip.context_bundle.v1` artifacts and emits `continuity_context_compiled`; OpenResponses runs start from compiled bundles (fresh provider conversation per run).
   - Implemented: context compiler perf v1: snapshot-first assistant aggregation + per-continuity sidecar replay caches (avoid global `events.jsonl` scans on hot path).
   - Implemented: context compiler perf v1 tail-read continuity v1: sidecar tail scan for `head_seq`/next-seq recovery + `recent_messages_v1` compilation input (latest-message run starts avoid full continuity Vec loads).
+  - Implemented: context compiler perf v1.1 seekable continuity reads: per-continuity sidecar seek indexes + bounded window reads for `recent_messages_v1` non-tail anchors (avoid full continuity Vec loads even when anchoring far from tail).
   - Server exposes `thread.*` (ensure/list/get/post_message/branch/handoff/stream_events); headless CLI exposes `rip threads ...` (local + `--server`); TypeScript SDK exposes `thread.*` by spawning `rip` (ADR-0006).
   - Workspace mutation serialization enforced across sessions + background tasks; replay/contract tests added.
   - Continuity stream logs workspace-mutating tool side-effects (`continuity_tool_side_effects`) with provenance + replay coverage under parallel runs/tasks.
 - Ready:
   - Finish continuity provenance coverage beyond messages/runs/tool side-effects: provider cursor rotation logs, context selection strategy evolution, and compaction checkpoints; document the remaining envelope migration (eventually drop non-session `session_id`).
   - Define deterministic compaction checkpoints (e.g., 10k/20k/30k summaries) and provider cursor rotation logging.
-  - Perf: keep `context.compile` O(k) at 1M+ events (tail-read continuity v1 done; next is per-stream indexing/segmented logs for non-tail anchors + compaction cutpoints).
+  - Perf: keep `context.compile` O(k) at 1M+ events (tail-read continuity v1 + seekable non-tail anchors v1.1 done; next is per-stream segmentation/compaction cutpoints).
 - Done:
   - Default UX is one continuity; surfaces "continue" by posting messages (sessions hidden by default).
   - Resume/branch/handoff works with deterministic replay and parity across CLI/TUI/server/SDK.
