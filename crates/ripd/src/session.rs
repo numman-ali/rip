@@ -17,8 +17,10 @@ use uuid::Uuid;
 
 use crate::context_bundle::{write_bundle_v1, ContextBundleItemV1, ContextBundleV1};
 use crate::context_compiler::{
-    compile_recent_messages_v1, CompileRecentMessagesV1Request, CONTEXT_COMPILER_ID_V1,
-    CONTEXT_COMPILER_STRATEGY_RECENT_MESSAGES_V1,
+    compile_recent_messages_v1, compile_summaries_recent_messages_v1,
+    CompileRecentMessagesV1Request, CompileSummariesRecentMessagesV1Request,
+    CONTEXT_COMPILER_ID_V1, CONTEXT_COMPILER_STRATEGY_RECENT_MESSAGES_V1,
+    CONTEXT_COMPILER_STRATEGY_SUMMARIES_RECENT_MESSAGES_V1,
 };
 use crate::continuities::{
     ContextCompiledPayload, ContinuityRunLink, ContinuityStore, ToolSideEffects,
@@ -28,6 +30,10 @@ use crate::provider_openresponses::{
     OpenResponsesConfig, DEFAULT_MAX_TOOL_CALLS,
 };
 use crate::workspace_lock::{requires_workspace_lock, WorkspaceLock};
+use crate::{
+    compaction_summary::{read_compaction_summary_v1, COMPACTION_SUMMARY_KIND_CUMULATIVE_V1},
+    continuities::CompactionCheckpointForCompile,
+};
 
 #[derive(Deserialize)]
 struct ToolCommand {
@@ -161,22 +167,21 @@ pub async fn run_session(context: SessionContext) {
                         link,
                         &runtime_session_id,
                     ) {
-                        Ok((bundle_artifact_id, items, from_seq, from_message_id)) => {
+                        Ok(compiled) => {
                             let _ = continuities.append_context_compiled(
                                 &link.continuity_id,
                                 ContextCompiledPayload {
                                     run_session_id: runtime_session_id.clone(),
-                                    bundle_artifact_id,
+                                    bundle_artifact_id: compiled.bundle_artifact_id,
                                     compiler_id: CONTEXT_COMPILER_ID_V1.to_string(),
-                                    compiler_strategy: CONTEXT_COMPILER_STRATEGY_RECENT_MESSAGES_V1
-                                        .to_string(),
-                                    from_seq,
-                                    from_message_id,
+                                    compiler_strategy: compiled.compiler_strategy,
+                                    from_seq: compiled.from_seq,
+                                    from_message_id: compiled.from_message_id,
                                     actor_id: link.actor_id.clone(),
                                     origin: link.origin.clone(),
                                 },
                             );
-                            initial_items = Some(items);
+                            initial_items = Some(compiled.items);
                         }
                         Err(_) => {
                             emit_event(
@@ -780,16 +785,38 @@ fn function_call_output_item(call_id: &str, output_json: String, include_id: boo
     ItemParam::new(Value::Object(obj))
 }
 
-fn openresponses_items_from_context_bundle(bundle: &ContextBundleV1) -> Vec<ItemParam> {
-    bundle
-        .items()
-        .iter()
-        .map(|item| match item {
+fn openresponses_items_from_context_bundle(
+    workspace_root: &Path,
+    bundle: &ContextBundleV1,
+) -> Result<Vec<ItemParam>, String> {
+    let mut out = Vec::new();
+    for item in bundle.items() {
+        match item {
             ContextBundleItemV1::Message { role, content, .. } => {
-                ItemParam::message_text(role.clone(), content.clone())
+                out.push(ItemParam::message_text(role.clone(), content.clone()));
             }
-        })
-        .collect()
+            ContextBundleItemV1::SummaryRef { artifact_id, note } => {
+                let summary = read_compaction_summary_v1(workspace_root, artifact_id)?;
+                let mut content = String::new();
+                content.push_str("Compaction summary (earlier context)\n");
+                if let Some(note) = note.as_ref() {
+                    content.push_str(note);
+                    content.push('\n');
+                }
+                content.push_str(summary.summary_markdown());
+                out.push(ItemParam::message_text("system".to_string(), content));
+            }
+        }
+    }
+    Ok(out)
+}
+
+struct CompiledContextForRun {
+    bundle_artifact_id: String,
+    items: Vec<ItemParam>,
+    from_seq: u64,
+    from_message_id: Option<String>,
+    compiler_strategy: String,
 }
 
 fn compile_context_bundle_for_run(
@@ -798,24 +825,60 @@ fn compile_context_bundle_for_run(
     snapshot_dir: &Path,
     run: &ContinuityRunLink,
     run_session_id: &str,
-) -> Result<(String, Vec<ItemParam>, u64, Option<String>), String> {
+) -> Result<CompiledContextForRun, String> {
     let input = continuities
         .load_context_compile_input_recent_messages_v1(&run.continuity_id, &run.message_id)?;
 
-    let bundle = compile_recent_messages_v1(CompileRecentMessagesV1Request {
-        continuity_id: &run.continuity_id,
-        continuity_events: &input.continuity_events,
-        event_log,
-        snapshot_dir,
-        from_seq: input.from_seq,
-        from_message_id: input.from_message_id.clone(),
-        run_session_id,
-        actor_id: &run.actor_id,
-        origin: &run.origin,
-    })?;
+    let checkpoint: Option<CompactionCheckpointForCompile> = continuities
+        .latest_compaction_checkpoint_for_compile_v1(&run.continuity_id, input.from_seq)?;
+
+    let (bundle, compiler_strategy) = match checkpoint.as_ref() {
+        Some(CompactionCheckpointForCompile {
+            summary_kind,
+            summary_artifact_id,
+            to_seq,
+            ..
+        }) if summary_kind == COMPACTION_SUMMARY_KIND_CUMULATIVE_V1 => (
+            compile_summaries_recent_messages_v1(CompileSummariesRecentMessagesV1Request {
+                continuity_id: &run.continuity_id,
+                continuity_events: &input.continuity_events,
+                event_log,
+                snapshot_dir,
+                from_seq: input.from_seq,
+                from_message_id: input.from_message_id.clone(),
+                run_session_id,
+                actor_id: &run.actor_id,
+                origin: &run.origin,
+                summary_artifact_id,
+                summary_to_seq: *to_seq,
+            })?,
+            CONTEXT_COMPILER_STRATEGY_SUMMARIES_RECENT_MESSAGES_V1.to_string(),
+        ),
+        _ => (
+            compile_recent_messages_v1(CompileRecentMessagesV1Request {
+                continuity_id: &run.continuity_id,
+                continuity_events: &input.continuity_events,
+                event_log,
+                snapshot_dir,
+                from_seq: input.from_seq,
+                from_message_id: input.from_message_id.clone(),
+                run_session_id,
+                actor_id: &run.actor_id,
+                origin: &run.origin,
+            })?,
+            CONTEXT_COMPILER_STRATEGY_RECENT_MESSAGES_V1.to_string(),
+        ),
+    };
+
     let artifact_id = write_bundle_v1(continuities.workspace_root(), &bundle)?;
-    let items = openresponses_items_from_context_bundle(&bundle);
-    Ok((artifact_id, items, input.from_seq, input.from_message_id))
+    let items = openresponses_items_from_context_bundle(continuities.workspace_root(), &bundle)?;
+    Ok(CompiledContextForRun {
+        bundle_artifact_id: artifact_id,
+        items,
+        from_seq: input.from_seq,
+        from_message_id: input.from_message_id,
+        compiler_strategy,
+    })
 }
 
 struct OpenResponsesRunContext<'a> {

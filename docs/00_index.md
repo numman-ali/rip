@@ -21,6 +21,7 @@ Navigation
 - Event frame schema: docs/03_contracts/event_frames.md
 - Handoff context bundle artifact: docs/03_contracts/handoff_context_bundle.md
 - Context bundle artifact (compiled context): docs/03_contracts/context_bundle.md
+- Compaction summary artifact: docs/03_contracts/compaction_summary.md
 - Capability contract + registry: docs/03_contracts/capabilities.md
 - Capability registry (source of truth): docs/03_contracts/capability_registry.md
 - OpenResponses coverage map: docs/03_contracts/openresponses_coverage.md

@@ -65,6 +65,14 @@ impl ContinuityStreamCache {
         self.dir.join(format!("{continuity_id}.mr.v1.jsonl"))
     }
 
+    // Sidecar containing only continuity_compaction_checkpoint_created (cache-only).
+    //
+    // Purpose: make compaction checkpoint lookups O(k) without scanning the full continuity
+    // stream. The truth continuity stream remains canonical; this file is rebuildable.
+    fn compaction_checkpoints_path_for_v1(&self, continuity_id: &str) -> PathBuf {
+        self.dir.join(format!("{continuity_id}.comp.v1.jsonl"))
+    }
+
     fn messages_runs_seq_index_path_v1(&self, continuity_id: &str) -> PathBuf {
         self.dir.join(format!("{continuity_id}.mr.seek.v1.jsonl"))
     }
@@ -124,6 +132,9 @@ impl ContinuityStreamCache {
 
         // Additional cache: messages+runs-only sidecar + indexes.
         self.append_messages_runs_best_effort_v1(event);
+
+        // Additional cache: compaction checkpoints only (summary selection).
+        self.append_compaction_checkpoints_best_effort_v1(event);
     }
 
     pub(crate) fn rebuild_best_effort(&self, continuity_id: &str, events: &[Event]) {
@@ -155,6 +166,7 @@ impl ContinuityStreamCache {
         let _ = index_builder.write_best_effort(&self.dir, continuity_id);
 
         self.rebuild_messages_runs_best_effort_v1(continuity_id, events);
+        self.rebuild_compaction_checkpoints_best_effort_v1(continuity_id, events);
     }
 
     fn append_messages_runs_best_effort_v1(&self, event: &Event) {
@@ -210,6 +222,40 @@ impl ContinuityStreamCache {
             let msg_path = self.messages_runs_message_index_path_v1(continuity_id);
             insert_message_best_effort_v1(&msg_path, &path, &event.id, event.seq, offset);
         }
+    }
+
+    fn append_compaction_checkpoints_best_effort_v1(&self, event: &Event) {
+        if event.stream_kind() != StreamKind::Continuity {
+            return;
+        }
+        if !matches!(
+            &event.kind,
+            EventKind::ContinuityCompactionCheckpointCreated { .. }
+        ) {
+            return;
+        }
+
+        let continuity_id = event.stream_id();
+        let path = self.compaction_checkpoints_path_for_v1(continuity_id);
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+
+        let Ok(file) = OpenOptions::new().create(true).append(true).open(&path) else {
+            return;
+        };
+
+        let mut writer = BufWriter::new(file);
+        let Ok(line) = serde_json::to_string(event) else {
+            return;
+        };
+        if writer.write_all(line.as_bytes()).is_err() {
+            return;
+        }
+        if writer.write_all(b"\n").is_err() {
+            return;
+        }
+        let _ = writer.flush();
     }
 
     fn rebuild_messages_runs_best_effort_v1(&self, continuity_id: &str, events: &[Event]) {
@@ -292,6 +338,48 @@ impl ContinuityStreamCache {
         );
     }
 
+    fn rebuild_compaction_checkpoints_best_effort_v1(&self, continuity_id: &str, events: &[Event]) {
+        let path = self.compaction_checkpoints_path_for_v1(continuity_id);
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+
+        let tmp_path = path.with_extension("jsonl.tmp");
+        let Ok(file) = File::create(&tmp_path) else {
+            return;
+        };
+        let mut writer = BufWriter::new(file);
+
+        let mut wrote_any = false;
+        for event in events {
+            if event.stream_kind() != StreamKind::Continuity || event.stream_id() != continuity_id {
+                continue;
+            }
+            if !matches!(
+                &event.kind,
+                EventKind::ContinuityCompactionCheckpointCreated { .. }
+            ) {
+                continue;
+            }
+
+            let Ok(line) = serde_json::to_string(event) else {
+                continue;
+            };
+            let _ = writer.write_all(line.as_bytes());
+            let _ = writer.write_all(b"\n");
+            wrote_any = true;
+        }
+
+        let _ = writer.flush();
+        if !wrote_any {
+            let _ = fs::remove_file(&tmp_path);
+            let _ = fs::remove_file(&path);
+            return;
+        }
+
+        let _ = fs::rename(tmp_path, path);
+    }
+
     /// Returns `Ok(None)` when the cache file doesn't exist.
     ///
     /// Any validation/parsing error is surfaced via `Err` so callers can fall back to the truth log.
@@ -355,6 +443,45 @@ impl ContinuityStreamCache {
             continuity_id,
             &self.messages_runs_path_for_v1(continuity_id),
         )
+    }
+
+    /// Returns `Ok(None)` when the cache file doesn't exist and cannot be built from the full
+    /// continuity sidecar.
+    pub(crate) fn latest_compaction_checkpoint_before_or_at_seq_v1(
+        &self,
+        continuity_id: &str,
+        max_to_seq: u64,
+    ) -> io::Result<Option<Event>> {
+        const MAX_BACKSCAN_BYTES: usize = 8 * 1024 * 1024;
+        const MAX_BACKSCAN_EVENTS: usize = 10_000;
+
+        let sidecar_path =
+            match self.ensure_compaction_checkpoints_sidecar_best_effort_v1(continuity_id)? {
+                Some(path) => path,
+                None => return Ok(None),
+            };
+
+        let mut file = File::open(&sidecar_path)?;
+        let parsed = scan_sidecar_backwards(
+            &mut file,
+            continuity_id,
+            MAX_BACKSCAN_EVENTS,
+            MAX_BACKSCAN_BYTES,
+            ParseMode::Event,
+            None,
+        )?;
+
+        for event in parsed.events {
+            let EventKind::ContinuityCompactionCheckpointCreated { to_seq, .. } = &event.kind
+            else {
+                continue;
+            };
+            if *to_seq <= max_to_seq {
+                return Ok(Some(event));
+            }
+        }
+
+        Ok(None)
     }
 
     fn try_read_last_seq_for_sidecar_path(
@@ -845,6 +972,89 @@ impl ContinuityStreamCache {
         } else {
             Ok(None)
         }
+    }
+
+    fn ensure_compaction_checkpoints_sidecar_best_effort_v1(
+        &self,
+        continuity_id: &str,
+    ) -> io::Result<Option<PathBuf>> {
+        let path = self.compaction_checkpoints_path_for_v1(continuity_id);
+        if path.exists() {
+            return Ok(Some(path));
+        }
+
+        let full_path = self.path_for(continuity_id);
+        if !full_path.exists() {
+            return Ok(None);
+        }
+
+        self.rebuild_compaction_checkpoints_from_full_sidecar_best_effort_v1(
+            continuity_id,
+            &full_path,
+            &path,
+        )?;
+        if path.exists() {
+            Ok(Some(path))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn rebuild_compaction_checkpoints_from_full_sidecar_best_effort_v1(
+        &self,
+        continuity_id: &str,
+        full_sidecar_path: &Path,
+        comp_sidecar_path: &Path,
+    ) -> io::Result<()> {
+        let tmp_sidecar = comp_sidecar_path.with_extension("jsonl.tmp");
+        if let Some(parent) = tmp_sidecar.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        let full = File::open(full_sidecar_path)?;
+        let mut reader = BufReader::new(full);
+        let tmp_file = File::create(&tmp_sidecar)?;
+        let mut writer = BufWriter::new(tmp_file);
+
+        let mut wrote_any = false;
+        loop {
+            let mut buf = Vec::new();
+            let n = reader.read_until(b'\n', &mut buf)?;
+            if n == 0 {
+                break;
+            }
+            let line = strip_line_terminator(&mut buf);
+            if line.is_empty() {
+                continue;
+            }
+            let header: SidecarEventHeader = serde_json::from_slice(line)
+                .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+            if header.stream_kind != StreamKind::Continuity
+                || header.stream_id != continuity_id
+                || header.session_id != continuity_id
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "continuity sidecar contains non-continuity event while building compaction sidecar",
+                ));
+            }
+            if header.event_type != "continuity_compaction_checkpoint_created" {
+                continue;
+            }
+
+            writer.write_all(line)?;
+            writer.write_all(b"\n")?;
+            wrote_any = true;
+        }
+
+        writer.flush()?;
+        if !wrote_any {
+            let _ = fs::remove_file(tmp_sidecar);
+            return Ok(());
+        }
+
+        fs::rename(tmp_sidecar, comp_sidecar_path)?;
+        Ok(())
     }
 
     fn rebuild_messages_runs_from_full_sidecar_best_effort_v1(

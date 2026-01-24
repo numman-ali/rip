@@ -107,6 +107,27 @@ pub(crate) struct ThreadHandoffResponse {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+pub(crate) struct ThreadCompactionCheckpointPayload {
+    pub(crate) summary_markdown: Option<String>,
+    pub(crate) summary_artifact_id: Option<String>,
+    pub(crate) to_message_id: Option<String>,
+    pub(crate) to_seq: Option<u64>,
+    pub(crate) stride_messages: Option<u64>,
+    pub(crate) actor_id: Option<String>,
+    pub(crate) origin: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+pub(crate) struct ThreadCompactionCheckpointResponse {
+    pub(crate) thread_id: String,
+    pub(crate) checkpoint_id: String,
+    pub(crate) cut_rule_id: String,
+    pub(crate) summary_artifact_id: String,
+    pub(crate) to_seq: u64,
+    pub(crate) to_message_id: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
 struct InputPayload {
     input: String,
 }
@@ -197,6 +218,7 @@ pub(crate) fn build_openapi_router() -> (Router<AppState>, String) {
         .routes(routes!(thread_post_message))
         .routes(routes!(thread_branch))
         .routes(routes!(thread_handoff))
+        .routes(routes!(thread_compaction_checkpoint))
         .routes(routes!(thread_stream_events))
         .routes(routes!(create_task))
         .routes(routes!(list_tasks))
@@ -568,6 +590,70 @@ async fn thread_handoff(
             if err_lower.contains("out of range")
                 || err_lower.contains("requires only one of")
                 || err_lower.contains("requires summary")
+            {
+                return StatusCode::BAD_REQUEST.into_response();
+            }
+            if err_lower.contains("does not exist") || err_lower.contains("not found") {
+                return StatusCode::NOT_FOUND.into_response();
+            }
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/threads/{id}/compaction-checkpoint",
+    params(
+        ("id" = String, Path, description = "Thread id")
+    ),
+    request_body = ThreadCompactionCheckpointPayload,
+    responses(
+        (status = 201, description = "Compaction checkpoint created", body = ThreadCompactionCheckpointResponse),
+        (status = 400, description = "Invalid checkpoint request"),
+        (status = 404, description = "Thread or cut point not found")
+    )
+)]
+async fn thread_compaction_checkpoint(
+    Path(thread_id): Path<String>,
+    State(state): State<AppState>,
+    Json(payload): Json<ThreadCompactionCheckpointPayload>,
+) -> impl IntoResponse {
+    let actor_id = payload.actor_id.unwrap_or_else(|| "user".to_string());
+    let origin = payload.origin.unwrap_or_else(|| "server".to_string());
+
+    let store = state.engine.continuities();
+    match store.compaction_checkpoint_cumulative_v1(
+        &thread_id,
+        crate::CompactionCheckpointCumulativeV1Request {
+            summary_markdown: payload.summary_markdown,
+            summary_artifact_id: payload.summary_artifact_id,
+            to_message_id: payload.to_message_id,
+            to_seq: payload.to_seq,
+            stride_messages: payload.stride_messages,
+            actor_id,
+            origin,
+        },
+    ) {
+        Ok((checkpoint_id, summary_artifact_id, to_seq, to_message_id, cut_rule_id)) => (
+            StatusCode::CREATED,
+            Json(ThreadCompactionCheckpointResponse {
+                thread_id,
+                checkpoint_id,
+                cut_rule_id,
+                summary_artifact_id,
+                to_seq,
+                to_message_id,
+            }),
+        )
+            .into_response(),
+        Err(err) => {
+            let err_lower = err.to_ascii_lowercase();
+            if err_lower.contains("out of range")
+                || err_lower.contains("requires")
+                || err_lower.contains("must")
+                || err_lower.contains("mismatch")
+                || err_lower.contains("stride")
             {
                 return StatusCode::BAD_REQUEST.into_response();
             }

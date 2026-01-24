@@ -37,6 +37,7 @@ impl Event {
             | EventKind::ContinuityMessageAppended { .. }
             | EventKind::ContinuityRunSpawned { .. }
             | EventKind::ContinuityContextCompiled { .. }
+            | EventKind::ContinuityCompactionCheckpointCreated { .. }
             | EventKind::ContinuityRunEnded { .. }
             | EventKind::ContinuityToolSideEffects { .. }
             | EventKind::ContinuityBranched { .. }
@@ -169,6 +170,20 @@ pub enum EventKind {
         from_seq: u64,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         from_message_id: Option<String>,
+        actor_id: String,
+        origin: String,
+    },
+    ContinuityCompactionCheckpointCreated {
+        checkpoint_id: String,
+        cut_rule_id: String,
+        summary_kind: String,
+        summary_artifact_id: String,
+        from_seq: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        from_message_id: Option<String>,
+        to_seq: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        to_message_id: Option<String>,
         actor_id: String,
         origin: String,
     },
@@ -460,6 +475,7 @@ impl Session {
             | EventKind::ContinuityMessageAppended { .. }
             | EventKind::ContinuityRunSpawned { .. }
             | EventKind::ContinuityContextCompiled { .. }
+            | EventKind::ContinuityCompactionCheckpointCreated { .. }
             | EventKind::ContinuityRunEnded { .. }
             | EventKind::ContinuityToolSideEffects { .. }
             | EventKind::ContinuityBranched { .. }

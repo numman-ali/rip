@@ -169,7 +169,7 @@ Notes
 | id | v | phase | cli_i | cli_h | server | sdk | tui | mcp | intent |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | compaction.auto | v1 | P2 | planned | planned | planned | planned | planned | planned | Auto-compaction when context exceeds threshold. |
-| compaction.manual | v1 | P2 | planned | planned | planned | planned | planned | planned | Manual compaction with instructions. |
+| compaction.manual | v1 | P2 | planned | supported | supported | supported | planned | planned | Manual compaction with instructions. |
 | compaction.split_turn | v1 | P2 | planned | planned | planned | planned | planned | planned | Split-turn handling for oversized turns. |
 | compaction.truncation_policy | v1 | P2 | planned | planned | planned | planned | planned | planned | Truncation policy controls (auto vs disabled). |
 | compaction.cut_points | v1 | P2 | planned | planned | planned | planned | planned | planned | Compaction cut-point rules. |

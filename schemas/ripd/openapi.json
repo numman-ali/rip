@@ -499,6 +499,50 @@
         }
       }
     },
+    "/threads/{id}/compaction-checkpoint": {
+      "post": {
+        "operationId": "thread_compaction_checkpoint",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Thread id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreadCompactionCheckpointPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Compaction checkpoint created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadCompactionCheckpointResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid checkpoint request"
+          },
+          "404": {
+            "description": "Thread or cut point not found"
+          }
+        }
+      }
+    },
     "/threads/{id}/events": {
       "get": {
         "operationId": "thread_stream_events",
@@ -923,6 +967,90 @@
           },
           "thread_id": {
             "type": "string"
+          }
+        }
+      },
+      "ThreadCompactionCheckpointPayload": {
+        "type": "object",
+        "properties": {
+          "actor_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "origin": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stride_messages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "summary_artifact_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "summary_markdown": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to_message_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to_seq": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "ThreadCompactionCheckpointResponse": {
+        "type": "object",
+        "required": [
+          "thread_id",
+          "checkpoint_id",
+          "cut_rule_id",
+          "summary_artifact_id",
+          "to_seq",
+          "to_message_id"
+        ],
+        "properties": {
+          "checkpoint_id": {
+            "type": "string"
+          },
+          "cut_rule_id": {
+            "type": "string"
+          },
+          "summary_artifact_id": {
+            "type": "string"
+          },
+          "thread_id": {
+            "type": "string"
+          },
+          "to_message_id": {
+            "type": "string"
+          },
+          "to_seq": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
           }
         }
       },

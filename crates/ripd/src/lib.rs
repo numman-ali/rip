@@ -1,4 +1,5 @@
 mod checkpoints;
+mod compaction_summary;
 mod context_bundle;
 mod context_compiler;
 mod continuities;
@@ -12,7 +13,10 @@ mod session;
 mod tasks;
 mod workspace_lock;
 
-pub use continuities::{ContinuityMeta, ContinuityRunLink, ContinuityStore, ToolSideEffects};
+pub use continuities::{
+    CompactionCheckpointCumulativeV1Request, ContinuityMeta, ContinuityRunLink, ContinuityStore,
+    ToolSideEffects,
+};
 pub use runner::{SessionEngine, SessionHandle};
 
 #[cfg(not(test))]

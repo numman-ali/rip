@@ -14,6 +14,13 @@ use uuid::Uuid;
 use crate::context_compiler::RECENT_MESSAGES_V1_LIMIT;
 use crate::continuity_stream_cache::ContinuityStreamCache;
 use crate::handoff_context_bundle::HandoffContextBundleV1;
+use crate::{
+    compaction_summary::COMPACTION_SUMMARY_SCHEMA_V1,
+    compaction_summary::{
+        read_compaction_summary_v1, write_compaction_summary_v1, CompactionSummaryV1,
+        COMPACTION_SUMMARY_KIND_CUMULATIVE_V1,
+    },
+};
 
 const INDEX_VERSION: u32 = 1;
 const EVENT_CHANNEL_CAPACITY: usize = 16_384;
@@ -51,6 +58,36 @@ pub(crate) struct ContextCompileInput {
     pub(crate) continuity_events: Vec<Event>,
     pub(crate) from_seq: u64,
     pub(crate) from_message_id: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CompactionCheckpointForCompile {
+    pub(crate) summary_kind: String,
+    pub(crate) summary_artifact_id: String,
+    pub(crate) to_seq: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompactionCheckpointCumulativeV1Request {
+    pub summary_markdown: Option<String>,
+    pub summary_artifact_id: Option<String>,
+    pub to_message_id: Option<String>,
+    pub to_seq: Option<u64>,
+    pub stride_messages: Option<u64>,
+    pub actor_id: String,
+    pub origin: String,
+}
+
+struct CompactionCheckpointCreatedPayload {
+    cut_rule_id: String,
+    summary_kind: String,
+    summary_artifact_id: String,
+    from_seq: u64,
+    from_message_id: Option<String>,
+    to_seq: u64,
+    to_message_id: Option<String>,
+    actor_id: String,
+    origin: String,
 }
 
 #[derive(Debug, Clone)]
@@ -232,6 +269,57 @@ impl ContinuityStore {
             from_seq,
             from_message_id,
         })
+    }
+
+    pub(crate) fn latest_compaction_checkpoint_for_compile_v1(
+        &self,
+        continuity_id: &str,
+        from_seq: u64,
+    ) -> Result<Option<CompactionCheckpointForCompile>, String> {
+        if let Ok(Some(event)) = self
+            .stream_cache
+            .latest_compaction_checkpoint_before_or_at_seq_v1(continuity_id, from_seq)
+        {
+            if let EventKind::ContinuityCompactionCheckpointCreated {
+                summary_kind,
+                summary_artifact_id,
+                to_seq,
+                ..
+            } = event.kind
+            {
+                return Ok(Some(CompactionCheckpointForCompile {
+                    summary_kind,
+                    summary_artifact_id,
+                    to_seq,
+                }));
+            }
+        }
+
+        let events = self
+            .replay_events(continuity_id)
+            .map_err(|err| format!("continuity replay failed: {err}"))?;
+        for event in events.iter().rev() {
+            let EventKind::ContinuityCompactionCheckpointCreated {
+                summary_kind,
+                summary_artifact_id,
+                to_seq,
+                ..
+            } = &event.kind
+            else {
+                continue;
+            };
+
+            if *to_seq > from_seq {
+                continue;
+            }
+            return Ok(Some(CompactionCheckpointForCompile {
+                summary_kind: summary_kind.clone(),
+                summary_artifact_id: summary_artifact_id.clone(),
+                to_seq: *to_seq,
+            }));
+        }
+
+        Ok(None)
     }
 
     pub(crate) fn workspace_root(&self) -> &Path {
@@ -501,6 +589,172 @@ impl ContinuityStore {
         Ok((thread_id, from_seq, from_message_id))
     }
 
+    pub fn compaction_checkpoint_cumulative_v1(
+        &self,
+        thread_id: &str,
+        req: CompactionCheckpointCumulativeV1Request,
+    ) -> Result<(String, String, u64, String, String), String> {
+        let summary_markdown = req.summary_markdown;
+        let summary_artifact_id = req.summary_artifact_id;
+        let to_message_id = req.to_message_id;
+        let to_seq = req.to_seq;
+        let stride_messages = req.stride_messages;
+        let actor_id = req.actor_id;
+        let origin = req.origin;
+
+        if summary_markdown.is_none() && summary_artifact_id.is_none() {
+            return Err(
+                "compaction checkpoint requires summary_markdown and/or summary_artifact_id"
+                    .to_string(),
+            );
+        }
+        if to_message_id.is_some() && to_seq.is_some() {
+            return Err(
+                "compaction checkpoint requires only one of to_message_id or to_seq".to_string(),
+            );
+        }
+
+        let events = self
+            .replay_events(thread_id)
+            .map_err(|err| format!("compaction thread replay failed: {err}"))?;
+        if events.is_empty() {
+            return Err("compaction thread continuity stream does not exist".to_string());
+        }
+
+        let message_events: Vec<(u64, String)> = events
+            .iter()
+            .filter_map(|event| match &event.kind {
+                EventKind::ContinuityMessageAppended { .. } => Some((event.seq, event.id.clone())),
+                _ => None,
+            })
+            .collect();
+        if message_events.is_empty() {
+            return Err("compaction requires at least one message in the thread".to_string());
+        }
+
+        let (to_seq, to_message_id, cut_rule_id) = if let Some(message_id) = to_message_id.clone() {
+            let Some((seq, _)) = message_events.iter().find(|(_, id)| id == &message_id) else {
+                return Err(format!("compaction to_message_id not found: {message_id}"));
+            };
+            (*seq, message_id, "manual_v1".to_string())
+        } else if let Some(to_seq) = to_seq {
+            let Some((_, message_id)) = message_events.iter().find(|(seq, _)| *seq == to_seq)
+            else {
+                return Err(format!(
+                    "compaction to_seq must be a message boundary: seq={to_seq}"
+                ));
+            };
+            (to_seq, message_id.clone(), "manual_v1".to_string())
+        } else {
+            let stride = stride_messages.unwrap_or(10_000);
+            if stride == 0 {
+                return Err("compaction stride_messages must be > 0".to_string());
+            }
+            let message_count = message_events.len() as u64;
+            let target = (message_count / stride) * stride;
+            if target == 0 {
+                return Err(format!(
+                    "compaction stride_messages not reached: stride={stride}, messages={message_count}"
+                ));
+            }
+            let idx = (target - 1) as usize;
+            let (seq, message_id) = message_events
+                .get(idx)
+                .ok_or_else(|| "compaction stride cutpoint out of range".to_string())?;
+            (
+                *seq,
+                message_id.clone(),
+                format!("stride_messages_v1/{stride}"),
+            )
+        };
+
+        // Best-effort basis: the most recent prior cumulative checkpoint (by `to_seq`).
+        let mut base_summary_artifact_id: Option<String> = None;
+        let mut best_checkpoint_to_seq: u64 = 0;
+        for event in &events {
+            let EventKind::ContinuityCompactionCheckpointCreated {
+                summary_kind,
+                summary_artifact_id,
+                to_seq: checkpoint_to_seq,
+                ..
+            } = &event.kind
+            else {
+                continue;
+            };
+            if summary_kind != COMPACTION_SUMMARY_KIND_CUMULATIVE_V1 {
+                continue;
+            }
+            if *checkpoint_to_seq <= best_checkpoint_to_seq || *checkpoint_to_seq >= to_seq {
+                continue;
+            }
+            best_checkpoint_to_seq = *checkpoint_to_seq;
+            base_summary_artifact_id = Some(summary_artifact_id.clone());
+        }
+
+        let summary_artifact_id = if let Some(artifact_id) = summary_artifact_id {
+            let summary = read_compaction_summary_v1(&self.workspace_root, &artifact_id)?;
+            if summary.schema() != COMPACTION_SUMMARY_SCHEMA_V1 {
+                return Err(format!(
+                    "compaction summary schema mismatch: expected {}, got {}",
+                    COMPACTION_SUMMARY_SCHEMA_V1,
+                    summary.schema()
+                ));
+            }
+            if summary.kind() != COMPACTION_SUMMARY_KIND_CUMULATIVE_V1 {
+                return Err(format!(
+                    "compaction summary kind mismatch: expected {}, got {}",
+                    COMPACTION_SUMMARY_KIND_CUMULATIVE_V1,
+                    summary.kind()
+                ));
+            }
+            if summary.coverage_thread_id() != thread_id {
+                return Err("compaction summary thread_id mismatch".to_string());
+            }
+            if summary.coverage_to_seq() != to_seq {
+                return Err("compaction summary to_seq mismatch".to_string());
+            }
+            artifact_id
+        } else {
+            let markdown = summary_markdown.expect("checked");
+            let summary = CompactionSummaryV1::new_cumulative_source_cut(
+                crate::compaction_summary::NewCumulativeCompactionSummaryV1 {
+                    thread_id: thread_id.to_string(),
+                    to_seq,
+                    to_message_id: Some(to_message_id.clone()),
+                    actor_id: actor_id.clone(),
+                    origin: origin.clone(),
+                    produced_by: Some(("manual".to_string(), "rip-cli".to_string())),
+                    base_summary_artifact_id,
+                    summary_markdown: markdown,
+                },
+            );
+            write_compaction_summary_v1(&self.workspace_root, &summary)?
+        };
+
+        let checkpoint_id = self.append_compaction_checkpoint_created(
+            thread_id,
+            CompactionCheckpointCreatedPayload {
+                cut_rule_id: cut_rule_id.clone(),
+                summary_kind: COMPACTION_SUMMARY_KIND_CUMULATIVE_V1.to_string(),
+                summary_artifact_id: summary_artifact_id.clone(),
+                from_seq: 0,
+                from_message_id: None,
+                to_seq,
+                to_message_id: Some(to_message_id.clone()),
+                actor_id,
+                origin,
+            },
+        )?;
+
+        Ok((
+            checkpoint_id,
+            summary_artifact_id,
+            to_seq,
+            to_message_id,
+            cut_rule_id,
+        ))
+    }
+
     pub fn list(&self) -> Vec<ContinuityMeta> {
         let index = self.index.lock().expect("continuity index mutex");
         index
@@ -653,6 +907,52 @@ impl ContinuityStore {
 
         next_seq.insert(continuity_id.to_string(), seq + 1);
         Ok(id)
+    }
+
+    fn append_compaction_checkpoint_created(
+        &self,
+        continuity_id: &str,
+        payload: CompactionCheckpointCreatedPayload,
+    ) -> Result<String, String> {
+        let mut next_seq = self.next_seq.lock().expect("continuity seq mutex");
+        let seq = match next_seq.get(continuity_id).cloned() {
+            Some(seq) => seq,
+            None => {
+                let seq = self
+                    .load_next_seq_for(continuity_id)
+                    .map_err(|err| format!("resolve continuity seq: {err}"))?;
+                next_seq.insert(continuity_id.to_string(), seq);
+                seq
+            }
+        };
+
+        let checkpoint_id = Uuid::new_v4().to_string();
+        let event = Event {
+            id: checkpoint_id.clone(),
+            session_id: continuity_id.to_string(),
+            timestamp_ms: now_ms(),
+            seq,
+            kind: EventKind::ContinuityCompactionCheckpointCreated {
+                checkpoint_id: checkpoint_id.clone(),
+                cut_rule_id: payload.cut_rule_id,
+                summary_kind: payload.summary_kind,
+                summary_artifact_id: payload.summary_artifact_id,
+                from_seq: payload.from_seq,
+                from_message_id: payload.from_message_id,
+                to_seq: payload.to_seq,
+                to_message_id: payload.to_message_id,
+                actor_id: payload.actor_id,
+                origin: payload.origin,
+            },
+        };
+        self.event_log
+            .append(&event)
+            .map_err(|err| format!("append continuity compaction checkpoint: {err}"))?;
+        self.stream_cache.append_best_effort(&event);
+        let _ = self.sender.send(event.clone());
+
+        next_seq.insert(continuity_id.to_string(), seq + 1);
+        Ok(checkpoint_id)
     }
 
     pub fn append_run_ended(
@@ -929,7 +1229,10 @@ fn now_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::context_compiler::{compile_recent_messages_v1, CompileRecentMessagesV1Request};
+    use crate::context_compiler::{
+        compile_recent_messages_v1, compile_summaries_recent_messages_v1,
+        CompileRecentMessagesV1Request, CompileSummariesRecentMessagesV1Request,
+    };
     use rip_kernel::StreamKind;
     use rip_log::write_snapshot;
     use tempfile::tempdir;
@@ -1235,6 +1538,94 @@ mod tests {
                 "second".to_string(),
             )
             .expect("append after restart");
+    }
+
+    #[test]
+    fn compaction_checkpoint_cumulative_v1_writes_artifact_and_appends_frame() {
+        let dir = tempdir().expect("tmp");
+        let (_event_log, store, _data_dir) = store_for(&dir);
+
+        let continuity_id = store.ensure_default().expect("ensure");
+        let m1 = store
+            .append_message(
+                &continuity_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "hello".to_string(),
+            )
+            .expect("append");
+        let _m2 = store
+            .append_message(
+                &continuity_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "world".to_string(),
+            )
+            .expect("append");
+
+        let (checkpoint_id, summary_artifact_id, to_seq, to_message_id, cut_rule_id) = store
+            .compaction_checkpoint_cumulative_v1(
+                &continuity_id,
+                CompactionCheckpointCumulativeV1Request {
+                    summary_markdown: Some("summary".to_string()),
+                    summary_artifact_id: None,
+                    to_message_id: Some(m1.clone()),
+                    to_seq: None,
+                    stride_messages: None,
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                },
+            )
+            .expect("checkpoint");
+
+        assert_eq!(to_message_id, m1);
+        assert_eq!(cut_rule_id, "manual_v1");
+
+        let blob_path = store
+            .workspace_root()
+            .join(".rip")
+            .join("artifacts")
+            .join("blobs")
+            .join(&summary_artifact_id);
+        assert!(blob_path.exists(), "summary artifact blob should exist");
+
+        let events = store.replay_events(&continuity_id).expect("replay");
+        let checkpoint_event = events
+            .iter()
+            .find(|event| event.id == checkpoint_id)
+            .expect("checkpoint event");
+        match &checkpoint_event.kind {
+            EventKind::ContinuityCompactionCheckpointCreated {
+                checkpoint_id: cid,
+                cut_rule_id: rule,
+                summary_kind,
+                summary_artifact_id: aid,
+                from_seq,
+                to_seq: t_seq,
+                to_message_id: t_mid,
+                actor_id,
+                origin,
+                ..
+            } => {
+                assert_eq!(cid, &checkpoint_id);
+                assert_eq!(rule, "manual_v1");
+                assert_eq!(summary_kind, COMPACTION_SUMMARY_KIND_CUMULATIVE_V1);
+                assert_eq!(aid, &summary_artifact_id);
+                assert_eq!(*from_seq, 0);
+                assert_eq!(*t_seq, to_seq);
+                assert_eq!(t_mid.as_deref(), Some(to_message_id.as_str()));
+                assert_eq!(actor_id, "user");
+                assert_eq!(origin, "cli");
+            }
+            other => panic!("expected compaction checkpoint frame, got {other:?}"),
+        }
+
+        let latest = store
+            .latest_compaction_checkpoint_for_compile_v1(&continuity_id, checkpoint_event.seq)
+            .expect("lookup")
+            .expect("latest");
+        assert_eq!(latest.summary_artifact_id, summary_artifact_id);
+        assert_eq!(latest.to_seq, to_seq);
     }
 
     #[test]
@@ -1658,6 +2049,216 @@ mod tests {
             origin: "cli",
         })
         .expect("compile window");
+
+        let full_json = serde_json::to_value(&full_bundle).expect("full json");
+        let window_json = serde_json::to_value(&window_bundle).expect("window json");
+        assert_eq!(window_json, full_json);
+    }
+
+    #[test]
+    fn window_context_compile_input_matches_full_replay_with_dense_tool_side_effects_and_compaction_summary(
+    ) {
+        let dir = tempdir().expect("tmp");
+        let (event_log, store, _data_dir) = store_for(&dir);
+        let snapshot_dir = dir.path().join("snapshots");
+
+        const MSG_COUNT: usize = 60;
+        const TOOL_EVENTS_PER_MESSAGE: usize = 250;
+
+        let continuity_id = store.ensure_default().expect("ensure");
+        let mut message_ids: Vec<String> = Vec::new();
+
+        for idx in 0..MSG_COUNT {
+            let message_id = store
+                .append_message(
+                    &continuity_id,
+                    "user".to_string(),
+                    "cli".to_string(),
+                    format!("m{idx}"),
+                )
+                .expect("append message");
+            let session_id = format!("session-{idx}");
+
+            let session_events = vec![
+                Event {
+                    id: format!("se{idx}-0"),
+                    session_id: session_id.clone(),
+                    timestamp_ms: 0,
+                    seq: 0,
+                    kind: EventKind::SessionStarted {
+                        input: "hi".to_string(),
+                    },
+                },
+                Event {
+                    id: format!("se{idx}-1"),
+                    session_id: session_id.clone(),
+                    timestamp_ms: 1,
+                    seq: 1,
+                    kind: EventKind::OutputTextDelta {
+                        delta: format!("a{idx}"),
+                    },
+                },
+                Event {
+                    id: format!("se{idx}-2"),
+                    session_id: session_id.clone(),
+                    timestamp_ms: 2,
+                    seq: 2,
+                    kind: EventKind::SessionEnded {
+                        reason: "completed".to_string(),
+                    },
+                },
+            ];
+            write_snapshot(&snapshot_dir, &session_id, &session_events).expect("snapshot");
+
+            store
+                .append_run_spawned(
+                    &continuity_id,
+                    &message_id,
+                    &session_id,
+                    "user".to_string(),
+                    "cli".to_string(),
+                )
+                .expect("run spawned");
+
+            for tool_idx in 0..TOOL_EVENTS_PER_MESSAGE {
+                store
+                    .append_tool_side_effects(
+                        &ContinuityRunLink {
+                            continuity_id: continuity_id.clone(),
+                            message_id: message_id.clone(),
+                            actor_id: "user".to_string(),
+                            origin: "cli".to_string(),
+                        },
+                        &session_id,
+                        ToolSideEffects {
+                            tool_id: format!("tool-{idx}-{tool_idx}"),
+                            tool_name: "write".to_string(),
+                            affected_paths: Some(vec![format!("file-{tool_idx}.txt")]),
+                            checkpoint_id: None,
+                        },
+                    )
+                    .expect("tool side effects");
+            }
+
+            store
+                .append_run_ended(
+                    &continuity_id,
+                    &message_id,
+                    &session_id,
+                    "completed".to_string(),
+                    "user".to_string(),
+                    "cli".to_string(),
+                )
+                .expect("run ended");
+
+            message_ids.push(message_id);
+        }
+
+        // Create a compaction checkpoint at a message boundary well before the compile anchor.
+        let cut_message_id = message_ids.get(10).cloned().expect("cut message id");
+        store
+            .compaction_checkpoint_cumulative_v1(
+                &continuity_id,
+                CompactionCheckpointCumulativeV1Request {
+                    summary_markdown: Some("summary".to_string()),
+                    summary_artifact_id: None,
+                    to_message_id: Some(cut_message_id.clone()),
+                    to_seq: None,
+                    stride_messages: None,
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                },
+            )
+            .expect("compaction checkpoint");
+
+        let anchor_message_id = message_ids.get(20).cloned().expect("anchor message id");
+
+        let full_events = store.replay_events(&continuity_id).expect("replay full");
+        let (full_from_seq, full_from_message_id) =
+            resolve_context_compile_cutpoint_full(&full_events, &anchor_message_id)
+                .expect("cutpoint");
+
+        // Pick the latest eligible checkpoint using the full replay stream.
+        let mut best: Option<(u64, u64, String)> = None; // (to_seq, event_seq, artifact_id)
+        for event in &full_events {
+            let EventKind::ContinuityCompactionCheckpointCreated {
+                summary_kind,
+                summary_artifact_id,
+                to_seq,
+                ..
+            } = &event.kind
+            else {
+                continue;
+            };
+            if summary_kind != crate::compaction_summary::COMPACTION_SUMMARY_KIND_CUMULATIVE_V1 {
+                continue;
+            }
+            if *to_seq > full_from_seq {
+                continue;
+            }
+            match best.as_ref() {
+                Some((best_to_seq, best_event_seq, _))
+                    if (*to_seq < *best_to_seq)
+                        || (*to_seq == *best_to_seq && event.seq <= *best_event_seq) => {}
+                _ => {
+                    best = Some((*to_seq, event.seq, summary_artifact_id.clone()));
+                }
+            }
+        }
+        let (summary_to_seq, _event_seq, summary_artifact_id) =
+            best.expect("expected compaction checkpoint in full replay");
+
+        let full_bundle =
+            compile_summaries_recent_messages_v1(CompileSummariesRecentMessagesV1Request {
+                continuity_id: &continuity_id,
+                continuity_events: &full_events,
+                event_log: event_log.as_ref(),
+                snapshot_dir: &snapshot_dir,
+                from_seq: full_from_seq,
+                from_message_id: full_from_message_id.clone(),
+                run_session_id: "run-session",
+                actor_id: "user",
+                origin: "cli",
+                summary_artifact_id: &summary_artifact_id,
+                summary_to_seq,
+            })
+            .expect("compile full");
+
+        let window_input = store
+            .load_context_compile_input_recent_messages_v1(&continuity_id, &anchor_message_id)
+            .expect("window input");
+        assert_eq!(window_input.from_seq, full_from_seq);
+        assert_eq!(window_input.from_message_id, full_from_message_id);
+        assert!(
+            window_input.continuity_events.iter().all(|event| matches!(
+                event.kind,
+                EventKind::ContinuityMessageAppended { .. } | EventKind::ContinuityRunEnded { .. }
+            )),
+            "expected message+run-ended-only window events"
+        );
+
+        let checkpoint = store
+            .latest_compaction_checkpoint_for_compile_v1(&continuity_id, window_input.from_seq)
+            .expect("checkpoint lookup")
+            .expect("checkpoint");
+        assert_eq!(checkpoint.summary_artifact_id, summary_artifact_id);
+        assert_eq!(checkpoint.to_seq, summary_to_seq);
+
+        let window_bundle =
+            compile_summaries_recent_messages_v1(CompileSummariesRecentMessagesV1Request {
+                continuity_id: &continuity_id,
+                continuity_events: &window_input.continuity_events,
+                event_log: event_log.as_ref(),
+                snapshot_dir: &snapshot_dir,
+                from_seq: window_input.from_seq,
+                from_message_id: window_input.from_message_id.clone(),
+                run_session_id: "run-session",
+                actor_id: "user",
+                origin: "cli",
+                summary_artifact_id: &checkpoint.summary_artifact_id,
+                summary_to_seq: checkpoint.to_seq,
+            })
+            .expect("compile window");
 
         let full_json = serde_json::to_value(&full_bundle).expect("full json");
         let window_json = serde_json::to_value(&window_bundle).expect("window json");

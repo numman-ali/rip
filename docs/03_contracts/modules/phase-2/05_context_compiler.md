@@ -7,6 +7,7 @@ Summary
 
 Decision
 - See `docs/06_decisions/ADR-0010-context-compiler-truth.md`.
+- Compaction checkpoints + summaries: `docs/06_decisions/ADR-0011-compaction-cutpoints-summaries.md`.
 
 Related capabilities
 - `context.compile` (core)
@@ -55,10 +56,10 @@ Architecture (target posture)
 
 3) Handoff and compaction feed the compiler
 - Handoff (`thread.handoff`) writes a curated bundle artifact (`rip.handoff_context_bundle.v1`) referenced by `continuity_handoff_created`.
-- Compaction (planned) writes summary artifacts at deterministic cut points and emits checkpoint frames.
+- Compaction writes summary artifacts (`rip.compaction_summary.v1`) at deterministic cut points and emits checkpoint frames (`continuity_compaction_checkpoint_created`).
 - `context.compile` can include:
   - a handoff summary bundle as “base context” for a new thread, and
-  - compaction summaries + recent raw events for long threads.
+  - compaction summaries + recent raw messages for long threads (example strategy: `summaries_recent_messages_v1`).
 
 4) Provider adapters render bundles (no OpenResponses in core)
 - Provider adapters accept a bundle and produce provider requests.
@@ -88,10 +89,10 @@ Tests (required)
 - Contract tests:
   - bundle schema round-trips and rejects invalid shapes
   - compilation frame ordering invariants hold (`continuity_run_spawned` -> `continuity_context_compiled` -> `continuity_run_ended`)
+  - `summary_ref` items reference `rip.compaction_summary.v1` artifacts and compile deterministically
 - Replay tests:
   - parallel runs compile at explicit cut points without nondeterministic ordering
   - late subscribers see identical compiled bundles via artifact ids
 - Benchmarks (planned):
   - compilation time vs bundle size
   - render-to-provider request overhead
-

@@ -11,6 +11,8 @@ use crate::context_bundle::{
 
 pub(crate) const CONTEXT_COMPILER_ID_V1: &str = "rip.context_compiler.v1";
 pub(crate) const CONTEXT_COMPILER_STRATEGY_RECENT_MESSAGES_V1: &str = "recent_messages_v1";
+pub(crate) const CONTEXT_COMPILER_STRATEGY_SUMMARIES_RECENT_MESSAGES_V1: &str =
+    "summaries_recent_messages_v1";
 
 // Kernel v1: hard cap on raw message turns included (assistant replies are derived per-message).
 pub(crate) const RECENT_MESSAGES_V1_LIMIT: usize = 16;
@@ -83,6 +85,85 @@ pub(crate) fn compile_recent_messages_v1(
     ))
 }
 
+pub(crate) struct CompileSummariesRecentMessagesV1Request<'a> {
+    pub(crate) continuity_id: &'a str,
+    pub(crate) continuity_events: &'a [Event],
+    pub(crate) event_log: &'a EventLog,
+    pub(crate) snapshot_dir: &'a Path,
+    pub(crate) from_seq: u64,
+    pub(crate) from_message_id: Option<String>,
+    pub(crate) run_session_id: &'a str,
+    pub(crate) actor_id: &'a str,
+    pub(crate) origin: &'a str,
+    pub(crate) summary_artifact_id: &'a str,
+    pub(crate) summary_to_seq: u64,
+}
+
+pub(crate) fn compile_summaries_recent_messages_v1(
+    req: CompileSummariesRecentMessagesV1Request<'_>,
+) -> Result<ContextBundleV1, String> {
+    let ended_runs_by_message_id = ended_runs_by_message_id(req.continuity_events, req.from_seq);
+    let selected = select_recent_messages_after_seq(
+        req.continuity_events,
+        req.from_seq,
+        req.summary_to_seq,
+        RECENT_MESSAGES_V1_LIMIT,
+    );
+
+    let mut items = Vec::new();
+    items.push(ContextBundleItemV1::SummaryRef {
+        artifact_id: req.summary_artifact_id.to_string(),
+        note: Some(format!(
+            "compaction checkpoint to_seq={}",
+            req.summary_to_seq
+        )),
+    });
+
+    for message in selected {
+        items.push(ContextBundleItemV1::Message {
+            role: "user".to_string(),
+            content: message.content.clone(),
+            actor_id: Some(message.actor_id.clone()),
+            origin: Some(message.origin.clone()),
+            thread_seq: Some(message.seq),
+            thread_event_id: Some(message.event_id.clone()),
+        });
+
+        if let Some(ended_session_id) = ended_runs_by_message_id.get(&message.event_id) {
+            let assistant_text =
+                aggregate_session_output_text(req.snapshot_dir, req.event_log, ended_session_id);
+            if !assistant_text.is_empty() {
+                items.push(ContextBundleItemV1::Message {
+                    role: "assistant".to_string(),
+                    content: assistant_text,
+                    actor_id: None,
+                    origin: None,
+                    thread_seq: None,
+                    thread_event_id: None,
+                });
+            }
+        }
+    }
+
+    Ok(ContextBundleV1::new(
+        ContextBundleCompilerV1 {
+            id: CONTEXT_COMPILER_ID_V1.to_string(),
+            strategy: CONTEXT_COMPILER_STRATEGY_SUMMARIES_RECENT_MESSAGES_V1.to_string(),
+        },
+        ContextBundleSourceV1 {
+            thread_id: req.continuity_id.to_string(),
+            from_seq: req.from_seq,
+            from_message_id: req.from_message_id,
+        },
+        ContextBundleProvenanceV1 {
+            run_session_id: req.run_session_id.to_string(),
+            actor_id: req.actor_id.to_string(),
+            origin: req.origin.to_string(),
+        },
+        items,
+    ))
+}
+
 #[derive(Debug, Clone)]
 struct SelectedMessage {
     seq: u64,
@@ -104,6 +185,46 @@ fn select_recent_messages(
 
     for event in continuity_events.iter().rev() {
         if event.seq > from_seq {
+            continue;
+        }
+        let EventKind::ContinuityMessageAppended {
+            actor_id,
+            origin,
+            content,
+        } = &event.kind
+        else {
+            continue;
+        };
+
+        selected_rev.push(SelectedMessage {
+            seq: event.seq,
+            event_id: event.id.clone(),
+            actor_id: actor_id.clone(),
+            origin: origin.clone(),
+            content: content.clone(),
+        });
+        if selected_rev.len() >= limit {
+            break;
+        }
+    }
+
+    selected_rev.reverse();
+    selected_rev
+}
+
+fn select_recent_messages_after_seq(
+    continuity_events: &[Event],
+    from_seq: u64,
+    after_seq: u64,
+    limit: usize,
+) -> Vec<SelectedMessage> {
+    let mut selected_rev: Vec<SelectedMessage> = Vec::new();
+    if limit == 0 {
+        return Vec::new();
+    }
+
+    for event in continuity_events.iter().rev() {
+        if event.seq > from_seq || event.seq <= after_seq {
             continue;
         }
         let EventKind::ContinuityMessageAppended {

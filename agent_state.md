@@ -21,6 +21,8 @@ Current focus
 - Implemented: continuity store (`ensure_default`, `append_message`, `append_run_spawned`, `append_run_ended`, `branch`, `handoff`) + local `rip run` posts to the default continuity before spawning a run.
 - Implemented: continuity run lifecycle frames carry provenance (`continuity_run_spawned.actor_id/origin`) and completion (`continuity_run_ended.reason`).
 - Implemented: context compiler kernel v1 (`recent_messages_v1`) writes `rip.context_bundle.v1` artifacts + emits `continuity_context_compiled`; OpenResponses runs start from compiled bundles (fresh provider conversation per run).
+- Implemented: compaction foundations v0.1: `continuity_compaction_checkpoint_created` + `rip.compaction_summary.v1` artifacts + compiler strategy `summaries_recent_messages_v1` (summary_ref + recent raw messages; fallback-safe; cache-backed O(k) when sidecars exist).
+- Implemented: `compaction.manual` surface parity (cli_h/server/sdk) via `rip threads compaction-checkpoint` (local + `--server`) and `POST /threads/{id}/compaction-checkpoint`.
 - Implemented: branch/handoff posture is “link-only” in the continuity log (no history copying) (ADR-0009) + relationship frames (`continuity_branched`, `continuity_handoff_created`).
 - Implemented: handoff writes an artifact-backed context bundle referenced by `continuity_handoff_created.summary_artifact_id` (`docs/03_contracts/handoff_context_bundle.md`).
 - Implemented: server exposes `thread.*` (ensure/list/get/post_message/branch/handoff/stream_events) and OpenAPI is updated.
@@ -56,7 +58,7 @@ Open risks / notes
 
 Active priorities
 - Keep roadmap Now/Next aligned with the implementation work.
-- Next slice (code): add compaction/summary artifacts + a compile strategy that mixes summaries with recent raw messages (versioned; replay-addressable).
+- Next slice (code): add a background summarizer job over the continuity stream that emits checkpoints deterministically + expand the remaining `compaction.*` (auto/cut_points/etc.) across surfaces.
 - Keep OpenResponses boundary full-fidelity while wiring new surfaces/adapters.
 - Keep OpenResponses follow-ups spec-canonical; any compatibility user message is opt-in.
 - Keep stateless history compatibility opt-in; default remains `previous_response_id`.

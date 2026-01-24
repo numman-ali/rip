@@ -9,6 +9,9 @@ pub fn event_type(event: &Event) -> &'static str {
         EventKind::ContinuityMessageAppended { .. } => "continuity_message_appended",
         EventKind::ContinuityRunSpawned { .. } => "continuity_run_spawned",
         EventKind::ContinuityContextCompiled { .. } => "continuity_context_compiled",
+        EventKind::ContinuityCompactionCheckpointCreated { .. } => {
+            "continuity_compaction_checkpoint_created"
+        }
         EventKind::ContinuityRunEnded { .. } => "continuity_run_ended",
         EventKind::ContinuityToolSideEffects { .. } => "continuity_tool_side_effects",
         EventKind::ContinuityBranched { .. } => "continuity_branched",
@@ -61,6 +64,19 @@ pub fn event_summary(event: &Event) -> String {
             truncate(run_session_id, 16),
             truncate(bundle_artifact_id, 16),
             truncate(compiler_strategy, 32)
+        ),
+        EventKind::ContinuityCompactionCheckpointCreated {
+            checkpoint_id,
+            summary_artifact_id,
+            to_seq,
+            cut_rule_id,
+            ..
+        } => format!(
+            "ckpt={} to_seq={} summary={} ({})",
+            truncate(checkpoint_id, 16),
+            to_seq,
+            truncate(summary_artifact_id, 16),
+            truncate(cut_rule_id, 32)
         ),
         EventKind::ContinuityRunEnded {
             run_session_id,

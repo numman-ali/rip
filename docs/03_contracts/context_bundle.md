@@ -37,9 +37,12 @@ Item union (`items[]`)
     - `origin`: string | null (optional; set when sourced from `continuity_message_appended`)
     - `thread_seq`: u64 | null (optional; continuity seq of the source event when applicable)
     - `thread_event_id`: string | null (optional; continuity event id of the source when applicable)
+  - `type="summary_ref"`
+    - Purpose: reference a compaction summary artifact (do not inline large summary text into the bundle).
+    - `artifact_id`: string (required; schema `rip.compaction_summary.v1`)
+    - `note`: string | null (optional)
 
 Planned item types (future versions)
-- `summary_ref`: `{artifact_id, note?}` (compaction summary artifacts)
 - `handoff_bundle_ref`: `{artifact_id}` (handoff curated context bundle)
 - `artifact_ref`: `{artifact_id, note?, mime?}` (tool outputs, indexes)
 - `file_ref`: `{path, checkpoint_id?, note?}` (workspace state references)
@@ -52,7 +55,12 @@ Determinism & replay
 
 Provider adapter mapping (intent)
 - Provider adapters render bundles to provider request formats:
-  - Open Responses: `items[]` -> OpenResponses input items (role + content), plus tool declarations as configured.
+  - Open Responses:
+    - `type="message"` -> OpenResponses `input[]` message items (role + content)
+    - `type="summary_ref"` -> load the referenced compaction summary artifact (`docs/03_contracts/compaction_summary.md`) and render its `summary_markdown` as a provider message (implementation-defined role/prefix, but deterministic)
+      - Spec note: Open Responses `message` input items accept `content` as a single string across message roles (including `system`), so the adapter may emit `{type:"message", role:"system", content:"..."}` without constructing content-part arrays.
+      - Note: Open Responses also defines a `type="compaction"` input item shape with `encrypted_content`, but that format is provider-specific (e.g. produced by `/responses/compact`) and is not suitable for RIP’s provider-agnostic summary artifacts.
+    - plus tool declarations as configured
   - Anthropic (future): `items[]` -> `messages[]` (role + content), with tool calls mapped at the provider boundary.
 - Providers remain replaceable compute substrates; provider state is optional cache only.
 
@@ -72,4 +80,3 @@ Example (messages-only bundle)
   ]
 }
 ```
-

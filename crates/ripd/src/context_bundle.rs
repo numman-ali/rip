@@ -46,6 +46,11 @@ pub(crate) enum ContextBundleItemV1 {
         thread_seq: Option<u64>,
         thread_event_id: Option<String>,
     },
+    SummaryRef {
+        artifact_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        note: Option<String>,
+    },
 }
 
 impl ContextBundleV1 {

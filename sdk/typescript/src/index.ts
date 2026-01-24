@@ -12,6 +12,8 @@ export type {
   RipThreadHandoffResponse,
   RipThreadPostMessageRequest,
   RipThreadPostMessageResponse,
+  RipThreadCompactionCheckpointRequest,
+  RipThreadCompactionCheckpointResponse,
   RipTaskOptions,
   RipTaskSpawnRequest,
   RipTaskCreated,
@@ -27,6 +29,7 @@ export {
   buildRipThreadBranchArgs,
   buildRipThreadHandoffArgs,
   buildRipThreadPostMessageArgs,
+  buildRipThreadCompactionCheckpointArgs,
   buildRipThreadEventsArgs,
   collectOutputText,
 } from "./util.js";

@@ -16,6 +16,7 @@ Entry points (read order for reorientation)
 - `docs/03_contracts/event_frames.md` (internal event schema)
 - `docs/03_contracts/handoff_context_bundle.md` (artifact schema for `thread.handoff` curated context bundles)
 - `docs/03_contracts/context_bundle.md` (artifact schema for `context.compile` compiled context bundles)
+- `docs/03_contracts/compaction_summary.md` (artifact schema for compaction summary checkpoints)
 - `docs/05_quality/feature_flow.md` (how we turn ideas into shipped capabilities)
 - OpenResponses boundary:
   - `docs/03_contracts/openresponses_coverage.md` (exhaustive spec/schema coverage + capability ownership)

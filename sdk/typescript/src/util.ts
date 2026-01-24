@@ -102,6 +102,31 @@ export function buildRipThreadPostMessageArgs(
   return args;
 }
 
+export type RipThreadCompactionCheckpointArgsOptions = RipThreadsArgsOptions & {
+  summaryMarkdown?: string;
+  summaryArtifactId?: string;
+  toMessageId?: string;
+  toSeq?: number;
+  strideMessages?: number;
+  actorId?: string;
+  origin?: string;
+};
+
+export function buildRipThreadCompactionCheckpointArgs(
+  threadId: string,
+  options: RipThreadCompactionCheckpointArgsOptions = {},
+): string[] {
+  const args = [...buildRipThreadsBaseArgs(options), "compaction-checkpoint", threadId];
+  if (options.summaryMarkdown) args.push("--summary-markdown", options.summaryMarkdown);
+  if (options.summaryArtifactId) args.push("--summary-artifact-id", options.summaryArtifactId);
+  if (options.toMessageId) args.push("--to-message-id", options.toMessageId);
+  if (typeof options.toSeq === "number") args.push("--to-seq", String(options.toSeq));
+  if (typeof options.strideMessages === "number") args.push("--stride-messages", String(options.strideMessages));
+  if (options.actorId) args.push("--actor-id", options.actorId);
+  if (options.origin) args.push("--origin", options.origin);
+  return args;
+}
+
 export type RipThreadEventsArgsOptions = RipThreadsArgsOptions & {
   maxEvents?: number;
 };

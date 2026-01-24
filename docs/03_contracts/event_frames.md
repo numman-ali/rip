@@ -43,6 +43,18 @@ Frame types
   - `from_message_id`: string | null (anchor message id when known)
   - `actor_id`: string
   - `origin`: string
+- `continuity_compaction_checkpoint_created`
+  - Purpose: record a deterministic compaction checkpoint (cut point + summary artifact) used by `context.compile` strategies.
+  - `checkpoint_id`: string (uuid)
+  - `cut_rule_id`: string (example: `stride_messages_v1/10000`)
+  - `summary_kind`: string (example: `cumulative_v1`)
+  - `summary_artifact_id`: string (artifact id; schema `rip.compaction_summary.v1`)
+  - `from_seq`: u64 (inclusive coverage start in the continuity stream)
+  - `from_message_id`: string | null (coverage start message id when applicable)
+  - `to_seq`: u64 (inclusive coverage end; must be a `continuity_message_appended` boundary)
+  - `to_message_id`: string | null (coverage end message id when applicable; required when known)
+  - `actor_id`: string
+  - `origin`: string
 - `continuity_run_ended`
   - `run_session_id`: string (uuid)
   - `message_id`: string (uuid)
@@ -131,6 +143,8 @@ Invariants
 - `continuity_tool_side_effects` must be emitted after the tool completes (`tool_ended`/`tool_failed`) and before `continuity_run_ended` for the same `run_session_id`.
 - `continuity_context_compiled` is appended to the continuity stream only when the run is linked to a continuity (`continuity_run` exists).
 - `continuity_context_compiled` must be emitted after `continuity_run_spawned` and before `continuity_run_ended` for the same `run_session_id`.
+- `continuity_compaction_checkpoint_created` is appended to the continuity stream and must reference a message boundary (`to_seq`/`to_message_id` identify a `continuity_message_appended` event).
+- Multiple `continuity_compaction_checkpoint_created` frames may exist for the same `to_seq` (later frames supersede earlier ones by stream order; history is never overwritten).
 
 Example
 ```

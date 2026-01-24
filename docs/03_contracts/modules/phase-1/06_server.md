@@ -7,7 +7,7 @@ Summary
 
 Inputs
 - Session lifecycle requests (start, send input, cancel).
-- Thread ("continuity") requests (ensure/list/get/post message/branch/handoff).
+- Thread ("continuity") requests (ensure/list/get/post message/branch/handoff/compaction-checkpoint).
 - Tool/checkpoint command envelopes via session input (for deterministic testing).
 
 Outputs

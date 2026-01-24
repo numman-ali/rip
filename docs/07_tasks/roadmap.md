@@ -35,13 +35,14 @@ Now
   - Implemented: context compiler perf v1 tail-read continuity v1: sidecar tail scan for `head_seq`/next-seq recovery + `recent_messages_v1` compilation input (latest-message run starts avoid full continuity Vec loads).
   - Implemented: context compiler perf v1.1 seekable continuity reads: per-continuity sidecar seek indexes + bounded window reads for `recent_messages_v1` non-tail anchors (avoid full continuity Vec loads even when anchoring far from tail).
   - Implemented: context compiler perf v1.2 dense-event window reads: messages+runs-only per-continuity sidecar + indexes so `recent_messages_v1` reads are O(k) even with high `continuity_tool_side_effects` density between messages (no global `events.jsonl` scans when caches exist).
-  - Server exposes `thread.*` (ensure/list/get/post_message/branch/handoff/stream_events); headless CLI exposes `rip threads ...` (local + `--server`); TypeScript SDK exposes `thread.*` by spawning `rip` (ADR-0006).
+  - Implemented: compaction foundations v0.1: deterministic checkpoint frame `continuity_compaction_checkpoint_created` + summary artifacts (`rip.compaction_summary.v1`) + compile strategy `summaries_recent_messages_v1` (summary_ref + recent raw messages; fallback-safe).
+  - Server exposes `thread.*` plus `compaction.manual` (thread compaction checkpoints); headless CLI exposes `rip threads ...` (local + `--server`); TypeScript SDK exposes these by spawning `rip` (ADR-0006).
   - Workspace mutation serialization enforced across sessions + background tasks; replay/contract tests added.
   - Continuity stream logs workspace-mutating tool side-effects (`continuity_tool_side_effects`) with provenance + replay coverage under parallel runs/tasks.
 - Ready:
-  - Finish continuity provenance coverage beyond messages/runs/tool side-effects: provider cursor rotation logs, context selection strategy evolution, and compaction checkpoints; document the remaining envelope migration (eventually drop non-session `session_id`).
-  - Define deterministic compaction checkpoints (e.g., 10k/20k/30k summaries) and provider cursor rotation logging.
-  - Perf: keep `context.compile` O(k) at 1M+ events (tail-read continuity v1 + seekable non-tail anchors v1.1 done; next is per-stream segmentation/compaction cutpoints).
+  - Finish continuity provenance coverage beyond messages/runs/tool side-effects: provider cursor rotation logs and context selection strategy evolution; document the remaining envelope migration (eventually drop non-session `session_id`).
+  - Expose remaining `compaction.*` (auto/cut_points/etc.) and add background summarizer jobs emitting deterministic checkpoints (manual checkpoints are supported on cli_h/server/sdk).
+  - Perf: keep `context.compile` O(k) at 1M+ events (tail-read continuity v1 + seekable non-tail anchors v1.1 + compaction cut points v0.1 done; next is per-stream segmentation + hierarchical summaries).
 - Done:
   - Default UX is one continuity; surfaces "continue" by posting messages (sessions hidden by default).
   - Resume/branch/handoff works with deterministic replay and parity across CLI/TUI/server/SDK.

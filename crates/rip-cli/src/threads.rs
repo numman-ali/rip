@@ -64,6 +64,32 @@ pub(crate) enum ThreadsCommand {
         #[arg(long)]
         origin: Option<String>,
     },
+    /// Append a deterministic compaction checkpoint + summary artifact reference to a thread.
+    CompactionCheckpoint {
+        /// Thread id (continuity id).
+        id: String,
+        /// Summary as markdown (written as a `rip.compaction_summary.v1` artifact).
+        #[arg(long)]
+        summary_markdown: Option<String>,
+        /// Existing `rip.compaction_summary.v1` artifact id to reference.
+        #[arg(long)]
+        summary_artifact_id: Option<String>,
+        /// Explicit cut point message id (must be a `continuity_message_appended` event id).
+        #[arg(long)]
+        to_message_id: Option<String>,
+        /// Explicit cut point seq (must be a `continuity_message_appended` seq).
+        #[arg(long)]
+        to_seq: Option<u64>,
+        /// Deterministic cut points by message count stride (default: 10_000 when no cut point is specified).
+        #[arg(long)]
+        stride_messages: Option<u64>,
+        /// Actor id (provenance).
+        #[arg(long)]
+        actor_id: Option<String>,
+        /// Origin (provenance).
+        #[arg(long)]
+        origin: Option<String>,
+    },
     /// Append a message to a continuity and start a run; print linkage JSON.
     PostMessage {
         /// Thread id (continuity id).
@@ -122,6 +148,16 @@ pub(crate) struct ThreadHandoffResponse {
     pub(crate) from_thread_id: String,
     pub(crate) from_seq: u64,
     pub(crate) from_message_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct ThreadCompactionCheckpointResponse {
+    pub(crate) thread_id: String,
+    pub(crate) checkpoint_id: String,
+    pub(crate) cut_rule_id: String,
+    pub(crate) summary_artifact_id: String,
+    pub(crate) to_seq: u64,
+    pub(crate) to_message_id: String,
 }
 
 pub(crate) async fn run_threads(
@@ -221,6 +257,37 @@ async fn run_threads_remote(server: String, command: ThreadsCommand) -> anyhow::
             let status = response.status();
             if !status.is_success() {
                 anyhow::bail!("thread handoff failed: {status}");
+            }
+            let body = response.text().await?;
+            println!("{body}");
+        }
+        ThreadsCommand::CompactionCheckpoint {
+            id,
+            summary_markdown,
+            summary_artifact_id,
+            to_message_id,
+            to_seq,
+            stride_messages,
+            actor_id,
+            origin,
+        } => {
+            let url = format!("{server}/threads/{id}/compaction-checkpoint");
+            let response = client
+                .post(url)
+                .json(&serde_json::json!({
+                    "summary_markdown": summary_markdown,
+                    "summary_artifact_id": summary_artifact_id,
+                    "to_message_id": to_message_id,
+                    "to_seq": to_seq,
+                    "stride_messages": stride_messages,
+                    "actor_id": actor_id,
+                    "origin": origin
+                }))
+                .send()
+                .await?;
+            let status = response.status();
+            if !status.is_success() {
+                anyhow::bail!("thread compaction-checkpoint failed: {status}");
             }
             let body = response.text().await?;
             println!("{body}");
@@ -351,6 +418,42 @@ async fn run_threads_local_with_engine(
                 from_thread_id: id,
                 from_seq,
                 from_message_id,
+            };
+            println!("{}", serde_json::to_string(&payload)?);
+        }
+        ThreadsCommand::CompactionCheckpoint {
+            id,
+            summary_markdown,
+            summary_artifact_id,
+            to_message_id,
+            to_seq,
+            stride_messages,
+            actor_id,
+            origin,
+        } => {
+            let actor_id = actor_id.unwrap_or_else(|| "user".to_string());
+            let origin = origin.unwrap_or_else(|| "cli".to_string());
+            let (checkpoint_id, summary_artifact_id, to_seq, to_message_id, cut_rule_id) = store
+                .compaction_checkpoint_cumulative_v1(
+                    &id,
+                    ripd::CompactionCheckpointCumulativeV1Request {
+                        summary_markdown,
+                        summary_artifact_id,
+                        to_message_id,
+                        to_seq,
+                        stride_messages,
+                        actor_id,
+                        origin,
+                    },
+                )
+                .map_err(|err| anyhow::anyhow!("thread compaction-checkpoint failed: {err}"))?;
+            let payload = ThreadCompactionCheckpointResponse {
+                thread_id: id,
+                checkpoint_id,
+                cut_rule_id,
+                summary_artifact_id,
+                to_seq,
+                to_message_id,
             };
             println!("{}", serde_json::to_string(&payload)?);
         }
@@ -1153,6 +1256,13 @@ mod tests {
                 .header("content-type", "application/json")
                 .body(r#"{"thread_id":"t3","from_thread_id":"t1","from_seq":0}"#);
         });
+        let _compaction = server.mock(|when, then| {
+            when.method(POST)
+                .path("/threads/t1/compaction-checkpoint");
+            then.status(201)
+                .header("content-type", "application/json")
+                .body(r#"{"thread_id":"t1","checkpoint_id":"c1","cut_rule_id":"manual_v1","summary_artifact_id":"a1","to_seq":1,"to_message_id":"m1"}"#);
+        });
 
         run_threads(Some(server.base_url()), ThreadsCommand::Ensure)
             .await
@@ -1216,6 +1326,21 @@ mod tests {
         )
         .await
         .expect("remote handoff");
+        run_threads(
+            Some(server.base_url()),
+            ThreadsCommand::CompactionCheckpoint {
+                id: "t1".to_string(),
+                summary_markdown: Some("summary".to_string()),
+                summary_artifact_id: None,
+                to_message_id: Some("m1".to_string()),
+                to_seq: None,
+                stride_messages: None,
+                actor_id: Some("user".to_string()),
+                origin: Some("sdk-ts".to_string()),
+            },
+        )
+        .await
+        .expect("remote compaction-checkpoint");
     }
 
     #[tokio::test]
@@ -1315,5 +1440,28 @@ mod tests {
         .await
         .unwrap_err();
         assert!(err.to_string().contains("thread handoff failed"));
+
+        let _compaction = server.mock(|when, then| {
+            when.method(POST).path("/threads/t1/compaction-checkpoint");
+            then.status(500);
+        });
+        let err = run_threads(
+            Some(server.base_url()),
+            ThreadsCommand::CompactionCheckpoint {
+                id: "t1".to_string(),
+                summary_markdown: Some("summary".to_string()),
+                summary_artifact_id: None,
+                to_message_id: Some("m1".to_string()),
+                to_seq: None,
+                stride_messages: None,
+                actor_id: None,
+                origin: None,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("thread compaction-checkpoint failed"));
     }
 }

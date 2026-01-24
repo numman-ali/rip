@@ -5,6 +5,7 @@ import type { RipEventFrame } from "./frames.js";
 import {
   buildRipRunArgs,
   buildRipThreadBranchArgs,
+  buildRipThreadCompactionCheckpointArgs,
   buildRipThreadEnsureArgs,
   buildRipThreadEventsArgs,
   buildRipThreadGetArgs,
@@ -107,6 +108,25 @@ export type RipThreadHandoffResponse = {
   from_thread_id: string;
   from_seq: number;
   from_message_id?: string;
+};
+
+export type RipThreadCompactionCheckpointRequest = {
+  summary_markdown?: string;
+  summary_artifact_id?: string;
+  to_message_id?: string;
+  to_seq?: number;
+  stride_messages?: number;
+  actor_id?: string;
+  origin?: string;
+};
+
+export type RipThreadCompactionCheckpointResponse = {
+  thread_id: string;
+  checkpoint_id: string;
+  cut_rule_id: string;
+  summary_artifact_id: string;
+  to_seq: number;
+  to_message_id: string;
 };
 
 export type RipTaskSpawnRequest = {
@@ -366,6 +386,32 @@ export class Rip {
       options,
     );
     return out as RipThreadPostMessageResponse;
+  }
+
+  async threadCompactionCheckpoint(
+    threadId: string,
+    request: RipThreadCompactionCheckpointRequest,
+    options: RipThreadOptions = {},
+  ): Promise<RipThreadCompactionCheckpointResponse> {
+    if (!request.summary_markdown && !request.summary_artifact_id) {
+      throw new Error("threadCompactionCheckpoint requires summary_markdown and/or summary_artifact_id");
+    }
+    const actorId = request.actor_id ?? "user";
+    const origin = request.origin ?? "sdk-ts";
+    const out = await this.execJson(
+      buildRipThreadCompactionCheckpointArgs(threadId, {
+        server: options.server,
+        summaryMarkdown: request.summary_markdown,
+        summaryArtifactId: request.summary_artifact_id,
+        toMessageId: request.to_message_id,
+        toSeq: request.to_seq,
+        strideMessages: request.stride_messages,
+        actorId,
+        origin,
+      }),
+      options,
+    );
+    return out as RipThreadCompactionCheckpointResponse;
   }
 
   async threadEventsStreamed(

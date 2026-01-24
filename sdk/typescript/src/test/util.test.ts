@@ -10,6 +10,7 @@ import {
   buildRipThreadGetArgs,
   buildRipThreadListArgs,
   buildRipThreadPostMessageArgs,
+  buildRipThreadCompactionCheckpointArgs,
   collectOutputText,
 } from "../util.js";
 
@@ -111,6 +112,37 @@ test("buildRipThreadHandoffArgs includes summary, selectors, and provenance flag
 test("buildRipThreadPostMessageArgs includes provenance flags", () => {
   const args = buildRipThreadPostMessageArgs("t1", "hi", { actorId: "alice", origin: "sdk-ts" });
   assert.deepEqual(args, ["threads", "post-message", "t1", "--content", "hi", "--actor-id", "alice", "--origin", "sdk-ts"]);
+});
+
+test("buildRipThreadCompactionCheckpointArgs includes cut points and provenance flags", () => {
+  const args = buildRipThreadCompactionCheckpointArgs("t1", {
+    summaryMarkdown: "summary",
+    summaryArtifactId: "a1",
+    toMessageId: "m1",
+    toSeq: 4,
+    strideMessages: 10000,
+    actorId: "alice",
+    origin: "sdk-ts",
+  });
+  assert.deepEqual(args, [
+    "threads",
+    "compaction-checkpoint",
+    "t1",
+    "--summary-markdown",
+    "summary",
+    "--summary-artifact-id",
+    "a1",
+    "--to-message-id",
+    "m1",
+    "--to-seq",
+    "4",
+    "--stride-messages",
+    "10000",
+    "--actor-id",
+    "alice",
+    "--origin",
+    "sdk-ts",
+  ]);
 });
 
 test("buildRipThreadEventsArgs includes max-events when provided", () => {

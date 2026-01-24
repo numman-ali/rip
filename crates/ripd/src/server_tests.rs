@@ -14,8 +14,8 @@ use crate::provider_openresponses::{parse_tool_choice_env, OpenResponsesConfig};
 use crate::server::{
     build_app_with_workspace_root, build_app_with_workspace_root_and_provider,
     build_app_with_workspace_root_and_provider_and_task_policy, build_openapi_router,
-    workspace_root, SessionCreated, ThreadBranchResponse, ThreadEnsureResponse,
-    ThreadHandoffResponse, ThreadMeta, ThreadPostMessageResponse,
+    workspace_root, SessionCreated, ThreadBranchResponse, ThreadCompactionCheckpointResponse,
+    ThreadEnsureResponse, ThreadHandoffResponse, ThreadMeta, ThreadPostMessageResponse,
 };
 
 fn build_test_app(dir: &tempfile::TempDir) -> Router {
@@ -168,6 +168,33 @@ async fn post_thread_message(
         .await
         .expect("response");
     assert_eq!(response.status(), axum::http::StatusCode::ACCEPTED);
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    serde_json::from_slice(&body).expect("json")
+}
+
+async fn compaction_checkpoint(
+    app: &Router,
+    thread_id: &str,
+    payload: serde_json::Value,
+) -> ThreadCompactionCheckpointResponse {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/threads/{thread_id}/compaction-checkpoint"))
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::CREATED);
     let body = response
         .into_body()
         .collect()
@@ -1036,6 +1063,126 @@ async fn thread_handoff_rejects_missing_summary() {
         .await
         .expect("response");
     assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn thread_compaction_checkpoint_unknown_is_404() {
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app(&dir);
+
+    let payload = serde_json::json!({
+        "summary_markdown": "summary"
+    });
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/threads/nope/compaction-checkpoint")
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn thread_compaction_checkpoint_rejects_missing_summary() {
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app(&dir);
+    let thread_id = ensure_thread_id(&app).await;
+    let posted = post_thread_message(&app, &thread_id, "hello").await;
+
+    let payload = serde_json::json!({
+        "to_message_id": posted.message_id,
+    });
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/threads/{thread_id}/compaction-checkpoint"))
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn thread_compaction_checkpoint_creates_and_emits_checkpoint_event() {
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app(&dir);
+    let thread_id = ensure_thread_id(&app).await;
+    let posted = post_thread_message(&app, &thread_id, "hello").await;
+
+    let created = compaction_checkpoint(
+        &app,
+        &thread_id,
+        serde_json::json!({
+            "summary_markdown": "summary",
+            "to_message_id": posted.message_id,
+        }),
+    )
+    .await;
+    assert_eq!(created.thread_id, thread_id);
+    assert!(!created.checkpoint_id.is_empty());
+    assert!(!created.summary_artifact_id.is_empty());
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/threads/{thread_id}/events"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+
+    let mut reader = TestSseReader::new(response.into_body());
+    let found = timeout(Duration::from_secs(2), async {
+        while let Some(message) = reader.next_data_message().await {
+            let Some(value) = extract_data_json(&message) else {
+                continue;
+            };
+            if value.get("type").and_then(|value| value.as_str())
+                != Some("continuity_compaction_checkpoint_created")
+            {
+                continue;
+            }
+            return Some(value);
+        }
+        None
+    })
+    .await
+    .expect("timeout");
+    let found = found.expect("checkpoint event");
+
+    assert_eq!(
+        found.get("checkpoint_id").and_then(|value| value.as_str()),
+        Some(created.checkpoint_id.as_str())
+    );
+    assert_eq!(
+        found
+            .get("summary_artifact_id")
+            .and_then(|value| value.as_str()),
+        Some(created.summary_artifact_id.as_str())
+    );
+    assert_eq!(
+        found.get("to_seq").and_then(|value| value.as_u64()),
+        Some(created.to_seq)
+    );
+    assert_eq!(
+        found.get("to_message_id").and_then(|value| value.as_str()),
+        Some(created.to_message_id.as_str())
+    );
 }
 
 #[tokio::test]
