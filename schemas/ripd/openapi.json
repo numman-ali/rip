@@ -499,6 +499,60 @@
         }
       }
     },
+    "/threads/{id}/compaction-auto": {
+      "post": {
+        "operationId": "thread_compaction_auto",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Thread id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompactionAutoV1Request"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Auto-compaction no-op / dry-run result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompactionAutoV1Response"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Auto-compaction job spawned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompactionAutoV1Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid auto-compaction request"
+          },
+          "404": {
+            "description": "Thread not found"
+          }
+        }
+      }
+    },
     "/threads/{id}/compaction-checkpoint": {
       "post": {
         "operationId": "thread_compaction_checkpoint",
@@ -539,6 +593,50 @@
           },
           "404": {
             "description": "Thread or cut point not found"
+          }
+        }
+      }
+    },
+    "/threads/{id}/compaction-cut-points": {
+      "post": {
+        "operationId": "thread_compaction_cut_points",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Thread id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompactionCutPointsV1Request"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Computed cut points",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompactionCutPointsV1Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cut point request"
+          },
+          "404": {
+            "description": "Thread not found"
           }
         }
       }
@@ -671,6 +769,246 @@
           "cancelled",
           "failed"
         ]
+      },
+      "CompactionAutoResultCheckpointV1": {
+        "type": "object",
+        "required": [
+          "checkpoint_id",
+          "summary_artifact_id",
+          "to_seq",
+          "to_message_id",
+          "cut_rule_id"
+        ],
+        "properties": {
+          "checkpoint_id": {
+            "type": "string"
+          },
+          "cut_rule_id": {
+            "type": "string"
+          },
+          "summary_artifact_id": {
+            "type": "string"
+          },
+          "to_message_id": {
+            "type": "string"
+          },
+          "to_seq": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "CompactionAutoV1Request": {
+        "type": "object",
+        "required": [
+          "actor_id",
+          "origin"
+        ],
+        "properties": {
+          "actor_id": {
+            "type": "string"
+          },
+          "dry_run": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "max_new_checkpoints": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "origin": {
+            "type": "string"
+          },
+          "stride_messages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "CompactionAutoV1Response": {
+        "type": "object",
+        "required": [
+          "thread_id",
+          "status",
+          "stride_messages",
+          "message_count",
+          "cut_rule_id",
+          "planned",
+          "result"
+        ],
+        "properties": {
+          "cut_rule_id": {
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "job_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "job_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "planned": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompactionPlannedCutPointV1"
+            }
+          },
+          "result": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompactionAutoResultCheckpointV1"
+            }
+          },
+          "status": {
+            "type": "string"
+          },
+          "stride_messages": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "thread_id": {
+            "type": "string"
+          }
+        }
+      },
+      "CompactionCutPointV1": {
+        "type": "object",
+        "required": [
+          "target_message_ordinal",
+          "to_seq",
+          "to_message_id",
+          "already_checkpointed"
+        ],
+        "properties": {
+          "already_checkpointed": {
+            "type": "boolean"
+          },
+          "latest_checkpoint_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target_message_ordinal": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "to_message_id": {
+            "type": "string"
+          },
+          "to_seq": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "CompactionCutPointsV1Request": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "stride_messages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "CompactionCutPointsV1Response": {
+        "type": "object",
+        "required": [
+          "thread_id",
+          "stride_messages",
+          "message_count",
+          "cut_rule_id",
+          "cut_points"
+        ],
+        "properties": {
+          "cut_points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompactionCutPointV1"
+            }
+          },
+          "cut_rule_id": {
+            "type": "string"
+          },
+          "message_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "stride_messages": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "thread_id": {
+            "type": "string"
+          }
+        }
+      },
+      "CompactionPlannedCutPointV1": {
+        "type": "object",
+        "required": [
+          "target_message_ordinal",
+          "to_seq",
+          "to_message_id"
+        ],
+        "properties": {
+          "target_message_ordinal": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "to_message_id": {
+            "type": "string"
+          },
+          "to_seq": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
       },
       "InputPayload": {
         "type": "object",

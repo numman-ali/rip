@@ -11,6 +11,8 @@ import {
   buildRipThreadListArgs,
   buildRipThreadPostMessageArgs,
   buildRipThreadCompactionCheckpointArgs,
+  buildRipThreadCompactionCutPointsArgs,
+  buildRipThreadCompactionAutoArgs,
   collectOutputText,
 } from "../util.js";
 
@@ -138,6 +140,45 @@ test("buildRipThreadCompactionCheckpointArgs includes cut points and provenance 
     "4",
     "--stride-messages",
     "10000",
+    "--actor-id",
+    "alice",
+    "--origin",
+    "sdk-ts",
+  ]);
+});
+
+test("buildRipThreadCompactionCutPointsArgs includes stride and limit", () => {
+  const args = buildRipThreadCompactionCutPointsArgs("t1", { strideMessages: 10000, limit: 3, server: "http://127.0.0.1:7341" });
+  assert.deepEqual(args, [
+    "threads",
+    "--server",
+    "http://127.0.0.1:7341",
+    "compaction-cut-points",
+    "t1",
+    "--stride-messages",
+    "10000",
+    "--limit",
+    "3",
+  ]);
+});
+
+test("buildRipThreadCompactionAutoArgs includes dry-run and limits", () => {
+  const args = buildRipThreadCompactionAutoArgs("t1", {
+    strideMessages: 10000,
+    maxNewCheckpoints: 2,
+    dryRun: true,
+    actorId: "alice",
+    origin: "sdk-ts",
+  });
+  assert.deepEqual(args, [
+    "threads",
+    "compaction-auto",
+    "t1",
+    "--stride-messages",
+    "10000",
+    "--max-new-checkpoints",
+    "2",
+    "--dry-run",
     "--actor-id",
     "alice",
     "--origin",

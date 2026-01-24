@@ -127,6 +127,42 @@ export function buildRipThreadCompactionCheckpointArgs(
   return args;
 }
 
+export type RipThreadCompactionCutPointsArgsOptions = RipThreadsArgsOptions & {
+  strideMessages?: number;
+  limit?: number;
+};
+
+export function buildRipThreadCompactionCutPointsArgs(
+  threadId: string,
+  options: RipThreadCompactionCutPointsArgsOptions = {},
+): string[] {
+  const args = [...buildRipThreadsBaseArgs(options), "compaction-cut-points", threadId];
+  if (typeof options.strideMessages === "number") args.push("--stride-messages", String(options.strideMessages));
+  if (typeof options.limit === "number") args.push("--limit", String(options.limit));
+  return args;
+}
+
+export type RipThreadCompactionAutoArgsOptions = RipThreadsArgsOptions & {
+  strideMessages?: number;
+  maxNewCheckpoints?: number;
+  dryRun?: boolean;
+  actorId?: string;
+  origin?: string;
+};
+
+export function buildRipThreadCompactionAutoArgs(
+  threadId: string,
+  options: RipThreadCompactionAutoArgsOptions = {},
+): string[] {
+  const args = [...buildRipThreadsBaseArgs(options), "compaction-auto", threadId];
+  if (typeof options.strideMessages === "number") args.push("--stride-messages", String(options.strideMessages));
+  if (typeof options.maxNewCheckpoints === "number") args.push("--max-new-checkpoints", String(options.maxNewCheckpoints));
+  if (options.dryRun) args.push("--dry-run");
+  if (options.actorId) args.push("--actor-id", options.actorId);
+  if (options.origin) args.push("--origin", options.origin);
+  return args;
+}
+
 export type RipThreadEventsArgsOptions = RipThreadsArgsOptions & {
   maxEvents?: number;
 };

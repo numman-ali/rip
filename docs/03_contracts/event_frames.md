@@ -55,6 +55,22 @@ Frame types
   - `to_message_id`: string | null (coverage end message id when applicable; required when known)
   - `actor_id`: string
   - `origin`: string
+- `continuity_job_spawned`
+  - Purpose: represent a background job over the continuity stream (summarizers/indexers/etc.) as continuity truth (ADR-0012).
+  - `job_id`: string (uuid)
+  - `job_kind`: string (example: `compaction_summarizer_v1`)
+  - `details`: object | null (job-specific, but must only contain stable values/refs)
+  - `actor_id`: string
+  - `origin`: string
+- `continuity_job_ended`
+  - Purpose: terminal status for a background job represented in continuity truth (ADR-0012).
+  - `job_id`: string (uuid)
+  - `job_kind`: string
+  - `status`: string (example: `completed` | `failed` | `cancelled`)
+  - `result`: object | null (job-specific result; stable ids/refs only)
+  - `error`: string | null (present when `status=failed`)
+  - `actor_id`: string
+  - `origin`: string
 - `continuity_run_ended`
   - `run_session_id`: string (uuid)
   - `message_id`: string (uuid)
@@ -145,6 +161,8 @@ Invariants
 - `continuity_context_compiled` must be emitted after `continuity_run_spawned` and before `continuity_run_ended` for the same `run_session_id`.
 - `continuity_compaction_checkpoint_created` is appended to the continuity stream and must reference a message boundary (`to_seq`/`to_message_id` identify a `continuity_message_appended` event).
 - Multiple `continuity_compaction_checkpoint_created` frames may exist for the same `to_seq` (later frames supersede earlier ones by stream order; history is never overwritten).
+- `continuity_job_spawned` and `continuity_job_ended` are appended to the continuity stream.
+- `continuity_job_ended` is terminal for `{job_id}` and should appear at most once per `job_id`.
 
 Example
 ```

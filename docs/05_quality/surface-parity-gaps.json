@@ -41,6 +41,167 @@
       "owner": "sdk",
       "reason": "SDK does not yet expose checkpoint persistence management; consumers rely on event log + snapshots indirectly today.",
       "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "checkpoint.auto",
+      "surface": "tui",
+      "owner": "tui",
+      "reason": "TUI surfaces checkpoint frames but does not yet expose explicit checkpoint controls (auto/rewind/persist) as first-class actions.",
+      "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "checkpoint.rewind",
+      "surface": "tui",
+      "owner": "tui",
+      "reason": "TUI surfaces checkpoint frames but does not yet expose explicit checkpoint controls (auto/rewind/persist) as first-class actions.",
+      "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "checkpoint.persist",
+      "surface": "tui",
+      "owner": "tui",
+      "reason": "TUI surfaces checkpoint frames but does not yet expose explicit checkpoint controls (auto/rewind/persist) as first-class actions.",
+      "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "compaction.manual",
+      "surface": "tui",
+      "owner": "tui",
+      "reason": "TUI exposes deterministic compaction cut points + auto compaction, but does not yet support manual checkpoint authoring.",
+      "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "execution.json_stream",
+      "surface": "tui",
+      "owner": "tui",
+      "reason": "TUI does not yet expose JSON stream execution output as a first-class surface; use cli_h/server/sdk for raw JSON streams.",
+      "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "session.cancel",
+      "surface": "tui",
+      "owner": "tui",
+      "reason": "TUI activation is in progress; session control parity work is pending beyond compaction auto v0.1.",
+      "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "session.create",
+      "surface": "tui",
+      "owner": "tui",
+      "reason": "TUI activation is in progress; session control parity work is pending beyond compaction auto v0.1.",
+      "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "session.send_input",
+      "surface": "tui",
+      "owner": "tui",
+      "reason": "TUI activation is in progress; session control parity work is pending beyond compaction auto v0.1.",
+      "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "session.stream_events",
+      "surface": "tui",
+      "owner": "tui",
+      "reason": "TUI activation is in progress; session control parity work is pending beyond compaction auto v0.1.",
+      "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "thread.branch",
+      "surface": "tui",
+      "owner": "tui",
+      "reason": "TUI activation is in progress; thread management parity work is pending beyond compaction auto v0.1.",
+      "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "thread.ensure",
+      "surface": "tui",
+      "owner": "tui",
+      "reason": "TUI activation is in progress; thread management parity work is pending beyond compaction auto v0.1.",
+      "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "thread.get",
+      "surface": "tui",
+      "owner": "tui",
+      "reason": "TUI activation is in progress; thread management parity work is pending beyond compaction auto v0.1.",
+      "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "thread.handoff",
+      "surface": "tui",
+      "owner": "tui",
+      "reason": "TUI activation is in progress; thread management parity work is pending beyond compaction auto v0.1.",
+      "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "thread.list",
+      "surface": "tui",
+      "owner": "tui",
+      "reason": "TUI activation is in progress; thread management parity work is pending beyond compaction auto v0.1.",
+      "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "thread.post_message",
+      "surface": "tui",
+      "owner": "tui",
+      "reason": "TUI activation is in progress; thread management parity work is pending beyond compaction auto v0.1.",
+      "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "thread.stream_events",
+      "surface": "tui",
+      "owner": "tui",
+      "reason": "TUI activation is in progress; thread management parity work is pending beyond compaction auto v0.1.",
+      "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "tool.task_cancel",
+      "surface": "tui",
+      "owner": "tui",
+      "reason": "TUI does not yet expose first-class task management controls; use cli_h/server/sdk for task operations.",
+      "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "tool.task_resize",
+      "surface": "tui",
+      "owner": "tui",
+      "reason": "TUI does not yet expose first-class task management controls; use cli_h/server/sdk for task operations.",
+      "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "tool.task_signal",
+      "surface": "tui",
+      "owner": "tui",
+      "reason": "TUI does not yet expose first-class task management controls; use cli_h/server/sdk for task operations.",
+      "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "tool.task_spawn",
+      "surface": "tui",
+      "owner": "tui",
+      "reason": "TUI does not yet expose first-class task management controls; use cli_h/server/sdk for task operations.",
+      "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "tool.task_status",
+      "surface": "tui",
+      "owner": "tui",
+      "reason": "TUI does not yet expose first-class task management controls; use cli_h/server/sdk for task operations.",
+      "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "tool.task_stream_events",
+      "surface": "tui",
+      "owner": "tui",
+      "reason": "TUI does not yet expose first-class task management controls; use cli_h/server/sdk for task operations.",
+      "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "tool.task_write_stdin",
+      "surface": "tui",
+      "owner": "tui",
+      "reason": "TUI does not yet expose first-class task management controls; use cli_h/server/sdk for task operations.",
+      "expires_on": "2026-03-01"
     }
   ]
 }

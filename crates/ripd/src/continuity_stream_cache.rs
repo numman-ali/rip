@@ -12,6 +12,10 @@ use crate::continuity_seek_index::{
     validate_seq_index_against_sidecar, SeqSeekIndexEntryV1, SidecarIndexBuilderV1,
     SEEK_INDEX_STRIDE_EVENTS_V1,
 };
+use crate::message_ordinal_index::{
+    append_message_record_best_effort_v1, message_count_v1, message_ordinal_index_path_v1,
+    read_message_by_ordinal_v1, rebuild_message_ordinal_index_from_events_v1,
+};
 
 const REVERSE_SCAN_CHUNK_BYTES: usize = 8 * 1024;
 
@@ -79,6 +83,10 @@ impl ContinuityStreamCache {
 
     fn messages_runs_message_index_path_v1(&self, continuity_id: &str) -> PathBuf {
         self.dir.join(format!("{continuity_id}.mr.messages.v1.bin"))
+    }
+
+    fn messages_runs_message_ordinal_index_path_v1(&self, continuity_id: &str) -> PathBuf {
+        message_ordinal_index_path_v1(&self.dir, continuity_id)
     }
 
     pub(crate) fn append_best_effort(&self, event: &Event) {
@@ -221,6 +229,8 @@ impl ContinuityStreamCache {
         if matches!(&event.kind, EventKind::ContinuityMessageAppended { .. }) {
             let msg_path = self.messages_runs_message_index_path_v1(continuity_id);
             insert_message_best_effort_v1(&msg_path, &path, &event.id, event.seq, offset);
+            let ord_path = self.messages_runs_message_ordinal_index_path_v1(continuity_id);
+            append_message_record_best_effort_v1(&ord_path, event.seq, &event.id);
         }
     }
 
@@ -321,6 +331,8 @@ impl ContinuityStreamCache {
             let _ = fs::remove_file(&path);
             let _ = fs::remove_file(self.messages_runs_seq_index_path_v1(continuity_id));
             let _ = fs::remove_file(self.messages_runs_message_index_path_v1(continuity_id));
+            let _ =
+                fs::remove_file(self.messages_runs_message_ordinal_index_path_v1(continuity_id));
             return;
         }
 
@@ -336,6 +348,92 @@ impl ContinuityStreamCache {
             &self.messages_runs_path_for_v1(continuity_id),
             &msg_path,
         );
+
+        // Build the ordinal -> (seq, id) index from the full event list (cache-only; no truth log).
+        let ord_path = self.messages_runs_message_ordinal_index_path_v1(continuity_id);
+        let _ = rebuild_message_ordinal_index_from_events_v1(&ord_path, continuity_id, events);
+    }
+
+    /// Returns `Ok(None)` when the ordinal index doesn't exist.
+    pub(crate) fn message_count_messages_runs_v1(
+        &self,
+        continuity_id: &str,
+    ) -> io::Result<Option<u64>> {
+        let path = self.messages_runs_message_ordinal_index_path_v1(continuity_id);
+        let Some(count) = message_count_v1(&path)? else {
+            return Ok(None);
+        };
+
+        // Validate the last ordinal record against the messages+runs sidecar so partial/truncated
+        // caches don't change cut-point selection semantics. Callers may fall back to the truth log.
+        let last_message = self.try_read_last_message_appended_messages_runs_v1(continuity_id)?;
+        let Some((last_seq, last_id)) = last_message else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "message ordinal index cannot be validated (missing messages+runs sidecar)",
+            ));
+        };
+
+        if count == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "message ordinal index empty but messages+runs sidecar contains messages",
+            ));
+        }
+        let Some(record) = read_message_by_ordinal_v1(&path, count)? else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "message ordinal index last record is missing",
+            ));
+        };
+        if record.seq != last_seq || record.id.to_string() != last_id {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "message ordinal index out of sync with messages+runs sidecar",
+            ));
+        }
+
+        Ok(Some(count))
+    }
+
+    /// Returns `Ok(None)` when the ordinal index doesn't exist or the ordinal is out of range.
+    pub(crate) fn message_by_ordinal_messages_runs_v1(
+        &self,
+        continuity_id: &str,
+        ordinal: u64,
+    ) -> io::Result<Option<(u64, String)>> {
+        let path = self.messages_runs_message_ordinal_index_path_v1(continuity_id);
+        let Some(record) = read_message_by_ordinal_v1(&path, ordinal)? else {
+            return Ok(None);
+        };
+
+        // Validate the record points at an actual message in the messages+runs sidecar.
+        let message_id = record.id.to_string();
+        let idx_path = self.messages_runs_message_index_path_v1(continuity_id);
+        let mut matches_index = match lookup_message_v1(&idx_path, &message_id) {
+            Ok(Some((seq, _))) => seq == record.seq,
+            Ok(None) => false,
+            Err(_) => false,
+        };
+        if !matches_index {
+            if let Some(sidecar_path) =
+                self.ensure_messages_runs_sidecar_best_effort_v1(continuity_id)?
+            {
+                let _ = rebuild_message_index_from_sidecar_v1(&sidecar_path, &idx_path);
+            }
+            matches_index = match lookup_message_v1(&idx_path, &message_id) {
+                Ok(Some((seq, _))) => seq == record.seq,
+                _ => false,
+            };
+        }
+        if !matches_index {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "message ordinal index references missing message",
+            ));
+        }
+
+        Ok(Some((record.seq, message_id)))
     }
 
     fn rebuild_compaction_checkpoints_best_effort_v1(&self, continuity_id: &str, events: &[Event]) {
@@ -445,6 +543,50 @@ impl ContinuityStreamCache {
         )
     }
 
+    fn try_read_last_message_appended_messages_runs_v1(
+        &self,
+        continuity_id: &str,
+    ) -> io::Result<Option<(u64, String)>> {
+        let sidecar_path = match self.ensure_messages_runs_sidecar_best_effort_v1(continuity_id)? {
+            Some(path) => path,
+            None => return Ok(None),
+        };
+
+        const INITIAL_BACKSCAN_BYTES: usize = 64 * 1024;
+        const MAX_BACKSCAN_BYTES: usize = 4 * 1024 * 1024;
+        const MAX_BACKSCAN_EVENTS: usize = 10_000;
+
+        let mut backscan_bytes = INITIAL_BACKSCAN_BYTES;
+        loop {
+            let mut file = File::open(&sidecar_path)?;
+            let parsed = scan_sidecar_backwards(
+                &mut file,
+                continuity_id,
+                MAX_BACKSCAN_EVENTS,
+                backscan_bytes,
+                ParseMode::Header,
+                None,
+            )?;
+
+            for header in parsed.headers {
+                if header.event_type == "continuity_message_appended" {
+                    return Ok(Some((header.seq, header.id)));
+                }
+            }
+
+            if parsed.complete {
+                return Ok(None);
+            }
+            if backscan_bytes >= MAX_BACKSCAN_BYTES {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "messages+runs sidecar tail scan exceeded max bytes while locating last message",
+                ));
+            }
+            backscan_bytes = (backscan_bytes * 2).min(MAX_BACKSCAN_BYTES);
+        }
+    }
+
     /// Returns `Ok(None)` when the cache file doesn't exist and cannot be built from the full
     /// continuity sidecar.
     pub(crate) fn latest_compaction_checkpoint_before_or_at_seq_v1(
@@ -471,17 +613,35 @@ impl ContinuityStreamCache {
             None,
         )?;
 
+        let mut best: Option<Event> = None;
         for event in parsed.events {
             let EventKind::ContinuityCompactionCheckpointCreated { to_seq, .. } = &event.kind
             else {
                 continue;
             };
-            if *to_seq <= max_to_seq {
-                return Ok(Some(event));
+            if *to_seq > max_to_seq {
+                continue;
             }
+
+            best = match best.take() {
+                None => Some(event),
+                Some(current) => {
+                    let current_to_seq = match &current.kind {
+                        EventKind::ContinuityCompactionCheckpointCreated { to_seq, .. } => *to_seq,
+                        _ => 0,
+                    };
+                    if *to_seq > current_to_seq
+                        || (*to_seq == current_to_seq && event.seq > current.seq)
+                    {
+                        Some(event)
+                    } else {
+                        Some(current)
+                    }
+                }
+            };
         }
 
-        Ok(None)
+        Ok(best)
     }
 
     fn try_read_last_seq_for_sidecar_path(

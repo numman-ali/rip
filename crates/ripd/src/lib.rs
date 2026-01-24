@@ -6,6 +6,7 @@ mod continuities;
 mod continuity_seek_index;
 mod continuity_stream_cache;
 mod handoff_context_bundle;
+mod message_ordinal_index;
 mod provider_openresponses;
 mod runner;
 mod server;
@@ -14,8 +15,10 @@ mod tasks;
 mod workspace_lock;
 
 pub use continuities::{
-    CompactionCheckpointCumulativeV1Request, ContinuityMeta, ContinuityRunLink, ContinuityStore,
-    ToolSideEffects,
+    CompactionAutoResultCheckpointV1, CompactionAutoV1Request, CompactionAutoV1Response,
+    CompactionCheckpointCumulativeV1Request, CompactionCutPointV1, CompactionCutPointsV1Request,
+    CompactionCutPointsV1Response, CompactionPlannedCutPointV1, ContinuityMeta, ContinuityRunLink,
+    ContinuityStore, ToolSideEffects,
 };
 pub use runner::{SessionEngine, SessionHandle};
 

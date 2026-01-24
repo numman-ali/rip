@@ -38,6 +38,8 @@ impl Event {
             | EventKind::ContinuityRunSpawned { .. }
             | EventKind::ContinuityContextCompiled { .. }
             | EventKind::ContinuityCompactionCheckpointCreated { .. }
+            | EventKind::ContinuityJobSpawned { .. }
+            | EventKind::ContinuityJobEnded { .. }
             | EventKind::ContinuityRunEnded { .. }
             | EventKind::ContinuityToolSideEffects { .. }
             | EventKind::ContinuityBranched { .. }
@@ -184,6 +186,25 @@ pub enum EventKind {
         to_seq: u64,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         to_message_id: Option<String>,
+        actor_id: String,
+        origin: String,
+    },
+    ContinuityJobSpawned {
+        job_id: String,
+        job_kind: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        details: Option<Value>,
+        actor_id: String,
+        origin: String,
+    },
+    ContinuityJobEnded {
+        job_id: String,
+        job_kind: String,
+        status: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        result: Option<Value>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
         actor_id: String,
         origin: String,
     },
@@ -476,6 +497,8 @@ impl Session {
             | EventKind::ContinuityRunSpawned { .. }
             | EventKind::ContinuityContextCompiled { .. }
             | EventKind::ContinuityCompactionCheckpointCreated { .. }
+            | EventKind::ContinuityJobSpawned { .. }
+            | EventKind::ContinuityJobEnded { .. }
             | EventKind::ContinuityRunEnded { .. }
             | EventKind::ContinuityToolSideEffects { .. }
             | EventKind::ContinuityBranched { .. }

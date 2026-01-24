@@ -90,6 +90,37 @@ pub(crate) enum ThreadsCommand {
         #[arg(long)]
         origin: Option<String>,
     },
+    /// Compute deterministic compaction cut points for a thread (stride-based; message boundaries only).
+    CompactionCutPoints {
+        /// Thread id (continuity id).
+        id: String,
+        /// Message stride used to compute cut points (default: 10_000).
+        #[arg(long)]
+        stride_messages: Option<u64>,
+        /// Maximum number of cut points returned (latest-first; default: 1).
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Run deterministic auto-compaction: spawn a summarizer job that emits checkpoints.
+    CompactionAuto {
+        /// Thread id (continuity id).
+        id: String,
+        /// Message stride used to compute cut points (default: 10_000).
+        #[arg(long)]
+        stride_messages: Option<u64>,
+        /// Maximum number of new checkpoints created per invocation (default: 1).
+        #[arg(long)]
+        max_new_checkpoints: Option<u32>,
+        /// Compute planned cut points but do not write artifacts or append frames.
+        #[arg(long, action = clap::ArgAction::SetTrue)]
+        dry_run: bool,
+        /// Actor id (provenance).
+        #[arg(long)]
+        actor_id: Option<String>,
+        /// Origin (provenance).
+        #[arg(long)]
+        origin: Option<String>,
+    },
     /// Append a message to a continuity and start a run; print linkage JSON.
     PostMessage {
         /// Thread id (continuity id).
@@ -292,6 +323,56 @@ async fn run_threads_remote(server: String, command: ThreadsCommand) -> anyhow::
             let body = response.text().await?;
             println!("{body}");
         }
+        ThreadsCommand::CompactionCutPoints {
+            id,
+            stride_messages,
+            limit,
+        } => {
+            let url = format!("{server}/threads/{id}/compaction-cut-points");
+            let response = client
+                .post(url)
+                .json(&serde_json::json!({
+                    "stride_messages": stride_messages,
+                    "limit": limit,
+                }))
+                .send()
+                .await?;
+            let status = response.status();
+            if !status.is_success() {
+                anyhow::bail!("thread compaction-cut-points failed: {status}");
+            }
+            let body = response.text().await?;
+            println!("{body}");
+        }
+        ThreadsCommand::CompactionAuto {
+            id,
+            stride_messages,
+            max_new_checkpoints,
+            dry_run,
+            actor_id,
+            origin,
+        } => {
+            let actor_id = actor_id.unwrap_or_else(|| "user".to_string());
+            let origin = origin.unwrap_or_else(|| "cli".to_string());
+            let url = format!("{server}/threads/{id}/compaction-auto");
+            let response = client
+                .post(url)
+                .json(&serde_json::json!({
+                    "stride_messages": stride_messages,
+                    "max_new_checkpoints": max_new_checkpoints,
+                    "dry_run": dry_run,
+                    "actor_id": actor_id,
+                    "origin": origin,
+                }))
+                .send()
+                .await?;
+            let status = response.status();
+            if !status.is_success() {
+                anyhow::bail!("thread compaction-auto failed: {status}");
+            }
+            let body = response.text().await?;
+            println!("{body}");
+        }
         ThreadsCommand::PostMessage {
             id,
             content,
@@ -456,6 +537,46 @@ async fn run_threads_local_with_engine(
                 to_message_id,
             };
             println!("{}", serde_json::to_string(&payload)?);
+        }
+        ThreadsCommand::CompactionCutPoints {
+            id,
+            stride_messages,
+            limit,
+        } => {
+            let resp = store
+                .compaction_cut_points_v1(
+                    &id,
+                    ripd::CompactionCutPointsV1Request {
+                        stride_messages,
+                        limit,
+                    },
+                )
+                .map_err(|err| anyhow::anyhow!("thread compaction-cut-points failed: {err}"))?;
+            println!("{}", serde_json::to_string(&resp)?);
+        }
+        ThreadsCommand::CompactionAuto {
+            id,
+            stride_messages,
+            max_new_checkpoints,
+            dry_run,
+            actor_id,
+            origin,
+        } => {
+            let actor_id = actor_id.unwrap_or_else(|| "user".to_string());
+            let origin = origin.unwrap_or_else(|| "cli".to_string());
+            let resp = store
+                .compaction_auto_v1(
+                    &id,
+                    ripd::CompactionAutoV1Request {
+                        stride_messages,
+                        max_new_checkpoints,
+                        dry_run: Some(dry_run),
+                        actor_id,
+                        origin,
+                    },
+                )
+                .map_err(|err| anyhow::anyhow!("thread compaction-auto failed: {err}"))?;
+            println!("{}", serde_json::to_string(&resp)?);
         }
         ThreadsCommand::PostMessage {
             id,

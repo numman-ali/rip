@@ -18,7 +18,7 @@ use reqwest_eventsource::{
 };
 use rip_kernel::Event as FrameEvent;
 use rip_tui::{render, RenderMode, TuiState};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 
 mod keymap;
 
@@ -55,6 +55,7 @@ pub async fn run_fullscreen_tui(initial_prompt: Option<String>) -> anyhow::Resul
     let mut term_events = EventStream::new();
     let mut tick = tokio::time::interval(Duration::from_millis(33));
     let mut dirty = true;
+    let (status_tx, mut status_rx) = mpsc::channel::<String>(16);
 
     loop {
         if dirty {
@@ -65,6 +66,12 @@ pub async fn run_fullscreen_tui(initial_prompt: Option<String>) -> anyhow::Resul
         tokio::select! {
             _ = tick.tick() => {
                 dirty = true;
+            }
+            maybe_status = status_rx.recv() => {
+                if let Some(message) = maybe_status {
+                    state.set_status_message(message);
+                    dirty = true;
+                }
             }
             maybe_event = term_events.next() => {
                 let Some(Ok(event)) = maybe_event else {
@@ -89,6 +96,68 @@ pub async fn run_fullscreen_tui(initial_prompt: Option<String>) -> anyhow::Resul
                                 }
                             }
                         }
+                    }
+                    UiAction::CompactionCutPoints => {
+                        let store = engine.continuities();
+                        let tx = status_tx.clone();
+                        tokio::spawn(async move {
+                            let message = tokio::task::spawn_blocking(move || {
+                                let thread_id = match store.ensure_default() {
+                                    Ok(id) => id,
+                                    Err(err) => return format!("compaction: thread ensure failed: {err}"),
+                                };
+                                match store.compaction_cut_points_v1(
+                                    &thread_id,
+                                    ripd::CompactionCutPointsV1Request { stride_messages: None, limit: Some(1) },
+                                ) {
+                                    Ok(resp) => {
+                                        let latest = resp.cut_points.first();
+                                        match latest {
+                                            Some(cp) => format!(
+                                                "cut_points: messages={} latest ordinal={} to_seq={} checkpointed={}",
+                                                resp.message_count, cp.target_message_ordinal, cp.to_seq, cp.already_checkpointed
+                                            ),
+                                            None => format!("cut_points: messages={} (no eligible cut points)", resp.message_count),
+                                        }
+                                    }
+                                    Err(err) => format!("compaction: cut_points failed: {err}"),
+                                }
+                            })
+                            .await
+                            .unwrap_or_else(|err| format!("compaction: cut_points join failed: {err}"));
+                            let _ = tx.send(message).await;
+                        });
+                    }
+                    UiAction::CompactionAuto => {
+                        let store = engine.continuities();
+                        let tx = status_tx.clone();
+                        tokio::spawn(async move {
+                            let message = tokio::task::spawn_blocking(move || {
+                                let thread_id = match store.ensure_default() {
+                                    Ok(id) => id,
+                                    Err(err) => return format!("compaction: thread ensure failed: {err}"),
+                                };
+                                match store.compaction_auto_v1(
+                                    &thread_id,
+                                    ripd::CompactionAutoV1Request {
+                                        stride_messages: None,
+                                        max_new_checkpoints: None,
+                                        dry_run: Some(false),
+                                        actor_id: "user".to_string(),
+                                        origin: "tui".to_string(),
+                                    },
+                                ) {
+                                    Ok(resp) => match resp.job_id.as_deref() {
+                                        Some(job_id) => format!("compaction auto: status={} job_id={job_id}", resp.status),
+                                        None => format!("compaction auto: status={}", resp.status),
+                                    },
+                                    Err(err) => format!("compaction auto failed: {err}"),
+                                }
+                            })
+                            .await
+                            .unwrap_or_else(|err| format!("compaction auto join failed: {err}"));
+                            let _ = tx.send(message).await;
+                        });
                     }
                     UiAction::CopySelected => {
                         copy_selected(&mut terminal, &mut state)?;
@@ -151,6 +220,7 @@ async fn run_fullscreen_tui_sse(
     let mut term_events = EventStream::new();
     let mut tick = tokio::time::interval(Duration::from_millis(33));
     let mut dirty = true;
+    let (status_tx, mut status_rx) = mpsc::channel::<String>(16);
 
     loop {
         if dirty {
@@ -166,6 +236,12 @@ async fn run_fullscreen_tui_sse(
         tokio::select! {
             _ = tick.tick() => {
                 dirty = true;
+            }
+            maybe_status = status_rx.recv() => {
+                if let Some(message) = maybe_status {
+                    state.set_status_message(message);
+                    dirty = true;
+                }
             }
             maybe_event = term_events.next() => {
                 let Some(Ok(event)) = maybe_event else {
@@ -189,6 +265,86 @@ async fn run_fullscreen_tui_sse(
                                     Err(err) => state.set_status_message(format!("start failed: {err}")),
                                 }
                             }
+                        }
+                    }
+                    UiAction::CompactionCutPoints => {
+                        if ui_mode == SseUiMode::Interactive {
+                            let client = client.clone();
+                            let server = server.clone();
+                            let tx = status_tx.clone();
+                            tokio::spawn(async move {
+                                let message = match crate::ensure_thread(&client, &server).await {
+                                    Ok(thread_id) => {
+                                        let url = format!("{server}/threads/{thread_id}/compaction-cut-points");
+                                        let response = client
+                                            .post(url)
+                                            .json(&serde_json::json!({ "stride_messages": null, "limit": 1 }))
+                                            .send()
+                                            .await;
+                                        match response {
+                                            Ok(resp) if resp.status().is_success() => {
+                                                match resp.json::<ripd::CompactionCutPointsV1Response>().await {
+                                                    Ok(out) => {
+                                                        let latest = out.cut_points.first();
+                                                        match latest {
+                                                            Some(cp) => format!(
+                                                                "cut_points: messages={} latest ordinal={} to_seq={} checkpointed={}",
+                                                                out.message_count, cp.target_message_ordinal, cp.to_seq, cp.already_checkpointed
+                                                            ),
+                                                            None => format!("cut_points: messages={} (no eligible cut points)", out.message_count),
+                                                        }
+                                                    }
+                                                    Err(err) => format!("cut_points: parse failed: {err}"),
+                                                }
+                                            }
+                                            Ok(resp) => format!("cut_points: request failed: {}", resp.status()),
+                                            Err(err) => format!("cut_points: request failed: {err}"),
+                                        }
+                                    }
+                                    Err(err) => format!("cut_points: thread ensure failed: {err}"),
+                                };
+                                let _ = tx.send(message).await;
+                            });
+                        }
+                    }
+                    UiAction::CompactionAuto => {
+                        if ui_mode == SseUiMode::Interactive {
+                            let client = client.clone();
+                            let server = server.clone();
+                            let tx = status_tx.clone();
+                            tokio::spawn(async move {
+                                let message = match crate::ensure_thread(&client, &server).await {
+                                    Ok(thread_id) => {
+                                        let url = format!("{server}/threads/{thread_id}/compaction-auto");
+                                        let response = client
+                                            .post(url)
+                                            .json(&serde_json::json!({
+                                                "stride_messages": null,
+                                                "max_new_checkpoints": null,
+                                                "dry_run": false,
+                                                "actor_id": "user",
+                                                "origin": "tui"
+                                            }))
+                                            .send()
+                                            .await;
+                                        match response {
+                                            Ok(resp) if resp.status().is_success() => {
+                                                match resp.json::<ripd::CompactionAutoV1Response>().await {
+                                                    Ok(out) => match out.job_id {
+                                                        Some(job_id) => format!("compaction auto: status={} job_id={job_id}", out.status),
+                                                        None => format!("compaction auto: status={}", out.status),
+                                                    },
+                                                    Err(err) => format!("compaction auto: parse failed: {err}"),
+                                                }
+                                            }
+                                            Ok(resp) => format!("compaction auto: request failed: {}", resp.status()),
+                                            Err(err) => format!("compaction auto: request failed: {err}"),
+                                        }
+                                    }
+                                    Err(err) => format!("compaction auto: thread ensure failed: {err}"),
+                                };
+                                let _ = tx.send(message).await;
+                            });
                         }
                     }
                     UiAction::CopySelected => {
@@ -323,6 +479,8 @@ enum UiAction {
     Quit,
     Submit,
     CopySelected,
+    CompactionAuto,
+    CompactionCutPoints,
 }
 
 struct InitState {
@@ -422,6 +580,8 @@ fn handle_key_event(
                 move_selected(state, 1);
                 UiAction::None
             }
+            KeyCommand::CompactionAuto => UiAction::CompactionAuto,
+            KeyCommand::CompactionCutPoints => UiAction::CompactionCutPoints,
         };
     }
 

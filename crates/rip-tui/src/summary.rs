@@ -12,6 +12,8 @@ pub fn event_type(event: &Event) -> &'static str {
         EventKind::ContinuityCompactionCheckpointCreated { .. } => {
             "continuity_compaction_checkpoint_created"
         }
+        EventKind::ContinuityJobSpawned { .. } => "continuity_job_spawned",
+        EventKind::ContinuityJobEnded { .. } => "continuity_job_ended",
         EventKind::ContinuityRunEnded { .. } => "continuity_run_ended",
         EventKind::ContinuityToolSideEffects { .. } => "continuity_tool_side_effects",
         EventKind::ContinuityBranched { .. } => "continuity_branched",
@@ -77,6 +79,20 @@ pub fn event_summary(event: &Event) -> String {
             to_seq,
             truncate(summary_artifact_id, 16),
             truncate(cut_rule_id, 32)
+        ),
+        EventKind::ContinuityJobSpawned {
+            job_id, job_kind, ..
+        } => format!("job={} id={}", truncate(job_kind, 32), truncate(job_id, 16)),
+        EventKind::ContinuityJobEnded {
+            job_id,
+            job_kind,
+            status,
+            ..
+        } => format!(
+            "job={} id={} ({})",
+            truncate(job_kind, 32),
+            truncate(job_id, 16),
+            truncate(status, 32)
         ),
         EventKind::ContinuityRunEnded {
             run_session_id,
@@ -236,6 +252,28 @@ mod tests {
                     origin: "cli".to_string(),
                 },
                 "continuity_context_compiled",
+            ),
+            (
+                EventKind::ContinuityJobSpawned {
+                    job_id: "j1".to_string(),
+                    job_kind: "compaction_summarizer_v1".to_string(),
+                    details: None,
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                },
+                "continuity_job_spawned",
+            ),
+            (
+                EventKind::ContinuityJobEnded {
+                    job_id: "j1".to_string(),
+                    job_kind: "compaction_summarizer_v1".to_string(),
+                    status: "completed".to_string(),
+                    result: None,
+                    error: None,
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                },
+                "continuity_job_ended",
             ),
             (
                 EventKind::ContinuityRunEnded {

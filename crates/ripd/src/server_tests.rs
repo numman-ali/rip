@@ -204,6 +204,60 @@ async fn compaction_checkpoint(
     serde_json::from_slice(&body).expect("json")
 }
 
+async fn compaction_cut_points(
+    app: &Router,
+    thread_id: &str,
+    payload: serde_json::Value,
+) -> serde_json::Value {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/threads/{thread_id}/compaction-cut-points"))
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    serde_json::from_slice(&body).expect("json")
+}
+
+async fn compaction_auto(
+    app: &Router,
+    thread_id: &str,
+    payload: serde_json::Value,
+) -> (axum::http::StatusCode, serde_json::Value) {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/threads/{thread_id}/compaction-auto"))
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    let status = response.status();
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    (status, serde_json::from_slice(&body).expect("json"))
+}
+
 async fn branch_thread(
     app: &Router,
     parent_thread_id: &str,
@@ -1183,6 +1237,351 @@ async fn thread_compaction_checkpoint_creates_and_emits_checkpoint_event() {
         found.get("to_message_id").and_then(|value| value.as_str()),
         Some(created.to_message_id.as_str())
     );
+}
+
+#[tokio::test]
+async fn thread_compaction_cut_points_returns_latest_first_and_respects_limit() {
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app(&dir);
+    let thread_id = ensure_thread_id(&app).await;
+
+    let m1 = post_thread_message(&app, &thread_id, "m1").await.message_id;
+    let m2 = post_thread_message(&app, &thread_id, "m2").await.message_id;
+    let _m3 = post_thread_message(&app, &thread_id, "m3").await.message_id;
+    let m4 = post_thread_message(&app, &thread_id, "m4").await.message_id;
+
+    let value = compaction_cut_points(
+        &app,
+        &thread_id,
+        serde_json::json!({
+            "stride_messages": 2,
+            "limit": 3,
+        }),
+    )
+    .await;
+
+    assert_eq!(
+        value.get("thread_id").and_then(|value| value.as_str()),
+        Some(thread_id.as_str())
+    );
+    assert_eq!(
+        value.get("stride_messages").and_then(|v| v.as_u64()),
+        Some(2)
+    );
+    assert_eq!(value.get("message_count").and_then(|v| v.as_u64()), Some(4));
+    assert_eq!(
+        value.get("cut_rule_id").and_then(|v| v.as_str()),
+        Some("stride_messages_v1/2")
+    );
+
+    let cut_points = value
+        .get("cut_points")
+        .and_then(|value| value.as_array())
+        .expect("cut_points array");
+    assert_eq!(cut_points.len(), 2, "expected ordinals 4 and 2");
+    assert_eq!(
+        cut_points[0]
+            .get("target_message_ordinal")
+            .and_then(|v| v.as_u64()),
+        Some(4)
+    );
+    assert_eq!(
+        cut_points[0].get("to_message_id").and_then(|v| v.as_str()),
+        Some(m4.as_str())
+    );
+    assert_eq!(
+        cut_points[0]
+            .get("already_checkpointed")
+            .and_then(|v| v.as_bool()),
+        Some(false)
+    );
+    assert!(cut_points[0]
+        .get("latest_checkpoint_id")
+        .and_then(|v| v.as_str())
+        .is_none());
+
+    assert_eq!(
+        cut_points[1]
+            .get("target_message_ordinal")
+            .and_then(|v| v.as_u64()),
+        Some(2)
+    );
+    assert_eq!(
+        cut_points[1].get("to_message_id").and_then(|v| v.as_str()),
+        Some(m2.as_str())
+    );
+    assert_eq!(
+        cut_points[1]
+            .get("already_checkpointed")
+            .and_then(|v| v.as_bool()),
+        Some(false)
+    );
+    assert!(cut_points[1]
+        .get("latest_checkpoint_id")
+        .and_then(|v| v.as_str())
+        .is_none());
+
+    assert!(
+        cut_points[0]
+            .get("to_seq")
+            .and_then(|v| v.as_u64())
+            .unwrap_or_default()
+            > cut_points[1]
+                .get("to_seq")
+                .and_then(|v| v.as_u64())
+                .unwrap_or_default()
+    );
+
+    // Sanity: the first message isn't a cut point for stride=2, but is still present.
+    assert_eq!(m1.len(), 36);
+}
+
+#[tokio::test]
+async fn thread_compaction_cut_points_marks_already_checkpointed() {
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app(&dir);
+    let thread_id = ensure_thread_id(&app).await;
+
+    let _m1 = post_thread_message(&app, &thread_id, "m1").await.message_id;
+    let m2 = post_thread_message(&app, &thread_id, "m2").await.message_id;
+    let created = compaction_checkpoint(
+        &app,
+        &thread_id,
+        serde_json::json!({
+            "summary_markdown": "summary",
+            "to_message_id": m2,
+        }),
+    )
+    .await;
+
+    let value = compaction_cut_points(
+        &app,
+        &thread_id,
+        serde_json::json!({
+            "stride_messages": 2,
+            "limit": 1,
+        }),
+    )
+    .await;
+
+    let cut_points = value
+        .get("cut_points")
+        .and_then(|value| value.as_array())
+        .expect("cut_points array");
+    assert_eq!(cut_points.len(), 1);
+    assert_eq!(
+        cut_points[0]
+            .get("already_checkpointed")
+            .and_then(|v| v.as_bool()),
+        Some(true)
+    );
+    assert_eq!(
+        cut_points[0]
+            .get("latest_checkpoint_id")
+            .and_then(|v| v.as_str()),
+        Some(created.checkpoint_id.as_str())
+    );
+}
+
+#[tokio::test]
+async fn thread_compaction_auto_dry_run_emits_no_job_frames() {
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app(&dir);
+    let thread_id = ensure_thread_id(&app).await;
+
+    let _m1 = post_thread_message(&app, &thread_id, "m1").await.message_id;
+    let _m2 = post_thread_message(&app, &thread_id, "m2").await.message_id;
+
+    let (status, value) = compaction_auto(
+        &app,
+        &thread_id,
+        serde_json::json!({
+            "stride_messages": 2,
+            "max_new_checkpoints": 1,
+            "dry_run": true,
+            "actor_id": "alice",
+            "origin": "cli",
+        }),
+    )
+    .await;
+    assert_eq!(status, axum::http::StatusCode::OK);
+    assert_eq!(
+        value.get("status").and_then(|value| value.as_str()),
+        Some("noop")
+    );
+    assert!(value.get("job_id").is_none() || value.get("job_id").unwrap().is_null());
+
+    let planned = value
+        .get("planned")
+        .and_then(|value| value.as_array())
+        .expect("planned");
+    assert_eq!(planned.len(), 1);
+    assert_eq!(
+        planned[0]
+            .get("target_message_ordinal")
+            .and_then(|v| v.as_u64()),
+        Some(2)
+    );
+
+    // Verify the thread event stream contains no job/checkpoint frames.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/threads/{thread_id}/events"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let mut reader = TestSseReader::new(response.into_body());
+
+    let mut saw_job_spawned = false;
+    let mut saw_checkpoint = false;
+    for _ in 0..256 {
+        let message = match timeout(Duration::from_millis(50), reader.next_data_message()).await {
+            Ok(Some(message)) => message,
+            Ok(None) => break,
+            Err(_) => break,
+        };
+        if let Some(value) = extract_data_json(&message) {
+            match value.get("type").and_then(|value| value.as_str()) {
+                Some("continuity_job_spawned") => {
+                    saw_job_spawned = true;
+                    break;
+                }
+                Some("continuity_compaction_checkpoint_created") => {
+                    saw_checkpoint = true;
+                    break;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    assert!(
+        !saw_job_spawned,
+        "dry_run must not emit continuity_job_spawned"
+    );
+    assert!(
+        !saw_checkpoint,
+        "dry_run must not emit continuity_compaction_checkpoint_created"
+    );
+}
+
+#[tokio::test]
+async fn thread_compaction_auto_spawns_job_and_emits_checkpoint_and_job_ended() {
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app(&dir);
+    let thread_id = ensure_thread_id(&app).await;
+
+    let _m1 = post_thread_message(&app, &thread_id, "m1").await.message_id;
+    let m2 = post_thread_message(&app, &thread_id, "m2").await.message_id;
+
+    let (status, value) = compaction_auto(
+        &app,
+        &thread_id,
+        serde_json::json!({
+            "stride_messages": 2,
+            "max_new_checkpoints": 1,
+            "dry_run": false,
+            "actor_id": "alice",
+            "origin": "cli",
+        }),
+    )
+    .await;
+    assert_eq!(status, axum::http::StatusCode::ACCEPTED);
+    let job_id = value
+        .get("job_id")
+        .and_then(|value| value.as_str())
+        .expect("job_id");
+    assert_eq!(
+        value.get("job_kind").and_then(|value| value.as_str()),
+        Some("compaction_summarizer_v1")
+    );
+    assert_eq!(
+        value.get("status").and_then(|value| value.as_str()),
+        Some("spawned")
+    );
+    let planned = value
+        .get("planned")
+        .and_then(|value| value.as_array())
+        .expect("planned");
+    assert_eq!(planned.len(), 1);
+    assert_eq!(
+        planned[0].get("to_message_id").and_then(|v| v.as_str()),
+        Some(m2.as_str())
+    );
+
+    // Observe the emitted continuity frames via the thread event stream.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/threads/{thread_id}/events"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let mut reader = TestSseReader::new(response.into_body());
+
+    let mut saw_spawned = false;
+    let mut saw_checkpoint = false;
+    let mut saw_job_ended = false;
+
+    timeout(Duration::from_secs(3), async {
+        while let Some(message) = reader.next_data_message().await {
+            let Some(value) = extract_data_json(&message) else {
+                continue;
+            };
+            match value.get("type").and_then(|value| value.as_str()) {
+                Some("continuity_job_spawned") => {
+                    if value.get("job_id").and_then(|v| v.as_str()) == Some(job_id) {
+                        assert_eq!(
+                            value.get("actor_id").and_then(|v| v.as_str()),
+                            Some("alice")
+                        );
+                        assert_eq!(value.get("origin").and_then(|v| v.as_str()), Some("cli"));
+                        saw_spawned = true;
+                    }
+                }
+                Some("continuity_compaction_checkpoint_created") => {
+                    if value.get("to_message_id").and_then(|v| v.as_str()) == Some(m2.as_str()) {
+                        saw_checkpoint = true;
+                    }
+                }
+                Some("continuity_job_ended") => {
+                    if value.get("job_id").and_then(|v| v.as_str()) == Some(job_id) {
+                        assert_eq!(
+                            value.get("status").and_then(|v| v.as_str()),
+                            Some("completed")
+                        );
+                        saw_job_ended = true;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+
+            if saw_spawned && saw_checkpoint && saw_job_ended {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("timeout");
+
+    assert!(saw_spawned, "expected continuity_job_spawned");
+    assert!(
+        saw_checkpoint,
+        "expected continuity_compaction_checkpoint_created for to_message_id={m2}"
+    );
+    assert!(saw_job_ended, "expected continuity_job_ended");
 }
 
 #[tokio::test]

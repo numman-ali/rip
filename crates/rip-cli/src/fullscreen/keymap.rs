@@ -15,6 +15,8 @@ pub enum Command {
     CopySelected,
     SelectPrev,
     SelectNext,
+    CompactionAuto,
+    CompactionCutPoints,
 }
 
 #[derive(Debug, Clone)]
@@ -38,6 +40,8 @@ impl Keymap {
         bindings.insert("C-r".to_string(), Command::ToggleOutputView);
         bindings.insert("C-t".to_string(), Command::ToggleTheme);
         bindings.insert("C-y".to_string(), Command::CopySelected);
+        bindings.insert("C-k".to_string(), Command::CompactionAuto);
+        bindings.insert("C-g".to_string(), Command::CompactionCutPoints);
 
         Self { bindings }
     }
@@ -147,6 +151,10 @@ fn parse_command(raw: &str) -> Option<Command> {
         "copyselected" | "copy_selected" | "copy" => Some(Command::CopySelected),
         "selectprev" | "select_prev" | "up" => Some(Command::SelectPrev),
         "selectnext" | "select_next" | "down" => Some(Command::SelectNext),
+        "compactionauto" | "compaction_auto" | "compaction-auto" => Some(Command::CompactionAuto),
+        "compactioncutpoints" | "compaction_cut_points" | "compaction-cut-points" => {
+            Some(Command::CompactionCutPoints)
+        }
         _ => None,
     }
 }
