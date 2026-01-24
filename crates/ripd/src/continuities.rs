@@ -146,16 +146,21 @@ impl ContinuityStore {
 
         let mut tail_bytes = INITIAL_TAIL_BYTES;
         while tail_bytes <= MAX_TAIL_BYTES {
-            match self
-                .stream_cache
-                .scan_tail(continuity_id, MAX_TAIL_EVENTS, tail_bytes)
-            {
+            match self.stream_cache.scan_tail_messages_runs_v1(
+                continuity_id,
+                MAX_TAIL_EVENTS,
+                tail_bytes,
+            ) {
                 Ok(Some(tail)) => {
                     if !tail.events.is_empty() {
-                        let head_seq = tail
-                            .events
-                            .last()
-                            .map(|event| event.seq)
+                        // Prefer the full continuity sidecar's head seq so `from_seq` matches the
+                        // truth stream even when the mr sidecar omits non-message events.
+                        let head_seq = self
+                            .stream_cache
+                            .try_read_last_seq(continuity_id)
+                            .ok()
+                            .flatten()
+                            .or_else(|| tail.events.last().map(|event| event.seq))
                             .unwrap_or_default();
 
                         let mut message_events: Vec<(u64, String)> = Vec::new();
@@ -1490,6 +1495,155 @@ mod tests {
             window_input.continuity_events.len() <= 128,
             "expected bounded window, got {} events",
             window_input.continuity_events.len()
+        );
+
+        let window_bundle = compile_recent_messages_v1(CompileRecentMessagesV1Request {
+            continuity_id: &continuity_id,
+            continuity_events: &window_input.continuity_events,
+            event_log: event_log.as_ref(),
+            snapshot_dir: &snapshot_dir,
+            from_seq: window_input.from_seq,
+            from_message_id: window_input.from_message_id.clone(),
+            run_session_id: "run-session",
+            actor_id: "user",
+            origin: "cli",
+        })
+        .expect("compile window");
+
+        let full_json = serde_json::to_value(&full_bundle).expect("full json");
+        let window_json = serde_json::to_value(&window_bundle).expect("window json");
+        assert_eq!(window_json, full_json);
+    }
+
+    #[test]
+    fn window_context_compile_input_matches_full_replay_with_dense_tool_side_effects() {
+        let dir = tempdir().expect("tmp");
+        let (event_log, store, _data_dir) = store_for(&dir);
+        let snapshot_dir = dir.path().join("snapshots");
+
+        const MSG_COUNT: usize = 60;
+        const TOOL_EVENTS_PER_MESSAGE: usize = 250;
+
+        let continuity_id = store.ensure_default().expect("ensure");
+        let mut message_ids: Vec<String> = Vec::new();
+
+        for idx in 0..MSG_COUNT {
+            let message_id = store
+                .append_message(
+                    &continuity_id,
+                    "user".to_string(),
+                    "cli".to_string(),
+                    format!("m{idx}"),
+                )
+                .expect("append message");
+            let session_id = format!("session-{idx}");
+
+            let session_events = vec![
+                Event {
+                    id: format!("se{idx}-0"),
+                    session_id: session_id.clone(),
+                    timestamp_ms: 0,
+                    seq: 0,
+                    kind: EventKind::SessionStarted {
+                        input: "hi".to_string(),
+                    },
+                },
+                Event {
+                    id: format!("se{idx}-1"),
+                    session_id: session_id.clone(),
+                    timestamp_ms: 1,
+                    seq: 1,
+                    kind: EventKind::OutputTextDelta {
+                        delta: format!("a{idx}"),
+                    },
+                },
+                Event {
+                    id: format!("se{idx}-2"),
+                    session_id: session_id.clone(),
+                    timestamp_ms: 2,
+                    seq: 2,
+                    kind: EventKind::SessionEnded {
+                        reason: "completed".to_string(),
+                    },
+                },
+            ];
+            write_snapshot(&snapshot_dir, &session_id, &session_events).expect("snapshot");
+
+            store
+                .append_run_spawned(
+                    &continuity_id,
+                    &message_id,
+                    &session_id,
+                    "user".to_string(),
+                    "cli".to_string(),
+                )
+                .expect("run spawned");
+
+            for tool_idx in 0..TOOL_EVENTS_PER_MESSAGE {
+                store
+                    .append_tool_side_effects(
+                        &ContinuityRunLink {
+                            continuity_id: continuity_id.clone(),
+                            message_id: message_id.clone(),
+                            actor_id: "user".to_string(),
+                            origin: "cli".to_string(),
+                        },
+                        &session_id,
+                        ToolSideEffects {
+                            tool_id: format!("tool-{idx}-{tool_idx}"),
+                            tool_name: "write".to_string(),
+                            affected_paths: Some(vec![format!("file-{tool_idx}.txt")]),
+                            checkpoint_id: None,
+                        },
+                    )
+                    .expect("tool side effects");
+            }
+
+            store
+                .append_run_ended(
+                    &continuity_id,
+                    &message_id,
+                    &session_id,
+                    "completed".to_string(),
+                    "user".to_string(),
+                    "cli".to_string(),
+                )
+                .expect("run ended");
+
+            message_ids.push(message_id);
+        }
+
+        let anchor_message_id = message_ids.get(20).cloned().expect("anchor message id");
+
+        let full_events = store.replay_events(&continuity_id).expect("replay full");
+        let (full_from_seq, full_from_message_id) =
+            resolve_context_compile_cutpoint_full(&full_events, &anchor_message_id)
+                .expect("cutpoint");
+
+        let full_bundle = compile_recent_messages_v1(CompileRecentMessagesV1Request {
+            continuity_id: &continuity_id,
+            continuity_events: &full_events,
+            event_log: event_log.as_ref(),
+            snapshot_dir: &snapshot_dir,
+            from_seq: full_from_seq,
+            from_message_id: full_from_message_id.clone(),
+            run_session_id: "run-session",
+            actor_id: "user",
+            origin: "cli",
+        })
+        .expect("compile full");
+
+        let window_input = store
+            .load_context_compile_input_recent_messages_v1(&continuity_id, &anchor_message_id)
+            .expect("window input");
+        assert_eq!(window_input.from_seq, full_from_seq);
+        assert_eq!(window_input.from_message_id, full_from_message_id);
+        assert!(
+            window_input.continuity_events.iter().all(|event| matches!(
+                event.kind,
+                EventKind::ContinuityMessageAppended { .. } | EventKind::ContinuityRunEnded { .. }
+            )),
+            "expected message+run-ended-only window events"
         );
 
         let window_bundle = compile_recent_messages_v1(CompileRecentMessagesV1Request {

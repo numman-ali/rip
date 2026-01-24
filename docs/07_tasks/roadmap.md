@@ -34,6 +34,7 @@ Now
   - Implemented: context compiler perf v1: snapshot-first assistant aggregation + per-continuity sidecar replay caches (avoid global `events.jsonl` scans on hot path).
   - Implemented: context compiler perf v1 tail-read continuity v1: sidecar tail scan for `head_seq`/next-seq recovery + `recent_messages_v1` compilation input (latest-message run starts avoid full continuity Vec loads).
   - Implemented: context compiler perf v1.1 seekable continuity reads: per-continuity sidecar seek indexes + bounded window reads for `recent_messages_v1` non-tail anchors (avoid full continuity Vec loads even when anchoring far from tail).
+  - Implemented: context compiler perf v1.2 dense-event window reads: messages+runs-only per-continuity sidecar + indexes so `recent_messages_v1` reads are O(k) even with high `continuity_tool_side_effects` density between messages (no global `events.jsonl` scans when caches exist).
   - Server exposes `thread.*` (ensure/list/get/post_message/branch/handoff/stream_events); headless CLI exposes `rip threads ...` (local + `--server`); TypeScript SDK exposes `thread.*` by spawning `rip` (ADR-0006).
   - Workspace mutation serialization enforced across sessions + background tasks; replay/contract tests added.
   - Continuity stream logs workspace-mutating tool side-effects (`continuity_tool_side_effects`) with provenance + replay coverage under parallel runs/tasks.
