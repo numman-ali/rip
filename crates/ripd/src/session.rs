@@ -799,72 +799,23 @@ fn compile_context_bundle_for_run(
     run: &ContinuityRunLink,
     run_session_id: &str,
 ) -> Result<(String, Vec<ItemParam>, u64, Option<String>), String> {
-    let continuity_events = continuities
-        .replay_events(&run.continuity_id)
-        .map_err(|err| format!("continuity replay failed: {err}"))?;
-    if continuity_events.is_empty() {
-        return Err("continuity stream does not exist".to_string());
-    }
-
-    let (from_seq, from_message_id) =
-        resolve_context_compile_cutpoint(&continuity_events, &run.message_id)?;
+    let input = continuities
+        .load_context_compile_input_recent_messages_v1(&run.continuity_id, &run.message_id)?;
 
     let bundle = compile_recent_messages_v1(CompileRecentMessagesV1Request {
         continuity_id: &run.continuity_id,
-        continuity_events: &continuity_events,
+        continuity_events: &input.continuity_events,
         event_log,
         snapshot_dir,
-        from_seq,
-        from_message_id: from_message_id.clone(),
+        from_seq: input.from_seq,
+        from_message_id: input.from_message_id.clone(),
         run_session_id,
         actor_id: &run.actor_id,
         origin: &run.origin,
     })?;
     let artifact_id = write_bundle_v1(continuities.workspace_root(), &bundle)?;
     let items = openresponses_items_from_context_bundle(&bundle);
-    Ok((artifact_id, items, from_seq, from_message_id))
-}
-
-fn resolve_context_compile_cutpoint(
-    continuity_events: &[Event],
-    message_id: &str,
-) -> Result<(u64, Option<String>), String> {
-    let head_seq = continuity_events
-        .last()
-        .map(|event| event.seq)
-        .unwrap_or_default();
-
-    let mut message_seq: Option<u64> = None;
-    let mut next_message_seq: Option<u64> = None;
-
-    for event in continuity_events {
-        if !matches!(event.kind, EventKind::ContinuityMessageAppended { .. }) {
-            continue;
-        }
-
-        if message_seq.is_none() {
-            if event.id == message_id {
-                message_seq = Some(event.seq);
-            }
-            continue;
-        }
-
-        // First message after the anchor.
-        next_message_seq = Some(event.seq);
-        break;
-    }
-
-    let Some(message_seq) = message_seq else {
-        return Err(format!("continuity message not found: {message_id}"));
-    };
-
-    let from_seq = match next_message_seq {
-        Some(next_seq) => next_seq.saturating_sub(1),
-        None => head_seq,
-    };
-
-    // Invariants: always include the anchor message itself.
-    Ok((from_seq.max(message_seq), Some(message_id.to_string())))
+    Ok((artifact_id, items, input.from_seq, input.from_message_id))
 }
 
 struct OpenResponsesRunContext<'a> {

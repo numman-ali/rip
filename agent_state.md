@@ -49,7 +49,8 @@ Reorientation (read in order after compaction)
 Open risks / notes
 - Tests no longer write `./data` under the repo (ripd export test uses temp dirs).
 - Note: local runs still default to `./data` unless `RIP_DATA_DIR` is set.
-- Perf: context compiler hot path now avoids global `events.jsonl` scans when caches exist (snapshot-first session aggregation + per-continuity sidecar replay); remaining work is to avoid full continuity stream loads per run (tail reads/indexing).
+- Perf: context compiler hot path avoids global `events.jsonl` scans when caches exist (snapshot-first session aggregation + per-continuity sidecar replay) and now avoids full continuity stream loads for latest-message run starts (tail-read continuity v1); remaining work is 1M+ event indexing/segmentation for non-tail anchors.
+- Perf: prompt cache friendliness requires deterministic tool ordering + stable instruction blocks + append-only context changes within a run (`docs/03_contracts/modules/phase-1/02_provider_adapters.md`, `https://openai.com/index/unrolling-the-codex-agent-loop/`).
 
 Active priorities
 - Keep roadmap Now/Next aligned with the implementation work.

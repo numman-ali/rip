@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
+use crate::context_compiler::RECENT_MESSAGES_V1_LIMIT;
 use crate::continuity_stream_cache::ContinuityStreamCache;
 use crate::handoff_context_bundle::HandoffContextBundleV1;
 
@@ -43,6 +44,13 @@ pub(crate) struct ContextCompiledPayload {
     pub(crate) from_message_id: Option<String>,
     pub(crate) actor_id: String,
     pub(crate) origin: String,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ContextCompileInput {
+    pub(crate) continuity_events: Vec<Event>,
+    pub(crate) from_seq: u64,
+    pub(crate) from_message_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -125,6 +133,87 @@ impl ContinuityStore {
                 .rebuild_best_effort(continuity_id, &events);
         }
         Ok(events)
+    }
+
+    pub(crate) fn load_context_compile_input_recent_messages_v1(
+        &self,
+        continuity_id: &str,
+        anchor_message_id: &str,
+    ) -> Result<ContextCompileInput, String> {
+        const INITIAL_TAIL_BYTES: usize = 256 * 1024;
+        const MAX_TAIL_BYTES: usize = 8 * 1024 * 1024;
+        const MAX_TAIL_EVENTS: usize = 100_000;
+
+        let mut tail_bytes = INITIAL_TAIL_BYTES;
+        while tail_bytes <= MAX_TAIL_BYTES {
+            match self
+                .stream_cache
+                .scan_tail(continuity_id, MAX_TAIL_EVENTS, tail_bytes)
+            {
+                Ok(Some(tail)) => {
+                    if !tail.events.is_empty() {
+                        let head_seq = tail
+                            .events
+                            .last()
+                            .map(|event| event.seq)
+                            .unwrap_or_default();
+
+                        let mut message_events: Vec<(u64, String)> = Vec::new();
+                        for event in &tail.events {
+                            if matches!(event.kind, EventKind::ContinuityMessageAppended { .. }) {
+                                message_events.push((event.seq, event.id.clone()));
+                            }
+                        }
+
+                        if let Some((message_seq, from_seq)) =
+                            resolve_cutpoint_from_tail(&message_events, head_seq, anchor_message_id)
+                        {
+                            let message_count = message_events
+                                .iter()
+                                .filter(|(seq, _)| *seq <= from_seq)
+                                .count();
+
+                            if tail.complete || message_count >= RECENT_MESSAGES_V1_LIMIT {
+                                return Ok(ContextCompileInput {
+                                    continuity_events: tail.events,
+                                    from_seq: from_seq.max(message_seq),
+                                    from_message_id: Some(anchor_message_id.to_string()),
+                                });
+                            }
+                        } else if tail.complete {
+                            return Err(format!(
+                                "continuity message not found: {anchor_message_id}"
+                            ));
+                        }
+                    } else if tail.complete {
+                        return Err("continuity sidecar is empty".to_string());
+                    }
+                }
+                Ok(None) => break,
+                Err(_) => break,
+            }
+
+            if tail_bytes >= MAX_TAIL_BYTES {
+                break;
+            }
+            tail_bytes = (tail_bytes * 2).min(MAX_TAIL_BYTES);
+        }
+
+        // Fall back to full replay when the sidecar is missing/invalid or the anchor isn't near the tail.
+        let continuity_events = self
+            .replay_events(continuity_id)
+            .map_err(|err| format!("continuity replay failed: {err}"))?;
+        if continuity_events.is_empty() {
+            return Err("continuity stream does not exist".to_string());
+        }
+
+        let (from_seq, from_message_id) =
+            resolve_context_compile_cutpoint_full(&continuity_events, anchor_message_id)?;
+        Ok(ContextCompileInput {
+            continuity_events,
+            from_seq,
+            from_message_id,
+        })
     }
 
     pub(crate) fn workspace_root(&self) -> &Path {
@@ -639,6 +728,10 @@ impl ContinuityStore {
     }
 
     fn load_next_seq_for(&self, continuity_id: &str) -> Result<u64, io::Error> {
+        if let Ok(Some(last_seq)) = self.stream_cache.try_read_last_seq(continuity_id) {
+            return Ok(last_seq.saturating_add(1));
+        }
+
         let events = self.replay_events(continuity_id)?;
         let last = events.last().ok_or_else(|| {
             io::Error::new(io::ErrorKind::NotFound, "continuity stream does not exist")
@@ -719,6 +812,65 @@ impl ContinuityStore {
     }
 }
 
+fn resolve_cutpoint_from_tail(
+    message_events: &[(u64, String)],
+    head_seq: u64,
+    anchor_message_id: &str,
+) -> Option<(u64, u64)> {
+    let anchor_idx = message_events
+        .iter()
+        .position(|(_, id)| id == anchor_message_id)?;
+    let message_seq = message_events.get(anchor_idx).map(|(seq, _)| *seq)?;
+    let next_message_seq = message_events.get(anchor_idx + 1).map(|(seq, _)| *seq);
+    let from_seq = match next_message_seq {
+        Some(next_seq) => next_seq.saturating_sub(1),
+        None => head_seq,
+    };
+    Some((message_seq, from_seq))
+}
+
+fn resolve_context_compile_cutpoint_full(
+    continuity_events: &[Event],
+    message_id: &str,
+) -> Result<(u64, Option<String>), String> {
+    let head_seq = continuity_events
+        .last()
+        .map(|event| event.seq)
+        .unwrap_or_default();
+
+    let mut message_seq: Option<u64> = None;
+    let mut next_message_seq: Option<u64> = None;
+
+    for event in continuity_events {
+        if !matches!(event.kind, EventKind::ContinuityMessageAppended { .. }) {
+            continue;
+        }
+
+        if message_seq.is_none() {
+            if event.id == message_id {
+                message_seq = Some(event.seq);
+            }
+            continue;
+        }
+
+        // First message after the anchor.
+        next_message_seq = Some(event.seq);
+        break;
+    }
+
+    let Some(message_seq) = message_seq else {
+        return Err(format!("continuity message not found: {message_id}"));
+    };
+
+    let from_seq = match next_message_seq {
+        Some(next_seq) => next_seq.saturating_sub(1),
+        None => head_seq,
+    };
+
+    // Invariants: always include the anchor message itself.
+    Ok((from_seq.max(message_seq), Some(message_id.to_string())))
+}
+
 fn index_path(data_dir: &Path) -> PathBuf {
     data_dir.join("continuities").join("index.json")
 }
@@ -759,7 +911,9 @@ fn now_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context_compiler::{compile_recent_messages_v1, CompileRecentMessagesV1Request};
     use rip_kernel::StreamKind;
+    use rip_log::write_snapshot;
     use tempfile::tempdir;
 
     fn store_for(dir: &tempfile::TempDir) -> (Arc<EventLog>, ContinuityStore, PathBuf) {
@@ -1028,6 +1182,178 @@ mod tests {
             }
             other => panic!("expected run_ended, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn append_message_recovers_seq_from_sidecar_when_next_seq_cache_missing() {
+        use std::io::Write;
+
+        let dir = tempdir().expect("tmp");
+        let (_event_log, store, data_dir) = store_for(&dir);
+
+        let continuity_id = store.ensure_default().expect("ensure");
+        store
+            .append_message(
+                &continuity_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "first".to_string(),
+            )
+            .expect("append");
+
+        // Simulate a fresh process (in-memory seq cache cleared) with a corrupted global log.
+        let mut file = fs::OpenOptions::new()
+            .append(true)
+            .open(data_dir.join("events.jsonl"))
+            .expect("open global log");
+        writeln!(file, "not json").expect("corrupt global log");
+
+        let (_event_log2, store2, _data_dir2) = store_for(&dir);
+        store2
+            .append_message(
+                &continuity_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "second".to_string(),
+            )
+            .expect("append after restart");
+    }
+
+    #[test]
+    fn tail_context_compile_input_matches_full_replay_for_recent_messages_v1() {
+        let dir = tempdir().expect("tmp");
+        let (event_log, store, _data_dir) = store_for(&dir);
+        let snapshot_dir = dir.path().join("snapshots");
+
+        let continuity_id = store.ensure_default().expect("ensure");
+        let mut messages: Vec<(String, String)> = Vec::new();
+
+        for idx in 0..20 {
+            let message_id = store
+                .append_message(
+                    &continuity_id,
+                    "user".to_string(),
+                    "cli".to_string(),
+                    format!("m{idx}:{}", "x".repeat(20_000)),
+                )
+                .expect("append message");
+            let session_id = format!("session-{idx}");
+
+            // Minimal session output for the compiler to pick up assistant replies.
+            let session_events = vec![
+                Event {
+                    id: format!("se{idx}-0"),
+                    session_id: session_id.clone(),
+                    timestamp_ms: 0,
+                    seq: 0,
+                    kind: EventKind::SessionStarted {
+                        input: "hi".to_string(),
+                    },
+                },
+                Event {
+                    id: format!("se{idx}-1"),
+                    session_id: session_id.clone(),
+                    timestamp_ms: 1,
+                    seq: 1,
+                    kind: EventKind::OutputTextDelta {
+                        delta: format!("a{idx}"),
+                    },
+                },
+                Event {
+                    id: format!("se{idx}-2"),
+                    session_id: session_id.clone(),
+                    timestamp_ms: 2,
+                    seq: 2,
+                    kind: EventKind::SessionEnded {
+                        reason: "completed".to_string(),
+                    },
+                },
+            ];
+            write_snapshot(&snapshot_dir, &session_id, &session_events).expect("snapshot");
+
+            store
+                .append_run_spawned(
+                    &continuity_id,
+                    &message_id,
+                    &session_id,
+                    "user".to_string(),
+                    "cli".to_string(),
+                )
+                .expect("run spawned");
+            store
+                .append_context_compiled(
+                    &continuity_id,
+                    ContextCompiledPayload {
+                        run_session_id: session_id.clone(),
+                        bundle_artifact_id: "artifact-1".to_string(),
+                        compiler_id: "rip.context_compiler.v1".to_string(),
+                        compiler_strategy: "recent_messages_v1".to_string(),
+                        from_seq: 0,
+                        from_message_id: Some(message_id.clone()),
+                        actor_id: "user".to_string(),
+                        origin: "cli".to_string(),
+                    },
+                )
+                .expect("context compiled");
+            store
+                .append_run_ended(
+                    &continuity_id,
+                    &message_id,
+                    &session_id,
+                    "completed".to_string(),
+                    "user".to_string(),
+                    "cli".to_string(),
+                )
+                .expect("run ended");
+
+            messages.push((message_id, session_id));
+        }
+
+        let anchor_message_id = messages
+            .last()
+            .map(|(mid, _)| mid.clone())
+            .expect("messages");
+
+        let full_events = store.replay_events(&continuity_id).expect("replay full");
+        let (full_from_seq, full_from_message_id) =
+            resolve_context_compile_cutpoint_full(&full_events, &anchor_message_id)
+                .expect("cutpoint");
+
+        let full_bundle = compile_recent_messages_v1(CompileRecentMessagesV1Request {
+            continuity_id: &continuity_id,
+            continuity_events: &full_events,
+            event_log: event_log.as_ref(),
+            snapshot_dir: &snapshot_dir,
+            from_seq: full_from_seq,
+            from_message_id: full_from_message_id.clone(),
+            run_session_id: "run-session",
+            actor_id: "user",
+            origin: "cli",
+        })
+        .expect("compile full");
+
+        let tail_input = store
+            .load_context_compile_input_recent_messages_v1(&continuity_id, &anchor_message_id)
+            .expect("tail input");
+        assert_eq!(tail_input.from_seq, full_from_seq);
+        assert_eq!(tail_input.from_message_id, full_from_message_id);
+
+        let tail_bundle = compile_recent_messages_v1(CompileRecentMessagesV1Request {
+            continuity_id: &continuity_id,
+            continuity_events: &tail_input.continuity_events,
+            event_log: event_log.as_ref(),
+            snapshot_dir: &snapshot_dir,
+            from_seq: tail_input.from_seq,
+            from_message_id: tail_input.from_message_id.clone(),
+            run_session_id: "run-session",
+            actor_id: "user",
+            origin: "cli",
+        })
+        .expect("compile tail");
+
+        let full_json = serde_json::to_value(&full_bundle).expect("full json");
+        let tail_json = serde_json::to_value(&tail_bundle).expect("tail json");
+        assert_eq!(tail_json, full_json);
     }
 
     #[test]

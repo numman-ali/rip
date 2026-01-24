@@ -13,7 +13,7 @@ pub(crate) const CONTEXT_COMPILER_ID_V1: &str = "rip.context_compiler.v1";
 pub(crate) const CONTEXT_COMPILER_STRATEGY_RECENT_MESSAGES_V1: &str = "recent_messages_v1";
 
 // Kernel v1: hard cap on raw message turns included (assistant replies are derived per-message).
-const RECENT_MESSAGES_V1_LIMIT: usize = 16;
+pub(crate) const RECENT_MESSAGES_V1_LIMIT: usize = 16;
 
 pub(crate) struct CompileRecentMessagesV1Request<'a> {
     pub(crate) continuity_id: &'a str,

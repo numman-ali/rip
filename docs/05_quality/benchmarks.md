@@ -10,6 +10,11 @@ Phase 1 benchmarks
 - Patch apply throughput (`workspace_apply_patch_us`).
 - End-to-end loop latency (`e2e_loop_us`): parse deterministic tool-call SSE -> run `apply_patch` -> build follow-up request -> parse follow-up SSE -> write snapshot.
 
+Prompt cache hygiene (performance note)
+- Many OpenResponses implementations cache exact-prefix prompts; “cache misses” can dominate latency/cost even when RIP’s own overhead stays flat.
+- Guardrails: deterministic tool ordering, stable instruction blocks within a run, and append-only context changes (don’t rewrite earlier items mid-run).
+- External evidence: `https://openai.com/index/unrolling-the-codex-agent-loop/` (cache under `temp/docs/openai/codex/` when needed).
+
 Fixture requirements
 - Small repo (fast CI).
 - Medium repo (realistic).

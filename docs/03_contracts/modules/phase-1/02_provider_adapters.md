@@ -28,6 +28,12 @@ Invariants
 - Emit one `provider_event` frame per SSE event (including `[DONE]` and invalid JSON).
 - Provider conversation state (cursors) is cache only (ADR-0010); adapters must never be required to reconstruct continuity truth.
 
+Performance considerations (prompt caching)
+- Many OpenResponses implementations support prompt caching for exact-prefix prompts; keep follow-up requests as prefix extensions when possible.
+- Keep tool definitions deterministically ordered and stable across follow-ups; treat dynamic tool list changes (e.g., MCP `tools/list_changed`) as a run boundary (or accept a cache miss and log the toolset version used).
+- Avoid mutating earlier context items mid-run; represent environment/sandbox/policy changes by appending new items instead of rewriting prior ones.
+- External evidence: `https://openai.com/index/unrolling-the-codex-agent-loop/` (cache under `temp/docs/openai/codex/` when needed).
+
 OpenResponses request shape (for `context.compile`)
 - Spec/schema reviewed: `temp/openresponses/src/pages/specification.mdx` and `temp/openresponses/schema/components/schemas/CreateResponseBody.json`.
 - `CreateResponseBody.input` is a union: string (user message) or `ItemParam[]` (structured items).

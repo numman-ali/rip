@@ -32,13 +32,14 @@ Now
   - Decision locked (ADR-0010): compiled context bundles (`context.compile`) are truth-derived and provider-agnostic; provider cursors are optional caches.
   - Implemented: context compiler kernel v1 (`recent_messages_v1`) writes `rip.context_bundle.v1` artifacts and emits `continuity_context_compiled`; OpenResponses runs start from compiled bundles (fresh provider conversation per run).
   - Implemented: context compiler perf v1: snapshot-first assistant aggregation + per-continuity sidecar replay caches (avoid global `events.jsonl` scans on hot path).
+  - Implemented: context compiler perf v1 tail-read continuity v1: sidecar tail scan for `head_seq`/next-seq recovery + `recent_messages_v1` compilation input (latest-message run starts avoid full continuity Vec loads).
   - Server exposes `thread.*` (ensure/list/get/post_message/branch/handoff/stream_events); headless CLI exposes `rip threads ...` (local + `--server`); TypeScript SDK exposes `thread.*` by spawning `rip` (ADR-0006).
   - Workspace mutation serialization enforced across sessions + background tasks; replay/contract tests added.
   - Continuity stream logs workspace-mutating tool side-effects (`continuity_tool_side_effects`) with provenance + replay coverage under parallel runs/tasks.
 - Ready:
   - Finish continuity provenance coverage beyond messages/runs/tool side-effects: provider cursor rotation logs, context selection strategy evolution, and compaction checkpoints; document the remaining envelope migration (eventually drop non-session `session_id`).
   - Define deterministic compaction checkpoints (e.g., 10k/20k/30k summaries) and provider cursor rotation logging.
-  - Perf: make `context.compile` O(k) at 1M+ events (avoid full `events.jsonl` scans; add per-stream indexing/segmented logs).
+  - Perf: keep `context.compile` O(k) at 1M+ events (tail-read continuity v1 done; next is per-stream indexing/segmented logs for non-tail anchors + compaction cutpoints).
 - Done:
   - Default UX is one continuity; surfaces "continue" by posting messages (sessions hidden by default).
   - Resume/branch/handoff works with deterministic replay and parity across CLI/TUI/server/SDK.
@@ -177,6 +178,7 @@ Capability coverage map (index)
 Doc/impl gaps
 - TUI surface has design docs + an MVP-0 renderer crate (`rip-tui`) and can attach to a live server stream; richer interactions (threads/palette/editor/resume) remain Phase 2.
 - MCP surface is documented but deferred to Phase 2 (`rip-mcp`).
+- MCP live tool discovery: when we honor `tools/list_changed`, treat toolset changes as run boundaries to preserve prompt caching and replay determinism (`docs/03_contracts/modules/phase-1/02_provider_adapters.md`, `https://openai.com/index/unrolling-the-codex-agent-loop/`).
 - Bench harness includes TTFT + end-to-end loop benchmarks; budgets are intentionally conservative (ratchet over time).
 - Fixture repos exist (`fixtures/repo_small`, `fixtures/repo_medium`); OpenResponses tool-loop fixtures cover tool execution + follow-up + snapshot/log replay equivalence.
 
