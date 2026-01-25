@@ -34,6 +34,7 @@ Outputs
   - stored in `.rip/artifacts/blobs/<artifact_id>`
 - Continuity event:
   - `continuity_context_compiled` links `{run_session_id, cut point, compiler_id/strategy}` -> `bundle_artifact_id` with provenance.
+  - `continuity_context_selection_decided` records the strategy/budgets/inputs/reasons that produced the compiled bundle (ADR-0016).
 
 Non-goals (initial)
 - Hidden mutable “memory” state (anything that changes context must be logged as events + artifacts).
@@ -67,10 +68,9 @@ Architecture (target posture)
 
 Determinism & replay rules
 - All compilation decisions that affect a run are logged:
-  - cut point,
-  - compiler id/strategy,
-  - bundle artifact id,
-  - provenance.
+  - selection decision (strategy/budgets/inputs/reasons) via `continuity_context_selection_decided`,
+  - cut point + compiler id/strategy + bundle artifact id via `continuity_context_compiled`,
+  - provenance on both frames.
 - Bundles are immutable and replay-addressable by artifact id.
 - Any non-message inclusion must be by reference:
   - artifact ids, file refs with checkpoint ids, thread refs with cut points.

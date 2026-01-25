@@ -16,6 +16,7 @@ import {
   buildRipThreadCompactionAutoArgs,
   buildRipThreadProviderCursorStatusArgs,
   buildRipThreadProviderCursorRotateArgs,
+  buildRipThreadContextSelectionStatusArgs,
   collectOutputText,
 } from "../util.js";
 
@@ -196,6 +197,19 @@ test("buildRipThreadProviderCursorRotateArgs includes provenance and reason flag
     origin: "sdk-ts",
   });
   assert.deepEqual(args, ["threads", "provider-cursor-rotate", "t1", "--reason", "reset", "--actor-id", "alice", "--origin", "sdk-ts"]);
+});
+
+test("buildRipThreadContextSelectionStatusArgs includes limit when provided", () => {
+  const args = buildRipThreadContextSelectionStatusArgs("t1", { limit: 3, server: "http://127.0.0.1:7341" });
+  assert.deepEqual(args, [
+    "threads",
+    "--server",
+    "http://127.0.0.1:7341",
+    "context-selection-status",
+    "t1",
+    "--limit",
+    "3",
+  ]);
 });
 
 test("buildRipThreadCompactionAutoArgs includes dry-run and limits", () => {

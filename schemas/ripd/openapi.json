@@ -739,6 +739,47 @@
         }
       }
     },
+    "/threads/{id}/context-selection-status": {
+      "post": {
+        "operationId": "thread_context_selection_status",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Thread id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContextSelectionStatusV1Request"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Context selection strategy decisions (truth-derived)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContextSelectionStatusV1Response"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Thread not found"
+          }
+        }
+      }
+    },
     "/threads/{id}/events": {
       "get": {
         "operationId": "thread_stream_events",
@@ -1577,6 +1618,149 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
+          },
+          "thread_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ContextSelectionStatusCheckpointV1": {
+        "type": "object",
+        "required": [
+          "checkpoint_id",
+          "summary_kind",
+          "summary_artifact_id",
+          "to_seq"
+        ],
+        "properties": {
+          "checkpoint_id": {
+            "type": "string"
+          },
+          "summary_artifact_id": {
+            "type": "string"
+          },
+          "summary_kind": {
+            "type": "string"
+          },
+          "to_seq": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "ContextSelectionStatusDecisionV1": {
+        "type": "object",
+        "required": [
+          "decision_event_id",
+          "run_session_id",
+          "message_id",
+          "compiler_id",
+          "compiler_strategy",
+          "limits",
+          "resets",
+          "actor_id",
+          "origin",
+          "seq",
+          "timestamp_ms"
+        ],
+        "properties": {
+          "actor_id": {
+            "type": "string"
+          },
+          "compaction_checkpoint": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ContextSelectionStatusCheckpointV1"
+              }
+            ]
+          },
+          "compiler_id": {
+            "type": "string"
+          },
+          "compiler_strategy": {
+            "type": "string"
+          },
+          "decision_event_id": {
+            "type": "string"
+          },
+          "limits": {},
+          "message_id": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "string"
+          },
+          "reason": {},
+          "resets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContextSelectionStatusResetV1"
+            }
+          },
+          "run_session_id": {
+            "type": "string"
+          },
+          "seq": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "timestamp_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "ContextSelectionStatusResetV1": {
+        "type": "object",
+        "required": [
+          "input",
+          "action",
+          "reason"
+        ],
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "input": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "ref": {}
+        }
+      },
+      "ContextSelectionStatusV1Request": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "ContextSelectionStatusV1Response": {
+        "type": "object",
+        "required": [
+          "thread_id",
+          "decisions"
+        ],
+        "properties": {
+          "decisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContextSelectionStatusDecisionV1"
+            }
           },
           "thread_id": {
             "type": "string"

@@ -61,6 +61,20 @@ pub(crate) struct ContextCompiledPayload {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct ContextSelectionDecidedPayload {
+    pub(crate) run_session_id: String,
+    pub(crate) message_id: String,
+    pub(crate) compiler_id: String,
+    pub(crate) compiler_strategy: String,
+    pub(crate) limits: serde_json::Value,
+    pub(crate) compaction_checkpoint: Option<rip_kernel::ContextSelectionCompactionCheckpointV1>,
+    pub(crate) resets: Vec<rip_kernel::ContextSelectionResetV1>,
+    pub(crate) reason: Option<serde_json::Value>,
+    pub(crate) actor_id: String,
+    pub(crate) origin: String,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct ContextCompileInput {
     pub(crate) continuity_events: Vec<Event>,
     pub(crate) from_seq: u64,
@@ -69,6 +83,7 @@ pub(crate) struct ContextCompileInput {
 
 #[derive(Debug, Clone)]
 pub(crate) struct CompactionCheckpointForCompile {
+    pub(crate) checkpoint_id: String,
     pub(crate) summary_kind: String,
     pub(crate) summary_artifact_id: String,
     pub(crate) to_seq: u64,
@@ -252,6 +267,51 @@ pub struct ProviderCursorRotateV1Response {
     pub endpoint: Option<String>,
     pub model: Option<String>,
     pub cursor_event_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ContextSelectionStatusV1Request {
+    pub limit: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ContextSelectionStatusCheckpointV1 {
+    pub checkpoint_id: String,
+    pub summary_kind: String,
+    pub summary_artifact_id: String,
+    pub to_seq: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ContextSelectionStatusResetV1 {
+    pub input: String,
+    pub action: String,
+    pub reason: String,
+    #[serde(default, rename = "ref", skip_serializing_if = "Option::is_none")]
+    pub ref_: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ContextSelectionStatusDecisionV1 {
+    pub decision_event_id: String,
+    pub run_session_id: String,
+    pub message_id: String,
+    pub compiler_id: String,
+    pub compiler_strategy: String,
+    pub limits: serde_json::Value,
+    pub compaction_checkpoint: Option<ContextSelectionStatusCheckpointV1>,
+    pub resets: Vec<ContextSelectionStatusResetV1>,
+    pub reason: Option<serde_json::Value>,
+    pub actor_id: String,
+    pub origin: String,
+    pub seq: u64,
+    pub timestamp_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ContextSelectionStatusV1Response {
+    pub thread_id: String,
+    pub decisions: Vec<ContextSelectionStatusDecisionV1>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -528,6 +588,7 @@ impl ContinuityStore {
             .latest_compaction_checkpoint_before_or_at_seq_v1(continuity_id, from_seq)
         {
             if let EventKind::ContinuityCompactionCheckpointCreated {
+                checkpoint_id,
                 summary_kind,
                 summary_artifact_id,
                 to_seq,
@@ -535,6 +596,7 @@ impl ContinuityStore {
             } = event.kind
             {
                 return Ok(Some(CompactionCheckpointForCompile {
+                    checkpoint_id,
                     summary_kind,
                     summary_artifact_id,
                     to_seq,
@@ -549,6 +611,7 @@ impl ContinuityStore {
         let mut best: Option<CompactionCheckpointForCompile> = None;
         for event in &events {
             let EventKind::ContinuityCompactionCheckpointCreated {
+                checkpoint_id,
                 summary_kind,
                 summary_artifact_id,
                 to_seq,
@@ -567,6 +630,7 @@ impl ContinuityStore {
             };
             if replace {
                 best = Some(CompactionCheckpointForCompile {
+                    checkpoint_id: checkpoint_id.clone(),
                     summary_kind: summary_kind.clone(),
                     summary_artifact_id: summary_artifact_id.clone(),
                     to_seq: *to_seq,
@@ -574,6 +638,7 @@ impl ContinuityStore {
             } else if let Some(current) = best.as_mut() {
                 // Tie-breaker: later continuity frame wins when `to_seq` is equal.
                 if *to_seq == current.to_seq {
+                    current.checkpoint_id = checkpoint_id.clone();
                     current.summary_kind = summary_kind.clone();
                     current.summary_artifact_id = summary_artifact_id.clone();
                 }
@@ -1863,6 +1928,176 @@ impl ContinuityStore {
         })
     }
 
+    pub fn context_selection_status_v1(
+        &self,
+        thread_id: &str,
+        req: ContextSelectionStatusV1Request,
+    ) -> Result<ContextSelectionStatusV1Response, String> {
+        if self.get(thread_id).is_none() {
+            return Err("not_found".to_string());
+        }
+
+        const DEFAULT_LIMIT: usize = 10;
+        const MAX_LIMIT: usize = 50;
+        const INITIAL_TAIL_BYTES: usize = 256 * 1024;
+        const MAX_TAIL_BYTES: usize = 8 * 1024 * 1024;
+        const MAX_TAIL_EVENTS: usize = 100_000;
+
+        let mut limit = req.limit.unwrap_or(DEFAULT_LIMIT as u32) as usize;
+        limit = limit.min(MAX_LIMIT);
+
+        let mut decisions: Vec<ContextSelectionStatusDecisionV1> = Vec::new();
+
+        let mut tail_complete = false;
+        let mut scanned_sidecar = false;
+        let mut tail_bytes = INITIAL_TAIL_BYTES;
+        while tail_bytes <= MAX_TAIL_BYTES && decisions.len() < limit {
+            match self
+                .stream_cache
+                .scan_tail(thread_id, MAX_TAIL_EVENTS, tail_bytes)
+            {
+                Ok(Some(tail)) => {
+                    scanned_sidecar = true;
+                    for event in tail.events.iter().rev() {
+                        let EventKind::ContinuityContextSelectionDecided {
+                            run_session_id,
+                            message_id,
+                            compiler_id,
+                            compiler_strategy,
+                            limits,
+                            compaction_checkpoint,
+                            resets,
+                            reason,
+                            actor_id,
+                            origin,
+                        } = &event.kind
+                        else {
+                            continue;
+                        };
+
+                        let checkpoint = compaction_checkpoint.as_ref().map(|ckpt| {
+                            ContextSelectionStatusCheckpointV1 {
+                                checkpoint_id: ckpt.checkpoint_id.clone(),
+                                summary_kind: ckpt.summary_kind.clone(),
+                                summary_artifact_id: ckpt.summary_artifact_id.clone(),
+                                to_seq: ckpt.to_seq,
+                            }
+                        });
+
+                        let resets_v1 = resets
+                            .iter()
+                            .map(|reset| ContextSelectionStatusResetV1 {
+                                input: reset.input.clone(),
+                                action: reset.action.clone(),
+                                reason: reset.reason.clone(),
+                                ref_: reset.ref_.clone(),
+                            })
+                            .collect();
+
+                        decisions.push(ContextSelectionStatusDecisionV1 {
+                            decision_event_id: event.id.clone(),
+                            run_session_id: run_session_id.clone(),
+                            message_id: message_id.clone(),
+                            compiler_id: compiler_id.clone(),
+                            compiler_strategy: compiler_strategy.clone(),
+                            limits: limits.clone(),
+                            compaction_checkpoint: checkpoint,
+                            resets: resets_v1,
+                            reason: reason.clone(),
+                            actor_id: actor_id.clone(),
+                            origin: origin.clone(),
+                            seq: event.seq,
+                            timestamp_ms: event.timestamp_ms,
+                        });
+
+                        if decisions.len() >= limit {
+                            break;
+                        }
+                    }
+
+                    if tail.complete {
+                        tail_complete = true;
+                        break;
+                    }
+                }
+                Ok(None) => break,
+                Err(_) => break,
+            }
+
+            tail_bytes = (tail_bytes * 2).min(MAX_TAIL_BYTES);
+        }
+
+        if !scanned_sidecar || (!tail_complete && decisions.len() < limit) {
+            let events = self
+                .replay_events(thread_id)
+                .map_err(|err| format!("continuity replay failed: {err}"))?;
+
+            decisions.clear();
+            for event in events.iter().rev() {
+                let EventKind::ContinuityContextSelectionDecided {
+                    run_session_id,
+                    message_id,
+                    compiler_id,
+                    compiler_strategy,
+                    limits,
+                    compaction_checkpoint,
+                    resets,
+                    reason,
+                    actor_id,
+                    origin,
+                } = &event.kind
+                else {
+                    continue;
+                };
+
+                let checkpoint =
+                    compaction_checkpoint
+                        .as_ref()
+                        .map(|ckpt| ContextSelectionStatusCheckpointV1 {
+                            checkpoint_id: ckpt.checkpoint_id.clone(),
+                            summary_kind: ckpt.summary_kind.clone(),
+                            summary_artifact_id: ckpt.summary_artifact_id.clone(),
+                            to_seq: ckpt.to_seq,
+                        });
+
+                let resets_v1 = resets
+                    .iter()
+                    .map(|reset| ContextSelectionStatusResetV1 {
+                        input: reset.input.clone(),
+                        action: reset.action.clone(),
+                        reason: reset.reason.clone(),
+                        ref_: reset.ref_.clone(),
+                    })
+                    .collect();
+
+                decisions.push(ContextSelectionStatusDecisionV1 {
+                    decision_event_id: event.id.clone(),
+                    run_session_id: run_session_id.clone(),
+                    message_id: message_id.clone(),
+                    compiler_id: compiler_id.clone(),
+                    compiler_strategy: compiler_strategy.clone(),
+                    limits: limits.clone(),
+                    compaction_checkpoint: checkpoint,
+                    resets: resets_v1,
+                    reason: reason.clone(),
+                    actor_id: actor_id.clone(),
+                    origin: origin.clone(),
+                    seq: event.seq,
+                    timestamp_ms: event.timestamp_ms,
+                });
+
+                if decisions.len() >= limit {
+                    break;
+                }
+            }
+        }
+
+        Ok(ContextSelectionStatusV1Response {
+            thread_id: thread_id.to_string(),
+            decisions,
+        })
+    }
+
     pub fn compaction_auto_v1(
         &self,
         thread_id: &str,
@@ -2628,6 +2863,52 @@ impl ContinuityStore {
         Ok(id)
     }
 
+    pub(crate) fn append_context_selection_decided(
+        &self,
+        continuity_id: &str,
+        payload: ContextSelectionDecidedPayload,
+    ) -> Result<String, String> {
+        let mut next_seq = self.next_seq.lock().expect("continuity seq mutex");
+        let seq = match next_seq.get(continuity_id).cloned() {
+            Some(seq) => seq,
+            None => {
+                let seq = self
+                    .load_next_seq_for(continuity_id)
+                    .map_err(|err| format!("resolve continuity seq: {err}"))?;
+                next_seq.insert(continuity_id.to_string(), seq);
+                seq
+            }
+        };
+
+        let id = Uuid::new_v4().to_string();
+        let event = Event {
+            id: id.clone(),
+            session_id: continuity_id.to_string(),
+            timestamp_ms: now_ms(),
+            seq,
+            kind: EventKind::ContinuityContextSelectionDecided {
+                run_session_id: payload.run_session_id,
+                message_id: payload.message_id,
+                compiler_id: payload.compiler_id,
+                compiler_strategy: payload.compiler_strategy,
+                limits: payload.limits,
+                compaction_checkpoint: payload.compaction_checkpoint,
+                resets: payload.resets,
+                reason: payload.reason,
+                actor_id: payload.actor_id,
+                origin: payload.origin,
+            },
+        };
+        self.event_log
+            .append(&event)
+            .map_err(|err| format!("append continuity context selection decided: {err}"))?;
+        self.stream_cache.append_best_effort(&event);
+        let _ = self.sender.send(event.clone());
+
+        next_seq.insert(continuity_id.to_string(), seq + 1);
+        Ok(id)
+    }
+
     pub(crate) fn append_context_compiled(
         &self,
         continuity_id: &str,
@@ -3376,6 +3657,128 @@ mod tests {
     }
 
     #[test]
+    fn context_selection_status_survives_sidecar_rotation_and_orders_latest_first() {
+        let dir = tempdir().expect("tmp");
+        let (_event_log, store, data_dir) = store_for(&dir);
+
+        let thread_id = store.ensure_default().expect("ensure");
+
+        let m1 = store
+            .append_message(
+                &thread_id,
+                "alice".to_string(),
+                "cli".to_string(),
+                "m1".to_string(),
+            )
+            .expect("append message");
+        store
+            .append_run_spawned(
+                &thread_id,
+                &m1,
+                "session-1",
+                "alice".to_string(),
+                "cli".to_string(),
+            )
+            .expect("run spawned");
+        store
+            .append_context_selection_decided(
+                &thread_id,
+                ContextSelectionDecidedPayload {
+                    run_session_id: "session-1".to_string(),
+                    message_id: m1.clone(),
+                    compiler_id: "rip.context_compiler.v1".to_string(),
+                    compiler_strategy: "recent_messages_v1".to_string(),
+                    limits: serde_json::json!({ "recent_messages_v1_limit": 16 }),
+                    compaction_checkpoint: None,
+                    resets: Vec::new(),
+                    reason: Some(serde_json::json!({
+                        "selected": "recent_messages_v1",
+                        "cause": "test",
+                    })),
+                    actor_id: "alice".to_string(),
+                    origin: "cli".to_string(),
+                },
+            )
+            .expect("selection decided");
+
+        let m2 = store
+            .append_message(
+                &thread_id,
+                "alice".to_string(),
+                "cli".to_string(),
+                "m2".to_string(),
+            )
+            .expect("append message");
+        store
+            .append_run_spawned(
+                &thread_id,
+                &m2,
+                "session-2",
+                "alice".to_string(),
+                "cli".to_string(),
+            )
+            .expect("run spawned");
+        store
+            .append_context_selection_decided(
+                &thread_id,
+                ContextSelectionDecidedPayload {
+                    run_session_id: "session-2".to_string(),
+                    message_id: m2.clone(),
+                    compiler_id: "rip.context_compiler.v1".to_string(),
+                    compiler_strategy: "summaries_recent_messages_v1".to_string(),
+                    limits: serde_json::json!({ "recent_messages_v1_limit": 16 }),
+                    compaction_checkpoint: Some(
+                        rip_kernel::ContextSelectionCompactionCheckpointV1 {
+                            checkpoint_id: "ckpt-1".to_string(),
+                            summary_kind: "cumulative_v1".to_string(),
+                            summary_artifact_id: "artifact-1".to_string(),
+                            to_seq: 1,
+                        },
+                    ),
+                    resets: Vec::new(),
+                    reason: Some(serde_json::json!({
+                        "selected": "summaries_recent_messages_v1",
+                        "cause": "compaction_checkpoint",
+                    })),
+                    actor_id: "alice".to_string(),
+                    origin: "cli".to_string(),
+                },
+            )
+            .expect("selection decided");
+
+        let status = store
+            .context_selection_status_v1(
+                &thread_id,
+                ContextSelectionStatusV1Request { limit: Some(2) },
+            )
+            .expect("status");
+        assert_eq!(status.thread_id, thread_id);
+        assert_eq!(status.decisions.len(), 2);
+        assert_eq!(status.decisions[0].run_session_id, "session-2");
+        assert_eq!(status.decisions[0].message_id, m2);
+        assert_eq!(
+            status.decisions[0].compiler_strategy,
+            "summaries_recent_messages_v1"
+        );
+        assert!(status.decisions[0].compaction_checkpoint.is_some());
+        assert_eq!(status.decisions[1].run_session_id, "session-1");
+        assert_eq!(status.decisions[1].message_id, m1);
+        assert_eq!(status.decisions[1].compiler_strategy, "recent_messages_v1");
+
+        // Simulate cache loss / rotation: delete the continuity sidecar caches.
+        let _ = std::fs::remove_dir_all(data_dir.join("continuity_streams"));
+
+        let status = store
+            .context_selection_status_v1(
+                &thread_id,
+                ContextSelectionStatusV1Request { limit: Some(1) },
+            )
+            .expect("status after cache delete");
+        assert_eq!(status.decisions.len(), 1);
+        assert_eq!(status.decisions[0].run_session_id, "session-2");
+    }
+
+    #[test]
     fn continuity_sidecar_contains_appended_frames_and_is_preferred_for_replay() {
         use std::io::Write;
 
@@ -3400,6 +3803,26 @@ mod tests {
                 "cli".to_string(),
             )
             .expect("run spawned");
+        store
+            .append_context_selection_decided(
+                &continuity_id,
+                ContextSelectionDecidedPayload {
+                    run_session_id: "session-1".to_string(),
+                    message_id: message_id.clone(),
+                    compiler_id: "rip.context_compiler.v1".to_string(),
+                    compiler_strategy: "recent_messages_v1".to_string(),
+                    limits: serde_json::json!({ "recent_messages_v1_limit": 16 }),
+                    compaction_checkpoint: None,
+                    resets: Vec::new(),
+                    reason: Some(serde_json::json!({
+                        "selected": "recent_messages_v1",
+                        "cause": "test",
+                    })),
+                    actor_id: "alice".to_string(),
+                    origin: "cli".to_string(),
+                },
+            )
+            .expect("context selection decided");
         store
             .append_context_compiled(
                 &continuity_id,
@@ -3435,6 +3858,10 @@ mod tests {
             sidecar.contains("continuity_context_compiled"),
             "expected continuity_context_compiled in sidecar"
         );
+        assert!(
+            sidecar.contains("continuity_context_selection_decided"),
+            "expected continuity_context_selection_decided in sidecar"
+        );
 
         // Corrupt the global log so a replay_stream() scan would fail if used.
         let mut file = fs::OpenOptions::new()
@@ -3449,6 +3876,13 @@ mod tests {
                 .iter()
                 .any(|event| matches!(event.kind, EventKind::ContinuityContextCompiled { .. })),
             "expected continuity_context_compiled in replay"
+        );
+        assert!(
+            events.iter().any(|event| matches!(
+                event.kind,
+                EventKind::ContinuityContextSelectionDecided { .. }
+            )),
+            "expected continuity_context_selection_decided in replay"
         );
     }
 

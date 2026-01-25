@@ -179,6 +179,19 @@ export function buildRipThreadProviderCursorRotateArgs(
   return args;
 }
 
+export type RipThreadContextSelectionStatusArgsOptions = RipThreadsArgsOptions & {
+  limit?: number;
+};
+
+export function buildRipThreadContextSelectionStatusArgs(
+  threadId: string,
+  options: RipThreadContextSelectionStatusArgsOptions = {},
+): string[] {
+  const args = [...buildRipThreadsBaseArgs(options), "context-selection-status", threadId];
+  if (typeof options.limit === "number") args.push("--limit", String(options.limit));
+  return args;
+}
+
 export type RipThreadCompactionAutoArgsOptions = RipThreadsArgsOptions & {
   strideMessages?: number;
   maxNewCheckpoints?: number;

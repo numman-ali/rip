@@ -427,6 +427,16 @@ data: [DONE]\n\n";
                 )
             })
             .expect("run spawned event");
+        let selection_idx = thread_events
+            .iter()
+            .position(|event| {
+                matches!(
+                    &event.kind,
+                    EventKind::ContinuityContextSelectionDecided { run_session_id, .. }
+                        if run_session_id == &handle.session_id
+                )
+            })
+            .expect("context selection decided event");
         let compiled_idx = thread_events
             .iter()
             .position(|event| {
@@ -449,9 +459,44 @@ data: [DONE]\n\n";
             .expect("run ended event");
 
         assert!(
-            spawned_idx < compiled_idx && compiled_idx < ended_idx,
-            "expected run_spawned -> context_compiled -> run_ended ordering"
+            spawned_idx < selection_idx && selection_idx < compiled_idx && compiled_idx < ended_idx,
+            "expected run_spawned -> context_selection_decided -> context_compiled -> run_ended ordering"
         );
+
+        thread_events
+            .iter()
+            .find_map(|event| match &event.kind {
+                EventKind::ContinuityContextSelectionDecided {
+                    run_session_id,
+                    message_id: selected_message_id,
+                    compiler_id,
+                    compiler_strategy,
+                    limits,
+                    compaction_checkpoint,
+                    resets,
+                    reason,
+                    actor_id,
+                    origin,
+                } if run_session_id == &handle.session_id => {
+                    assert_eq!(selected_message_id.as_str(), message_id.as_str());
+                    assert_eq!(compiler_id, "rip.context_compiler.v1");
+                    assert_eq!(compiler_strategy, "recent_messages_v1");
+                    assert!(compaction_checkpoint.is_none());
+                    assert!(resets.is_empty());
+                    assert_eq!(
+                        limits
+                            .get("recent_messages_v1_limit")
+                            .and_then(|v| v.as_u64()),
+                        Some(16)
+                    );
+                    assert!(reason.is_some());
+                    assert_eq!(actor_id, "alice");
+                    assert_eq!(origin, "cli");
+                    Some(())
+                }
+                _ => None,
+            })
+            .expect("selection payload");
 
         let bundle_artifact_id = thread_events
             .iter()
@@ -645,6 +690,16 @@ data: [DONE]\n\n";
                     )
                 })
                 .expect("spawned");
+            let selection_idx = thread_events
+                .iter()
+                .position(|event| {
+                    matches!(
+                        &event.kind,
+                        EventKind::ContinuityContextSelectionDecided { run_session_id, .. }
+                            if run_session_id == session_id
+                    )
+                })
+                .expect("selection");
             let compiled_idx = thread_events
                 .iter()
                 .position(|event| {
@@ -665,7 +720,11 @@ data: [DONE]\n\n";
                     )
                 })
                 .expect("ended");
-            assert!(spawned_idx < compiled_idx && compiled_idx < ended_idx);
+            assert!(
+                spawned_idx < selection_idx
+                    && selection_idx < compiled_idx
+                    && compiled_idx < ended_idx
+            );
 
             let bundle_artifact_id = thread_events
                 .iter()

@@ -223,6 +223,7 @@ pub(crate) fn build_openapi_router() -> (Router<AppState>, String) {
         .routes(routes!(thread_compaction_status))
         .routes(routes!(thread_provider_cursor_status))
         .routes(routes!(thread_provider_cursor_rotate))
+        .routes(routes!(thread_context_selection_status))
         .routes(routes!(thread_compaction_auto))
         .routes(routes!(thread_compaction_auto_schedule))
         .routes(routes!(thread_stream_events))
@@ -758,6 +759,36 @@ async fn thread_provider_cursor_status(
 ) -> impl IntoResponse {
     let store = state.engine.continuities();
     match store.provider_cursor_status_v1(&thread_id, payload) {
+        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
+        Err(err) => {
+            let err_lower = err.to_ascii_lowercase();
+            if err_lower.contains("not_found") {
+                return StatusCode::NOT_FOUND.into_response();
+            }
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/threads/{id}/context-selection-status",
+    params(
+        ("id" = String, Path, description = "Thread id")
+    ),
+    request_body = crate::ContextSelectionStatusV1Request,
+    responses(
+        (status = 200, description = "Context selection strategy decisions (truth-derived)", body = crate::ContextSelectionStatusV1Response),
+        (status = 404, description = "Thread not found")
+    )
+)]
+async fn thread_context_selection_status(
+    Path(thread_id): Path<String>,
+    State(state): State<AppState>,
+    Json(payload): Json<crate::ContextSelectionStatusV1Request>,
+) -> impl IntoResponse {
+    let store = state.engine.continuities();
+    match store.context_selection_status_v1(&thread_id, payload) {
         Ok(response) => (StatusCode::OK, Json(response)).into_response(),
         Err(err) => {
             let err_lower = err.to_ascii_lowercase();

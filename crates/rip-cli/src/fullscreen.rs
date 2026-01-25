@@ -347,6 +347,49 @@ pub async fn run_fullscreen_tui(initial_prompt: Option<String>) -> anyhow::Resul
                             let _ = tx.send(message).await;
                         });
                     }
+                    UiAction::ContextSelectionStatus => {
+                        let store = engine.continuities();
+                        let tx = status_tx.clone();
+                        tokio::spawn(async move {
+                            let message = tokio::task::spawn_blocking(move || {
+                                let thread_id = match store.ensure_default() {
+                                    Ok(id) => id,
+                                    Err(err) => {
+                                        return format!(
+                                            "context selection: thread ensure failed: {err}"
+                                        );
+                                    }
+                                };
+                                match store.context_selection_status_v1(
+                                    &thread_id,
+                                    ripd::ContextSelectionStatusV1Request { limit: Some(1) },
+                                ) {
+                                    Ok(status) => match status.decisions.first() {
+                                        Some(active) => {
+                                            let ckpt = active
+                                                .compaction_checkpoint
+                                                .as_ref()
+                                                .map(|c| c.to_seq.to_string())
+                                                .unwrap_or_else(|| "none".to_string());
+                                            format!(
+                                                "context selection: strategy={} ckpt_to_seq={} resets={}",
+                                                active.compiler_strategy,
+                                                ckpt,
+                                                active.resets.len()
+                                            )
+                                        }
+                                        None => "context selection: none".to_string(),
+                                    },
+                                    Err(err) => format!("context selection status failed: {err}"),
+                                }
+                            })
+                            .await
+                            .unwrap_or_else(|err| {
+                                format!("context selection status join failed: {err}")
+                            });
+                            let _ = tx.send(message).await;
+                        });
+                    }
                     UiAction::CopySelected => {
                         copy_selected(&mut terminal, &mut state)?;
                     }
@@ -792,6 +835,66 @@ async fn run_fullscreen_tui_sse(
                             });
                         }
                     }
+                    UiAction::ContextSelectionStatus => {
+                        if ui_mode == SseUiMode::Interactive {
+                            let client = client.clone();
+                            let server = server.clone();
+                            let tx = status_tx.clone();
+                            tokio::spawn(async move {
+                                let message = match crate::ensure_thread(&client, &server).await {
+                                    Ok(thread_id) => {
+                                        let url = format!(
+                                            "{server}/threads/{thread_id}/context-selection-status"
+                                        );
+                                        let response = client
+                                            .post(url)
+                                            .json(&serde_json::json!({ "limit": 1 }))
+                                            .send()
+                                            .await;
+                                        match response {
+                                            Ok(resp) if resp.status().is_success() => match resp
+                                                .json::<ripd::ContextSelectionStatusV1Response>()
+                                                .await
+                                            {
+                                                Ok(status) => match status.decisions.first() {
+                                                    Some(active) => {
+                                                        let ckpt = active
+                                                            .compaction_checkpoint
+                                                            .as_ref()
+                                                            .map(|c| c.to_seq.to_string())
+                                                            .unwrap_or_else(|| "none".to_string());
+                                                        format!(
+                                                            "context selection: strategy={} ckpt_to_seq={} resets={}",
+                                                            active.compiler_strategy,
+                                                            ckpt,
+                                                            active.resets.len()
+                                                        )
+                                                    }
+                                                    None => "context selection: none".to_string(),
+                                                },
+                                                Err(err) => {
+                                                    format!(
+                                                        "context selection status: parse failed: {err}"
+                                                    )
+                                                }
+                                            },
+                                            Ok(resp) => format!(
+                                                "context selection status: request failed: {}",
+                                                resp.status()
+                                            ),
+                                            Err(err) => format!(
+                                                "context selection status: request failed: {err}"
+                                            ),
+                                        }
+                                    }
+                                    Err(err) => {
+                                        format!("context selection: thread ensure failed: {err}")
+                                    }
+                                };
+                                let _ = tx.send(message).await;
+                            });
+                        }
+                    }
                     UiAction::CopySelected => {
                         copy_selected(&mut terminal, &mut state)?;
                     }
@@ -930,6 +1033,7 @@ enum UiAction {
     CompactionStatus,
     ProviderCursorStatus,
     ProviderCursorRotate,
+    ContextSelectionStatus,
 }
 
 struct InitState {
@@ -1035,6 +1139,7 @@ fn handle_key_event(
             KeyCommand::CompactionStatus => UiAction::CompactionStatus,
             KeyCommand::ProviderCursorStatus => UiAction::ProviderCursorStatus,
             KeyCommand::ProviderCursorRotate => UiAction::ProviderCursorRotate,
+            KeyCommand::ContextSelectionStatus => UiAction::ContextSelectionStatus,
         };
     }
 

@@ -45,8 +45,9 @@ Now
   - Workspace mutation serialization enforced across sessions + background tasks; replay/contract tests added.
   - Continuity stream logs workspace-mutating tool side-effects (`continuity_tool_side_effects`) with provenance + replay coverage under parallel runs/tasks.
   - Implemented: provider cursor cache truth logging (ADR-0015): `continuity_provider_cursor_updated` + `thread.provider_cursor.{status,rotate}` across cli_h/tui/server/sdk; OpenResponses runs record `previous_response_id` on completion as a rebuildable cache.
+  - Implemented: context selection strategy evolution truth logging v0.1 (ADR-0016): `continuity_context_selection_decided` + `thread.context_selection.status` across cli_h/tui/server/sdk; records strategy/budgets/inputs/reasons between `continuity_run_spawned` and `continuity_context_compiled`.
 - Ready:
-  - Finish continuity provenance coverage beyond messages/runs/tool side-effects: context selection strategy evolution truth logging (frames + capability + surface UX); document the remaining envelope migration (eventually drop non-session `session_id`).
+  - Document the remaining envelope migration (eventually drop non-session `session_id`).
   - Perf: keep `context.compile` O(k) at 1M+ events (tail-read continuity v1 + seekable non-tail anchors v1.1 + compaction cut points v0.1 done; next is per-stream segmentation + hierarchical summaries).
 - Done:
   - Default UX is one continuity; surfaces "continue" by posting messages (sessions hidden by default).

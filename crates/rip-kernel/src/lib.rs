@@ -36,6 +36,7 @@ impl Event {
             EventKind::ContinuityCreated { .. }
             | EventKind::ContinuityMessageAppended { .. }
             | EventKind::ContinuityRunSpawned { .. }
+            | EventKind::ContinuityContextSelectionDecided { .. }
             | EventKind::ContinuityContextCompiled { .. }
             | EventKind::ContinuityProviderCursorUpdated { .. }
             | EventKind::ContinuityCompactionCheckpointCreated { .. }
@@ -141,6 +142,23 @@ pub struct CompactionPlannedCutPoint {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextSelectionCompactionCheckpointV1 {
+    pub checkpoint_id: String,
+    pub summary_kind: String,
+    pub summary_artifact_id: String,
+    pub to_seq: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextSelectionResetV1 {
+    pub input: String,
+    pub action: String,
+    pub reason: String,
+    #[serde(default, rename = "ref", skip_serializing_if = "Option::is_none")]
+    pub ref_: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EventKind {
     SessionStarted {
@@ -172,6 +190,21 @@ pub enum EventKind {
         actor_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         origin: Option<String>,
+    },
+    ContinuityContextSelectionDecided {
+        run_session_id: String,
+        message_id: String,
+        compiler_id: String,
+        compiler_strategy: String,
+        limits: Value,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        compaction_checkpoint: Option<ContextSelectionCompactionCheckpointV1>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        resets: Vec<ContextSelectionResetV1>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<Value>,
+        actor_id: String,
+        origin: String,
     },
     ContinuityContextCompiled {
         run_session_id: String,
@@ -539,6 +572,7 @@ impl Session {
             EventKind::ContinuityCreated { .. }
             | EventKind::ContinuityMessageAppended { .. }
             | EventKind::ContinuityRunSpawned { .. }
+            | EventKind::ContinuityContextSelectionDecided { .. }
             | EventKind::ContinuityContextCompiled { .. }
             | EventKind::ContinuityProviderCursorUpdated { .. }
             | EventKind::ContinuityCompactionCheckpointCreated { .. }

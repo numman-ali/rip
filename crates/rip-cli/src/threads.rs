@@ -128,6 +128,14 @@ pub(crate) enum ThreadsCommand {
         #[arg(long)]
         origin: Option<String>,
     },
+    /// Show truth-derived context selection strategy decisions for a thread.
+    ContextSelectionStatus {
+        /// Thread id (continuity id).
+        id: String,
+        /// Maximum number of decisions returned (latest-first; default: 10).
+        #[arg(long)]
+        limit: Option<u32>,
+    },
     /// Run deterministic auto-compaction: spawn a summarizer job that emits checkpoints.
     CompactionAuto {
         /// Thread id (continuity id).
@@ -454,6 +462,22 @@ async fn run_threads_remote(server: String, command: ThreadsCommand) -> anyhow::
             let body = response.text().await?;
             println!("{body}");
         }
+        ThreadsCommand::ContextSelectionStatus { id, limit } => {
+            let url = format!("{server}/threads/{id}/context-selection-status");
+            let response = client
+                .post(url)
+                .json(&serde_json::json!({
+                    "limit": limit,
+                }))
+                .send()
+                .await?;
+            let status = response.status();
+            if !status.is_success() {
+                anyhow::bail!("thread context-selection-status failed: {status}");
+            }
+            let body = response.text().await?;
+            println!("{body}");
+        }
         ThreadsCommand::CompactionAuto {
             id,
             stride_messages,
@@ -733,6 +757,12 @@ async fn run_threads_local_with_engine(
                     },
                 )
                 .map_err(|err| anyhow::anyhow!("thread provider-cursor-rotate failed: {err}"))?;
+            println!("{}", serde_json::to_string(&resp)?);
+        }
+        ThreadsCommand::ContextSelectionStatus { id, limit } => {
+            let resp = store
+                .context_selection_status_v1(&id, ripd::ContextSelectionStatusV1Request { limit })
+                .map_err(|err| anyhow::anyhow!("thread context-selection-status failed: {err}"))?;
             println!("{}", serde_json::to_string(&resp)?);
         }
         ThreadsCommand::CompactionAuto {
@@ -1055,6 +1085,15 @@ mod tests {
         )
         .await
         .expect("thread provider-cursor-rotate");
+        run_threads_local_with_engine(
+            &engine,
+            ThreadsCommand::ContextSelectionStatus {
+                id: thread_id.clone(),
+                limit: Some(1),
+            },
+        )
+        .await
+        .expect("thread context-selection-status");
 
         // Simulate a separate CLI invocation (fresh seq cache) so we exercise the
         // `load_next_seq_for` path.

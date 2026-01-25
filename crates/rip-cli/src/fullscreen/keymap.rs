@@ -21,6 +21,7 @@ pub enum Command {
     CompactionStatus,
     ProviderCursorStatus,
     ProviderCursorRotate,
+    ContextSelectionStatus,
 }
 
 #[derive(Debug, Clone)]
@@ -50,6 +51,7 @@ impl Keymap {
         bindings.insert("C-o".to_string(), Command::CompactionStatus);
         bindings.insert("C-p".to_string(), Command::ProviderCursorStatus);
         bindings.insert("C-x".to_string(), Command::ProviderCursorRotate);
+        bindings.insert("C-u".to_string(), Command::ContextSelectionStatus);
 
         Self { bindings }
     }
@@ -186,6 +188,12 @@ fn parse_command(raw: &str) -> Option<Command> {
         | "cursorreset"
         | "cursor_reset"
         | "cursor-reset" => Some(Command::ProviderCursorRotate),
+        "contextselectionstatus"
+        | "context_selection_status"
+        | "context-selection-status"
+        | "contextselection"
+        | "context_selection"
+        | "context-selection" => Some(Command::ContextSelectionStatus),
         _ => None,
     }
 }

@@ -20,10 +20,11 @@ use crate::context_compiler::{
     compile_recent_messages_v1, compile_summaries_recent_messages_v1,
     CompileRecentMessagesV1Request, CompileSummariesRecentMessagesV1Request,
     CONTEXT_COMPILER_ID_V1, CONTEXT_COMPILER_STRATEGY_RECENT_MESSAGES_V1,
-    CONTEXT_COMPILER_STRATEGY_SUMMARIES_RECENT_MESSAGES_V1,
+    CONTEXT_COMPILER_STRATEGY_SUMMARIES_RECENT_MESSAGES_V1, RECENT_MESSAGES_V1_LIMIT,
 };
 use crate::continuities::{
-    ContextCompiledPayload, ContinuityRunLink, ContinuityStore, ToolSideEffects,
+    ContextCompiledPayload, ContextSelectionDecidedPayload, ContinuityRunLink, ContinuityStore,
+    ToolSideEffects,
 };
 use crate::provider_openresponses::{
     build_streaming_followup_request, build_streaming_request, build_streaming_request_items,
@@ -167,14 +168,31 @@ pub async fn run_session(context: SessionContext) {
                         link,
                         &runtime_session_id,
                     ) {
-                        Ok(compiled) => {
+                        Ok(outcome) => {
+                            let ContextCompileOutcomeForRun { decision, compiled } = outcome;
+                            let compiler_strategy = decision.compiler_strategy.clone();
+                            let _ = continuities.append_context_selection_decided(
+                                &link.continuity_id,
+                                ContextSelectionDecidedPayload {
+                                    run_session_id: runtime_session_id.clone(),
+                                    message_id: link.message_id.clone(),
+                                    compiler_id: decision.compiler_id,
+                                    compiler_strategy,
+                                    limits: decision.limits,
+                                    compaction_checkpoint: decision.compaction_checkpoint,
+                                    resets: decision.resets,
+                                    reason: decision.reason,
+                                    actor_id: link.actor_id.clone(),
+                                    origin: link.origin.clone(),
+                                },
+                            );
                             let _ = continuities.append_context_compiled(
                                 &link.continuity_id,
                                 ContextCompiledPayload {
                                     run_session_id: runtime_session_id.clone(),
                                     bundle_artifact_id: compiled.bundle_artifact_id,
                                     compiler_id: CONTEXT_COMPILER_ID_V1.to_string(),
-                                    compiler_strategy: compiled.compiler_strategy,
+                                    compiler_strategy: decision.compiler_strategy,
                                     from_seq: compiled.from_seq,
                                     from_message_id: compiled.from_message_id,
                                     actor_id: link.actor_id.clone(),
@@ -843,7 +861,20 @@ struct CompiledContextForRun {
     items: Vec<ItemParam>,
     from_seq: u64,
     from_message_id: Option<String>,
+}
+
+struct ContextSelectionDecisionForRun {
+    compiler_id: String,
     compiler_strategy: String,
+    limits: Value,
+    compaction_checkpoint: Option<rip_kernel::ContextSelectionCompactionCheckpointV1>,
+    resets: Vec<rip_kernel::ContextSelectionResetV1>,
+    reason: Option<Value>,
+}
+
+struct ContextCompileOutcomeForRun {
+    decision: ContextSelectionDecisionForRun,
+    compiled: CompiledContextForRun,
 }
 
 fn compile_context_bundle_for_run(
@@ -852,20 +883,66 @@ fn compile_context_bundle_for_run(
     snapshot_dir: &Path,
     run: &ContinuityRunLink,
     run_session_id: &str,
-) -> Result<CompiledContextForRun, String> {
+) -> Result<ContextCompileOutcomeForRun, String> {
     let input = continuities
         .load_context_compile_input_recent_messages_v1(&run.continuity_id, &run.message_id)?;
 
     let checkpoint: Option<CompactionCheckpointForCompile> = continuities
         .latest_compaction_checkpoint_for_compile_v1(&run.continuity_id, input.from_seq)?;
 
-    let (bundle, compiler_strategy) = match checkpoint.as_ref() {
-        Some(CompactionCheckpointForCompile {
-            summary_kind,
-            summary_artifact_id,
-            to_seq,
-            ..
-        }) if summary_kind == COMPACTION_SUMMARY_KIND_CUMULATIVE_V1 => (
+    let limits = serde_json::json!({
+        "recent_messages_v1_limit": RECENT_MESSAGES_V1_LIMIT,
+    });
+
+    let mut resets: Vec<rip_kernel::ContextSelectionResetV1> = Vec::new();
+    let (strategy, reason) = match checkpoint.as_ref() {
+        Some(CompactionCheckpointForCompile { summary_kind, .. })
+            if summary_kind == COMPACTION_SUMMARY_KIND_CUMULATIVE_V1 =>
+        {
+            (
+                CONTEXT_COMPILER_STRATEGY_SUMMARIES_RECENT_MESSAGES_V1,
+                Some(serde_json::json!({
+                    "selected": CONTEXT_COMPILER_STRATEGY_SUMMARIES_RECENT_MESSAGES_V1,
+                    "cause": "compaction_checkpoint",
+                })),
+            )
+        }
+        Some(CompactionCheckpointForCompile { summary_kind, .. }) => {
+            resets.push(rip_kernel::ContextSelectionResetV1 {
+                input: "compaction_checkpoint".to_string(),
+                action: "ignored".to_string(),
+                reason: "unsupported_summary_kind".to_string(),
+                ref_: Some(serde_json::json!({
+                    "summary_kind": summary_kind,
+                })),
+            });
+            (
+                CONTEXT_COMPILER_STRATEGY_RECENT_MESSAGES_V1,
+                Some(serde_json::json!({
+                    "selected": CONTEXT_COMPILER_STRATEGY_RECENT_MESSAGES_V1,
+                    "cause": "unsupported_compaction_summary_kind",
+                })),
+            )
+        }
+        None => (
+            CONTEXT_COMPILER_STRATEGY_RECENT_MESSAGES_V1,
+            Some(serde_json::json!({
+                "selected": CONTEXT_COMPILER_STRATEGY_RECENT_MESSAGES_V1,
+                "cause": "no_compaction_checkpoint",
+            })),
+        ),
+    };
+
+    let (bundle, compaction_checkpoint) = match (strategy, checkpoint.as_ref()) {
+        (
+            CONTEXT_COMPILER_STRATEGY_SUMMARIES_RECENT_MESSAGES_V1,
+            Some(CompactionCheckpointForCompile {
+                checkpoint_id,
+                summary_kind,
+                summary_artifact_id,
+                to_seq,
+            }),
+        ) => (
             compile_summaries_recent_messages_v1(CompileSummariesRecentMessagesV1Request {
                 continuity_id: &run.continuity_id,
                 continuity_events: &input.continuity_events,
@@ -879,7 +956,12 @@ fn compile_context_bundle_for_run(
                 summary_artifact_id,
                 summary_to_seq: *to_seq,
             })?,
-            CONTEXT_COMPILER_STRATEGY_SUMMARIES_RECENT_MESSAGES_V1.to_string(),
+            Some(rip_kernel::ContextSelectionCompactionCheckpointV1 {
+                checkpoint_id: checkpoint_id.clone(),
+                summary_kind: summary_kind.clone(),
+                summary_artifact_id: summary_artifact_id.clone(),
+                to_seq: *to_seq,
+            }),
         ),
         _ => (
             compile_recent_messages_v1(CompileRecentMessagesV1Request {
@@ -893,18 +975,27 @@ fn compile_context_bundle_for_run(
                 actor_id: &run.actor_id,
                 origin: &run.origin,
             })?,
-            CONTEXT_COMPILER_STRATEGY_RECENT_MESSAGES_V1.to_string(),
+            None,
         ),
     };
 
     let artifact_id = write_bundle_v1(continuities.workspace_root(), &bundle)?;
     let items = openresponses_items_from_context_bundle(continuities.workspace_root(), &bundle)?;
-    Ok(CompiledContextForRun {
-        bundle_artifact_id: artifact_id,
-        items,
-        from_seq: input.from_seq,
-        from_message_id: input.from_message_id,
-        compiler_strategy,
+    Ok(ContextCompileOutcomeForRun {
+        decision: ContextSelectionDecisionForRun {
+            compiler_id: CONTEXT_COMPILER_ID_V1.to_string(),
+            compiler_strategy: strategy.to_string(),
+            limits,
+            compaction_checkpoint,
+            resets,
+            reason,
+        },
+        compiled: CompiledContextForRun {
+            bundle_artifact_id: artifact_id,
+            items,
+            from_seq: input.from_seq,
+            from_message_id: input.from_message_id,
+        },
     })
 }
 

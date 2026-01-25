@@ -33,6 +33,24 @@ Frame types
   - `message_id`: string (uuid)
   - `actor_id`: string (optional; may be absent in older logs)
   - `origin`: string (optional; may be absent in older logs)
+- `continuity_context_selection_decided`
+  - Purpose: record context selection strategy decisions (strategy/budgets/reasons/inputs) as continuity truth so strategy evolution is auditable under cache rotation (ADR-0016).
+  - `run_session_id`: string (uuid)
+  - `message_id`: string (uuid) (the triggering `continuity_message_appended` id)
+  - `compiler_id`: string (example: `rip.context_compiler.v1`)
+  - `compiler_strategy`: string (example: `recent_messages_v1` | `summaries_recent_messages_v1`)
+  - `limits`: object (stable, versioned keys only)
+    - v0.1: `{ "recent_messages_v1_limit": 16 }`
+  - `compaction_checkpoint`: object | null (present when the selected strategy uses a summary checkpoint)
+    - `checkpoint_id`: string (uuid)
+    - `summary_kind`: string
+    - `summary_artifact_id`: string (artifact id; schema `rip.compaction_summary.v1`)
+    - `to_seq`: u64
+  - `resets`: array (optional; may be empty)
+    - Each entry: `{ "input": string, "action": string, "reason": string, "ref": object | null }` (stable values/refs only)
+  - `reason`: object | null (stable values only)
+  - `actor_id`: string
+  - `origin`: string
 - `continuity_context_compiled`
   - Purpose: record the compiled context bundle used to start a run (provider-agnostic; replayable; enables provider cursor rotation).
   - `run_session_id`: string (uuid)
@@ -189,6 +207,8 @@ Invariants
 - `continuity_tool_side_effects` must be emitted after the tool completes (`tool_ended`/`tool_failed`) and before `continuity_run_ended` for the same `run_session_id`.
 - `continuity_context_compiled` is appended to the continuity stream only when the run is linked to a continuity (`continuity_run` exists).
 - `continuity_context_compiled` must be emitted after `continuity_run_spawned` and before `continuity_run_ended` for the same `run_session_id`.
+- `continuity_context_selection_decided` is appended to the continuity stream only when the run is linked to a continuity (`continuity_run` exists).
+- `continuity_context_selection_decided` must be emitted after `continuity_run_spawned` and before `continuity_context_compiled` for the same `run_session_id`.
 - `continuity_provider_cursor_updated` is appended to the continuity stream only when the run is linked to a continuity (`continuity_run` exists) or when a surface explicitly rotates/resets provider cursor caches.
 - When `continuity_provider_cursor_updated.run_session_id` is set, it must be emitted before `continuity_run_ended` for the same `run_session_id`.
 - `continuity_compaction_checkpoint_created` is appended to the continuity stream and must reference a message boundary (`to_seq`/`to_message_id` identify a `continuity_message_appended` event).

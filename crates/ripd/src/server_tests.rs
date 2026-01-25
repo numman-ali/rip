@@ -3985,6 +3985,7 @@ data: [DONE]\n\n";
 
     let mut saw_message = false;
     let mut saw_run_spawned = false;
+    let mut saw_context_selection = false;
     let mut saw_context_compiled = false;
     let mut saw_run_ended = false;
 
@@ -4004,6 +4005,52 @@ data: [DONE]\n\n";
                         == Some(posted.message_id.as_str()) =>
                 {
                     saw_run_spawned = true;
+                }
+                Some("continuity_context_selection_decided")
+                    if value.get("run_session_id").and_then(|value| value.as_str())
+                        == Some(posted.session_id.as_str()) =>
+                {
+                    assert_eq!(
+                        value.get("message_id").and_then(|value| value.as_str()),
+                        Some(posted.message_id.as_str())
+                    );
+                    assert_eq!(
+                        value.get("compiler_id").and_then(|value| value.as_str()),
+                        Some("rip.context_compiler.v1")
+                    );
+                    assert_eq!(
+                        value
+                            .get("compiler_strategy")
+                            .and_then(|value| value.as_str()),
+                        Some("recent_messages_v1")
+                    );
+                    assert_eq!(
+                        value
+                            .get("limits")
+                            .and_then(|v| v.get("recent_messages_v1_limit"))
+                            .and_then(|v| v.as_u64()),
+                        Some(16)
+                    );
+                    assert!(value.get("compaction_checkpoint").is_none());
+                    assert!(
+                        value.get("resets").is_none() || value.get("resets").unwrap().is_array()
+                    );
+                    assert_eq!(
+                        value
+                            .get("reason")
+                            .and_then(|v| v.get("selected"))
+                            .and_then(|v| v.as_str()),
+                        Some("recent_messages_v1")
+                    );
+                    assert_eq!(
+                        value.get("actor_id").and_then(|value| value.as_str()),
+                        Some("alice")
+                    );
+                    assert_eq!(
+                        value.get("origin").and_then(|value| value.as_str()),
+                        Some("team")
+                    );
+                    saw_context_selection = true;
                 }
                 Some("continuity_context_compiled")
                     if value.get("run_session_id").and_then(|value| value.as_str())
@@ -4049,7 +4096,12 @@ data: [DONE]\n\n";
                 _ => {}
             }
 
-            if saw_message && saw_run_spawned && saw_context_compiled && saw_run_ended {
+            if saw_message
+                && saw_run_spawned
+                && saw_context_selection
+                && saw_context_compiled
+                && saw_run_ended
+            {
                 break;
             }
         }
@@ -4059,6 +4111,7 @@ data: [DONE]\n\n";
 
     assert!(saw_message);
     assert!(saw_run_spawned);
+    assert!(saw_context_selection);
     assert!(saw_context_compiled);
     assert!(saw_run_ended);
 
@@ -4067,6 +4120,40 @@ data: [DONE]\n\n";
     let first = &requests[0];
     assert!(first.get("previous_response_id").is_none());
     assert!(first.get("input").and_then(|v| v.as_array()).is_some());
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/threads/{thread_id}/context-selection-status"))
+                .header("content-type", "application/json")
+                .body(Body::from("{\"limit\":1}"))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
+    assert_eq!(
+        value.get("thread_id").and_then(|v| v.as_str()),
+        Some(thread_id.as_str())
+    );
+    let decisions = value
+        .get("decisions")
+        .and_then(|v| v.as_array())
+        .expect("decisions");
+    assert!(!decisions.is_empty());
+    assert_eq!(
+        decisions[0].get("run_session_id").and_then(|v| v.as_str()),
+        Some(posted.session_id.as_str())
+    );
 }
 
 #[tokio::test]

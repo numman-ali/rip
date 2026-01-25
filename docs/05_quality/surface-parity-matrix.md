@@ -18,6 +18,7 @@ Generated from docs/03_contracts/capability_registry.md.
 | thread.get | planned | supported | supported | supported | planned | planned |
 | thread.provider_cursor.status | planned | supported | supported | supported | supported | planned |
 | thread.provider_cursor.rotate | planned | supported | supported | supported | supported | planned |
+| thread.context_selection.status | planned | supported | supported | supported | supported | planned |
 | thread.branch | planned | supported | supported | supported | planned | planned |
 | thread.handoff | planned | supported | supported | supported | planned | planned |
 | thread.reference | planned | planned | planned | planned | planned | planned |

@@ -20,7 +20,8 @@ pub use continuities::{
     CompactionAutoScheduleV1Response, CompactionAutoV1Request, CompactionAutoV1Response,
     CompactionCheckpointCumulativeV1Request, CompactionCutPointV1, CompactionCutPointsV1Request,
     CompactionCutPointsV1Response, CompactionPlannedCutPointV1, CompactionStatusV1Request,
-    CompactionStatusV1Response, ContinuityMeta, ContinuityRunLink, ContinuityStore,
+    CompactionStatusV1Response, ContextSelectionStatusDecisionV1, ContextSelectionStatusV1Request,
+    ContextSelectionStatusV1Response, ContinuityMeta, ContinuityRunLink, ContinuityStore,
     ProviderCursorRotateV1Request, ProviderCursorRotateV1Response, ProviderCursorStatusCursorV1,
     ProviderCursorStatusV1Request, ProviderCursorStatusV1Response, ToolSideEffects,
 };

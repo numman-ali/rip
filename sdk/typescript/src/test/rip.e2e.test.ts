@@ -92,6 +92,10 @@ test("Rip SDK exposes continuity-first thread.* via `rip threads`", async () => 
     assert.ok(posted.message_id.length > 0);
     assert.ok(posted.session_id.length > 0);
 
+    const selection = await rip.threadContextSelectionStatus(ensured.thread_id, { limit: 1 }, opts);
+    assert.equal(selection.thread_id, ensured.thread_id);
+    assert.ok(Array.isArray(selection.decisions));
+
     const branched = await rip.threadBranch(ensured.thread_id, { title: "child", from_message_id: posted.message_id }, opts);
     assert.equal(branched.parent_thread_id, ensured.thread_id);
     assert.ok(branched.thread_id.length > 0);

@@ -8,6 +8,9 @@ pub fn event_type(event: &Event) -> &'static str {
         EventKind::ContinuityCreated { .. } => "continuity_created",
         EventKind::ContinuityMessageAppended { .. } => "continuity_message_appended",
         EventKind::ContinuityRunSpawned { .. } => "continuity_run_spawned",
+        EventKind::ContinuityContextSelectionDecided { .. } => {
+            "continuity_context_selection_decided"
+        }
         EventKind::ContinuityContextCompiled { .. } => "continuity_context_compiled",
         EventKind::ContinuityProviderCursorUpdated { .. } => "continuity_provider_cursor_updated",
         EventKind::ContinuityCompactionCheckpointCreated { .. } => {
@@ -59,6 +62,25 @@ pub fn event_summary(event: &Event) -> String {
         }
         EventKind::ContinuityRunSpawned { run_session_id, .. } => {
             format!("run={}", truncate(run_session_id, 16))
+        }
+        EventKind::ContinuityContextSelectionDecided {
+            run_session_id,
+            compiler_strategy,
+            compaction_checkpoint,
+            resets,
+            ..
+        } => {
+            let ckpt = compaction_checkpoint
+                .as_ref()
+                .map(|c| c.to_seq.to_string())
+                .unwrap_or_else(|| "none".to_string());
+            format!(
+                "run={} ({}) ckpt_to_seq={} resets={}",
+                truncate(run_session_id, 16),
+                truncate(compiler_strategy, 32),
+                ckpt,
+                resets.len()
+            )
         }
         EventKind::ContinuityContextCompiled {
             run_session_id,
@@ -294,6 +316,24 @@ mod tests {
                     origin: None,
                 },
                 "continuity_run_spawned",
+            ),
+            (
+                EventKind::ContinuityContextSelectionDecided {
+                    run_session_id: "s1".to_string(),
+                    message_id: "m1".to_string(),
+                    compiler_id: "rip.context_compiler.v1".to_string(),
+                    compiler_strategy: "recent_messages_v1".to_string(),
+                    limits: serde_json::json!({ "recent_messages_v1_limit": 16 }),
+                    compaction_checkpoint: None,
+                    resets: Vec::new(),
+                    reason: Some(serde_json::json!({
+                        "selected": "recent_messages_v1",
+                        "cause": "test",
+                    })),
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                },
+                "continuity_context_selection_decided",
             ),
             (
                 EventKind::ContinuityContextCompiled {

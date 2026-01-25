@@ -16,6 +16,7 @@ import {
   buildRipThreadHandoffArgs,
   buildRipThreadListArgs,
   buildRipThreadPostMessageArgs,
+  buildRipThreadContextSelectionStatusArgs,
   buildRipThreadProviderCursorRotateArgs,
   buildRipThreadProviderCursorStatusArgs,
 } from "./util.js";
@@ -245,6 +246,45 @@ export type RipThreadProviderCursorRotateResponse = {
   endpoint: string | null;
   model: string | null;
   cursor_event_id: string | null;
+};
+
+export type RipThreadContextSelectionStatusRequest = {
+  limit?: number;
+};
+
+export type RipThreadContextSelectionStatusCheckpoint = {
+  checkpoint_id: string;
+  summary_kind: string;
+  summary_artifact_id: string;
+  to_seq: number;
+};
+
+export type RipThreadContextSelectionStatusReset = {
+  input: string;
+  action: string;
+  reason: string;
+  ref?: unknown | null;
+};
+
+export type RipThreadContextSelectionStatusDecision = {
+  decision_event_id: string;
+  run_session_id: string;
+  message_id: string;
+  compiler_id: string;
+  compiler_strategy: string;
+  limits: unknown;
+  compaction_checkpoint: RipThreadContextSelectionStatusCheckpoint | null;
+  resets: RipThreadContextSelectionStatusReset[];
+  reason: unknown | null;
+  actor_id: string;
+  origin: string;
+  seq: number;
+  timestamp_ms: number;
+};
+
+export type RipThreadContextSelectionStatusResponse = {
+  thread_id: string;
+  decisions: RipThreadContextSelectionStatusDecision[];
 };
 
 export type RipThreadCompactionAutoRequest = {
@@ -648,6 +688,21 @@ export class Rip {
       options,
     );
     return out as RipThreadProviderCursorRotateResponse;
+  }
+
+  async threadContextSelectionStatus(
+    threadId: string,
+    request: RipThreadContextSelectionStatusRequest = {},
+    options: RipThreadOptions = {},
+  ): Promise<RipThreadContextSelectionStatusResponse> {
+    const out = await this.execJson(
+      buildRipThreadContextSelectionStatusArgs(threadId, {
+        server: options.server,
+        limit: request.limit,
+      }),
+      options,
+    );
+    return out as RipThreadContextSelectionStatusResponse;
   }
 
   async threadCompactionAuto(
