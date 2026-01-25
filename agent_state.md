@@ -11,6 +11,7 @@ Current focus
 - Now: Continuities (threads) are the primary user-facing entity ("one chat forever") and must be implemented end-to-end across surfaces.
 - Phase 1 baseline remains: shared session runner across server + CLI (frames are canonical).
 - Default local execution: `rip` launches fullscreen TUI (in-process); `rip run` stays headless; `--server <url>` enables remote runs; `rip serve` stays the remote control plane.
+- Decision locked (ADR-0019): one store requires a single authority for truth writes; indexes are rebuildable caches; hybrid retrieval is a compiler stage and must be truth-logged by reference.
 - TUI UX is explicitly “conversational-first + drill-down”: ambient background signals (tools/tasks/agents), responsive layouts (phone/SSH/web terminals), and an experience review gate are tracked in `docs/02_architecture/tui/06_experience_review.md`.
 - OpenResponses provider compatibility: stateless history mode + tool schema strict=false; fix provider_errors without dropping raw fidelity.
 - Output view: human-friendly aggregation (no tool arg deltas), aligned with Codex exec expectations.
@@ -64,7 +65,7 @@ Open risks / notes
 
 Active priorities
 - Keep roadmap Now/Next aligned with the implementation work.
-- Next slice (code): per-stream segmentation + hierarchical summaries.
+- Next slice (code): make local multi-terminal safe by default (auto-start/auto-attach to a local authority for the store; enforce a store lock; eliminate multi-process writes to the same store) (ADR-0019).
 - SDK (TS): opt-in direct HTTP/SSE transport shipped (ADR-0017); bundling binaries remains deferred/roadmapped.
 - Keep OpenResponses boundary full-fidelity while wiring new surfaces/adapters.
 - Keep OpenResponses follow-ups spec-canonical; any compatibility user message is opt-in.

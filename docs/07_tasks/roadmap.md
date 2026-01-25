@@ -19,6 +19,7 @@ Now
   - `docs/02_architecture/continuity_os.md`
   - `docs/06_decisions/ADR-0008-continuity-os.md`
   - `docs/06_decisions/ADR-0009-thread-branch-handoff.md`
+  - `docs/06_decisions/ADR-0019-continuity-authority-and-index-stores.md`
   - `docs/06_decisions/ADR-0015-provider-cursor-truth-logging.md`
   - `docs/03_contracts/capability_registry.md` (`thread.*`, `context.compile`, `compaction.*`)
   - `docs/03_contracts/event_frames.md` (Phase 2: stream-scoped v2 envelope)
@@ -26,6 +27,7 @@ Now
 - Decisions (accepted):
   - Provider conversation state is a cache; continuity log is truth (cursor rotation is allowed/expected).
   - Keep Phase 1 invariant: `session == run/turn` (single-run sessions). "Continue later" targets a continuity.
+  - Decision locked (ADR-0019): one store requires a single authority for truth writes; indexes are rebuildable caches; hybrid retrieval is compiler-stage and must be truth-logged by reference.
 - Status (2026-01-25):
   - Frames are now stream-aware on the wire (`stream_kind`, `stream_id`); replay validation is per-stream.
   - Continuity store exists (`ensure_default`, `append_message`, `append_run_spawned`, `append_run_ended`, `branch`, `handoff`) and local `rip run` posts to the default continuity before spawning a run.
@@ -48,6 +50,7 @@ Now
   - Implemented: provider cursor cache truth logging (ADR-0015): `continuity_provider_cursor_updated` + `thread.provider_cursor.{status,rotate}` across cli_h/tui/server/sdk; OpenResponses runs record `previous_response_id` on completion as a rebuildable cache.
   - Implemented: context selection strategy evolution truth logging v0.1 (ADR-0016): `continuity_context_selection_decided` + `thread.context_selection.status` across cli_h/tui/server/sdk; records strategy/budgets/inputs/reasons between `continuity_run_spawned` and `continuity_context_compiled`.
 - Ready:
+  - Authority: make local multi-terminal safe by default (auto-start/auto-attach to a local authority for the store; enforce a store lock; eliminate “multi-process writes to the same store” footgun) (ADR-0019).
   - Document the remaining envelope migration (eventually drop non-session `session_id`).
   - Perf: token-aware context packing + explicit budget policies (Phase 2; must be logged).
 - Done:
@@ -110,11 +113,21 @@ Later
     - Package layout + selection logic is deterministic and test-covered.
     - No silent downloads; version pinning is explicit.
 - Continuities: multi-plane continuity authority + sync/replication [needs work]
-  - Context: Phase 1 supports a single authority per continuity (local runtime or a remote control plane). Multi-device “same continuity everywhere” works by having all clients target the same control plane; independent logs are not merged today.
+  - Context: Phase 1 posture is single-writer authority for truth writes (ADR-0019). Multi-device “same continuity everywhere” works by having all clients target the same authority; independent logs are not merged today.
   - Decision: whether to support multi-writer/offline sync vs enforce single-writer authority with optional read-only replicas.
   - Done:
     - Capability contract for replication/sync is defined (authority, provenance, conflict semantics) without breaking determinism/replay.
     - Surfaces can explicitly attach to an authority and/or replica and explain the posture to users.
+- Context: hybrid retrieval + memory indexes (text + vector + rerank) [needs work]
+  - Context: “one chat forever” needs both compaction (narrative) and retrieval (specific recall) at 1M+ events; retrieval must be truth-logged by reference (ADR-0019).
+  - Refs:
+    - `docs/06_decisions/ADR-0019-continuity-authority-and-index-stores.md`
+    - `docs/03_contracts/modules/phase-2/05_context_compiler.md`
+    - `docs/03_contracts/event_frames.md` (planned retrieval decision frame)
+  - Done:
+    - Contracts for retrieval indexes/results artifacts (rebuildable caches; optional DB-backed) + truth frames for retrieval decisions used by a run.
+    - Context compiler includes retrieved refs deterministically (bounded budgets; hybrid lexical+semantic+rerank pipeline).
+    - Bench + replay fixtures cover: index build, retrieval decision logging, and compile determinism under cache deletion/rebuild.
 - OpenResponses: parallel tool calls + background responses [needs work]
   - Refs: `docs/06_decisions/ADR-0005-openresponses-tool-loop.md`, `crates/ripd/src/provider_openresponses.rs`
   - Decision packet:

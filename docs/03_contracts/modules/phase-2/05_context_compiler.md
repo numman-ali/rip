@@ -66,6 +66,22 @@ Architecture (target posture)
 - Provider adapters accept a bundle and produce provider requests.
 - Provider cursors (Open Responses `previous_response_id`, vendor thread ids) may be used as an optimization but must be rotatable without changing compilation correctness.
 
+Retrieval & indexing (planned posture)
+- Hybrid retrieval is a compiler stage over truth + derived caches (ADR-0019):
+  - lexical/text search (fast filter),
+  - semantic/vector recall (embeddings),
+  - reranking (optional model-based scoring) over a bounded candidate set.
+- Indexes are **rebuildable caches**:
+  - built by background jobs as artifacts (and optionally persisted via DBs as an implementation detail),
+  - safe to delete and rebuild from continuity truth + referenced artifacts.
+- Determinism rule: if retrieval affects a run, it must be replay-addressable by reference:
+  - ranked results (refs + scores + metadata) are written as an artifact,
+  - a truth frame records the decision + artifact ids used,
+  - the compiled context bundle includes refs (not silent injected text).
+- Cross-continuity/global memory (“Infinity”) is expressed as explicit thread refs:
+  - the compiler may include referenced continuities (planned `context.refs.thread`) and their derived artifacts by id,
+  - global/“home” continuity remains UI-optional but truth/audit complete.
+
 Determinism & replay rules
 - All compilation decisions that affect a run are logged:
   - selection decision (strategy/budgets/inputs/reasons) via `continuity_context_selection_decided`,

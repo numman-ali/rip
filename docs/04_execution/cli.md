@@ -67,6 +67,9 @@ Notes
 - Default: interactive `rip` and headless `rip run` execute in-process (no HTTP required).
 - Remote: `rip run ... --server <url>` posts to the default thread (continuity) and streams the resulting session frames over HTTP/SSE.
 - `rip serve` (or `ripd`) starts the agent server for remote clients (SDKs can target it via `--server <url>`).
+- Multi-terminal posture: one store needs a single authority for truth writes (ADR-0019).
+  - Today: use `rip serve` and point all terminals at `--server <url>` for the same store.
+  - Planned: auto-start/auto-attach to a local authority so “one store just works” without manual `--server`.
 - Default output: `rip run ...` uses `--view output` (human-readable). Use `--view raw` for newline-delimited JSON frames.
 - Phase 1 is single-run sessions (no multi-turn/thread resume yet); OpenResponses tool execution is sequential and capped (`max_tool_calls=32`, `parallel_tool_calls=false`) per ADR-0005.
 - Workspace-mutating operations are serialized across sessions and background tasks; read-only tools may run concurrently.

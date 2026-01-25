@@ -38,6 +38,7 @@ Notes
 - Today: `rip tasks --server <url> ...` is the CLI adapter over the task API.
 - SSE stream emits JSON event frames (`docs/03_contracts/event_frames.md`).
 - OpenAPI spec is exposed at `/openapi.json` (canonical) and may be mirrored in `schemas/`.
+- Authority posture (ADR-0019): the server/control plane is the single sequencer for truth writes for a store; many clients may attach concurrently.
 - Workspace-mutating operations are serialized across sessions and background tasks; read-only tools may run concurrently.
 - JSON input envelopes can trigger tool execution and checkpoint actions (used for deterministic tests):
   - Tool: `{"tool":"write","args":{"path":"a.txt","content":"hi"},"timeout_ms":1000}`

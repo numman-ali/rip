@@ -24,3 +24,8 @@ Harness (Phase 1)
 - Budgets: `docs/05_quality/benchmarks_budgets.json`
 - Runner: `scripts/bench` (release mode; fails if budgets are exceeded)
 - Fixture root: `fixtures/`
+
+Phase 2 benchmarks (planned)
+- `context.compile` latency vs selected window size (O(k) in selected items; never O(n) over full continuity for normal runs).
+- Hybrid retrieval overhead (lexical filter + vector recall + rerank) at bounded K (ADR-0019).
+- Index build throughput for rebuildable caches (per-stream segmentation + incremental updates).

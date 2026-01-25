@@ -243,6 +243,9 @@ Schema (planned tightening)
 - Continuities (planned):
   - `continuity_thread_referenced`: `{from_thread_id, to_thread_id, selector, extracted_artifact_id, actor_id, origin}`
 
+- Context retrieval (planned; hybrid search + rerank; ADR-0019):
+  - `continuity_context_retrieval_decided`: `{run_session_id, message_id, query, strategy_id, index_artifact_ids, results_artifact_id, actor_id, origin}`
+
 - Background tool tasks:
   - `tool_task_spawned`: `{task_id, tool_name, args, cwd?, title?, execution_mode: pipes|pty, origin_session_id?, artifacts?}`
   - `tool_task_status`: `{task_id, status, exit_code?, started_at_ms?, ended_at_ms?, artifacts?, error?}`

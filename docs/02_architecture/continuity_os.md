@@ -19,6 +19,13 @@ Entity model (conceptual)
 - **Artifact** (`artifact_id`): stored blobs (tool outputs, summaries, indexes); range-readable; referenced by frames.
 - **Provider cursor**: ephemeral per-provider handle (e.g., `previous_response_id` chain) used only to reduce prompt size / latency.
 
+Authority (one store, many clients)
+- A continuity stream requires a **total order** (contiguous `seq` per stream) to remain replayable.
+- Therefore, a single store must have a single **authority** (sequencer/writer) for truth writes:
+  - many terminals/devices are *clients* of the same authority,
+  - independent local processes writing the same store directly is unsupported (can corrupt ordering/truth).
+- Local UX goal: “one store just works” by auto-start/auto-attach to a local authority (ADR-0019).
+
 How "one chat forever" works
 - All user/actor inputs append to the continuity log.
 - Foreground responsiveness comes from spawning **runs** that read from the continuity log and emit frames.
@@ -33,6 +40,11 @@ Parallelism (foreground vs "subconscious" work)
   - Foreground run: immediate response + tool loop.
   - Background workers: summarization, indexing, pruning, cost accounting, audits, etc.
 - Side-effecting actions (tool calls that modify the workspace) must be **scheduled/serialized** and logged to preserve determinism.
+
+Cross-continuity memory ("Infinity")
+- Cross-project/global memory is represented as continuity truth + artifacts, not hidden mutable state:
+  - Background jobs write immutable artifacts (summaries/indexes/notes) and append events referencing them (ADR-0012).
+  - Workspace continuities can explicitly reference context from other continuities (planned refs) so inclusion remains replayable (ADR-0019).
 
 Multi-actor + shared continuities (team model)
 - A continuity may have multiple actors (human users, automation, leads, bots).

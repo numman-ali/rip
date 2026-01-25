@@ -12,6 +12,9 @@ Definitions
 - **Control plane**: the session API surface (HTTP/SSE today) used by clients (TUI/SDK/remote CLI) to drive a runtime and observe frames.
   - Local control plane: `rip serve` / embedded server for remote clients.
   - Remote control plane: a network-accessible endpoint that fronts a remote runtime.
+- **Store**: the persistence boundary for continuity truth + artifacts (today: `RIP_DATA_DIR`).
+- **Authority**: the single sequencer/writer for truth writes for a store (ADR-0019).
+  - Many clients may attach to an authority (many terminals/devices), but truth writes must be sequenced through one authority to preserve replay determinism.
 - **Provider boundary**: Open Responses ingress/egress only; internal frames remain canonical.
 
 Entity model (core data modeling)
@@ -46,3 +49,4 @@ Rules to avoid confusion
 
 Implementation note (Phase 1)
 - Today, the `ripd` crate contains both runtime code and the HTTP/SSE control plane implementation. Treat them as **conceptually separate modules** even if they ship together in Phase 1.
+- Local multi-terminal posture: “one store just works” by auto-start/auto-attach to a local authority for that store (future slice; ADR-0019).
