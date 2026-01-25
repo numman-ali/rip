@@ -19,6 +19,11 @@ Operator intent (non‑negotiables)
 - Open Responses is used only at the provider boundary.
 - Programmatic SDK (TypeScript first) is a required surface, not an optional add-on.
 
+Canonical posture (co-directive)
+- Assume **full usage** at all times; do not hide behind “not in production” language. Only the operator can declare “production”, but quality/determinism/safety must always be production-grade.
+- Do not describe shipped/supported behavior as “legacy”. If we keep older fields/formats for compatibility, call them **compat** and treat them as canonical until explicitly removed from contracts + all surfaces.
+- Everything may change or be deleted except what is explicitly canonical in `docs/` contracts/decisions (version/ADR required for breaking changes).
+
 Continuity OS posture (non-negotiable)
 - RIP is a **continuity OS**, not a chat app: default UX is “one chat forever”.
 - The continuity event log is the source of truth (append-only + replayable). Provider conversation state (`previous_response_id`, vendor thread ids) is a cache and may be rotated/rebuilt at any time.

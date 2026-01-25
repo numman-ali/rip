@@ -6,7 +6,7 @@ Summary
 
 Schema (Phase 1 — stream-aware envelope)
 - `id`: string (uuid)
-- `session_id`: string (uuid) (legacy alias; equals `stream_id`)
+- `session_id`: string (uuid) (compat alias; equals `stream_id`)
 - `stream_kind`: `"session"` | `"task"` | `"continuity"` | `"artifact"` (extensible)
 - `stream_id`: string (e.g. session id, task id, continuity id)
 - `seq`: u64 (monotonic per `{stream_kind, stream_id}`)
