@@ -1,4 +1,5 @@
 mod checkpoints;
+mod compaction_auto_summary;
 mod compaction_summary;
 mod context_bundle;
 mod context_compiler;
@@ -18,8 +19,9 @@ pub use continuities::{
     CompactionAutoResultCheckpointV1, CompactionAutoScheduleV1Request,
     CompactionAutoScheduleV1Response, CompactionAutoV1Request, CompactionAutoV1Response,
     CompactionCheckpointCumulativeV1Request, CompactionCutPointV1, CompactionCutPointsV1Request,
-    CompactionCutPointsV1Response, CompactionPlannedCutPointV1, ContinuityMeta, ContinuityRunLink,
-    ContinuityStore, ToolSideEffects,
+    CompactionCutPointsV1Response, CompactionPlannedCutPointV1, CompactionStatusV1Request,
+    CompactionStatusV1Response, ContinuityMeta, ContinuityRunLink, ContinuityStore,
+    ToolSideEffects,
 };
 pub use runner::{SessionEngine, SessionHandle};
 

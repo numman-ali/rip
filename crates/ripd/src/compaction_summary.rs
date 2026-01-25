@@ -16,6 +16,7 @@ pub(crate) struct NewCumulativeCompactionSummaryV1 {
     pub(crate) origin: String,
     pub(crate) produced_by: Option<(String, String)>,
     pub(crate) base_summary_artifact_id: Option<String>,
+    pub(crate) basis_note: Option<String>,
     pub(crate) summary_markdown: String,
 }
 
@@ -88,7 +89,7 @@ impl CompactionSummaryV1 {
             },
             basis: Some(CompactionSummaryBasisV1 {
                 base_summary_artifact_id: req.base_summary_artifact_id,
-                note: None,
+                note: req.basis_note,
             })
             .filter(|basis| basis.base_summary_artifact_id.is_some() || basis.note.is_some()),
             summary_markdown: req.summary_markdown,
@@ -183,6 +184,7 @@ mod tests {
                 origin: "cli".to_string(),
                 produced_by: Some(("manual".to_string(), "cli".to_string())),
                 base_summary_artifact_id: None,
+                basis_note: None,
                 summary_markdown: "hello".to_string(),
             });
 

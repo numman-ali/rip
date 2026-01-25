@@ -170,3 +170,43 @@ test("Rip SDK exposes compaction checkpoints via `rip threads`", async () => {
     await rm(workspaceDir, { recursive: true, force: true });
   }
 });
+
+test("Rip SDK exposes compaction status via `rip threads`", async () => {
+  const repoRoot = repoRootFromSdkCwd();
+  const ripPath = ripExecutablePath(repoRoot);
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-compaction-status-"));
+  const workspaceDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-workspace-"));
+
+  const opts = {
+    cwd: repoRoot,
+    env: {
+      RIP_DATA_DIR: dataDir,
+      RIP_WORKSPACE_ROOT: workspaceDir,
+    },
+    unsetEnv: [
+      "RIP_OPENRESPONSES_ENDPOINT",
+      "RIP_OPENRESPONSES_API_KEY",
+      "RIP_OPENRESPONSES_MODEL",
+      "RIP_OPENRESPONSES_TOOL_CHOICE",
+      "RIP_OPENRESPONSES_STATELESS_HISTORY",
+      "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
+      "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
+    ],
+  } as const;
+
+  try {
+    const rip = new Rip({ executablePath: ripPath });
+    const ensured = await rip.threadEnsure(opts);
+    await rip.threadPostMessage(ensured.thread_id, { content: "hello" }, opts);
+
+    const status = await rip.threadCompactionStatus(ensured.thread_id, { stride_messages: 1 }, opts);
+    assert.equal(status.thread_id, ensured.thread_id);
+    assert.equal(status.message_count, 1);
+    assert.equal(status.latest_checkpoint, null);
+    assert.ok(status.next_cut_point);
+    assert.equal(status.next_cut_point.to_message_id.length > 0, true);
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+    await rm(workspaceDir, { recursive: true, force: true });
+  }
+});

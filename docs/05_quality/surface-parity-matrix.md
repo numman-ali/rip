@@ -112,6 +112,7 @@ Generated from docs/03_contracts/capability_registry.md.
 | compaction.split_turn | planned | planned | planned | planned | planned | planned |
 | compaction.truncation_policy | planned | planned | planned | planned | planned | planned |
 | compaction.cut_points | planned | supported | supported | supported | supported | planned |
+| compaction.status | planned | supported | supported | supported | supported | planned |
 | compaction.branch_summary | planned | planned | planned | planned | planned | planned |
 | compaction.file_ops | planned | planned | planned | planned | planned | planned |
 | compaction.hooks | planned | planned | planned | planned | planned | planned |

@@ -5,6 +5,7 @@ Summary
 - They are referenced from continuity truth via `continuity_compaction_checkpoint_created` frames and consumed by `context.compile` strategies.
 - Providers remain replaceable: summaries are internal artifacts; provider cursors are caches only (ADR-0010).
 - This artifact schema is internal to RIP and is not the Open Responses `type="compaction"` item (which uses provider-specific `encrypted_content`).
+- Auto summary content contract: `docs/06_decisions/ADR-0014-auto-compaction-summaries-v0.2.md`.
 
 Location / storage
 - Summary artifacts are stored in the workspace artifact store: `.rip/artifacts/blobs/<artifact_id>`.

@@ -16,6 +16,11 @@ use crate::context_compiler::RECENT_MESSAGES_V1_LIMIT;
 use crate::continuity_stream_cache::ContinuityStreamCache;
 use crate::handoff_context_bundle::HandoffContextBundleV1;
 use crate::{
+    compaction_auto_summary::{
+        render_auto_compaction_summary_markdown_v0_2,
+        summary_markdown_is_legacy_metadata_placeholder, AutoSummaryAccumulator,
+        RenderAutoSummaryMarkdownParams,
+    },
     compaction_summary::COMPACTION_SUMMARY_SCHEMA_V1,
     compaction_summary::{
         read_compaction_summary_v1, write_compaction_summary_v1, CompactionSummaryV1,
@@ -171,6 +176,66 @@ pub struct CompactionAutoScheduleV1Response {
     pub job_kind: Option<String>,
     pub result: Vec<CompactionAutoResultCheckpointV1>,
     pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CompactionStatusV1Request {
+    pub stride_messages: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CompactionStatusV1Response {
+    pub thread_id: String,
+    pub stride_messages: u64,
+    pub message_count: u64,
+    pub latest_checkpoint: Option<CompactionStatusCheckpointV1>,
+    pub next_cut_point: Option<CompactionPlannedCutPointV1>,
+    pub inflight_job_id: Option<String>,
+    pub last_schedule_decision: Option<CompactionStatusScheduleDecisionV1>,
+    pub last_job_outcome: Option<CompactionStatusJobOutcomeV1>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CompactionStatusCheckpointV1 {
+    pub checkpoint_id: String,
+    pub cut_rule_id: String,
+    pub summary_kind: String,
+    pub summary_artifact_id: String,
+    pub to_seq: u64,
+    pub to_message_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CompactionStatusScheduleDecisionV1 {
+    pub decision_id: String,
+    pub policy_id: String,
+    pub decision: String,
+    pub execute: bool,
+    pub stride_messages: u64,
+    pub max_new_checkpoints: u32,
+    pub block_on_inflight: bool,
+    pub message_count: u64,
+    pub cut_rule_id: String,
+    pub planned: Vec<CompactionPlannedCutPointV1>,
+    pub job_id: Option<String>,
+    pub job_kind: Option<String>,
+    pub actor_id: String,
+    pub origin: String,
+    pub seq: u64,
+    pub timestamp_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CompactionStatusJobOutcomeV1 {
+    pub job_id: String,
+    pub job_kind: String,
+    pub status: String,
+    pub error: Option<String>,
+    pub created: Vec<CompactionAutoResultCheckpointV1>,
+    pub actor_id: String,
+    pub origin: String,
+    pub seq: u64,
+    pub timestamp_ms: u64,
 }
 
 struct CompactionCheckpointCreatedPayload {
@@ -869,6 +934,7 @@ impl ContinuityStore {
                     origin: origin.clone(),
                     produced_by: Some(("manual".to_string(), "rip-cli".to_string())),
                     base_summary_artifact_id,
+                    basis_note: None,
                     summary_markdown: markdown,
                 },
             );
@@ -1127,6 +1193,314 @@ impl ContinuityStore {
             message_count,
             cut_rule_id,
             cut_points,
+        })
+    }
+
+    pub fn compaction_status_v1(
+        &self,
+        thread_id: &str,
+        req: CompactionStatusV1Request,
+    ) -> Result<CompactionStatusV1Response, String> {
+        let stride = req.stride_messages.unwrap_or(10_000);
+        if stride == 0 {
+            return Err("invalid_stride".to_string());
+        }
+
+        let cut_points = self.compaction_cut_points_v1(
+            thread_id,
+            CompactionCutPointsV1Request {
+                stride_messages: Some(stride),
+                limit: Some(32),
+            },
+        )?;
+
+        let next_cut_point = cut_points
+            .cut_points
+            .iter()
+            .find(|cp| !cp.already_checkpointed)
+            .map(|cp| CompactionPlannedCutPointV1 {
+                target_message_ordinal: cp.target_message_ordinal,
+                to_seq: cp.to_seq,
+                to_message_id: cp.to_message_id.clone(),
+            });
+
+        let inflight_job_id = self.find_inflight_compaction_job_id_best_effort_v1(thread_id);
+
+        let mut latest_checkpoint: Option<CompactionStatusCheckpointV1> = None;
+        let mut last_schedule_decision: Option<CompactionStatusScheduleDecisionV1> = None;
+        let mut last_job_outcome: Option<CompactionStatusJobOutcomeV1> = None;
+
+        if let Ok(Some(event)) = self
+            .stream_cache
+            .latest_compaction_checkpoint_before_or_at_seq_v1(thread_id, u64::MAX)
+        {
+            if let EventKind::ContinuityCompactionCheckpointCreated {
+                checkpoint_id,
+                cut_rule_id,
+                summary_kind,
+                summary_artifact_id,
+                to_seq,
+                to_message_id,
+                ..
+            } = &event.kind
+            {
+                latest_checkpoint = Some(CompactionStatusCheckpointV1 {
+                    checkpoint_id: checkpoint_id.clone(),
+                    cut_rule_id: cut_rule_id.clone(),
+                    summary_kind: summary_kind.clone(),
+                    summary_artifact_id: summary_artifact_id.clone(),
+                    to_seq: *to_seq,
+                    to_message_id: to_message_id.clone(),
+                });
+            }
+        }
+
+        const INITIAL_TAIL_BYTES: usize = 256 * 1024;
+        const MAX_TAIL_BYTES: usize = 8 * 1024 * 1024;
+        const MAX_TAIL_EVENTS: usize = 10_000;
+
+        let mut tail_bytes = INITIAL_TAIL_BYTES;
+        while tail_bytes <= MAX_TAIL_BYTES
+            && (last_schedule_decision.is_none() || last_job_outcome.is_none())
+        {
+            match self
+                .stream_cache
+                .scan_tail(thread_id, MAX_TAIL_EVENTS, tail_bytes)
+            {
+                Ok(Some(tail)) => {
+                    for event in tail.events.iter().rev() {
+                        if last_schedule_decision.is_none() {
+                            if let EventKind::ContinuityCompactionAutoScheduleDecided {
+                                decision_id,
+                                policy_id,
+                                decision,
+                                execute,
+                                stride_messages,
+                                max_new_checkpoints,
+                                block_on_inflight,
+                                message_count,
+                                cut_rule_id,
+                                planned,
+                                job_id,
+                                job_kind,
+                                actor_id,
+                                origin,
+                                ..
+                            } = &event.kind
+                            {
+                                let planned_v1 = planned
+                                    .iter()
+                                    .map(|p| CompactionPlannedCutPointV1 {
+                                        target_message_ordinal: p.target_message_ordinal,
+                                        to_seq: p.to_seq,
+                                        to_message_id: p.to_message_id.clone(),
+                                    })
+                                    .collect();
+                                last_schedule_decision = Some(CompactionStatusScheduleDecisionV1 {
+                                    decision_id: decision_id.clone(),
+                                    policy_id: policy_id.clone(),
+                                    decision: decision.clone(),
+                                    execute: *execute,
+                                    stride_messages: *stride_messages,
+                                    max_new_checkpoints: *max_new_checkpoints,
+                                    block_on_inflight: *block_on_inflight,
+                                    message_count: *message_count,
+                                    cut_rule_id: cut_rule_id.clone(),
+                                    planned: planned_v1,
+                                    job_id: job_id.clone(),
+                                    job_kind: job_kind.clone(),
+                                    actor_id: actor_id.clone(),
+                                    origin: origin.clone(),
+                                    seq: event.seq,
+                                    timestamp_ms: event.timestamp_ms,
+                                });
+                            }
+                        }
+
+                        if last_job_outcome.is_none() {
+                            if let EventKind::ContinuityJobEnded {
+                                job_id,
+                                job_kind,
+                                status,
+                                result,
+                                error,
+                                actor_id,
+                                origin,
+                            } = &event.kind
+                            {
+                                if job_kind == COMPACTION_JOB_KIND_SUMMARIZER_V1 {
+                                    let created = parse_compaction_job_created_checkpoints(result);
+                                    last_job_outcome = Some(CompactionStatusJobOutcomeV1 {
+                                        job_id: job_id.clone(),
+                                        job_kind: job_kind.clone(),
+                                        status: status.clone(),
+                                        error: error.clone(),
+                                        created,
+                                        actor_id: actor_id.clone(),
+                                        origin: origin.clone(),
+                                        seq: event.seq,
+                                        timestamp_ms: event.timestamp_ms,
+                                    });
+                                }
+                            }
+                        }
+
+                        if last_schedule_decision.is_some() && last_job_outcome.is_some() {
+                            break;
+                        }
+                    }
+
+                    if tail.complete {
+                        break;
+                    }
+                }
+                Ok(None) => break,
+                Err(_) => break,
+            }
+
+            tail_bytes = (tail_bytes * 2).min(MAX_TAIL_BYTES);
+        }
+
+        let need_replay = latest_checkpoint.is_none()
+            || last_schedule_decision.is_none()
+            || last_job_outcome.is_none();
+
+        if need_replay {
+            let events = self
+                .replay_events(thread_id)
+                .map_err(|err| format!("continuity replay failed: {err}"))?;
+            if events.is_empty() {
+                return Err("thread_not_found".to_string());
+            }
+
+            if latest_checkpoint.is_none() {
+                let mut best: Option<CompactionStatusCheckpointV1> = None;
+                let mut best_to_seq: u64 = 0;
+                let mut best_event_seq: u64 = 0;
+                for event in &events {
+                    let EventKind::ContinuityCompactionCheckpointCreated {
+                        checkpoint_id,
+                        cut_rule_id,
+                        summary_kind,
+                        summary_artifact_id,
+                        to_seq,
+                        to_message_id,
+                        ..
+                    } = &event.kind
+                    else {
+                        continue;
+                    };
+
+                    if *to_seq > best_to_seq
+                        || (*to_seq == best_to_seq && event.seq > best_event_seq)
+                    {
+                        best_to_seq = *to_seq;
+                        best_event_seq = event.seq;
+                        best = Some(CompactionStatusCheckpointV1 {
+                            checkpoint_id: checkpoint_id.clone(),
+                            cut_rule_id: cut_rule_id.clone(),
+                            summary_kind: summary_kind.clone(),
+                            summary_artifact_id: summary_artifact_id.clone(),
+                            to_seq: *to_seq,
+                            to_message_id: to_message_id.clone(),
+                        });
+                    }
+                }
+                latest_checkpoint = best;
+            }
+
+            for event in events.iter().rev() {
+                if last_schedule_decision.is_none() {
+                    if let EventKind::ContinuityCompactionAutoScheduleDecided {
+                        decision_id,
+                        policy_id,
+                        decision,
+                        execute,
+                        stride_messages,
+                        max_new_checkpoints,
+                        block_on_inflight,
+                        message_count,
+                        cut_rule_id,
+                        planned,
+                        job_id,
+                        job_kind,
+                        actor_id,
+                        origin,
+                        ..
+                    } = &event.kind
+                    {
+                        let planned_v1 = planned
+                            .iter()
+                            .map(|p| CompactionPlannedCutPointV1 {
+                                target_message_ordinal: p.target_message_ordinal,
+                                to_seq: p.to_seq,
+                                to_message_id: p.to_message_id.clone(),
+                            })
+                            .collect();
+                        last_schedule_decision = Some(CompactionStatusScheduleDecisionV1 {
+                            decision_id: decision_id.clone(),
+                            policy_id: policy_id.clone(),
+                            decision: decision.clone(),
+                            execute: *execute,
+                            stride_messages: *stride_messages,
+                            max_new_checkpoints: *max_new_checkpoints,
+                            block_on_inflight: *block_on_inflight,
+                            message_count: *message_count,
+                            cut_rule_id: cut_rule_id.clone(),
+                            planned: planned_v1,
+                            job_id: job_id.clone(),
+                            job_kind: job_kind.clone(),
+                            actor_id: actor_id.clone(),
+                            origin: origin.clone(),
+                            seq: event.seq,
+                            timestamp_ms: event.timestamp_ms,
+                        });
+                    }
+                }
+
+                if last_job_outcome.is_none() {
+                    if let EventKind::ContinuityJobEnded {
+                        job_id,
+                        job_kind,
+                        status,
+                        result,
+                        error,
+                        actor_id,
+                        origin,
+                    } = &event.kind
+                    {
+                        if job_kind == COMPACTION_JOB_KIND_SUMMARIZER_V1 {
+                            let created = parse_compaction_job_created_checkpoints(result);
+                            last_job_outcome = Some(CompactionStatusJobOutcomeV1 {
+                                job_id: job_id.clone(),
+                                job_kind: job_kind.clone(),
+                                status: status.clone(),
+                                error: error.clone(),
+                                created,
+                                actor_id: actor_id.clone(),
+                                origin: origin.clone(),
+                                seq: event.seq,
+                                timestamp_ms: event.timestamp_ms,
+                            });
+                        }
+                    }
+                }
+
+                if last_schedule_decision.is_some() && last_job_outcome.is_some() {
+                    break;
+                }
+            }
+        }
+
+        Ok(CompactionStatusV1Response {
+            thread_id: thread_id.to_string(),
+            stride_messages: stride,
+            message_count: cut_points.message_count,
+            latest_checkpoint,
+            next_cut_point,
+            inflight_job_id,
+            last_schedule_decision,
+            last_job_outcome,
         })
     }
 
@@ -1521,19 +1895,66 @@ impl ContinuityStore {
     ) -> Result<Vec<CompactionAutoResultCheckpointV1>, String> {
         let (actor_id, origin) = provenance;
         let mut created: Vec<CompactionAutoResultCheckpointV1> = Vec::new();
-        let mut replayed: Option<Vec<Event>> = None;
+
+        let continuity_events = self
+            .replay_events(thread_id)
+            .map_err(|err| format!("continuity replay failed: {err}"))?;
+        if continuity_events.is_empty() {
+            return Err("thread_not_found".to_string());
+        }
+
+        struct MessageRef<'a> {
+            seq: u64,
+            id: &'a str,
+            actor_id: &'a str,
+            content: &'a str,
+        }
+
+        let mut messages: Vec<MessageRef<'_>> = Vec::new();
+        for event in &continuity_events {
+            let EventKind::ContinuityMessageAppended {
+                actor_id, content, ..
+            } = &event.kind
+            else {
+                continue;
+            };
+            messages.push(MessageRef {
+                seq: event.seq,
+                id: event.id.as_str(),
+                actor_id,
+                content,
+            });
+        }
+
+        fn upper_bound_message_seq(messages: &[MessageRef<'_>], target_seq: u64) -> usize {
+            match messages.binary_search_by(|m| m.seq.cmp(&target_seq)) {
+                Ok(idx) => idx.saturating_add(1),
+                Err(idx) => idx,
+            }
+        }
 
         let run_result: Result<(), String> = (|| {
-            for cut in planned {
+            let mut planned_sorted: Vec<CompactionPlannedCutPointV1> = planned.to_vec();
+            planned_sorted.sort_by(|a, b| {
+                a.to_seq
+                    .cmp(&b.to_seq)
+                    .then(a.to_message_id.cmp(&b.to_message_id))
+            });
+
+            for cut in &planned_sorted {
                 // Best-effort basis: most recent prior cumulative checkpoint (by `to_seq`).
                 let mut base_summary_artifact_id: Option<String> = None;
+                let mut base_to_seq: u64 = 0;
                 if cut.to_seq > 0 {
                     let mut search_max = cut.to_seq.saturating_sub(1);
                     while search_max > 0 {
-                        match self
+                        let cache_best = self
                             .stream_cache
-                            .latest_compaction_checkpoint_before_or_at_seq_v1(thread_id, search_max)
-                        {
+                            .latest_compaction_checkpoint_before_or_at_seq_v1(
+                                thread_id, search_max,
+                            );
+
+                        match cache_best {
                             Ok(Some(event)) => {
                                 let EventKind::ContinuityCompactionCheckpointCreated {
                                     summary_kind,
@@ -1546,79 +1967,16 @@ impl ContinuityStore {
                                 };
                                 if summary_kind == COMPACTION_SUMMARY_KIND_CUMULATIVE_V1 {
                                     base_summary_artifact_id = Some(summary_artifact_id.clone());
+                                    base_to_seq = *checkpoint_to_seq;
                                     break;
                                 }
                                 // Skip all checkpoints at this `to_seq` and keep searching.
                                 search_max = checkpoint_to_seq.saturating_sub(1);
                             }
-                            Ok(None) => {
-                                // When the full continuity sidecar is absent, fall back to truth for
-                                // correctness/determinism across cache rotation.
-                                if self
-                                    .stream_cache
-                                    .try_read_last_seq(thread_id)
-                                    .ok()
-                                    .flatten()
-                                    .is_none()
-                                {
-                                    if replayed.is_none() {
-                                        let events =
-                                            self.replay_events(thread_id).map_err(|err| {
-                                                format!("continuity replay failed: {err}")
-                                            })?;
-                                        if events.is_empty() {
-                                            return Err("thread_not_found".to_string());
-                                        }
-                                        replayed = Some(events);
-                                    }
-
-                                    let events = replayed.as_ref().expect("set");
-                                    let mut best_to_seq: u64 = 0;
-                                    let mut best_event_seq: u64 = 0;
-                                    for event in events {
-                                        let EventKind::ContinuityCompactionCheckpointCreated {
-                                            summary_kind,
-                                            summary_artifact_id,
-                                            to_seq: checkpoint_to_seq,
-                                            ..
-                                        } = &event.kind
-                                        else {
-                                            continue;
-                                        };
-                                        if summary_kind != COMPACTION_SUMMARY_KIND_CUMULATIVE_V1 {
-                                            continue;
-                                        }
-                                        if *checkpoint_to_seq >= cut.to_seq {
-                                            continue;
-                                        }
-                                        if *checkpoint_to_seq > best_to_seq
-                                            || (*checkpoint_to_seq == best_to_seq
-                                                && event.seq > best_event_seq)
-                                        {
-                                            best_to_seq = *checkpoint_to_seq;
-                                            best_event_seq = event.seq;
-                                            base_summary_artifact_id =
-                                                Some(summary_artifact_id.clone());
-                                        }
-                                    }
-                                }
-                                break;
-                            }
-                            Err(_) => {
-                                if replayed.is_none() {
-                                    let events = self.replay_events(thread_id).map_err(|err| {
-                                        format!("continuity replay failed: {err}")
-                                    })?;
-                                    if events.is_empty() {
-                                        return Err("thread_not_found".to_string());
-                                    }
-                                    replayed = Some(events);
-                                }
-
-                                let events = replayed.as_ref().expect("set");
+                            Ok(None) | Err(_) => {
                                 let mut best_to_seq: u64 = 0;
                                 let mut best_event_seq: u64 = 0;
-                                for event in events {
+                                for event in &continuity_events {
                                     let EventKind::ContinuityCompactionCheckpointCreated {
                                         summary_kind,
                                         summary_artifact_id,
@@ -1644,21 +2002,76 @@ impl ContinuityStore {
                                             Some(summary_artifact_id.clone());
                                     }
                                 }
+                                base_to_seq = best_to_seq;
                                 break;
                             }
                         }
                     }
                 }
 
-                let summary_markdown = format!(
-                    "# Compaction summary (auto)\n\n- kind: {kind}\n- cut_rule_id: {cut_rule_id}\n- stride_messages: {stride_messages}\n- target_message_ordinal: {ordinal}\n- to_seq: {to_seq}\n- to_message_id: {to_message_id}\n",
-                    kind = COMPACTION_SUMMARY_KIND_CUMULATIVE_V1,
-                    cut_rule_id = cut_rule_id,
-                    stride_messages = stride_messages,
-                    ordinal = cut.target_message_ordinal,
-                    to_seq = cut.to_seq,
-                    to_message_id = cut.to_message_id
-                );
+                let mut base_summary_markdown: Option<String> = None;
+                let mut bootstrap = base_summary_artifact_id.is_none();
+                let mut basis_note: Option<String> = None;
+
+                if let Some(base_id) = base_summary_artifact_id.as_deref() {
+                    match read_compaction_summary_v1(&self.workspace_root, base_id) {
+                        Ok(summary) => {
+                            let markdown = summary.summary_markdown().to_string();
+                            if summary_markdown_is_legacy_metadata_placeholder(&markdown) {
+                                bootstrap = true;
+                                basis_note =
+                                    Some("bootstrap_from_truth_v0.2/legacy_base".to_string());
+                            } else {
+                                base_summary_markdown = Some(markdown);
+                            }
+                        }
+                        Err(err) => {
+                            bootstrap = true;
+                            basis_note =
+                                Some(format!("bootstrap_from_truth_v0.2/base_read_failed: {err}"));
+                        }
+                    }
+                }
+
+                let start_seq_exclusive = if bootstrap { 0 } else { base_to_seq };
+                let start_idx = upper_bound_message_seq(&messages, start_seq_exclusive);
+                let end_idx = upper_bound_message_seq(&messages, cut.to_seq);
+                let Some(last) = messages.get(end_idx.saturating_sub(1)) else {
+                    return Err(format!(
+                        "compaction cut point message not found: to_seq={} to_message_id={}",
+                        cut.to_seq, cut.to_message_id
+                    ));
+                };
+                if last.seq != cut.to_seq || last.id != cut.to_message_id {
+                    return Err(format!(
+                        "compaction cut point message mismatch: expected to_seq={} to_message_id={}, got to_seq={} to_message_id={}",
+                        cut.to_seq,
+                        cut.to_message_id,
+                        last.seq,
+                        last.id
+                    ));
+                }
+
+                let mut acc = AutoSummaryAccumulator::default();
+                for msg in messages[start_idx..end_idx].iter() {
+                    acc.observe_message(msg.actor_id, msg.content);
+                }
+                let delta = acc.finish();
+
+                let summary_markdown =
+                    render_auto_compaction_summary_markdown_v0_2(RenderAutoSummaryMarkdownParams {
+                        thread_id,
+                        cut_rule_id,
+                        stride_messages,
+                        target_message_ordinal: cut.target_message_ordinal,
+                        to_seq: cut.to_seq,
+                        to_message_id: &cut.to_message_id,
+                        base_summary_artifact_id: base_summary_artifact_id.as_deref(),
+                        base_summary_markdown: base_summary_markdown.as_deref(),
+                        basis_note: basis_note.as_deref(),
+                        delta,
+                        bootstrap,
+                    });
 
                 let summary = CompactionSummaryV1::new_cumulative_source_cut(
                     crate::compaction_summary::NewCumulativeCompactionSummaryV1 {
@@ -1669,6 +2082,7 @@ impl ContinuityStore {
                         origin: origin.to_string(),
                         produced_by: Some(("job".to_string(), job_id.to_string())),
                         base_summary_artifact_id,
+                        basis_note,
                         summary_markdown,
                     },
                 );
@@ -2293,6 +2707,46 @@ impl ContinuityStore {
 
         Ok(continuity_id)
     }
+}
+
+fn parse_compaction_job_created_checkpoints(
+    result: &Option<serde_json::Value>,
+) -> Vec<CompactionAutoResultCheckpointV1> {
+    let Some(value) = result.as_ref() else {
+        return Vec::new();
+    };
+    let Some(created) = value.get("created").and_then(|v| v.as_array()) else {
+        return Vec::new();
+    };
+
+    let mut out = Vec::new();
+    for item in created {
+        let Some(checkpoint_id) = item.get("checkpoint_id").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let Some(summary_artifact_id) = item.get("summary_artifact_id").and_then(|v| v.as_str())
+        else {
+            continue;
+        };
+        let Some(to_seq) = item.get("to_seq").and_then(|v| v.as_u64()) else {
+            continue;
+        };
+        let Some(to_message_id) = item.get("to_message_id").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let Some(cut_rule_id) = item.get("cut_rule_id").and_then(|v| v.as_str()) else {
+            continue;
+        };
+
+        out.push(CompactionAutoResultCheckpointV1 {
+            checkpoint_id: checkpoint_id.to_string(),
+            summary_artifact_id: summary_artifact_id.to_string(),
+            to_seq,
+            to_message_id: to_message_id.to_string(),
+            cut_rule_id: cut_rule_id.to_string(),
+        });
+    }
+    out
 }
 
 fn resolve_cutpoint_from_tail(
@@ -2987,6 +3441,192 @@ mod tests {
                 EventKind::ContinuityCompactionAutoScheduleDecided { .. }
             )),
             "expected at least one continuity_compaction_auto_schedule_decided"
+        );
+    }
+
+    #[test]
+    fn compaction_status_v1_reports_next_cut_point_and_latest_checkpoint() {
+        let dir = tempdir().expect("tmp");
+        let (_event_log, store, _data_dir) = store_for(&dir);
+
+        let continuity_id = store.ensure_default().expect("ensure");
+        let _m1 = store
+            .append_message(
+                &continuity_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "m1".to_string(),
+            )
+            .expect("append");
+        let m2 = store
+            .append_message(
+                &continuity_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "m2".to_string(),
+            )
+            .expect("append");
+
+        let first = store
+            .compaction_status_v1(
+                &continuity_id,
+                CompactionStatusV1Request {
+                    stride_messages: Some(1),
+                },
+            )
+            .expect("status");
+        assert_eq!(first.thread_id, continuity_id);
+        assert_eq!(first.message_count, 2);
+        assert!(first.latest_checkpoint.is_none());
+        assert_eq!(
+            first
+                .next_cut_point
+                .as_ref()
+                .map(|cp| cp.to_message_id.as_str()),
+            Some(m2.as_str())
+        );
+
+        store
+            .compaction_checkpoint_cumulative_v1(
+                &continuity_id,
+                CompactionCheckpointCumulativeV1Request {
+                    summary_markdown: Some("summary".to_string()),
+                    summary_artifact_id: None,
+                    to_message_id: Some(m2.clone()),
+                    to_seq: None,
+                    stride_messages: None,
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                },
+            )
+            .expect("checkpoint");
+
+        let second = store
+            .compaction_status_v1(
+                &continuity_id,
+                CompactionStatusV1Request {
+                    stride_messages: Some(1),
+                },
+            )
+            .expect("status after checkpoint");
+        assert!(second.latest_checkpoint.is_some());
+        assert_eq!(
+            second
+                .latest_checkpoint
+                .as_ref()
+                .and_then(|c| c.to_message_id.as_deref()),
+            Some(m2.as_str())
+        );
+    }
+
+    #[test]
+    fn compaction_auto_summary_bootstraps_from_legacy_placeholder_base() {
+        let dir = tempdir().expect("tmp");
+        let (_event_log, store, _data_dir) = store_for(&dir);
+
+        let continuity_id = store.ensure_default().expect("ensure");
+        let _m1 = store
+            .append_message(
+                &continuity_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "m1".to_string(),
+            )
+            .expect("append");
+        let m2 = store
+            .append_message(
+                &continuity_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "m2".to_string(),
+            )
+            .expect("append");
+        let _m3 = store
+            .append_message(
+                &continuity_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "m3".to_string(),
+            )
+            .expect("append");
+        let m4 = store
+            .append_message(
+                &continuity_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "m4".to_string(),
+            )
+            .expect("append");
+
+        // Seed a legacy metadata-only summary as the base checkpoint for ordinal=2.
+        let legacy_markdown = format!(
+            "# Compaction summary (auto)\n\n- kind: {kind}\n- cut_rule_id: stride_messages_v1/2\n- stride_messages: 2\n- target_message_ordinal: 2\n- to_seq: 2\n- to_message_id: {m2}\n",
+            kind = COMPACTION_SUMMARY_KIND_CUMULATIVE_V1
+        );
+        assert!(
+            crate::compaction_auto_summary::summary_markdown_is_legacy_metadata_placeholder(
+                &legacy_markdown
+            ),
+            "expected legacy placeholder detector to match"
+        );
+        store
+            .compaction_checkpoint_cumulative_v1(
+                &continuity_id,
+                CompactionCheckpointCumulativeV1Request {
+                    summary_markdown: Some(legacy_markdown),
+                    summary_artifact_id: None,
+                    to_message_id: Some(m2.clone()),
+                    to_seq: None,
+                    stride_messages: None,
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                },
+            )
+            .expect("seed legacy checkpoint");
+
+        let resp = store
+            .compaction_auto_v1(
+                &continuity_id,
+                CompactionAutoV1Request {
+                    stride_messages: Some(2),
+                    max_new_checkpoints: Some(1),
+                    dry_run: Some(false),
+                    actor_id: "alice".to_string(),
+                    origin: "test".to_string(),
+                },
+            )
+            .expect("compaction auto");
+        assert_eq!(resp.status, "completed");
+        assert_eq!(resp.result.len(), 1);
+        let artifact_id = resp.result[0].summary_artifact_id.clone();
+
+        let summary = crate::compaction_summary::read_compaction_summary_v1(
+            store.workspace_root(),
+            &artifact_id,
+        )
+        .expect("read summary artifact");
+        let markdown = summary.summary_markdown();
+        assert!(
+            markdown.contains("## Cumulative Summary"),
+            "expected v0.2 cumulative section"
+        );
+        assert!(
+            markdown.contains("## Recent Delta Highlights"),
+            "expected v0.2 highlights section"
+        );
+        assert!(
+            markdown.contains("m4") || markdown.contains(m4.as_str()),
+            "expected summary to include message content"
+        );
+        assert!(
+            !crate::compaction_auto_summary::summary_markdown_is_legacy_metadata_placeholder(
+                markdown
+            ),
+            "expected upgraded summary to not be legacy placeholder"
+        );
+        assert!(
+            markdown.chars().count() <= crate::compaction_auto_summary::MAX_SUMMARY_MARKDOWN_CHARS,
+            "expected summary_markdown to be bounded"
         );
     }
 

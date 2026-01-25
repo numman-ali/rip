@@ -25,7 +25,7 @@ Now
 - Decisions (accepted):
   - Provider conversation state is a cache; continuity log is truth (cursor rotation is allowed/expected).
   - Keep Phase 1 invariant: `session == run/turn` (single-run sessions). "Continue later" targets a continuity.
-- Status (2026-01-24):
+- Status (2026-01-25):
   - Frames are now stream-aware on the wire (`stream_kind`, `stream_id`); replay validation is per-stream.
   - Continuity store exists (`ensure_default`, `append_message`, `append_run_spawned`, `append_run_ended`, `branch`, `handoff`) and local `rip run` posts to the default continuity before spawning a run.
   - Handoff now writes an artifact-backed context bundle referenced by `continuity_handoff_created.summary_artifact_id` (`docs/03_contracts/handoff_context_bundle.md`).
@@ -38,13 +38,13 @@ Now
   - Implemented: compaction foundations v0.1: deterministic checkpoint frame `continuity_compaction_checkpoint_created` + summary artifacts (`rip.compaction_summary.v1`) + compile strategy `summaries_recent_messages_v1` (summary_ref + recent raw messages; fallback-safe).
   - Implemented: compaction auto v0.1: `compaction.cut_points` + `compaction.auto` with background summarizer jobs emitting `continuity_job_spawned`/`continuity_job_ended` (ADR-0012) and deterministic checkpoint frames + summary artifacts; parity across cli_h/tui/server/sdk.
   - Implemented: compaction auto v0.2 scheduling: `compaction.auto.schedule` emits `continuity_compaction_auto_schedule_decided` (policy + reasons) and triggers `compaction.auto` execution without touching `thread.post_message`; parity across cli_h/tui/server/sdk.
+  - Implemented: auto summaries v0.2: cumulative summary artifacts chain `base_summary_artifact_id` + delta window; legacy metadata placeholders bootstrap to real summaries (ADR-0014).
+  - Implemented: `compaction.status` projection across cli_h/tui/server/sdk (latest checkpoint, next cut point, last schedule decision, last job outcome).
   - Server exposes `thread.*` plus `compaction.manual` (thread compaction checkpoints); headless CLI exposes `rip threads ...` (local + `--server`); TypeScript SDK exposes these by spawning `rip` (ADR-0006).
   - Workspace mutation serialization enforced across sessions + background tasks; replay/contract tests added.
   - Continuity stream logs workspace-mutating tool side-effects (`continuity_tool_side_effects`) with provenance + replay coverage under parallel runs/tasks.
 - Ready:
   - Finish continuity provenance coverage beyond messages/runs/tool side-effects: provider cursor rotation logs and context selection strategy evolution; document the remaining envelope migration (eventually drop non-session `session_id`).
-  - Upgrade auto summaries from metadata to real cumulative summaries (still replay-safe because artifacts are immutable + referenced from truth).
-  - Add better surface UX: “compaction status” view (latest checkpoint, next cut point, last job outcome) across CLI/TUI/server/SDK.
   - Perf: keep `context.compile` O(k) at 1M+ events (tail-read continuity v1 + seekable non-tail anchors v1.1 + compaction cut points v0.1 done; next is per-stream segmentation + hierarchical summaries).
 - Done:
   - Default UX is one continuity; surfaces "continue" by posting messages (sessions hidden by default).

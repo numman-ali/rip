@@ -152,3 +152,50 @@ Determinism invariants
   - and the explicit request parameters.
 - Cache posture:
   - caches may accelerate evaluation but must not change the computed plan/decision.
+
+## Capability: `compaction.status` (v1)
+
+Intent
+- Provide a compact, truth-derived “compaction status” projection for UX surfaces:
+  - latest compaction checkpoint,
+  - next eligible cut point,
+  - last scheduler decision,
+  - last compaction job outcome.
+- This capability is **read-only** and must not emit continuity truth frames.
+
+Inputs
+- `thread_id`: string (required)
+- `stride_messages`: u64 (optional; default: `10_000`)
+  - Used to compute the “next cut point” projection (same rule as `compaction.cut_points`).
+
+Outputs
+- `thread_id`: string
+- `stride_messages`: u64
+- `message_count`: u64
+- `latest_checkpoint`: object | null
+  - `checkpoint_id`: string
+  - `cut_rule_id`: string
+  - `summary_kind`: string
+  - `summary_artifact_id`: string
+  - `to_seq`: u64
+  - `to_message_id`: string | null
+- `next_cut_point`: object | null
+  - `target_message_ordinal`: u64
+  - `to_seq`: u64
+  - `to_message_id`: string
+- `inflight_job_id`: string | null
+  - Best-effort: the most recent `continuity_job_spawned` id for `job_kind="compaction_summarizer_v1"` that has no matching `continuity_job_ended` observed.
+- `last_schedule_decision`: object | null
+  - Mirrors the latest `continuity_compaction_auto_schedule_decided` frame fields (subset is allowed, but must include `decision_id`, `policy_id`, `decision`, and `job_id` when present).
+- `last_job_outcome`: object | null
+  - Mirrors the latest `continuity_job_ended` frame for `job_kind="compaction_summarizer_v1"` (subset is allowed, but must include `job_id`, `status`, and `error` when present).
+
+Determinism invariants
+- Status is derived only from continuity truth:
+  - checkpoint frames (`continuity_compaction_checkpoint_created`),
+  - scheduler decision frames (`continuity_compaction_auto_schedule_decided`),
+  - job frames (`continuity_job_spawned` / `continuity_job_ended`),
+  - and message boundaries for cut points (`continuity_message_appended` count).
+- Cache posture:
+  - caches may accelerate evaluation but must not change the computed results; when caches are missing/invalid, fall back to truth replay.
+  - `inflight_job_id` is best-effort and may be null when caches are missing; do not use it as a correctness gate (scheduler decisions are logged via `continuity_compaction_auto_schedule_decided`).

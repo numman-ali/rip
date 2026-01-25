@@ -18,6 +18,7 @@ pub enum Command {
     CompactionAuto,
     CompactionAutoSchedule,
     CompactionCutPoints,
+    CompactionStatus,
 }
 
 #[derive(Debug, Clone)]
@@ -44,6 +45,7 @@ impl Keymap {
         bindings.insert("C-k".to_string(), Command::CompactionAuto);
         bindings.insert("C-j".to_string(), Command::CompactionAutoSchedule);
         bindings.insert("C-g".to_string(), Command::CompactionCutPoints);
+        bindings.insert("C-o".to_string(), Command::CompactionStatus);
 
         Self { bindings }
     }
@@ -161,6 +163,9 @@ fn parse_command(raw: &str) -> Option<Command> {
         | "compaction_auto_scheduler" => Some(Command::CompactionAutoSchedule),
         "compactioncutpoints" | "compaction_cut_points" | "compaction-cut-points" => {
             Some(Command::CompactionCutPoints)
+        }
+        "compactionstatus" | "compaction_status" | "compaction-status" => {
+            Some(Command::CompactionStatus)
         }
         _ => None,
     }

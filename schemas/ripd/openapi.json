@@ -695,6 +695,50 @@
         }
       }
     },
+    "/threads/{id}/compaction-status": {
+      "post": {
+        "operationId": "thread_compaction_status",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Thread id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompactionStatusV1Request"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Compaction status projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompactionStatusV1Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid status request"
+          },
+          "404": {
+            "description": "Thread not found"
+          }
+        }
+      }
+    },
     "/threads/{id}/events": {
       "get": {
         "operationId": "thread_stream_events",
@@ -1197,6 +1241,263 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
+          }
+        }
+      },
+      "CompactionStatusCheckpointV1": {
+        "type": "object",
+        "required": [
+          "checkpoint_id",
+          "cut_rule_id",
+          "summary_kind",
+          "summary_artifact_id",
+          "to_seq"
+        ],
+        "properties": {
+          "checkpoint_id": {
+            "type": "string"
+          },
+          "cut_rule_id": {
+            "type": "string"
+          },
+          "summary_artifact_id": {
+            "type": "string"
+          },
+          "summary_kind": {
+            "type": "string"
+          },
+          "to_message_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to_seq": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "CompactionStatusJobOutcomeV1": {
+        "type": "object",
+        "required": [
+          "job_id",
+          "job_kind",
+          "status",
+          "created",
+          "actor_id",
+          "origin",
+          "seq",
+          "timestamp_ms"
+        ],
+        "properties": {
+          "actor_id": {
+            "type": "string"
+          },
+          "created": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompactionAutoResultCheckpointV1"
+            }
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "job_kind": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "string"
+          },
+          "seq": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "status": {
+            "type": "string"
+          },
+          "timestamp_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "CompactionStatusScheduleDecisionV1": {
+        "type": "object",
+        "required": [
+          "decision_id",
+          "policy_id",
+          "decision",
+          "execute",
+          "stride_messages",
+          "max_new_checkpoints",
+          "block_on_inflight",
+          "message_count",
+          "cut_rule_id",
+          "planned",
+          "actor_id",
+          "origin",
+          "seq",
+          "timestamp_ms"
+        ],
+        "properties": {
+          "actor_id": {
+            "type": "string"
+          },
+          "block_on_inflight": {
+            "type": "boolean"
+          },
+          "cut_rule_id": {
+            "type": "string"
+          },
+          "decision": {
+            "type": "string"
+          },
+          "decision_id": {
+            "type": "string"
+          },
+          "execute": {
+            "type": "boolean"
+          },
+          "job_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "job_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "max_new_checkpoints": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "message_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "origin": {
+            "type": "string"
+          },
+          "planned": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompactionPlannedCutPointV1"
+            }
+          },
+          "policy_id": {
+            "type": "string"
+          },
+          "seq": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "stride_messages": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "timestamp_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "CompactionStatusV1Request": {
+        "type": "object",
+        "properties": {
+          "stride_messages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "CompactionStatusV1Response": {
+        "type": "object",
+        "required": [
+          "thread_id",
+          "stride_messages",
+          "message_count"
+        ],
+        "properties": {
+          "inflight_job_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_job_outcome": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CompactionStatusJobOutcomeV1"
+              }
+            ]
+          },
+          "last_schedule_decision": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CompactionStatusScheduleDecisionV1"
+              }
+            ]
+          },
+          "latest_checkpoint": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CompactionStatusCheckpointV1"
+              }
+            ]
+          },
+          "message_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "next_cut_point": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CompactionPlannedCutPointV1"
+              }
+            ]
+          },
+          "stride_messages": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "thread_id": {
+            "type": "string"
           }
         }
       },

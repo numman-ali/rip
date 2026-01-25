@@ -174,6 +174,7 @@ Notes
 | compaction.split_turn | v1 | P2 | planned | planned | planned | planned | planned | planned | Split-turn handling for oversized turns. |
 | compaction.truncation_policy | v1 | P2 | planned | planned | planned | planned | planned | planned | Truncation policy controls (auto vs disabled). |
 | compaction.cut_points | v1 | P2 | planned | supported | supported | supported | supported | planned | Compaction cut-point rules. |
+| compaction.status | v1 | P2 | planned | supported | supported | supported | supported | planned | Compaction status projection (latest checkpoint, next cut point, last decision/outcome). |
 | compaction.branch_summary | v1 | P2 | planned | planned | planned | planned | planned | planned | Branch summarization. |
 | compaction.file_ops | v1 | P2 | planned | planned | planned | planned | planned | planned | File-operation tracking in summaries. |
 | compaction.hooks | v1 | P2 | planned | planned | planned | planned | planned | planned | Hook-based custom compaction. |

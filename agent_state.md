@@ -1,6 +1,6 @@
 # Agent State (Working Log)
 
-Last updated: 2026-01-24
+Last updated: 2026-01-25
 
 How to use
 - Update this file whenever focus shifts, before ending a work session, and when blocked.
@@ -25,6 +25,8 @@ Current focus
 - Implemented: `compaction.manual` surface parity (cli_h/server/sdk) via `rip threads compaction-checkpoint` (local + `--server`) and `POST /threads/{id}/compaction-checkpoint`.
 - Implemented: compaction auto v0.1: deterministic `compaction.cut_points` (message-stride, cache-backed with truth fallbacks) + `compaction.auto` summarizer jobs emitting `continuity_job_spawned`/`continuity_job_ended` (ADR-0012) and deterministic checkpoint frames + summary artifacts; exposed across cli_h/tui/server/sdk.
 - Implemented: compaction auto v0.2 scheduling: `compaction.auto.schedule` emits `continuity_compaction_auto_schedule_decided` (policy + reasons) and triggers compaction work off the hot path; exposed across cli_h/tui/server/sdk.
+- Implemented: auto summaries v0.2 (ADR-0014): compaction summaries are real cumulative markdown derived from messages (base summary chaining + bounded delta highlights), still immutable artifacts referenced from truth frames.
+- Implemented: `compaction.status` surface UX + capability across cli_h/tui/server/sdk (`rip threads compaction-status`, `POST /threads/{id}/compaction-status`, TUI keybinding).
 - Implemented: branch/handoff posture is “link-only” in the continuity log (no history copying) (ADR-0009) + relationship frames (`continuity_branched`, `continuity_handoff_created`).
 - Implemented: handoff writes an artifact-backed context bundle referenced by `continuity_handoff_created.summary_artifact_id` (`docs/03_contracts/handoff_context_bundle.md`).
 - Implemented: server exposes `thread.*` (ensure/list/get/post_message/branch/handoff/stream_events) and OpenAPI is updated.
@@ -55,12 +57,12 @@ Reorientation (read in order after compaction)
 Open risks / notes
 - Tests no longer write `./data` under the repo (ripd export test uses temp dirs).
 - Note: local runs still default to `./data` unless `RIP_DATA_DIR` is set.
-- Perf: context compiler hot path avoids global `events.jsonl` scans when caches exist (snapshot-first session aggregation + per-continuity sidecar replay); avoids full continuity stream loads for `recent_messages_v1` both for latest-message run starts (tail-read continuity v1), non-tail anchors (seekable window reads v1.1), and high tool-event density between messages (messages+runs sidecar v1.2). Remaining work: per-stream segmentation + hierarchical summaries + policy-driven compaction scheduling.
+- Perf: context compiler hot path avoids global `events.jsonl` scans when caches exist (snapshot-first session aggregation + per-continuity sidecar replay); avoids full continuity stream loads for `recent_messages_v1` both for latest-message run starts (tail-read continuity v1), non-tail anchors (seekable window reads v1.1), and high tool-event density between messages (messages+runs sidecar v1.2). Remaining work: per-stream segmentation + hierarchical summaries.
 - Perf: prompt cache friendliness requires deterministic tool ordering + stable instruction blocks + append-only context changes within a run (`docs/03_contracts/modules/phase-1/02_provider_adapters.md`, `https://openai.com/index/unrolling-the-codex-agent-loop/`).
 
 Active priorities
 - Keep roadmap Now/Next aligned with the implementation work.
-- Next slice (code): add policy-driven compaction scheduling (when to run `compaction.auto`) + richer summarizer outputs while keeping jobs replay-safe (truth frames + artifact refs only).
+- Next slice (code): per-stream segmentation + hierarchical summaries while keeping jobs replay-safe (truth frames + artifact refs only).
 - Keep OpenResponses boundary full-fidelity while wiring new surfaces/adapters.
 - Keep OpenResponses follow-ups spec-canonical; any compatibility user message is opt-in.
 - Keep stateless history compatibility opt-in; default remains `previous_response_id`.

@@ -12,6 +12,7 @@ import {
   buildRipThreadPostMessageArgs,
   buildRipThreadCompactionCheckpointArgs,
   buildRipThreadCompactionCutPointsArgs,
+  buildRipThreadCompactionStatusArgs,
   buildRipThreadCompactionAutoArgs,
   collectOutputText,
 } from "../util.js";
@@ -159,6 +160,19 @@ test("buildRipThreadCompactionCutPointsArgs includes stride and limit", () => {
     "10000",
     "--limit",
     "3",
+  ]);
+});
+
+test("buildRipThreadCompactionStatusArgs includes stride", () => {
+  const args = buildRipThreadCompactionStatusArgs("t1", { strideMessages: 10000, server: "http://127.0.0.1:7341" });
+  assert.deepEqual(args, [
+    "threads",
+    "--server",
+    "http://127.0.0.1:7341",
+    "compaction-status",
+    "t1",
+    "--stride-messages",
+    "10000",
   ]);
 });
 

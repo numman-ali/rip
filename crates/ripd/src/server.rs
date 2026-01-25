@@ -220,6 +220,7 @@ pub(crate) fn build_openapi_router() -> (Router<AppState>, String) {
         .routes(routes!(thread_handoff))
         .routes(routes!(thread_compaction_checkpoint))
         .routes(routes!(thread_compaction_cut_points))
+        .routes(routes!(thread_compaction_status))
         .routes(routes!(thread_compaction_auto))
         .routes(routes!(thread_compaction_auto_schedule))
         .routes(routes!(thread_stream_events))
@@ -688,6 +689,40 @@ async fn thread_compaction_cut_points(
 ) -> impl IntoResponse {
     let store = state.engine.continuities();
     match store.compaction_cut_points_v1(&thread_id, payload) {
+        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
+        Err(err) => {
+            let err_lower = err.to_ascii_lowercase();
+            if err_lower.contains("invalid_stride") {
+                return StatusCode::BAD_REQUEST.into_response();
+            }
+            if err_lower.contains("not_found") {
+                return StatusCode::NOT_FOUND.into_response();
+            }
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/threads/{id}/compaction-status",
+    params(
+        ("id" = String, Path, description = "Thread id")
+    ),
+    request_body = crate::CompactionStatusV1Request,
+    responses(
+        (status = 200, description = "Compaction status projection", body = crate::CompactionStatusV1Response),
+        (status = 400, description = "Invalid status request"),
+        (status = 404, description = "Thread not found")
+    )
+)]
+async fn thread_compaction_status(
+    Path(thread_id): Path<String>,
+    State(state): State<AppState>,
+    Json(payload): Json<crate::CompactionStatusV1Request>,
+) -> impl IntoResponse {
+    let store = state.engine.continuities();
+    match store.compaction_status_v1(&thread_id, payload) {
         Ok(response) => (StatusCode::OK, Json(response)).into_response(),
         Err(err) => {
             let err_lower = err.to_ascii_lowercase();

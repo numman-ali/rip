@@ -9,6 +9,7 @@ import {
   buildRipThreadCompactionAutoArgs,
   buildRipThreadCompactionAutoScheduleArgs,
   buildRipThreadCompactionCutPointsArgs,
+  buildRipThreadCompactionStatusArgs,
   buildRipThreadEnsureArgs,
   buildRipThreadEventsArgs,
   buildRipThreadGetArgs,
@@ -151,6 +152,61 @@ export type RipThreadCompactionCutPointsResponse = {
   message_count: number;
   cut_rule_id: string;
   cut_points: RipThreadCompactionCutPoint[];
+};
+
+export type RipThreadCompactionStatusRequest = {
+  stride_messages?: number;
+};
+
+export type RipThreadCompactionStatusCheckpoint = {
+  checkpoint_id: string;
+  cut_rule_id: string;
+  summary_kind: string;
+  summary_artifact_id: string;
+  to_seq: number;
+  to_message_id: string | null;
+};
+
+export type RipThreadCompactionStatusScheduleDecision = {
+  decision_id: string;
+  policy_id: string;
+  decision: string;
+  execute: boolean;
+  stride_messages: number;
+  max_new_checkpoints: number;
+  block_on_inflight: boolean;
+  message_count: number;
+  cut_rule_id: string;
+  planned: Array<{ target_message_ordinal: number; to_seq: number; to_message_id: string }>;
+  job_id: string | null;
+  job_kind: string | null;
+  actor_id: string;
+  origin: string;
+  seq: number;
+  timestamp_ms: number;
+};
+
+export type RipThreadCompactionStatusJobOutcome = {
+  job_id: string;
+  job_kind: string;
+  status: string;
+  error: string | null;
+  created: RipThreadCompactionAutoResultCheckpoint[];
+  actor_id: string;
+  origin: string;
+  seq: number;
+  timestamp_ms: number;
+};
+
+export type RipThreadCompactionStatusResponse = {
+  thread_id: string;
+  stride_messages: number;
+  message_count: number;
+  latest_checkpoint: RipThreadCompactionStatusCheckpoint | null;
+  next_cut_point: { target_message_ordinal: number; to_seq: number; to_message_id: string } | null;
+  inflight_job_id: string | null;
+  last_schedule_decision: RipThreadCompactionStatusScheduleDecision | null;
+  last_job_outcome: RipThreadCompactionStatusJobOutcome | null;
 };
 
 export type RipThreadCompactionAutoRequest = {
@@ -509,6 +565,21 @@ export class Rip {
       options,
     );
     return out as RipThreadCompactionCutPointsResponse;
+  }
+
+  async threadCompactionStatus(
+    threadId: string,
+    request: RipThreadCompactionStatusRequest = {},
+    options: RipThreadOptions = {},
+  ): Promise<RipThreadCompactionStatusResponse> {
+    const out = await this.execJson(
+      buildRipThreadCompactionStatusArgs(threadId, {
+        server: options.server,
+        strideMessages: request.stride_messages,
+      }),
+      options,
+    );
+    return out as RipThreadCompactionStatusResponse;
   }
 
   async threadCompactionAuto(

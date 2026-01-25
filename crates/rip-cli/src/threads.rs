@@ -101,6 +101,14 @@ pub(crate) enum ThreadsCommand {
         #[arg(long)]
         limit: Option<u32>,
     },
+    /// Show a truth-derived compaction status projection for a thread.
+    CompactionStatus {
+        /// Thread id (continuity id).
+        id: String,
+        /// Message stride used to compute the “next cut point” projection (default: 10_000).
+        #[arg(long)]
+        stride_messages: Option<u64>,
+    },
     /// Run deterministic auto-compaction: spawn a summarizer job that emits checkpoints.
     CompactionAuto {
         /// Thread id (continuity id).
@@ -370,6 +378,25 @@ async fn run_threads_remote(server: String, command: ThreadsCommand) -> anyhow::
             let body = response.text().await?;
             println!("{body}");
         }
+        ThreadsCommand::CompactionStatus {
+            id,
+            stride_messages,
+        } => {
+            let url = format!("{server}/threads/{id}/compaction-status");
+            let response = client
+                .post(url)
+                .json(&serde_json::json!({
+                    "stride_messages": stride_messages,
+                }))
+                .send()
+                .await?;
+            let status = response.status();
+            if !status.is_success() {
+                anyhow::bail!("thread compaction-status failed: {status}");
+            }
+            let body = response.text().await?;
+            println!("{body}");
+        }
         ThreadsCommand::CompactionAuto {
             id,
             stride_messages,
@@ -611,6 +638,15 @@ async fn run_threads_local_with_engine(
                     },
                 )
                 .map_err(|err| anyhow::anyhow!("thread compaction-cut-points failed: {err}"))?;
+            println!("{}", serde_json::to_string(&resp)?);
+        }
+        ThreadsCommand::CompactionStatus {
+            id,
+            stride_messages,
+        } => {
+            let resp = store
+                .compaction_status_v1(&id, ripd::CompactionStatusV1Request { stride_messages })
+                .map_err(|err| anyhow::anyhow!("thread compaction-status failed: {err}"))?;
             println!("{}", serde_json::to_string(&resp)?);
         }
         ThreadsCommand::CompactionAuto {

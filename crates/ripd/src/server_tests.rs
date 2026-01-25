@@ -231,6 +231,33 @@ async fn compaction_cut_points(
     serde_json::from_slice(&body).expect("json")
 }
 
+async fn compaction_status(
+    app: &Router,
+    thread_id: &str,
+    payload: serde_json::Value,
+) -> serde_json::Value {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/threads/{thread_id}/compaction-status"))
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    serde_json::from_slice(&body).expect("json")
+}
+
 async fn compaction_auto(
     app: &Router,
     thread_id: &str,
@@ -1407,6 +1434,86 @@ async fn thread_compaction_cut_points_marks_already_checkpointed() {
             .get("latest_checkpoint_id")
             .and_then(|v| v.as_str()),
         Some(created.checkpoint_id.as_str())
+    );
+}
+
+#[tokio::test]
+async fn thread_compaction_status_reports_next_cut_point_and_last_decision() {
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app(&dir);
+    let thread_id = ensure_thread_id(&app).await;
+
+    let _m1 = post_thread_message(&app, &thread_id, "m1").await.message_id;
+    let m2 = post_thread_message(&app, &thread_id, "m2").await.message_id;
+
+    let status = compaction_status(
+        &app,
+        &thread_id,
+        serde_json::json!({
+            "stride_messages": 1,
+        }),
+    )
+    .await;
+    assert_eq!(
+        status.get("message_count").and_then(|v| v.as_u64()),
+        Some(2)
+    );
+    assert!(
+        status.get("latest_checkpoint").is_none()
+            || status.get("latest_checkpoint").unwrap().is_null()
+    );
+    assert_eq!(
+        status
+            .get("next_cut_point")
+            .and_then(|v| v.get("to_message_id"))
+            .and_then(|v| v.as_str()),
+        Some(m2.as_str())
+    );
+    assert!(
+        status.get("last_schedule_decision").is_none()
+            || status.get("last_schedule_decision").unwrap().is_null()
+    );
+
+    let (_status_code, scheduled) = compaction_auto_schedule(
+        &app,
+        &thread_id,
+        serde_json::json!({
+            "stride_messages": 1,
+            "max_new_checkpoints": 1,
+            "block_on_inflight": true,
+            "execute": false,
+            "dry_run": false,
+            "actor_id": "alice",
+            "origin": "cli",
+        }),
+    )
+    .await;
+    assert_eq!(
+        scheduled.get("decision").and_then(|v| v.as_str()),
+        Some("scheduled")
+    );
+
+    let after = compaction_status(
+        &app,
+        &thread_id,
+        serde_json::json!({
+            "stride_messages": 1,
+        }),
+    )
+    .await;
+    assert_eq!(
+        after
+            .get("last_schedule_decision")
+            .and_then(|v| v.get("decision"))
+            .and_then(|v| v.as_str()),
+        Some("scheduled")
+    );
+    assert!(
+        after
+            .get("inflight_job_id")
+            .and_then(|v| v.as_str())
+            .is_some(),
+        "expected inflight_job_id"
     );
 }
 

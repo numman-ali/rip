@@ -197,6 +197,63 @@ pub async fn run_fullscreen_tui(initial_prompt: Option<String>) -> anyhow::Resul
                             let _ = tx.send(message).await;
                         });
                     }
+                    UiAction::CompactionStatus => {
+                        let store = engine.continuities();
+                        let tx = status_tx.clone();
+                        tokio::spawn(async move {
+                            let message = tokio::task::spawn_blocking(move || {
+                                let thread_id = match store.ensure_default() {
+                                    Ok(id) => id,
+                                    Err(err) => {
+                                        return format!("compaction status: thread ensure failed: {err}")
+                                    }
+                                };
+                                match store.compaction_status_v1(
+                                    &thread_id,
+                                    ripd::CompactionStatusV1Request { stride_messages: None },
+                                ) {
+                                    Ok(status) => {
+                                        let ckpt = status
+                                            .latest_checkpoint
+                                            .as_ref()
+                                            .map(|c| c.to_seq.to_string())
+                                            .unwrap_or_else(|| "none".to_string());
+                                        let next = status
+                                            .next_cut_point
+                                            .as_ref()
+                                            .map(|c| c.to_seq.to_string())
+                                            .unwrap_or_else(|| "none".to_string());
+                                        let sched = status
+                                            .last_schedule_decision
+                                            .as_ref()
+                                            .map(|d| d.decision.as_str())
+                                            .unwrap_or("none");
+                                        let job = status
+                                            .last_job_outcome
+                                            .as_ref()
+                                            .map(|j| j.status.as_str())
+                                            .unwrap_or("none");
+                                        let inflight = status
+                                            .inflight_job_id
+                                            .as_deref()
+                                            .map(|id| {
+                                                let short = id.chars().take(16).collect::<String>();
+                                                format!(" inflight={short}")
+                                            })
+                                            .unwrap_or_default();
+                                        format!(
+                                            "compaction status: messages={} ckpt_to_seq={} next_to_seq={} sched={} job={}{}",
+                                            status.message_count, ckpt, next, sched, job, inflight
+                                        )
+                                    }
+                                    Err(err) => format!("compaction status failed: {err}"),
+                                }
+                            })
+                            .await
+                            .unwrap_or_else(|err| format!("compaction status join failed: {err}"));
+                            let _ = tx.send(message).await;
+                        });
+                    }
                     UiAction::CopySelected => {
                         copy_selected(&mut terminal, &mut state)?;
                     }
@@ -437,6 +494,84 @@ async fn run_fullscreen_tui_sse(
                             });
                         }
                     }
+                    UiAction::CompactionStatus => {
+                        if ui_mode == SseUiMode::Interactive {
+                            let client = client.clone();
+                            let server = server.clone();
+                            let tx = status_tx.clone();
+                            tokio::spawn(async move {
+                                let message = match crate::ensure_thread(&client, &server).await {
+                                    Ok(thread_id) => {
+                                        let url =
+                                            format!("{server}/threads/{thread_id}/compaction-status");
+                                        let response = client
+                                            .post(url)
+                                            .json(&serde_json::json!({ "stride_messages": null }))
+                                            .send()
+                                            .await;
+                                        match response {
+                                            Ok(resp) if resp.status().is_success() => match resp
+                                                .json::<ripd::CompactionStatusV1Response>()
+                                                .await
+                                            {
+                                                Ok(status) => {
+                                                    let ckpt = status
+                                                        .latest_checkpoint
+                                                        .as_ref()
+                                                        .map(|c| c.to_seq.to_string())
+                                                        .unwrap_or_else(|| "none".to_string());
+                                                    let next = status
+                                                        .next_cut_point
+                                                        .as_ref()
+                                                        .map(|c| c.to_seq.to_string())
+                                                        .unwrap_or_else(|| "none".to_string());
+                                                    let sched = status
+                                                        .last_schedule_decision
+                                                        .as_ref()
+                                                        .map(|d| d.decision.as_str())
+                                                        .unwrap_or("none");
+                                                    let job = status
+                                                        .last_job_outcome
+                                                        .as_ref()
+                                                        .map(|j| j.status.as_str())
+                                                        .unwrap_or("none");
+                                                    let inflight = status
+                                                        .inflight_job_id
+                                                        .as_deref()
+                                                        .map(|id| {
+                                                            let short = id
+                                                                .chars()
+                                                                .take(16)
+                                                                .collect::<String>();
+                                                            format!(" inflight={short}")
+                                                        })
+                                                        .unwrap_or_default();
+                                                    format!(
+                                                        "compaction status: messages={} ckpt_to_seq={} next_to_seq={} sched={} job={}{}",
+                                                        status.message_count, ckpt, next, sched, job, inflight
+                                                    )
+                                                }
+                                                Err(err) => format!(
+                                                    "compaction status: parse failed: {err}"
+                                                ),
+                                            },
+                                            Ok(resp) => format!(
+                                                "compaction status: request failed: {}",
+                                                resp.status()
+                                            ),
+                                            Err(err) => {
+                                                format!("compaction status: request failed: {err}")
+                                            }
+                                        }
+                                    }
+                                    Err(err) => format!(
+                                        "compaction status: thread ensure failed: {err}"
+                                    ),
+                                };
+                                let _ = tx.send(message).await;
+                            });
+                        }
+                    }
                     UiAction::CopySelected => {
                         copy_selected(&mut terminal, &mut state)?;
                     }
@@ -572,6 +707,7 @@ enum UiAction {
     CompactionAuto,
     CompactionAutoSchedule,
     CompactionCutPoints,
+    CompactionStatus,
 }
 
 struct InitState {
@@ -674,6 +810,7 @@ fn handle_key_event(
             KeyCommand::CompactionAuto => UiAction::CompactionAuto,
             KeyCommand::CompactionAutoSchedule => UiAction::CompactionAutoSchedule,
             KeyCommand::CompactionCutPoints => UiAction::CompactionCutPoints,
+            KeyCommand::CompactionStatus => UiAction::CompactionStatus,
         };
     }
 

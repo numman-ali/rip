@@ -142,6 +142,19 @@ export function buildRipThreadCompactionCutPointsArgs(
   return args;
 }
 
+export type RipThreadCompactionStatusArgsOptions = RipThreadsArgsOptions & {
+  strideMessages?: number;
+};
+
+export function buildRipThreadCompactionStatusArgs(
+  threadId: string,
+  options: RipThreadCompactionStatusArgsOptions = {},
+): string[] {
+  const args = [...buildRipThreadsBaseArgs(options), "compaction-status", threadId];
+  if (typeof options.strideMessages === "number") args.push("--stride-messages", String(options.strideMessages));
+  return args;
+}
+
 export type RipThreadCompactionAutoArgsOptions = RipThreadsArgsOptions & {
   strideMessages?: number;
   maxNewCheckpoints?: number;
