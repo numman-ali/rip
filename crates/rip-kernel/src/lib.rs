@@ -38,6 +38,7 @@ impl Event {
             | EventKind::ContinuityRunSpawned { .. }
             | EventKind::ContinuityContextCompiled { .. }
             | EventKind::ContinuityCompactionCheckpointCreated { .. }
+            | EventKind::ContinuityCompactionAutoScheduleDecided { .. }
             | EventKind::ContinuityJobSpawned { .. }
             | EventKind::ContinuityJobEnded { .. }
             | EventKind::ContinuityRunEnded { .. }
@@ -132,6 +133,13 @@ pub enum CheckpointAction {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompactionPlannedCutPoint {
+    pub target_message_ordinal: u64,
+    pub to_seq: u64,
+    pub to_message_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EventKind {
     SessionStarted {
@@ -186,6 +194,26 @@ pub enum EventKind {
         to_seq: u64,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         to_message_id: Option<String>,
+        actor_id: String,
+        origin: String,
+    },
+    ContinuityCompactionAutoScheduleDecided {
+        decision_id: String,
+        policy_id: String,
+        decision: String,
+        execute: bool,
+        stride_messages: u64,
+        max_new_checkpoints: u32,
+        block_on_inflight: bool,
+        message_count: u64,
+        cut_rule_id: String,
+        planned: Vec<CompactionPlannedCutPoint>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        job_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        job_kind: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<Value>,
         actor_id: String,
         origin: String,
     },
@@ -497,6 +525,7 @@ impl Session {
             | EventKind::ContinuityRunSpawned { .. }
             | EventKind::ContinuityContextCompiled { .. }
             | EventKind::ContinuityCompactionCheckpointCreated { .. }
+            | EventKind::ContinuityCompactionAutoScheduleDecided { .. }
             | EventKind::ContinuityJobSpawned { .. }
             | EventKind::ContinuityJobEnded { .. }
             | EventKind::ContinuityRunEnded { .. }

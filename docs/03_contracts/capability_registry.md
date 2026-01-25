@@ -169,6 +169,7 @@ Notes
 | id | v | phase | cli_i | cli_h | server | sdk | tui | mcp | intent |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | compaction.auto | v1 | P2 | planned | supported | supported | supported | supported | planned | Auto-compaction when context exceeds threshold. |
+| compaction.auto.schedule | v1 | P2 | planned | supported | supported | supported | supported | planned | Policy-driven scheduling decision for when/why to run `compaction.auto` (logged as continuity truth). |
 | compaction.manual | v1 | P2 | planned | supported | supported | supported | planned | planned | Manual compaction with instructions. |
 | compaction.split_turn | v1 | P2 | planned | planned | planned | planned | planned | planned | Split-turn handling for oversized turns. |
 | compaction.truncation_policy | v1 | P2 | planned | planned | planned | planned | planned | planned | Truncation policy controls (auto vs disabled). |

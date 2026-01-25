@@ -15,7 +15,8 @@ mod tasks;
 mod workspace_lock;
 
 pub use continuities::{
-    CompactionAutoResultCheckpointV1, CompactionAutoV1Request, CompactionAutoV1Response,
+    CompactionAutoResultCheckpointV1, CompactionAutoScheduleV1Request,
+    CompactionAutoScheduleV1Response, CompactionAutoV1Request, CompactionAutoV1Response,
     CompactionCheckpointCumulativeV1Request, CompactionCutPointV1, CompactionCutPointsV1Request,
     CompactionCutPointsV1Response, CompactionPlannedCutPointV1, ContinuityMeta, ContinuityRunLink,
     ContinuityStore, ToolSideEffects,

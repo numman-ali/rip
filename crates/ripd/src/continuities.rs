@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rip_kernel::{Event, EventKind, StreamKind};
+use rip_kernel::{CompactionPlannedCutPoint, Event, EventKind, StreamKind};
 use rip_log::EventLog;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
@@ -114,6 +114,17 @@ pub struct CompactionAutoV1Request {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CompactionAutoScheduleV1Request {
+    pub stride_messages: Option<u64>,
+    pub max_new_checkpoints: Option<u32>,
+    pub block_on_inflight: Option<bool>,
+    pub execute: Option<bool>,
+    pub dry_run: Option<bool>,
+    pub actor_id: String,
+    pub origin: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CompactionAutoV1Response {
     pub thread_id: String,
     pub job_id: Option<String>,
@@ -143,6 +154,25 @@ pub struct CompactionAutoResultCheckpointV1 {
     pub cut_rule_id: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CompactionAutoScheduleV1Response {
+    pub thread_id: String,
+    pub decision_id: Option<String>,
+    pub policy_id: String,
+    pub decision: String,
+    pub execute: bool,
+    pub stride_messages: u64,
+    pub max_new_checkpoints: u32,
+    pub block_on_inflight: bool,
+    pub message_count: u64,
+    pub cut_rule_id: String,
+    pub planned: Vec<CompactionPlannedCutPointV1>,
+    pub job_id: Option<String>,
+    pub job_kind: Option<String>,
+    pub result: Vec<CompactionAutoResultCheckpointV1>,
+    pub error: Option<String>,
+}
+
 struct CompactionCheckpointCreatedPayload {
     cut_rule_id: String,
     summary_kind: String,
@@ -151,6 +181,24 @@ struct CompactionCheckpointCreatedPayload {
     from_message_id: Option<String>,
     to_seq: u64,
     to_message_id: Option<String>,
+    actor_id: String,
+    origin: String,
+}
+
+struct CompactionAutoScheduleDecidedPayload {
+    decision_id: String,
+    policy_id: String,
+    decision: String,
+    execute: bool,
+    stride_messages: u64,
+    max_new_checkpoints: u32,
+    block_on_inflight: bool,
+    message_count: u64,
+    cut_rule_id: String,
+    planned: Vec<CompactionPlannedCutPoint>,
+    job_id: Option<String>,
+    job_kind: Option<String>,
+    reason: Option<serde_json::Value>,
     actor_id: String,
     origin: String,
 }
@@ -1118,6 +1166,265 @@ impl ContinuityStore {
         Ok(response)
     }
 
+    pub fn compaction_auto_schedule_v1(
+        &self,
+        thread_id: &str,
+        req: CompactionAutoScheduleV1Request,
+    ) -> Result<CompactionAutoScheduleV1Response, String> {
+        let mut response = self.compaction_auto_schedule_spawn_job_v1(thread_id, req.clone())?;
+        if response.decision != "scheduled" || !response.execute {
+            return Ok(response);
+        }
+
+        let job_id = response
+            .job_id
+            .clone()
+            .ok_or_else(|| "compaction auto schedule spawned without job_id".to_string())?;
+
+        match self.compaction_auto_run_spawned_job_v1(
+            thread_id,
+            &job_id,
+            response.stride_messages,
+            &response.cut_rule_id,
+            &response.planned,
+            (req.actor_id.as_str(), req.origin.as_str()),
+        ) {
+            Ok(result) => {
+                response.decision = "completed".to_string();
+                response.result = result;
+            }
+            Err(err) => {
+                response.decision = "failed".to_string();
+                response.error = Some(err);
+            }
+        }
+
+        Ok(response)
+    }
+
+    pub(crate) fn compaction_auto_schedule_spawn_job_v1(
+        &self,
+        thread_id: &str,
+        req: CompactionAutoScheduleV1Request,
+    ) -> Result<CompactionAutoScheduleV1Response, String> {
+        let stride = req.stride_messages.unwrap_or(10_000);
+        if stride == 0 {
+            return Err("invalid_stride".to_string());
+        }
+        let max_new_checkpoints = req.max_new_checkpoints.unwrap_or(1).clamp(1, 32);
+        let block_on_inflight = req.block_on_inflight.unwrap_or(true);
+        let execute = req.execute.unwrap_or(true);
+        let dry_run = req.dry_run.unwrap_or(false);
+
+        let cut_rule_id = format!("stride_messages_v1/{stride}");
+        let policy_id = format!(
+            "compaction_auto_schedule_v1/stride_messages_v1/{stride}/max_new_checkpoints_v1/{max_new_checkpoints}/block_on_inflight_v1/{block_on_inflight}"
+        );
+
+        // Plan latest-first cut points, skipping already checkpointed ones.
+        let cut_points = self.compaction_cut_points_v1(
+            thread_id,
+            CompactionCutPointsV1Request {
+                stride_messages: Some(stride),
+                limit: Some(32),
+            },
+        )?;
+
+        let mut planned: Vec<CompactionPlannedCutPointV1> = Vec::new();
+        for cp in &cut_points.cut_points {
+            if planned.len() as u32 >= max_new_checkpoints {
+                break;
+            }
+            if cp.already_checkpointed {
+                continue;
+            }
+            planned.push(CompactionPlannedCutPointV1 {
+                target_message_ordinal: cp.target_message_ordinal,
+                to_seq: cp.to_seq,
+                to_message_id: cp.to_message_id.clone(),
+            });
+        }
+
+        if planned.is_empty() {
+            return Ok(CompactionAutoScheduleV1Response {
+                thread_id: thread_id.to_string(),
+                decision_id: None,
+                policy_id,
+                decision: "noop".to_string(),
+                execute,
+                stride_messages: stride,
+                max_new_checkpoints,
+                block_on_inflight,
+                message_count: cut_points.message_count,
+                cut_rule_id,
+                planned,
+                job_id: None,
+                job_kind: None,
+                result: Vec::new(),
+                error: None,
+            });
+        }
+
+        if dry_run {
+            return Ok(CompactionAutoScheduleV1Response {
+                thread_id: thread_id.to_string(),
+                decision_id: None,
+                policy_id,
+                decision: "dry_run".to_string(),
+                execute,
+                stride_messages: stride,
+                max_new_checkpoints,
+                block_on_inflight,
+                message_count: cut_points.message_count,
+                cut_rule_id,
+                planned,
+                job_id: None,
+                job_kind: None,
+                result: Vec::new(),
+                error: None,
+            });
+        }
+
+        let inflight_job_id = if block_on_inflight {
+            self.find_inflight_compaction_job_id_best_effort_v1(thread_id)
+        } else {
+            None
+        };
+
+        if let Some(job_id) = inflight_job_id {
+            let decision_id = Uuid::new_v4().to_string();
+            let planned_frame = planned
+                .iter()
+                .map(|p| CompactionPlannedCutPoint {
+                    target_message_ordinal: p.target_message_ordinal,
+                    to_seq: p.to_seq,
+                    to_message_id: p.to_message_id.clone(),
+                })
+                .collect();
+            self.append_compaction_auto_schedule_decided(
+                thread_id,
+                CompactionAutoScheduleDecidedPayload {
+                    decision_id: decision_id.clone(),
+                    policy_id: policy_id.clone(),
+                    decision: "skipped_inflight".to_string(),
+                    execute,
+                    stride_messages: stride,
+                    max_new_checkpoints,
+                    block_on_inflight,
+                    message_count: cut_points.message_count,
+                    cut_rule_id: cut_rule_id.clone(),
+                    planned: planned_frame,
+                    job_id: None,
+                    job_kind: None,
+                    reason: Some(serde_json::json!({
+                        "kind": "inflight_job",
+                        "job_id": job_id,
+                    })),
+                    actor_id: req.actor_id.clone(),
+                    origin: req.origin.clone(),
+                },
+            )?;
+
+            return Ok(CompactionAutoScheduleV1Response {
+                thread_id: thread_id.to_string(),
+                decision_id: Some(decision_id),
+                policy_id,
+                decision: "skipped_inflight".to_string(),
+                execute,
+                stride_messages: stride,
+                max_new_checkpoints,
+                block_on_inflight,
+                message_count: cut_points.message_count,
+                cut_rule_id,
+                planned,
+                job_id: None,
+                job_kind: None,
+                result: Vec::new(),
+                error: None,
+            });
+        }
+
+        let spawned = self.compaction_auto_spawn_job_v1(
+            thread_id,
+            CompactionAutoV1Request {
+                stride_messages: Some(stride),
+                max_new_checkpoints: Some(max_new_checkpoints),
+                dry_run: Some(false),
+                actor_id: req.actor_id.clone(),
+                origin: req.origin.clone(),
+            },
+        )?;
+
+        if spawned.status != "spawned" {
+            // The stream may have changed between planning and spawn; treat this as a no-op.
+            return Ok(CompactionAutoScheduleV1Response {
+                thread_id: thread_id.to_string(),
+                decision_id: None,
+                policy_id,
+                decision: "noop".to_string(),
+                execute,
+                stride_messages: stride,
+                max_new_checkpoints,
+                block_on_inflight,
+                message_count: cut_points.message_count,
+                cut_rule_id,
+                planned,
+                job_id: None,
+                job_kind: None,
+                result: Vec::new(),
+                error: None,
+            });
+        }
+
+        let decision_id = Uuid::new_v4().to_string();
+        let planned_frame = planned
+            .iter()
+            .map(|p| CompactionPlannedCutPoint {
+                target_message_ordinal: p.target_message_ordinal,
+                to_seq: p.to_seq,
+                to_message_id: p.to_message_id.clone(),
+            })
+            .collect();
+        self.append_compaction_auto_schedule_decided(
+            thread_id,
+            CompactionAutoScheduleDecidedPayload {
+                decision_id: decision_id.clone(),
+                policy_id: policy_id.clone(),
+                decision: "scheduled".to_string(),
+                execute,
+                stride_messages: stride,
+                max_new_checkpoints,
+                block_on_inflight,
+                message_count: cut_points.message_count,
+                cut_rule_id: cut_rule_id.clone(),
+                planned: planned_frame,
+                job_id: spawned.job_id.clone(),
+                job_kind: spawned.job_kind.clone(),
+                reason: None,
+                actor_id: req.actor_id.clone(),
+                origin: req.origin.clone(),
+            },
+        )?;
+
+        Ok(CompactionAutoScheduleV1Response {
+            thread_id: thread_id.to_string(),
+            decision_id: Some(decision_id),
+            policy_id,
+            decision: "scheduled".to_string(),
+            execute,
+            stride_messages: stride,
+            max_new_checkpoints,
+            block_on_inflight,
+            message_count: cut_points.message_count,
+            cut_rule_id,
+            planned,
+            job_id: spawned.job_id,
+            job_kind: spawned.job_kind,
+            result: Vec::new(),
+            error: None,
+        })
+    }
+
     pub(crate) fn compaction_auto_spawn_job_v1(
         &self,
         thread_id: &str,
@@ -1638,6 +1945,57 @@ impl ContinuityStore {
         Ok(checkpoint_id)
     }
 
+    fn append_compaction_auto_schedule_decided(
+        &self,
+        continuity_id: &str,
+        payload: CompactionAutoScheduleDecidedPayload,
+    ) -> Result<String, String> {
+        let mut next_seq = self.next_seq.lock().expect("continuity seq mutex");
+        let seq = match next_seq.get(continuity_id).cloned() {
+            Some(seq) => seq,
+            None => {
+                let seq = self
+                    .load_next_seq_for(continuity_id)
+                    .map_err(|err| format!("resolve continuity seq: {err}"))?;
+                next_seq.insert(continuity_id.to_string(), seq);
+                seq
+            }
+        };
+
+        let id = payload.decision_id.clone();
+        let event = Event {
+            id: id.clone(),
+            session_id: continuity_id.to_string(),
+            timestamp_ms: now_ms(),
+            seq,
+            kind: EventKind::ContinuityCompactionAutoScheduleDecided {
+                decision_id: payload.decision_id,
+                policy_id: payload.policy_id,
+                decision: payload.decision,
+                execute: payload.execute,
+                stride_messages: payload.stride_messages,
+                max_new_checkpoints: payload.max_new_checkpoints,
+                block_on_inflight: payload.block_on_inflight,
+                message_count: payload.message_count,
+                cut_rule_id: payload.cut_rule_id,
+                planned: payload.planned,
+                job_id: payload.job_id,
+                job_kind: payload.job_kind,
+                reason: payload.reason,
+                actor_id: payload.actor_id,
+                origin: payload.origin,
+            },
+        };
+        self.event_log
+            .append(&event)
+            .map_err(|err| format!("append continuity compaction schedule decided: {err}"))?;
+        self.stream_cache.append_best_effort(&event);
+        let _ = self.sender.send(event.clone());
+
+        next_seq.insert(continuity_id.to_string(), seq + 1);
+        Ok(id)
+    }
+
     fn append_job_spawned(
         &self,
         continuity_id: &str,
@@ -1724,6 +2082,42 @@ impl ContinuityStore {
 
         next_seq.insert(continuity_id.to_string(), seq + 1);
         Ok(id)
+    }
+
+    fn find_inflight_compaction_job_id_best_effort_v1(
+        &self,
+        continuity_id: &str,
+    ) -> Option<String> {
+        const MAX_TAIL_EVENTS: usize = 512;
+        const MAX_TAIL_BYTES: usize = 512 * 1024;
+
+        let tail = self
+            .stream_cache
+            .scan_tail(continuity_id, MAX_TAIL_EVENTS, MAX_TAIL_BYTES)
+            .ok()
+            .flatten()?;
+
+        let mut ended: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for event in tail.events.iter().rev() {
+            match &event.kind {
+                EventKind::ContinuityJobEnded {
+                    job_id, job_kind, ..
+                } => {
+                    if job_kind == COMPACTION_JOB_KIND_SUMMARIZER_V1 {
+                        ended.insert(job_id.clone());
+                    }
+                }
+                EventKind::ContinuityJobSpawned {
+                    job_id, job_kind, ..
+                } => {
+                    if job_kind == COMPACTION_JOB_KIND_SUMMARIZER_V1 && !ended.contains(job_id) {
+                        return Some(job_id.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
     }
 
     pub fn append_run_ended(
@@ -2533,6 +2927,67 @@ mod tests {
         assert_eq!(second.cut_points[0].to_message_id, m4);
         assert_eq!(second.cut_points[1].target_message_ordinal, 2);
         assert_eq!(second.cut_points[1].to_message_id, m2);
+    }
+
+    #[test]
+    fn compaction_auto_schedule_is_replay_safe_under_concurrent_calls() {
+        let dir = tempdir().expect("tmp");
+        let (event_log, store, _data_dir) = store_for(&dir);
+        let store = Arc::new(store);
+
+        let continuity_id = store.ensure_default().expect("ensure");
+        let _m1 = store
+            .append_message(
+                &continuity_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "m1".to_string(),
+            )
+            .expect("append");
+        let _m2 = store
+            .append_message(
+                &continuity_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "m2".to_string(),
+            )
+            .expect("append");
+
+        std::thread::scope(|scope| {
+            for _ in 0..4 {
+                let store = store.clone();
+                let continuity_id = continuity_id.clone();
+                scope.spawn(move || {
+                    let _ = store.compaction_auto_schedule_spawn_job_v1(
+                        &continuity_id,
+                        CompactionAutoScheduleV1Request {
+                            stride_messages: Some(2),
+                            max_new_checkpoints: Some(1),
+                            block_on_inflight: Some(true),
+                            execute: Some(false),
+                            dry_run: Some(false),
+                            actor_id: "alice".to_string(),
+                            origin: "test".to_string(),
+                        },
+                    );
+                });
+            }
+        });
+
+        let events = event_log
+            .replay_stream(StreamKind::Continuity, &continuity_id)
+            .expect("replay");
+        assert!(!events.is_empty());
+        for (idx, event) in events.iter().enumerate() {
+            assert_eq!(event.seq, idx as u64, "expected contiguous seq values");
+        }
+        assert!(
+            events.iter().any(|event| matches!(
+                event.kind,
+                EventKind::ContinuityCompactionAutoScheduleDecided { .. }
+            )),
+            "expected at least one continuity_compaction_auto_schedule_decided"
+        );
     }
 
     #[test]

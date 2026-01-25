@@ -691,7 +691,6 @@ impl ContinuityStreamCache {
     /// Reads a bounded tail of the continuity sidecar by scanning backwards from the end.
     ///
     /// Returns `Ok(None)` when the cache file doesn't exist.
-    #[cfg(test)]
     pub(crate) fn scan_tail(
         &self,
         continuity_id: &str,

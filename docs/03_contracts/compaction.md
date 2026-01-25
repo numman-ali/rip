@@ -102,3 +102,53 @@ Determinism invariants
   - the resolved `{to_seq,to_message_id,target_message_ordinal,cut_rule_id}` appears in job/checkpoint frames.
 - Concurrency is replay-safe:
   - multiple jobs may target the same cut point; later checkpoint frames supersede earlier ones by stream order (ADR-0011).
+
+## Capability: `compaction.auto.schedule` (v1)
+
+Intent
+- Deterministically decide **when/why** to run `compaction.auto` under an explicit scheduling policy (ADR-0013).
+- The scheduling decision is logged as continuity truth (no hidden mutable state).
+- This capability is designed to be invoked out-of-band (server worker / cron / operator), so `thread.post_message` stays fast.
+
+Inputs
+- `thread_id`: string (required)
+- `stride_messages`: u64 (optional; default: `10_000`)
+- `max_new_checkpoints`: u32 (optional; default: `1`)
+- `block_on_inflight`: bool (optional; default: `true`)
+  - When true, do not start new compaction work if a compaction summarizer job is already in-flight for the thread (best-effort, derived from continuity truth).
+- `execute`: bool (optional; default: `true`)
+  - When true, the scheduler starts the job immediately (server may execute asynchronously).
+  - When false, the scheduler records the decision and spawns the job, but does not execute it (future external job runners can execute pending jobs).
+- `dry_run`: bool (optional; default: `false`)
+  - When true, compute the planned cut point(s) but do not emit continuity truth frames or start jobs.
+- `actor_id`: string (required)
+- `origin`: string (required)
+
+Outputs
+- `thread_id`: string
+- `decision_id`: string | null
+  - Present when the scheduler emitted a `continuity_compaction_auto_schedule_decided` frame (non-dry-run, eligible work).
+- `policy_id`: string
+  - A versioned identifier that captures resolved policy parameters.
+- `decision`: `"noop" | "skipped_inflight" | "scheduled" | "completed" | "failed"`
+- `execute`: bool
+- `job_id`: string | null
+- `job_kind`: string | null
+- `planned`: array
+  - Each entry: `target_message_ordinal`, `to_seq`, `to_message_id`
+- `result`: array
+  - When `decision="completed"`: same shape as `compaction.auto` results (`checkpoint_id`, `summary_artifact_id`, `to_seq`, `to_message_id`, `cut_rule_id`)
+- `error`: string | null
+
+Continuity-truth decision frame
+- When the scheduler is invoked and there is eligible work, it appends:
+  - `continuity_compaction_auto_schedule_decided`
+    - records policy parameters, planned cut point(s), and the decision outcome
+    - links to the spawned job id when scheduled
+
+Determinism invariants
+- The scheduler decision must be derived only from:
+  - continuity truth (messages/checkpoints/jobs),
+  - and the explicit request parameters.
+- Cache posture:
+  - caches may accelerate evaluation but must not change the computed plan/decision.

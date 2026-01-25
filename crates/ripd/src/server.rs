@@ -221,6 +221,7 @@ pub(crate) fn build_openapi_router() -> (Router<AppState>, String) {
         .routes(routes!(thread_compaction_checkpoint))
         .routes(routes!(thread_compaction_cut_points))
         .routes(routes!(thread_compaction_auto))
+        .routes(routes!(thread_compaction_auto_schedule))
         .routes(routes!(thread_stream_events))
         .routes(routes!(create_task))
         .routes(routes!(list_tasks))
@@ -767,6 +768,81 @@ async fn thread_compaction_auto(
             })
             .await;
         });
+
+        return (StatusCode::ACCEPTED, Json(response)).into_response();
+    }
+
+    (StatusCode::OK, Json(response)).into_response()
+}
+
+#[utoipa::path(
+    post,
+    path = "/threads/{id}/compaction-auto-schedule",
+    params(
+        ("id" = String, Path, description = "Thread id")
+    ),
+    request_body = crate::CompactionAutoScheduleV1Request,
+    responses(
+        (status = 200, description = "Scheduler no-op / dry-run / skipped result", body = crate::CompactionAutoScheduleV1Response),
+        (status = 202, description = "Scheduler started a job", body = crate::CompactionAutoScheduleV1Response),
+        (status = 400, description = "Invalid schedule request"),
+        (status = 404, description = "Thread not found")
+    )
+)]
+async fn thread_compaction_auto_schedule(
+    Path(thread_id): Path<String>,
+    State(state): State<AppState>,
+    Json(mut payload): Json<crate::CompactionAutoScheduleV1Request>,
+) -> impl IntoResponse {
+    if payload.actor_id.trim().is_empty() {
+        payload.actor_id = "user".to_string();
+    }
+    if payload.origin.trim().is_empty() {
+        payload.origin = "server".to_string();
+    }
+
+    let store = state.engine.continuities();
+    let actor_id = payload.actor_id.clone();
+    let origin = payload.origin.clone();
+
+    let response = match store.compaction_auto_schedule_spawn_job_v1(&thread_id, payload) {
+        Ok(response) => response,
+        Err(err) => {
+            let err_lower = err.to_ascii_lowercase();
+            if err_lower.contains("invalid_stride") {
+                return StatusCode::BAD_REQUEST.into_response();
+            }
+            if err_lower.contains("not_found") {
+                return StatusCode::NOT_FOUND.into_response();
+            }
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
+
+    if response.decision == "scheduled" {
+        if response.execute {
+            let Some(job_id) = response.job_id.clone() else {
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            };
+            let planned = response.planned.clone();
+            let stride_messages = response.stride_messages;
+            let cut_rule_id = response.cut_rule_id.clone();
+            let store = store.clone();
+            let thread_id = thread_id.clone();
+            tokio::spawn(async move {
+                let _ = tokio::task::spawn_blocking(move || {
+                    let _ = store.compaction_auto_run_spawned_job_v1(
+                        &thread_id,
+                        &job_id,
+                        stride_messages,
+                        &cut_rule_id,
+                        &planned,
+                        (actor_id.as_str(), origin.as_str()),
+                    );
+                })
+                .await;
+            });
+        }
 
         return (StatusCode::ACCEPTED, Json(response)).into_response();
     }

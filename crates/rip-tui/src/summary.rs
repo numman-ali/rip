@@ -12,6 +12,9 @@ pub fn event_type(event: &Event) -> &'static str {
         EventKind::ContinuityCompactionCheckpointCreated { .. } => {
             "continuity_compaction_checkpoint_created"
         }
+        EventKind::ContinuityCompactionAutoScheduleDecided { .. } => {
+            "continuity_compaction_auto_schedule_decided"
+        }
         EventKind::ContinuityJobSpawned { .. } => "continuity_job_spawned",
         EventKind::ContinuityJobEnded { .. } => "continuity_job_ended",
         EventKind::ContinuityRunEnded { .. } => "continuity_run_ended",
@@ -80,6 +83,24 @@ pub fn event_summary(event: &Event) -> String {
             truncate(summary_artifact_id, 16),
             truncate(cut_rule_id, 32)
         ),
+        EventKind::ContinuityCompactionAutoScheduleDecided {
+            policy_id,
+            decision,
+            job_id,
+            ..
+        } => match job_id.as_deref() {
+            Some(job_id) => format!(
+                "policy={} decision={} job={}",
+                truncate(policy_id, 32),
+                truncate(decision, 32),
+                truncate(job_id, 16)
+            ),
+            None => format!(
+                "policy={} decision={}",
+                truncate(policy_id, 32),
+                truncate(decision, 32)
+            ),
+        },
         EventKind::ContinuityJobSpawned {
             job_id, job_kind, ..
         } => format!("job={} id={}", truncate(job_kind, 32), truncate(job_id, 16)),

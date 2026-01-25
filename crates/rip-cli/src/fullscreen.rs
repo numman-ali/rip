@@ -159,6 +159,44 @@ pub async fn run_fullscreen_tui(initial_prompt: Option<String>) -> anyhow::Resul
                             let _ = tx.send(message).await;
                         });
                     }
+                    UiAction::CompactionAutoSchedule => {
+                        let store = engine.continuities();
+                        let tx = status_tx.clone();
+                        tokio::spawn(async move {
+                            let message = tokio::task::spawn_blocking(move || {
+                                let thread_id = match store.ensure_default() {
+                                    Ok(id) => id,
+                                    Err(err) => {
+                                        return format!("compaction schedule: thread ensure failed: {err}")
+                                    }
+                                };
+                                match store.compaction_auto_schedule_v1(
+                                    &thread_id,
+                                    ripd::CompactionAutoScheduleV1Request {
+                                        stride_messages: None,
+                                        max_new_checkpoints: None,
+                                        block_on_inflight: Some(true),
+                                        execute: Some(true),
+                                        dry_run: Some(false),
+                                        actor_id: "user".to_string(),
+                                        origin: "tui".to_string(),
+                                    },
+                                ) {
+                                    Ok(resp) => match resp.job_id.as_deref() {
+                                        Some(job_id) => format!(
+                                            "compaction schedule: decision={} job_id={job_id}",
+                                            resp.decision
+                                        ),
+                                        None => format!("compaction schedule: decision={}", resp.decision),
+                                    },
+                                    Err(err) => format!("compaction schedule failed: {err}"),
+                                }
+                            })
+                            .await
+                            .unwrap_or_else(|err| format!("compaction schedule join failed: {err}"));
+                            let _ = tx.send(message).await;
+                        });
+                    }
                     UiAction::CopySelected => {
                         copy_selected(&mut terminal, &mut state)?;
                     }
@@ -347,6 +385,58 @@ async fn run_fullscreen_tui_sse(
                             });
                         }
                     }
+                    UiAction::CompactionAutoSchedule => {
+                        if ui_mode == SseUiMode::Interactive {
+                            let client = client.clone();
+                            let server = server.clone();
+                            let tx = status_tx.clone();
+                            tokio::spawn(async move {
+                                let message = match crate::ensure_thread(&client, &server).await {
+                                    Ok(thread_id) => {
+                                        let url =
+                                            format!("{server}/threads/{thread_id}/compaction-auto-schedule");
+                                        let response = client
+                                            .post(url)
+                                            .json(&serde_json::json!({
+                                                "stride_messages": null,
+                                                "max_new_checkpoints": null,
+                                                "block_on_inflight": true,
+                                                "execute": true,
+                                                "dry_run": false,
+                                                "actor_id": "user",
+                                                "origin": "tui"
+                                            }))
+                                            .send()
+                                            .await;
+                                        match response {
+                                            Ok(resp) if resp.status().is_success() => {
+                                                match resp.json::<ripd::CompactionAutoScheduleV1Response>().await {
+                                                    Ok(out) => match out.job_id {
+                                                        Some(job_id) => format!(
+                                                            "compaction schedule: decision={} job_id={job_id}",
+                                                            out.decision
+                                                        ),
+                                                        None => format!(
+                                                            "compaction schedule: decision={}",
+                                                            out.decision
+                                                        ),
+                                                    },
+                                                    Err(err) => format!("compaction schedule: parse failed: {err}"),
+                                                }
+                                            }
+                                            Ok(resp) => format!(
+                                                "compaction schedule: request failed: {}",
+                                                resp.status()
+                                            ),
+                                            Err(err) => format!("compaction schedule: request failed: {err}"),
+                                        }
+                                    }
+                                    Err(err) => format!("compaction schedule: thread ensure failed: {err}"),
+                                };
+                                let _ = tx.send(message).await;
+                            });
+                        }
+                    }
                     UiAction::CopySelected => {
                         copy_selected(&mut terminal, &mut state)?;
                     }
@@ -480,6 +570,7 @@ enum UiAction {
     Submit,
     CopySelected,
     CompactionAuto,
+    CompactionAutoSchedule,
     CompactionCutPoints,
 }
 
@@ -581,6 +672,7 @@ fn handle_key_event(
                 UiAction::None
             }
             KeyCommand::CompactionAuto => UiAction::CompactionAuto,
+            KeyCommand::CompactionAutoSchedule => UiAction::CompactionAutoSchedule,
             KeyCommand::CompactionCutPoints => UiAction::CompactionCutPoints,
         };
     }

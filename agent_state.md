@@ -24,6 +24,7 @@ Current focus
 - Implemented: compaction foundations v0.1: `continuity_compaction_checkpoint_created` + `rip.compaction_summary.v1` artifacts + compiler strategy `summaries_recent_messages_v1` (summary_ref + recent raw messages; fallback-safe; cache-backed O(k) when sidecars exist).
 - Implemented: `compaction.manual` surface parity (cli_h/server/sdk) via `rip threads compaction-checkpoint` (local + `--server`) and `POST /threads/{id}/compaction-checkpoint`.
 - Implemented: compaction auto v0.1: deterministic `compaction.cut_points` (message-stride, cache-backed with truth fallbacks) + `compaction.auto` summarizer jobs emitting `continuity_job_spawned`/`continuity_job_ended` (ADR-0012) and deterministic checkpoint frames + summary artifacts; exposed across cli_h/tui/server/sdk.
+- Implemented: compaction auto v0.2 scheduling: `compaction.auto.schedule` emits `continuity_compaction_auto_schedule_decided` (policy + reasons) and triggers compaction work off the hot path; exposed across cli_h/tui/server/sdk.
 - Implemented: branch/handoff posture is “link-only” in the continuity log (no history copying) (ADR-0009) + relationship frames (`continuity_branched`, `continuity_handoff_created`).
 - Implemented: handoff writes an artifact-backed context bundle referenced by `continuity_handoff_created.summary_artifact_id` (`docs/03_contracts/handoff_context_bundle.md`).
 - Implemented: server exposes `thread.*` (ensure/list/get/post_message/branch/handoff/stream_events) and OpenAPI is updated.

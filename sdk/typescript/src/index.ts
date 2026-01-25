@@ -18,6 +18,8 @@ export type {
   RipThreadCompactionCutPointsResponse,
   RipThreadCompactionAutoRequest,
   RipThreadCompactionAutoResponse,
+  RipThreadCompactionAutoScheduleRequest,
+  RipThreadCompactionAutoScheduleResponse,
   RipTaskOptions,
   RipTaskSpawnRequest,
   RipTaskCreated,
@@ -36,6 +38,7 @@ export {
   buildRipThreadCompactionCheckpointArgs,
   buildRipThreadCompactionCutPointsArgs,
   buildRipThreadCompactionAutoArgs,
+  buildRipThreadCompactionAutoScheduleArgs,
   buildRipThreadEventsArgs,
   collectOutputText,
 } from "./util.js";

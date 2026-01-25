@@ -121,6 +121,32 @@ pub(crate) enum ThreadsCommand {
         #[arg(long)]
         origin: Option<String>,
     },
+    /// Schedule deterministic auto-compaction under an explicit policy (logs the decision).
+    CompactionAutoSchedule {
+        /// Thread id (continuity id).
+        id: String,
+        /// Message stride used to compute cut points (default: 10_000).
+        #[arg(long)]
+        stride_messages: Option<u64>,
+        /// Maximum number of new checkpoints created per invocation (default: 1).
+        #[arg(long)]
+        max_new_checkpoints: Option<u32>,
+        /// Allow scheduling even when a compaction job is already in-flight.
+        #[arg(long, action = clap::ArgAction::SetTrue)]
+        allow_inflight: bool,
+        /// Do not execute the spawned job (schedule only).
+        #[arg(long, action = clap::ArgAction::SetTrue)]
+        no_execute: bool,
+        /// Compute the planned cut points but do not emit frames or start jobs.
+        #[arg(long, action = clap::ArgAction::SetTrue)]
+        dry_run: bool,
+        /// Actor id (provenance).
+        #[arg(long)]
+        actor_id: Option<String>,
+        /// Origin (provenance).
+        #[arg(long)]
+        origin: Option<String>,
+    },
     /// Append a message to a continuity and start a run; print linkage JSON.
     PostMessage {
         /// Thread id (continuity id).
@@ -373,6 +399,39 @@ async fn run_threads_remote(server: String, command: ThreadsCommand) -> anyhow::
             let body = response.text().await?;
             println!("{body}");
         }
+        ThreadsCommand::CompactionAutoSchedule {
+            id,
+            stride_messages,
+            max_new_checkpoints,
+            allow_inflight,
+            no_execute,
+            dry_run,
+            actor_id,
+            origin,
+        } => {
+            let actor_id = actor_id.unwrap_or_else(|| "user".to_string());
+            let origin = origin.unwrap_or_else(|| "cli".to_string());
+            let url = format!("{server}/threads/{id}/compaction-auto-schedule");
+            let response = client
+                .post(url)
+                .json(&serde_json::json!({
+                    "stride_messages": stride_messages,
+                    "max_new_checkpoints": max_new_checkpoints,
+                    "block_on_inflight": !allow_inflight,
+                    "execute": !no_execute,
+                    "dry_run": dry_run,
+                    "actor_id": actor_id,
+                    "origin": origin,
+                }))
+                .send()
+                .await?;
+            let status = response.status();
+            if !status.is_success() {
+                anyhow::bail!("thread compaction-auto-schedule failed: {status}");
+            }
+            let body = response.text().await?;
+            println!("{body}");
+        }
         ThreadsCommand::PostMessage {
             id,
             content,
@@ -576,6 +635,34 @@ async fn run_threads_local_with_engine(
                     },
                 )
                 .map_err(|err| anyhow::anyhow!("thread compaction-auto failed: {err}"))?;
+            println!("{}", serde_json::to_string(&resp)?);
+        }
+        ThreadsCommand::CompactionAutoSchedule {
+            id,
+            stride_messages,
+            max_new_checkpoints,
+            allow_inflight,
+            no_execute,
+            dry_run,
+            actor_id,
+            origin,
+        } => {
+            let actor_id = actor_id.unwrap_or_else(|| "user".to_string());
+            let origin = origin.unwrap_or_else(|| "cli".to_string());
+            let resp = store
+                .compaction_auto_schedule_v1(
+                    &id,
+                    ripd::CompactionAutoScheduleV1Request {
+                        stride_messages,
+                        max_new_checkpoints,
+                        block_on_inflight: Some(!allow_inflight),
+                        execute: Some(!no_execute),
+                        dry_run: Some(dry_run),
+                        actor_id,
+                        origin,
+                    },
+                )
+                .map_err(|err| anyhow::anyhow!("thread compaction-auto-schedule failed: {err}"))?;
             println!("{}", serde_json::to_string(&resp)?);
         }
         ThreadsCommand::PostMessage {

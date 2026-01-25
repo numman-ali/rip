@@ -163,6 +163,31 @@ export function buildRipThreadCompactionAutoArgs(
   return args;
 }
 
+export type RipThreadCompactionAutoScheduleArgsOptions = RipThreadsArgsOptions & {
+  strideMessages?: number;
+  maxNewCheckpoints?: number;
+  allowInflight?: boolean;
+  noExecute?: boolean;
+  dryRun?: boolean;
+  actorId?: string;
+  origin?: string;
+};
+
+export function buildRipThreadCompactionAutoScheduleArgs(
+  threadId: string,
+  options: RipThreadCompactionAutoScheduleArgsOptions = {},
+): string[] {
+  const args = [...buildRipThreadsBaseArgs(options), "compaction-auto-schedule", threadId];
+  if (typeof options.strideMessages === "number") args.push("--stride-messages", String(options.strideMessages));
+  if (typeof options.maxNewCheckpoints === "number") args.push("--max-new-checkpoints", String(options.maxNewCheckpoints));
+  if (options.allowInflight) args.push("--allow-inflight");
+  if (options.noExecute) args.push("--no-execute");
+  if (options.dryRun) args.push("--dry-run");
+  if (options.actorId) args.push("--actor-id", options.actorId);
+  if (options.origin) args.push("--origin", options.origin);
+  return args;
+}
+
 export type RipThreadEventsArgsOptions = RipThreadsArgsOptions & {
   maxEvents?: number;
 };

@@ -7,6 +7,7 @@ import {
   buildRipThreadBranchArgs,
   buildRipThreadCompactionCheckpointArgs,
   buildRipThreadCompactionAutoArgs,
+  buildRipThreadCompactionAutoScheduleArgs,
   buildRipThreadCompactionCutPointsArgs,
   buildRipThreadEnsureArgs,
   buildRipThreadEventsArgs,
@@ -177,6 +178,34 @@ export type RipThreadCompactionAutoResponse = {
   message_count: number;
   cut_rule_id: string;
   planned: Array<{ target_message_ordinal: number; to_seq: number; to_message_id: string }>;
+  result: RipThreadCompactionAutoResultCheckpoint[];
+  error: string | null;
+};
+
+export type RipThreadCompactionAutoScheduleRequest = {
+  stride_messages?: number;
+  max_new_checkpoints?: number;
+  allow_inflight?: boolean;
+  no_execute?: boolean;
+  dry_run?: boolean;
+  actor_id?: string;
+  origin?: string;
+};
+
+export type RipThreadCompactionAutoScheduleResponse = {
+  thread_id: string;
+  decision_id: string | null;
+  policy_id: string;
+  decision: string;
+  execute: boolean;
+  stride_messages: number;
+  max_new_checkpoints: number;
+  block_on_inflight: boolean;
+  message_count: number;
+  cut_rule_id: string;
+  planned: Array<{ target_message_ordinal: number; to_seq: number; to_message_id: string }>;
+  job_id: string | null;
+  job_kind: string | null;
   result: RipThreadCompactionAutoResultCheckpoint[];
   error: string | null;
 };
@@ -501,6 +530,29 @@ export class Rip {
       options,
     );
     return out as RipThreadCompactionAutoResponse;
+  }
+
+  async threadCompactionAutoSchedule(
+    threadId: string,
+    request: RipThreadCompactionAutoScheduleRequest = {},
+    options: RipThreadOptions = {},
+  ): Promise<RipThreadCompactionAutoScheduleResponse> {
+    const actorId = request.actor_id ?? "user";
+    const origin = request.origin ?? "sdk-ts";
+    const out = await this.execJson(
+      buildRipThreadCompactionAutoScheduleArgs(threadId, {
+        server: options.server,
+        strideMessages: request.stride_messages,
+        maxNewCheckpoints: request.max_new_checkpoints,
+        allowInflight: request.allow_inflight,
+        noExecute: request.no_execute,
+        dryRun: request.dry_run,
+        actorId,
+        origin,
+      }),
+      options,
+    );
+    return out as RipThreadCompactionAutoScheduleResponse;
   }
 
   async threadEventsStreamed(

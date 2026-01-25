@@ -107,6 +107,7 @@ Generated from docs/03_contracts/capability_registry.md.
 | tool.read_ranges | planned | planned | planned | planned | planned | planned |
 | tool.lsp | planned | planned | planned | planned | planned | planned |
 | compaction.auto | planned | supported | supported | supported | supported | planned |
+| compaction.auto.schedule | planned | supported | supported | supported | supported | planned |
 | compaction.manual | planned | supported | supported | supported | planned | planned |
 | compaction.split_turn | planned | planned | planned | planned | planned | planned |
 | compaction.truncation_policy | planned | planned | planned | planned | planned | planned |

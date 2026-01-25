@@ -55,6 +55,24 @@ Frame types
   - `to_message_id`: string | null (coverage end message id when applicable; required when known)
   - `actor_id`: string
   - `origin`: string
+- `continuity_compaction_auto_schedule_decided`
+  - Purpose: record a policy-driven decision about whether to run `compaction.auto` (ADR-0013).
+  - `decision_id`: string (uuid)
+  - `policy_id`: string (versioned policy identifier capturing resolved parameters)
+  - `decision`: string (example: `scheduled` | `skipped_inflight`)
+  - `execute`: bool
+  - `stride_messages`: u64
+  - `max_new_checkpoints`: u32
+  - `block_on_inflight`: bool
+  - `message_count`: u64
+  - `cut_rule_id`: string
+  - `planned`: array
+    - Each entry: `target_message_ordinal`, `to_seq`, `to_message_id`
+  - `job_id`: string | null (present when `decision=scheduled`)
+  - `job_kind`: string | null (present when `decision=scheduled`)
+  - `reason`: object | null (optional; stable values only)
+  - `actor_id`: string
+  - `origin`: string
 - `continuity_job_spawned`
   - Purpose: represent a background job over the continuity stream (summarizers/indexers/etc.) as continuity truth (ADR-0012).
   - `job_id`: string (uuid)
@@ -161,6 +179,7 @@ Invariants
 - `continuity_context_compiled` must be emitted after `continuity_run_spawned` and before `continuity_run_ended` for the same `run_session_id`.
 - `continuity_compaction_checkpoint_created` is appended to the continuity stream and must reference a message boundary (`to_seq`/`to_message_id` identify a `continuity_message_appended` event).
 - Multiple `continuity_compaction_checkpoint_created` frames may exist for the same `to_seq` (later frames supersede earlier ones by stream order; history is never overwritten).
+- `continuity_compaction_auto_schedule_decided` is appended to the continuity stream when the scheduler encounters eligible work; it must only include stable values/refs.
 - `continuity_job_spawned` and `continuity_job_ended` are appended to the continuity stream.
 - `continuity_job_ended` is terminal for `{job_id}` and should appear at most once per `job_id`.
 
