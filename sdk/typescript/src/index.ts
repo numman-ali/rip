@@ -1,6 +1,7 @@
 export type { RipEventFrame, OutputTextDeltaFrame } from "./frames.js";
 export type {
   RipOptions,
+  RipTransport,
   RipRunOptions,
   RipTurn,
   RipThreadOptions,

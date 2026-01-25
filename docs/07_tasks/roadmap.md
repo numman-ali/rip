@@ -86,14 +86,6 @@ Now
 
 Next
 
-## SDK: transport + distribution (direct HTTP, packaging) [needs work]
-- Refs: `docs/06_decisions/ADR-0006-sdk-transport.md`, `docs/04_execution/sdk.md`
-- Ready:
-  - `sdk/typescript` is exercised by `scripts/check-sdk-ts`.
-- Done:
-  - Decide distribution (PATH vs bundled binaries).
-  - Decide whether to add a direct-HTTP transport (keeping SDK as a thin adapter over canonical frames).
-
 ## TUI: interaction foundations (themes, keybindings, raw view, clipboard) [confirm spec]
 - Refs:
   - `docs/02_architecture/tui/00_index.md`
@@ -110,6 +102,18 @@ Next
   - The above UI capabilities are available in the default fullscreen UX and are replay-testable via golden snapshots.
 
 Later
+- SDK distribution: bundled binaries (npm) [needs work]
+  - Context: PATH-first is the Phase 1 default (ADR-0017). Bundling is an operational/release surface that must be explicit and reviewed.
+  - Done:
+    - Release pipeline defined (platform builds, signing, supply-chain posture).
+    - Package layout + selection logic is deterministic and test-covered.
+    - No silent downloads; version pinning is explicit.
+- Continuities: multi-plane continuity authority + sync/replication [needs work]
+  - Context: Phase 1 supports a single authority per continuity (local runtime or a remote control plane). Multi-device “same continuity everywhere” works by having all clients target the same control plane; independent logs are not merged today.
+  - Decision: whether to support multi-writer/offline sync vs enforce single-writer authority with optional read-only replicas.
+  - Done:
+    - Capability contract for replication/sync is defined (authority, provenance, conflict semantics) without breaking determinism/replay.
+    - Surfaces can explicitly attach to an authority and/or replica and explain the posture to users.
 - OpenResponses: parallel tool calls + background responses [needs work]
   - Refs: `docs/06_decisions/ADR-0005-openresponses-tool-loop.md`, `crates/ripd/src/provider_openresponses.rs`
   - Decision packet:
@@ -200,6 +204,7 @@ Open questions
 
 Done (recent)
 - 2026-01-25: Provider cursor cache truth logging (ADR-0015): `continuity_provider_cursor_updated` frame + `thread.provider_cursor.{status,rotate}` parity (cli_h/tui/server/sdk) + OpenResponses run cursor capture.
+- 2026-01-25: TypeScript SDK: opt-in direct HTTP/SSE transport added for server mode (sessions/threads/tasks), while keeping exec-by-default (ADR-0017).
 - 2026-01-20: TUI remote attach: `rip --server <url> --session <id>` streams server SSE frames into the fullscreen UI; fixture + snapshot parity test.
 - 2026-01-20: Default UX: `rip` launches a fullscreen terminal UI (TUI) and runs the session engine in-process; `rip run` remains the headless/automation entrypoint.
 - 2026-01-20: TypeScript SDK scaffold added (`sdk/typescript`): spawns `rip` and parses JSONL event frames; `scripts/check-sdk-ts` wired into `scripts/check`; CI check-fast now pins stable toolchain for fmt/check/clippy/test.

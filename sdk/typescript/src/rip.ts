@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 import readline from "node:readline";
 
 import type { RipEventFrame } from "./frames.js";
+import type { RipFetch, RipHttpConfig } from "./http.js";
+import { httpJson, httpRequest, sseDataMessages } from "./http.js";
 import {
   buildRipRunArgs,
   buildRipThreadBranchArgs,
@@ -21,11 +23,17 @@ import {
   buildRipThreadProviderCursorStatusArgs,
 } from "./util.js";
 
+export type RipTransport = "exec" | "http";
+
 export type RipOptions = {
   executablePath?: string;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   unsetEnv?: readonly string[];
+  transport?: RipTransport;
+  server?: string;
+  headers?: Record<string, string>;
+  fetch?: RipFetch;
 };
 
 export type RipRunOptions = {
@@ -36,6 +44,9 @@ export type RipRunOptions = {
   executablePath?: string;
   signal?: AbortSignal;
   extraArgs?: string[];
+  transport?: RipTransport;
+  headers?: Record<string, string>;
+  fetch?: RipFetch;
 };
 
 export type RipTaskOptions = {
@@ -45,6 +56,9 @@ export type RipTaskOptions = {
   unsetEnv?: readonly string[];
   executablePath?: string;
   signal?: AbortSignal;
+  transport?: RipTransport;
+  headers?: Record<string, string>;
+  fetch?: RipFetch;
 };
 
 export type RipThreadOptions = {
@@ -54,6 +68,9 @@ export type RipThreadOptions = {
   unsetEnv?: readonly string[];
   executablePath?: string;
   signal?: AbortSignal;
+  transport?: RipTransport;
+  headers?: Record<string, string>;
+  fetch?: RipFetch;
 };
 
 export type RipTurn = {
@@ -410,6 +427,11 @@ export class Rip {
     prompt: string,
     options: RipRunOptions = {},
   ): Promise<{ events: AsyncGenerator<RipEventFrame>; result: Promise<RipTurn> }> {
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      return await this.runStreamedHttp(prompt, options);
+    }
+
     const executablePath = options.executablePath ?? this.base.executablePath ?? "rip";
     const cwd = options.cwd ?? this.base.cwd;
     const env = mergeEnv(process.env, this.base.env, options.env);
@@ -523,17 +545,155 @@ export class Rip {
     return { events: events(), result };
   }
 
+  private async runStreamedHttp(
+    prompt: string,
+    options: RipRunOptions,
+  ): Promise<{ events: AsyncGenerator<RipEventFrame>; result: Promise<RipTurn> }> {
+    const server = options.server ?? this.base.server;
+    if (!server) throw new Error("runStreamed with http transport requires server");
+
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    if (options.signal) {
+      if (options.signal.aborted) abort();
+      else options.signal.addEventListener("abort", abort, { once: true });
+    }
+
+    const config = this.httpConfig(server, options);
+    const created = (await httpJson(config, "/sessions", { method: "POST", signal: controller.signal })) as {
+      session_id?: unknown;
+    };
+    const sessionId = typeof created?.session_id === "string" ? created.session_id : null;
+    if (!sessionId) throw new Error("http session create response missing session_id");
+
+    const eventsResponse = await httpRequest(config, `/sessions/${sessionId}/events`, {
+      method: "GET",
+      signal: controller.signal,
+      headers: { accept: "text/event-stream" },
+    });
+
+    const inputBody = JSON.stringify({ input: prompt });
+    await httpRequest(config, `/sessions/${sessionId}/input`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: { "content-type": "application/json" },
+      body: inputBody,
+    });
+
+    const frames: RipEventFrame[] = [];
+    let finalOutput = "";
+
+    const queue: RipEventFrame[] = [];
+    let wake: (() => void) | null = null;
+    let ended = false;
+    let streamError: unknown | null = null;
+    let reason: string | null = null;
+
+    const wakeWaiters = () => {
+      if (wake) {
+        const resolve = wake;
+        wake = null;
+        resolve();
+      }
+    };
+
+    const result = (async (): Promise<RipTurn> => {
+      try {
+        for await (const data of sseDataMessages(eventsResponse)) {
+          const trimmed = data.trim();
+          if (!trimmed) continue;
+          if (trimmed === "ping") continue;
+
+          let frame: RipEventFrame;
+          try {
+            frame = JSON.parse(trimmed) as RipEventFrame;
+          } catch (err) {
+            throw new Error(`http SSE JSON parse error: ${(err as Error).message}: ${trimmed.slice(0, 200)}`);
+          }
+
+          frames.push(frame);
+          queue.push(frame);
+          if (frame.type === "output_text_delta" && typeof frame.delta === "string") {
+            finalOutput += frame.delta;
+          }
+          if (frame.type === "session_ended") {
+            reason = typeof frame.reason === "string" ? frame.reason : null;
+            break;
+          }
+          wakeWaiters();
+        }
+
+        return { frames, finalOutput, exitCode: reason === "completed" || reason === null ? 0 : 1 };
+      } catch (err) {
+        if (controller.signal.aborted && reason !== null) {
+          return { frames, finalOutput, exitCode: reason === "completed" ? 0 : 1 };
+        }
+        throw err;
+      } finally {
+        ended = true;
+        abort();
+        wakeWaiters();
+      }
+    })().catch((err) => {
+      streamError = err;
+      ended = true;
+      abort();
+      wakeWaiters();
+      throw err;
+    });
+
+    async function* events(): AsyncGenerator<RipEventFrame> {
+      while (true) {
+        if (queue.length > 0) {
+          yield queue.shift()!;
+          continue;
+        }
+        if (streamError) throw streamError;
+        if (ended) return;
+        await new Promise<void>((resolve) => {
+          wake = resolve;
+        });
+      }
+    }
+
+    return { events: events(), result };
+  }
+
   async threadEnsure(options: RipThreadOptions = {}): Promise<RipThreadEnsureResponse> {
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("threadEnsure with http transport requires server");
+      const config = this.httpConfig(server, options);
+      const out = await httpJson(config, "/threads/ensure", { method: "POST", signal: options.signal });
+      return out as RipThreadEnsureResponse;
+    }
     const out = await this.execJson(buildRipThreadEnsureArgs({ server: options.server }), options);
     return out as RipThreadEnsureResponse;
   }
 
   async threadList(options: RipThreadOptions = {}): Promise<RipThreadMeta[]> {
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("threadList with http transport requires server");
+      const config = this.httpConfig(server, options);
+      const out = await httpJson(config, "/threads", { method: "GET", signal: options.signal });
+      return out as RipThreadMeta[];
+    }
     const out = await this.execJson(buildRipThreadListArgs({ server: options.server }), options);
     return out as RipThreadMeta[];
   }
 
   async threadGet(threadId: string, options: RipThreadOptions = {}): Promise<RipThreadMeta> {
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("threadGet with http transport requires server");
+      const config = this.httpConfig(server, options);
+      const out = await httpJson(config, `/threads/${threadId}`, { method: "GET", signal: options.signal });
+      return out as RipThreadMeta;
+    }
     const out = await this.execJson(buildRipThreadGetArgs(threadId, { server: options.server }), options);
     return out as RipThreadMeta;
   }
@@ -545,6 +705,26 @@ export class Rip {
   ): Promise<RipThreadBranchResponse> {
     const actorId = request.actor_id ?? "user";
     const origin = request.origin ?? "sdk-ts";
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("threadBranch with http transport requires server");
+      const config = this.httpConfig(server, options);
+      const body = JSON.stringify({
+        title: request.title ?? null,
+        from_message_id: request.from_message_id ?? null,
+        from_seq: request.from_seq ?? null,
+        actor_id: actorId,
+        origin,
+      });
+      const out = await httpJson(config, `/threads/${parentThreadId}/branch`, {
+        method: "POST",
+        signal: options.signal,
+        headers: { "content-type": "application/json" },
+        body,
+      });
+      return out as RipThreadBranchResponse;
+    }
     const out = await this.execJson(
       buildRipThreadBranchArgs(parentThreadId, {
         server: options.server,
@@ -569,6 +749,28 @@ export class Rip {
     }
     const actorId = request.actor_id ?? "user";
     const origin = request.origin ?? "sdk-ts";
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("threadHandoff with http transport requires server");
+      const config = this.httpConfig(server, options);
+      const body = JSON.stringify({
+        title: request.title ?? null,
+        summary_markdown: request.summary_markdown ?? null,
+        summary_artifact_id: request.summary_artifact_id ?? null,
+        from_message_id: request.from_message_id ?? null,
+        from_seq: request.from_seq ?? null,
+        actor_id: actorId,
+        origin,
+      });
+      const out = await httpJson(config, `/threads/${fromThreadId}/handoff`, {
+        method: "POST",
+        signal: options.signal,
+        headers: { "content-type": "application/json" },
+        body,
+      });
+      return out as RipThreadHandoffResponse;
+    }
     const out = await this.execJson(
       buildRipThreadHandoffArgs(fromThreadId, {
         server: options.server,
@@ -592,6 +794,20 @@ export class Rip {
   ): Promise<RipThreadPostMessageResponse> {
     const actorId = request.actor_id ?? "user";
     const origin = request.origin ?? "sdk-ts";
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("threadPostMessage with http transport requires server");
+      const config = this.httpConfig(server, options);
+      const body = JSON.stringify({ content: request.content, actor_id: actorId, origin });
+      const out = await httpJson(config, `/threads/${threadId}/messages`, {
+        method: "POST",
+        signal: options.signal,
+        headers: { "content-type": "application/json" },
+        body,
+      });
+      return out as RipThreadPostMessageResponse;
+    }
     const out = await this.execJson(
       buildRipThreadPostMessageArgs(threadId, request.content, {
         server: options.server,
@@ -613,6 +829,28 @@ export class Rip {
     }
     const actorId = request.actor_id ?? "user";
     const origin = request.origin ?? "sdk-ts";
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("threadCompactionCheckpoint with http transport requires server");
+      const config = this.httpConfig(server, options);
+      const body = JSON.stringify({
+        summary_markdown: request.summary_markdown ?? null,
+        summary_artifact_id: request.summary_artifact_id ?? null,
+        to_message_id: request.to_message_id ?? null,
+        to_seq: request.to_seq ?? null,
+        stride_messages: request.stride_messages ?? null,
+        actor_id: actorId,
+        origin,
+      });
+      const out = await httpJson(config, `/threads/${threadId}/compaction-checkpoint`, {
+        method: "POST",
+        signal: options.signal,
+        headers: { "content-type": "application/json" },
+        body,
+      });
+      return out as RipThreadCompactionCheckpointResponse;
+    }
     const out = await this.execJson(
       buildRipThreadCompactionCheckpointArgs(threadId, {
         server: options.server,
@@ -634,6 +872,23 @@ export class Rip {
     request: RipThreadCompactionCutPointsRequest = {},
     options: RipThreadOptions = {},
   ): Promise<RipThreadCompactionCutPointsResponse> {
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("threadCompactionCutPoints with http transport requires server");
+      const config = this.httpConfig(server, options);
+      const body = JSON.stringify({
+        stride_messages: request.stride_messages ?? null,
+        limit: request.limit ?? null,
+      });
+      const out = await httpJson(config, `/threads/${threadId}/compaction-cut-points`, {
+        method: "POST",
+        signal: options.signal,
+        headers: { "content-type": "application/json" },
+        body,
+      });
+      return out as RipThreadCompactionCutPointsResponse;
+    }
     const out = await this.execJson(
       buildRipThreadCompactionCutPointsArgs(threadId, {
         server: options.server,
@@ -650,6 +905,22 @@ export class Rip {
     request: RipThreadCompactionStatusRequest = {},
     options: RipThreadOptions = {},
   ): Promise<RipThreadCompactionStatusResponse> {
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("threadCompactionStatus with http transport requires server");
+      const config = this.httpConfig(server, options);
+      const body = JSON.stringify({
+        stride_messages: request.stride_messages ?? null,
+      });
+      const out = await httpJson(config, `/threads/${threadId}/compaction-status`, {
+        method: "POST",
+        signal: options.signal,
+        headers: { "content-type": "application/json" },
+        body,
+      });
+      return out as RipThreadCompactionStatusResponse;
+    }
     const out = await this.execJson(
       buildRipThreadCompactionStatusArgs(threadId, {
         server: options.server,
@@ -664,6 +935,19 @@ export class Rip {
     threadId: string,
     options: RipThreadOptions = {},
   ): Promise<RipThreadProviderCursorStatusResponse> {
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("threadProviderCursorStatus with http transport requires server");
+      const config = this.httpConfig(server, options);
+      const out = await httpJson(config, `/threads/${threadId}/provider-cursor-status`, {
+        method: "POST",
+        signal: options.signal,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      return out as RipThreadProviderCursorStatusResponse;
+    }
     const out = await this.execJson(
       buildRipThreadProviderCursorStatusArgs(threadId, { server: options.server }),
       options,
@@ -678,6 +962,27 @@ export class Rip {
   ): Promise<RipThreadProviderCursorRotateResponse> {
     const actorId = request.actor_id ?? "user";
     const origin = request.origin ?? "sdk-ts";
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("threadProviderCursorRotate with http transport requires server");
+      const config = this.httpConfig(server, options);
+      const body = JSON.stringify({
+        provider: null,
+        endpoint: null,
+        model: null,
+        reason: request.reason ?? null,
+        actor_id: actorId,
+        origin,
+      });
+      const out = await httpJson(config, `/threads/${threadId}/provider-cursor-rotate`, {
+        method: "POST",
+        signal: options.signal,
+        headers: { "content-type": "application/json" },
+        body,
+      });
+      return out as RipThreadProviderCursorRotateResponse;
+    }
     const out = await this.execJson(
       buildRipThreadProviderCursorRotateArgs(threadId, {
         server: options.server,
@@ -695,6 +1000,22 @@ export class Rip {
     request: RipThreadContextSelectionStatusRequest = {},
     options: RipThreadOptions = {},
   ): Promise<RipThreadContextSelectionStatusResponse> {
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("threadContextSelectionStatus with http transport requires server");
+      const config = this.httpConfig(server, options);
+      const body = JSON.stringify({
+        limit: request.limit ?? null,
+      });
+      const out = await httpJson(config, `/threads/${threadId}/context-selection-status`, {
+        method: "POST",
+        signal: options.signal,
+        headers: { "content-type": "application/json" },
+        body,
+      });
+      return out as RipThreadContextSelectionStatusResponse;
+    }
     const out = await this.execJson(
       buildRipThreadContextSelectionStatusArgs(threadId, {
         server: options.server,
@@ -712,6 +1033,26 @@ export class Rip {
   ): Promise<RipThreadCompactionAutoResponse> {
     const actorId = request.actor_id ?? "user";
     const origin = request.origin ?? "sdk-ts";
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("threadCompactionAuto with http transport requires server");
+      const config = this.httpConfig(server, options);
+      const body = JSON.stringify({
+        stride_messages: request.stride_messages ?? null,
+        max_new_checkpoints: request.max_new_checkpoints ?? null,
+        dry_run: request.dry_run ?? null,
+        actor_id: actorId,
+        origin,
+      });
+      const out = await httpJson(config, `/threads/${threadId}/compaction-auto`, {
+        method: "POST",
+        signal: options.signal,
+        headers: { "content-type": "application/json" },
+        body,
+      });
+      return out as RipThreadCompactionAutoResponse;
+    }
     const out = await this.execJson(
       buildRipThreadCompactionAutoArgs(threadId, {
         server: options.server,
@@ -733,6 +1074,28 @@ export class Rip {
   ): Promise<RipThreadCompactionAutoScheduleResponse> {
     const actorId = request.actor_id ?? "user";
     const origin = request.origin ?? "sdk-ts";
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("threadCompactionAutoSchedule with http transport requires server");
+      const config = this.httpConfig(server, options);
+      const body = JSON.stringify({
+        stride_messages: request.stride_messages ?? null,
+        max_new_checkpoints: request.max_new_checkpoints ?? null,
+        block_on_inflight: !(request.allow_inflight ?? false),
+        execute: !(request.no_execute ?? false),
+        dry_run: request.dry_run ?? null,
+        actor_id: actorId,
+        origin,
+      });
+      const out = await httpJson(config, `/threads/${threadId}/compaction-auto-schedule`, {
+        method: "POST",
+        signal: options.signal,
+        headers: { "content-type": "application/json" },
+        body,
+      });
+      return out as RipThreadCompactionAutoScheduleResponse;
+    }
     const out = await this.execJson(
       buildRipThreadCompactionAutoScheduleArgs(threadId, {
         server: options.server,
@@ -754,6 +1117,88 @@ export class Rip {
     options: RipThreadOptions = {},
     query: { maxEvents?: number } = {},
   ): Promise<{ events: AsyncGenerator<RipEventFrame>; result: Promise<RipEventFrame[]> }> {
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("threadEventsStreamed with http transport requires server");
+      const config = this.httpConfig(server, options);
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      if (options.signal) {
+        if (options.signal.aborted) abort();
+        else options.signal.addEventListener("abort", abort, { once: true });
+      }
+
+      const response = await httpRequest(config, `/threads/${threadId}/events`, {
+        method: "GET",
+        signal: controller.signal,
+        headers: { accept: "text/event-stream" },
+      });
+
+      const frames: RipEventFrame[] = [];
+      const queue: RipEventFrame[] = [];
+      let wake: (() => void) | null = null;
+      let ended = false;
+      let streamError: unknown | null = null;
+
+      const wakeWaiters = () => {
+        if (wake) {
+          const resolve = wake;
+          wake = null;
+          resolve();
+        }
+      };
+
+      const result = (async (): Promise<RipEventFrame[]> => {
+        try {
+          for await (const data of sseDataMessages(response)) {
+            const trimmed = data.trim();
+            if (!trimmed) continue;
+            if (trimmed === "ping") continue;
+
+            let frame: RipEventFrame;
+            try {
+              frame = JSON.parse(trimmed) as RipEventFrame;
+            } catch (err) {
+              throw new Error(`http SSE JSON parse error: ${(err as Error).message}: ${trimmed.slice(0, 200)}`);
+            }
+
+            frames.push(frame);
+            queue.push(frame);
+            wakeWaiters();
+
+            if (typeof query.maxEvents === "number" && frames.length >= query.maxEvents) break;
+          }
+          return frames;
+        } finally {
+          ended = true;
+          abort();
+          wakeWaiters();
+        }
+      })().catch((err) => {
+        streamError = err;
+        ended = true;
+        abort();
+        wakeWaiters();
+        throw err;
+      });
+
+      async function* events(): AsyncGenerator<RipEventFrame> {
+        while (true) {
+          if (queue.length > 0) {
+            yield queue.shift()!;
+            continue;
+          }
+          if (streamError) throw streamError;
+          if (ended) return;
+          await new Promise<void>((resolve) => {
+            wake = resolve;
+          });
+        }
+      }
+
+      return { events: events(), result };
+    }
     const args = buildRipThreadEventsArgs(threadId, {
       server: options.server,
       maxEvents: query.maxEvents,
@@ -763,6 +1208,23 @@ export class Rip {
   }
 
   async taskSpawn(request: RipTaskSpawnRequest, options: RipTaskOptions): Promise<RipTaskCreated> {
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const config = this.httpConfig(options.server, options);
+      const body = JSON.stringify({
+        tool: request.tool,
+        args: request.args ?? null,
+        title: request.title ?? null,
+        execution_mode: request.execution_mode ?? "pipes",
+      });
+      const out = await httpJson(config, "/tasks", {
+        method: "POST",
+        signal: options.signal,
+        headers: { "content-type": "application/json" },
+        body,
+      });
+      return out as RipTaskCreated;
+    }
     const executionMode = request.execution_mode ?? "pipes";
     const out = await this.execJson(
       [
@@ -784,16 +1246,39 @@ export class Rip {
   }
 
   async taskList(options: RipTaskOptions): Promise<RipTaskStatus[]> {
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const config = this.httpConfig(options.server, options);
+      const out = await httpJson(config, "/tasks", { method: "GET", signal: options.signal });
+      return out as RipTaskStatus[];
+    }
     const out = await this.execJson(["tasks", "--server", options.server, "list"], options);
     return out as RipTaskStatus[];
   }
 
   async taskStatus(taskId: string, options: RipTaskOptions): Promise<RipTaskStatus> {
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const config = this.httpConfig(options.server, options);
+      const out = await httpJson(config, `/tasks/${taskId}`, { method: "GET", signal: options.signal });
+      return out as RipTaskStatus;
+    }
     const out = await this.execJson(["tasks", "--server", options.server, "status", taskId], options);
     return out as RipTaskStatus;
   }
 
   async taskCancel(taskId: string, options: RipTaskOptions, reason?: string): Promise<void> {
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const config = this.httpConfig(options.server, options);
+      await httpRequest(config, `/tasks/${taskId}/cancel`, {
+        method: "POST",
+        signal: options.signal,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reason: reason ?? null }),
+      });
+      return;
+    }
     await this.execRaw(
       ["tasks", "--server", options.server, "cancel", taskId, ...(reason ? ["--reason", reason] : [])],
       options,
@@ -807,6 +1292,16 @@ export class Rip {
   ): Promise<RipTaskOutput> {
     const stream = query.stream ?? "stdout";
     const offset = query.offsetBytes ?? 0;
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const config = this.httpConfig(options.server, options);
+      const qs = new URLSearchParams();
+      qs.set("stream", stream);
+      qs.set("offset_bytes", String(offset));
+      if (typeof query.maxBytes === "number") qs.set("max_bytes", String(query.maxBytes));
+      const out = await httpJson(config, `/tasks/${taskId}/output?${qs.toString()}`, { method: "GET", signal: options.signal });
+      return out as RipTaskOutput;
+    }
     const args = ["tasks", "--server", options.server, "output", taskId, "--stream", stream, "--offset-bytes", String(offset)];
     if (typeof query.maxBytes === "number") args.push("--max-bytes", String(query.maxBytes));
     const out = await this.execJson(args, options);
@@ -815,6 +1310,17 @@ export class Rip {
 
   async taskWriteStdin(taskId: string, options: RipTaskOptions, chunk: Uint8Array): Promise<void> {
     const chunkB64 = Buffer.from(chunk).toString("base64");
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const config = this.httpConfig(options.server, options);
+      await httpRequest(config, `/tasks/${taskId}/stdin`, {
+        method: "POST",
+        signal: options.signal,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ chunk_b64: chunkB64 }),
+      });
+      return;
+    }
     await this.execRaw(["tasks", "--server", options.server, "stdin", taskId, "--chunk-b64", chunkB64], options);
   }
 
@@ -829,6 +1335,17 @@ export class Rip {
   }
 
   async taskResize(taskId: string, options: RipTaskOptions, size: { rows: number; cols: number }): Promise<void> {
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const config = this.httpConfig(options.server, options);
+      await httpRequest(config, `/tasks/${taskId}/resize`, {
+        method: "POST",
+        signal: options.signal,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ rows: size.rows, cols: size.cols }),
+      });
+      return;
+    }
     await this.execRaw(
       ["tasks", "--server", options.server, "resize", taskId, "--rows", String(size.rows), "--cols", String(size.cols)],
       options,
@@ -836,6 +1353,17 @@ export class Rip {
   }
 
   async taskSignal(taskId: string, options: RipTaskOptions, signal: string): Promise<void> {
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const config = this.httpConfig(options.server, options);
+      await httpRequest(config, `/tasks/${taskId}/signal`, {
+        method: "POST",
+        signal: options.signal,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ signal }),
+      });
+      return;
+    }
     await this.execRaw(["tasks", "--server", options.server, "signal", taskId, signal], options);
   }
 
@@ -843,6 +1371,84 @@ export class Rip {
     taskId: string,
     options: RipTaskOptions,
   ): Promise<{ events: AsyncGenerator<RipEventFrame>; result: Promise<RipEventFrame[]> }> {
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const config = this.httpConfig(options.server, options);
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      if (options.signal) {
+        if (options.signal.aborted) abort();
+        else options.signal.addEventListener("abort", abort, { once: true });
+      }
+
+      const response = await httpRequest(config, `/tasks/${taskId}/events`, {
+        method: "GET",
+        signal: controller.signal,
+        headers: { accept: "text/event-stream" },
+      });
+
+      const frames: RipEventFrame[] = [];
+      const queue: RipEventFrame[] = [];
+      let wake: (() => void) | null = null;
+      let ended = false;
+      let streamError: unknown | null = null;
+
+      const wakeWaiters = () => {
+        if (wake) {
+          const resolve = wake;
+          wake = null;
+          resolve();
+        }
+      };
+
+      const result = (async (): Promise<RipEventFrame[]> => {
+        try {
+          for await (const data of sseDataMessages(response)) {
+            const trimmed = data.trim();
+            if (!trimmed) continue;
+            if (trimmed === "ping") continue;
+
+            let frame: RipEventFrame;
+            try {
+              frame = JSON.parse(trimmed) as RipEventFrame;
+            } catch (err) {
+              throw new Error(`http SSE JSON parse error: ${(err as Error).message}: ${trimmed.slice(0, 200)}`);
+            }
+
+            frames.push(frame);
+            queue.push(frame);
+            wakeWaiters();
+          }
+          return frames;
+        } finally {
+          ended = true;
+          abort();
+          wakeWaiters();
+        }
+      })().catch((err) => {
+        streamError = err;
+        ended = true;
+        abort();
+        wakeWaiters();
+        throw err;
+      });
+
+      async function* events(): AsyncGenerator<RipEventFrame> {
+        while (true) {
+          if (queue.length > 0) {
+            yield queue.shift()!;
+            continue;
+          }
+          if (streamError) throw streamError;
+          if (ended) return;
+          await new Promise<void>((resolve) => {
+            wake = resolve;
+          });
+        }
+      }
+
+      return { events: events(), result };
+    }
     const args = ["tasks", "--server", options.server, "events", taskId];
     const { events, result } = await this.execJsonlFrames(args, options);
     return { events, result };
@@ -1005,6 +1611,17 @@ export class Rip {
 
     return { events: events(), result };
   }
+
+  private httpConfig(
+    server: string,
+    options: { headers?: Record<string, string>; fetch?: RipFetch },
+  ): RipHttpConfig {
+    return {
+      server,
+      headers: { ...(this.base.headers ?? {}), ...(options.headers ?? {}) },
+      fetch: options.fetch ?? this.base.fetch,
+    };
+  }
 }
 
 function mergeEnv(...envs: Array<NodeJS.ProcessEnv | undefined>): Record<string, string> {
@@ -1023,4 +1640,8 @@ function unsetEnvVars(env: Record<string, string>, unset: readonly string[] | un
   for (const key of unset) {
     delete env[key];
   }
+}
+
+function resolveTransport(transport: RipTransport | undefined): RipTransport {
+  return transport ?? "exec";
 }

@@ -65,6 +65,7 @@ Open risks / notes
 Active priorities
 - Keep roadmap Now/Next aligned with the implementation work.
 - Next slice (code): per-stream segmentation + hierarchical summaries.
+- SDK (TS): opt-in direct HTTP/SSE transport shipped (ADR-0017); bundling binaries remains deferred/roadmapped.
 - Keep OpenResponses boundary full-fidelity while wiring new surfaces/adapters.
 - Keep OpenResponses follow-ups spec-canonical; any compatibility user message is opt-in.
 - Keep stateless history compatibility opt-in; default remains `previous_response_id`.
