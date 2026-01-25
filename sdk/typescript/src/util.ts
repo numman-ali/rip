@@ -155,6 +155,30 @@ export function buildRipThreadCompactionStatusArgs(
   return args;
 }
 
+export function buildRipThreadProviderCursorStatusArgs(
+  threadId: string,
+  options: RipThreadsArgsOptions = {},
+): string[] {
+  return [...buildRipThreadsBaseArgs(options), "provider-cursor-status", threadId];
+}
+
+export type RipThreadProviderCursorRotateArgsOptions = RipThreadsArgsOptions & {
+  reason?: string;
+  actorId?: string;
+  origin?: string;
+};
+
+export function buildRipThreadProviderCursorRotateArgs(
+  threadId: string,
+  options: RipThreadProviderCursorRotateArgsOptions = {},
+): string[] {
+  const args = [...buildRipThreadsBaseArgs(options), "provider-cursor-rotate", threadId];
+  if (options.reason) args.push("--reason", options.reason);
+  if (options.actorId) args.push("--actor-id", options.actorId);
+  if (options.origin) args.push("--origin", options.origin);
+  return args;
+}
+
 export type RipThreadCompactionAutoArgsOptions = RipThreadsArgsOptions & {
   strideMessages?: number;
   maxNewCheckpoints?: number;

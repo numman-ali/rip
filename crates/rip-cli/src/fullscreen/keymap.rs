@@ -19,6 +19,8 @@ pub enum Command {
     CompactionAutoSchedule,
     CompactionCutPoints,
     CompactionStatus,
+    ProviderCursorStatus,
+    ProviderCursorRotate,
 }
 
 #[derive(Debug, Clone)]
@@ -46,6 +48,8 @@ impl Keymap {
         bindings.insert("C-j".to_string(), Command::CompactionAutoSchedule);
         bindings.insert("C-g".to_string(), Command::CompactionCutPoints);
         bindings.insert("C-o".to_string(), Command::CompactionStatus);
+        bindings.insert("C-p".to_string(), Command::ProviderCursorStatus);
+        bindings.insert("C-x".to_string(), Command::ProviderCursorRotate);
 
         Self { bindings }
     }
@@ -167,6 +171,21 @@ fn parse_command(raw: &str) -> Option<Command> {
         "compactionstatus" | "compaction_status" | "compaction-status" => {
             Some(Command::CompactionStatus)
         }
+        "providercursorstatus"
+        | "provider_cursor_status"
+        | "provider-cursor-status"
+        | "cursorstatus"
+        | "cursor_status"
+        | "cursor-status" => Some(Command::ProviderCursorStatus),
+        "providercursorrotate"
+        | "provider_cursor_rotate"
+        | "provider-cursor-rotate"
+        | "cursorrotate"
+        | "cursor_rotate"
+        | "cursor-rotate"
+        | "cursorreset"
+        | "cursor_reset"
+        | "cursor-reset" => Some(Command::ProviderCursorRotate),
         _ => None,
     }
 }

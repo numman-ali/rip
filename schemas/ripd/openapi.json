@@ -847,6 +847,88 @@
           }
         }
       }
+    },
+    "/threads/{id}/provider-cursor-rotate": {
+      "post": {
+        "operationId": "thread_provider_cursor_rotate",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Thread id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderCursorRotateV1Request"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Provider cursor rotation logged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderCursorRotateV1Response"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Thread not found"
+          }
+        }
+      }
+    },
+    "/threads/{id}/provider-cursor-status": {
+      "post": {
+        "operationId": "thread_provider_cursor_status",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Thread id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderCursorStatusV1Request"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Provider cursor status projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderCursorStatusV1Response"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Thread not found"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1508,6 +1590,179 @@
         ],
         "properties": {
           "input": {
+            "type": "string"
+          }
+        }
+      },
+      "ProviderCursorRotateV1Request": {
+        "type": "object",
+        "required": [
+          "actor_id",
+          "origin"
+        ],
+        "properties": {
+          "actor_id": {
+            "type": "string"
+          },
+          "endpoint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "origin": {
+            "type": "string"
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ProviderCursorRotateV1Response": {
+        "type": "object",
+        "required": [
+          "thread_id",
+          "rotated"
+        ],
+        "properties": {
+          "cursor_event_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "endpoint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rotated": {
+            "type": "boolean"
+          },
+          "thread_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ProviderCursorStatusCursorV1": {
+        "type": "object",
+        "required": [
+          "cursor_event_id",
+          "provider",
+          "action",
+          "actor_id",
+          "origin",
+          "seq",
+          "timestamp_ms"
+        ],
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "actor_id": {
+            "type": "string"
+          },
+          "cursor": {},
+          "cursor_event_id": {
+            "type": "string"
+          },
+          "endpoint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "origin": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "run_session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "seq": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "timestamp_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "ProviderCursorStatusV1Request": {
+        "type": "object"
+      },
+      "ProviderCursorStatusV1Response": {
+        "type": "object",
+        "required": [
+          "thread_id",
+          "cursors"
+        ],
+        "properties": {
+          "active": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProviderCursorStatusCursorV1"
+              }
+            ]
+          },
+          "cursors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderCursorStatusCursorV1"
+            }
+          },
+          "thread_id": {
             "type": "string"
           }
         }

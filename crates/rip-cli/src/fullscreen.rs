@@ -254,6 +254,99 @@ pub async fn run_fullscreen_tui(initial_prompt: Option<String>) -> anyhow::Resul
                             let _ = tx.send(message).await;
                         });
                     }
+                    UiAction::ProviderCursorStatus => {
+                        let store = engine.continuities();
+                        let tx = status_tx.clone();
+                        tokio::spawn(async move {
+                            let message = tokio::task::spawn_blocking(move || {
+                                let thread_id = match store.ensure_default() {
+                                    Ok(id) => id,
+                                    Err(err) => {
+                                        return format!("provider cursor: thread ensure failed: {err}")
+                                    }
+                                };
+                                match store.provider_cursor_status_v1(
+                                    &thread_id,
+                                    ripd::ProviderCursorStatusV1Request {},
+                                ) {
+                                    Ok(status) => match status.active {
+                                        Some(active) => {
+                                            let prev = active
+                                                .cursor
+                                                .as_ref()
+                                                .and_then(|value| {
+                                                    value
+                                                        .get("previous_response_id")
+                                                        .and_then(|value| value.as_str())
+                                                })
+                                                .unwrap_or("");
+                                            let prev_short =
+                                                prev.chars().take(16).collect::<String>();
+                                            let cursor_desc = if active.cursor.is_some()
+                                                && !prev_short.is_empty()
+                                            {
+                                                format!("prev={prev_short}")
+                                            } else if active.cursor.is_some() {
+                                                "cursor=set".to_string()
+                                            } else {
+                                                "cursor=none".to_string()
+                                            };
+                                            format!(
+                                                "provider cursor: action={} {}",
+                                                active.action, cursor_desc
+                                            )
+                                        }
+                                        None => "provider cursor: none".to_string(),
+                                    },
+                                    Err(err) => format!("provider cursor status failed: {err}"),
+                                }
+                            })
+                            .await
+                            .unwrap_or_else(|err| {
+                                format!("provider cursor status join failed: {err}")
+                            });
+                            let _ = tx.send(message).await;
+                        });
+                    }
+                    UiAction::ProviderCursorRotate => {
+                        let store = engine.continuities();
+                        let tx = status_tx.clone();
+                        tokio::spawn(async move {
+                            let message = tokio::task::spawn_blocking(move || {
+                                let thread_id = match store.ensure_default() {
+                                    Ok(id) => id,
+                                    Err(err) => {
+                                        return format!("provider cursor: thread ensure failed: {err}")
+                                    }
+                                };
+                                match store.provider_cursor_rotate_v1(
+                                    &thread_id,
+                                    ripd::ProviderCursorRotateV1Request {
+                                        provider: None,
+                                        endpoint: None,
+                                        model: None,
+                                        reason: Some("tui".to_string()),
+                                        actor_id: "user".to_string(),
+                                        origin: "tui".to_string(),
+                                    },
+                                ) {
+                                    Ok(resp) => {
+                                        if resp.rotated {
+                                            "provider cursor: rotated".to_string()
+                                        } else {
+                                            "provider cursor: rotate noop".to_string()
+                                        }
+                                    }
+                                    Err(err) => format!("provider cursor rotate failed: {err}"),
+                                }
+                            })
+                            .await
+                            .unwrap_or_else(|err| {
+                                format!("provider cursor rotate join failed: {err}")
+                            });
+                            let _ = tx.send(message).await;
+                        });
+                    }
                     UiAction::CopySelected => {
                         copy_selected(&mut terminal, &mut state)?;
                     }
@@ -572,6 +665,133 @@ async fn run_fullscreen_tui_sse(
                             });
                         }
                     }
+                    UiAction::ProviderCursorStatus => {
+                        if ui_mode == SseUiMode::Interactive {
+                            let client = client.clone();
+                            let server = server.clone();
+                            let tx = status_tx.clone();
+                            tokio::spawn(async move {
+                                let message = match crate::ensure_thread(&client, &server).await {
+                                    Ok(thread_id) => {
+                                        let url =
+                                            format!("{server}/threads/{thread_id}/provider-cursor-status");
+                                        let response = client
+                                            .post(url)
+                                            .json(&serde_json::json!({}))
+                                            .send()
+                                            .await;
+                                        match response {
+                                            Ok(resp) if resp.status().is_success() => match resp
+                                                .json::<ripd::ProviderCursorStatusV1Response>()
+                                                .await
+                                            {
+                                                Ok(status) => match status.active {
+                                                    Some(active) => {
+                                                        let prev = active
+                                                            .cursor
+                                                            .as_ref()
+                                                            .and_then(|value| {
+                                                                value
+                                                                    .get("previous_response_id")
+                                                                    .and_then(|value| value.as_str())
+                                                            })
+                                                            .unwrap_or("");
+                                                        let prev_short = prev
+                                                            .chars()
+                                                            .take(16)
+                                                            .collect::<String>();
+                                                        let cursor_desc = if active.cursor.is_some()
+                                                            && !prev_short.is_empty()
+                                                        {
+                                                            format!("prev={prev_short}")
+                                                        } else if active.cursor.is_some() {
+                                                            "cursor=set".to_string()
+                                                        } else {
+                                                            "cursor=none".to_string()
+                                                        };
+                                                        format!(
+                                                            "provider cursor: action={} {}",
+                                                            active.action, cursor_desc
+                                                        )
+                                                    }
+                                                    None => "provider cursor: none".to_string(),
+                                                },
+                                                Err(err) => {
+                                                    format!("provider cursor status: parse failed: {err}")
+                                                }
+                                            },
+                                            Ok(resp) => format!(
+                                                "provider cursor status: request failed: {}",
+                                                resp.status()
+                                            ),
+                                            Err(err) => {
+                                                format!("provider cursor status: request failed: {err}")
+                                            }
+                                        }
+                                    }
+                                    Err(err) => {
+                                        format!("provider cursor status: thread ensure failed: {err}")
+                                    }
+                                };
+                                let _ = tx.send(message).await;
+                            });
+                        }
+                    }
+                    UiAction::ProviderCursorRotate => {
+                        if ui_mode == SseUiMode::Interactive {
+                            let client = client.clone();
+                            let server = server.clone();
+                            let tx = status_tx.clone();
+                            tokio::spawn(async move {
+                                let message = match crate::ensure_thread(&client, &server).await {
+                                    Ok(thread_id) => {
+                                        let url =
+                                            format!("{server}/threads/{thread_id}/provider-cursor-rotate");
+                                        let response = client
+                                            .post(url)
+                                            .json(&serde_json::json!({
+                                                "provider": null,
+                                                "endpoint": null,
+                                                "model": null,
+                                                "reason": "tui",
+                                                "actor_id": "user",
+                                                "origin": "tui"
+                                            }))
+                                            .send()
+                                            .await;
+                                        match response {
+                                            Ok(resp) if resp.status().is_success() => match resp
+                                                .json::<ripd::ProviderCursorRotateV1Response>()
+                                                .await
+                                            {
+                                                Ok(out) => {
+                                                    if out.rotated {
+                                                        "provider cursor: rotated".to_string()
+                                                    } else {
+                                                        "provider cursor: rotate noop".to_string()
+                                                    }
+                                                }
+                                                Err(err) => {
+                                                    format!("provider cursor rotate: parse failed: {err}")
+                                                }
+                                            },
+                                            Ok(resp) => format!(
+                                                "provider cursor rotate: request failed: {}",
+                                                resp.status()
+                                            ),
+                                            Err(err) => {
+                                                format!("provider cursor rotate: request failed: {err}")
+                                            }
+                                        }
+                                    }
+                                    Err(err) => {
+                                        format!("provider cursor rotate: thread ensure failed: {err}")
+                                    }
+                                };
+                                let _ = tx.send(message).await;
+                            });
+                        }
+                    }
                     UiAction::CopySelected => {
                         copy_selected(&mut terminal, &mut state)?;
                     }
@@ -708,6 +928,8 @@ enum UiAction {
     CompactionAutoSchedule,
     CompactionCutPoints,
     CompactionStatus,
+    ProviderCursorStatus,
+    ProviderCursorRotate,
 }
 
 struct InitState {
@@ -811,6 +1033,8 @@ fn handle_key_event(
             KeyCommand::CompactionAutoSchedule => UiAction::CompactionAutoSchedule,
             KeyCommand::CompactionCutPoints => UiAction::CompactionCutPoints,
             KeyCommand::CompactionStatus => UiAction::CompactionStatus,
+            KeyCommand::ProviderCursorStatus => UiAction::ProviderCursorStatus,
+            KeyCommand::ProviderCursorRotate => UiAction::ProviderCursorRotate,
         };
     }
 

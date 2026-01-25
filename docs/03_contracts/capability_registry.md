@@ -44,6 +44,8 @@ Notes
 | thread.stream_events | v1 | P1 | planned | supported | supported | supported | planned | planned | Stream continuity-level events (messages, summaries, links) independent of session runs. |
 | thread.list | v1 | P1 | planned | supported | supported | supported | planned | planned | List continuities (power/debug; filters by tags/query). |
 | thread.get | v1 | P1 | planned | supported | supported | supported | planned | planned | Get continuity metadata by id. |
+| thread.provider_cursor.status | v1 | P2 | planned | supported | supported | supported | supported | planned | Show truth-derived provider cursor cache status for a continuity (latest cursor events per provider key). |
+| thread.provider_cursor.rotate | v1 | P2 | planned | supported | supported | supported | supported | planned | Rotate/reset provider cursor cache for a continuity (append cursor update frame; clears cursor for the active provider key). |
 | thread.branch | v1 | P2 | planned | supported | supported | supported | planned | planned | Branch/fork from a prior point. |
 | thread.handoff | v1 | P2 | planned | supported | supported | supported | planned | planned | Handoff work to a new thread with curated context. |
 | thread.reference | v1 | P2 | planned | planned | planned | planned | planned | planned | Reference another thread by id and extract context. |

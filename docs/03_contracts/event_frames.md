@@ -43,6 +43,18 @@ Frame types
   - `from_message_id`: string | null (anchor message id when known)
   - `actor_id`: string
   - `origin`: string
+- `continuity_provider_cursor_updated`
+  - Purpose: record provider conversation cursor cache state changes (rotation/reset/updates) as continuity truth (ADR-0015).
+  - `provider`: string (example: `openresponses`)
+  - `endpoint`: string | null (provider endpoint key; no secrets)
+  - `model`: string | null
+  - `cursor`: object | null (provider-specific cursor payload; v0.1 uses stable keys)
+    - Open Responses v0.1 cursor payload: `{ "previous_response_id": "<response_id>" }`
+  - `action`: string (example: `set` | `cleared` | `rotated`)
+  - `reason`: string | null (stable, user-supplied or system-defined)
+  - `run_session_id`: string | null (links the update to a run when produced by a run)
+  - `actor_id`: string
+  - `origin`: string
 - `continuity_compaction_checkpoint_created`
   - Purpose: record a deterministic compaction checkpoint (cut point + summary artifact) used by `context.compile` strategies.
   - `checkpoint_id`: string (uuid)
@@ -177,6 +189,8 @@ Invariants
 - `continuity_tool_side_effects` must be emitted after the tool completes (`tool_ended`/`tool_failed`) and before `continuity_run_ended` for the same `run_session_id`.
 - `continuity_context_compiled` is appended to the continuity stream only when the run is linked to a continuity (`continuity_run` exists).
 - `continuity_context_compiled` must be emitted after `continuity_run_spawned` and before `continuity_run_ended` for the same `run_session_id`.
+- `continuity_provider_cursor_updated` is appended to the continuity stream only when the run is linked to a continuity (`continuity_run` exists) or when a surface explicitly rotates/resets provider cursor caches.
+- When `continuity_provider_cursor_updated.run_session_id` is set, it must be emitted before `continuity_run_ended` for the same `run_session_id`.
 - `continuity_compaction_checkpoint_created` is appended to the continuity stream and must reference a message boundary (`to_seq`/`to_message_id` identify a `continuity_message_appended` event).
 - Multiple `continuity_compaction_checkpoint_created` frames may exist for the same `to_seq` (later frames supersede earlier ones by stream order; history is never overwritten).
 - `continuity_compaction_auto_schedule_decided` is appended to the continuity stream when the scheduler encounters eligible work; it must only include stable values/refs.

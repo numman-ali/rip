@@ -19,6 +19,7 @@ Now
   - `docs/02_architecture/continuity_os.md`
   - `docs/06_decisions/ADR-0008-continuity-os.md`
   - `docs/06_decisions/ADR-0009-thread-branch-handoff.md`
+  - `docs/06_decisions/ADR-0015-provider-cursor-truth-logging.md`
   - `docs/03_contracts/capability_registry.md` (`thread.*`, `context.compile`, `compaction.*`)
   - `docs/03_contracts/event_frames.md` (Phase 2: stream-scoped v2 envelope)
   - `docs/03_contracts/modules/phase-1/06_server.md`
@@ -43,8 +44,9 @@ Now
   - Server exposes `thread.*` plus `compaction.manual` (thread compaction checkpoints); headless CLI exposes `rip threads ...` (local + `--server`); TypeScript SDK exposes these by spawning `rip` (ADR-0006).
   - Workspace mutation serialization enforced across sessions + background tasks; replay/contract tests added.
   - Continuity stream logs workspace-mutating tool side-effects (`continuity_tool_side_effects`) with provenance + replay coverage under parallel runs/tasks.
+  - Implemented: provider cursor cache truth logging (ADR-0015): `continuity_provider_cursor_updated` + `thread.provider_cursor.{status,rotate}` across cli_h/tui/server/sdk; OpenResponses runs record `previous_response_id` on completion as a rebuildable cache.
 - Ready:
-  - Finish continuity provenance coverage beyond messages/runs/tool side-effects: provider cursor rotation logs and context selection strategy evolution; document the remaining envelope migration (eventually drop non-session `session_id`).
+  - Finish continuity provenance coverage beyond messages/runs/tool side-effects: context selection strategy evolution truth logging (frames + capability + surface UX); document the remaining envelope migration (eventually drop non-session `session_id`).
   - Perf: keep `context.compile` O(k) at 1M+ events (tail-read continuity v1 + seekable non-tail anchors v1.1 + compaction cut points v0.1 done; next is per-stream segmentation + hierarchical summaries).
 - Done:
   - Default UX is one continuity; surfaces "continue" by posting messages (sessions hidden by default).
@@ -196,6 +198,7 @@ Open questions
 - (empty)
 
 Done (recent)
+- 2026-01-25: Provider cursor cache truth logging (ADR-0015): `continuity_provider_cursor_updated` frame + `thread.provider_cursor.{status,rotate}` parity (cli_h/tui/server/sdk) + OpenResponses run cursor capture.
 - 2026-01-20: TUI remote attach: `rip --server <url> --session <id>` streams server SSE frames into the fullscreen UI; fixture + snapshot parity test.
 - 2026-01-20: Default UX: `rip` launches a fullscreen terminal UI (TUI) and runs the session engine in-process; `rip run` remains the headless/automation entrypoint.
 - 2026-01-20: TypeScript SDK scaffold added (`sdk/typescript`): spawns `rip` and parses JSONL event frames; `scripts/check-sdk-ts` wired into `scripts/check`; CI check-fast now pins stable toolchain for fmt/check/clippy/test.

@@ -9,6 +9,7 @@ pub fn event_type(event: &Event) -> &'static str {
         EventKind::ContinuityMessageAppended { .. } => "continuity_message_appended",
         EventKind::ContinuityRunSpawned { .. } => "continuity_run_spawned",
         EventKind::ContinuityContextCompiled { .. } => "continuity_context_compiled",
+        EventKind::ContinuityProviderCursorUpdated { .. } => "continuity_provider_cursor_updated",
         EventKind::ContinuityCompactionCheckpointCreated { .. } => {
             "continuity_compaction_checkpoint_created"
         }
@@ -70,6 +71,39 @@ pub fn event_summary(event: &Event) -> String {
             truncate(bundle_artifact_id, 16),
             truncate(compiler_strategy, 32)
         ),
+        EventKind::ContinuityProviderCursorUpdated {
+            provider,
+            action,
+            cursor,
+            ..
+        } => {
+            let prev = cursor
+                .as_ref()
+                .and_then(|value| value.get("previous_response_id"))
+                .and_then(|value| value.as_str())
+                .unwrap_or("");
+            let prev_short = truncate(prev, 16);
+            if cursor.is_some() && !prev_short.is_empty() {
+                format!(
+                    "provider={} action={} prev={}",
+                    truncate(provider, 16),
+                    truncate(action, 16),
+                    prev_short
+                )
+            } else if cursor.is_some() {
+                format!(
+                    "provider={} action={} cursor=set",
+                    truncate(provider, 16),
+                    truncate(action, 16)
+                )
+            } else {
+                format!(
+                    "provider={} action={} cursor=none",
+                    truncate(provider, 16),
+                    truncate(action, 16)
+                )
+            }
+        }
         EventKind::ContinuityCompactionCheckpointCreated {
             checkpoint_id,
             summary_artifact_id,
@@ -273,6 +307,20 @@ mod tests {
                     origin: "cli".to_string(),
                 },
                 "continuity_context_compiled",
+            ),
+            (
+                EventKind::ContinuityProviderCursorUpdated {
+                    provider: "openresponses".to_string(),
+                    endpoint: None,
+                    model: None,
+                    cursor: None,
+                    action: "rotated".to_string(),
+                    reason: None,
+                    run_session_id: None,
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                },
+                "continuity_provider_cursor_updated",
             ),
             (
                 EventKind::ContinuityJobSpawned {

@@ -37,6 +37,7 @@ impl Event {
             | EventKind::ContinuityMessageAppended { .. }
             | EventKind::ContinuityRunSpawned { .. }
             | EventKind::ContinuityContextCompiled { .. }
+            | EventKind::ContinuityProviderCursorUpdated { .. }
             | EventKind::ContinuityCompactionCheckpointCreated { .. }
             | EventKind::ContinuityCompactionAutoScheduleDecided { .. }
             | EventKind::ContinuityJobSpawned { .. }
@@ -180,6 +181,21 @@ pub enum EventKind {
         from_seq: u64,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         from_message_id: Option<String>,
+        actor_id: String,
+        origin: String,
+    },
+    ContinuityProviderCursorUpdated {
+        provider: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        endpoint: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model: Option<String>,
+        cursor: Option<Value>,
+        action: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        run_session_id: Option<String>,
         actor_id: String,
         origin: String,
     },
@@ -524,6 +540,7 @@ impl Session {
             | EventKind::ContinuityMessageAppended { .. }
             | EventKind::ContinuityRunSpawned { .. }
             | EventKind::ContinuityContextCompiled { .. }
+            | EventKind::ContinuityProviderCursorUpdated { .. }
             | EventKind::ContinuityCompactionCheckpointCreated { .. }
             | EventKind::ContinuityCompactionAutoScheduleDecided { .. }
             | EventKind::ContinuityJobSpawned { .. }

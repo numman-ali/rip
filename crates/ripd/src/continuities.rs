@@ -75,6 +75,19 @@ pub(crate) struct CompactionCheckpointForCompile {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct ProviderCursorUpdatedPayload {
+    pub(crate) provider: String,
+    pub(crate) endpoint: Option<String>,
+    pub(crate) model: Option<String>,
+    pub(crate) cursor: Option<serde_json::Value>,
+    pub(crate) action: String,
+    pub(crate) reason: Option<String>,
+    pub(crate) run_session_id: Option<String>,
+    pub(crate) actor_id: String,
+    pub(crate) origin: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct CompactionCheckpointCumulativeV1Request {
     pub summary_markdown: Option<String>,
     pub summary_artifact_id: Option<String>,
@@ -193,6 +206,52 @@ pub struct CompactionStatusV1Response {
     pub inflight_job_id: Option<String>,
     pub last_schedule_decision: Option<CompactionStatusScheduleDecisionV1>,
     pub last_job_outcome: Option<CompactionStatusJobOutcomeV1>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ProviderCursorStatusV1Request {}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ProviderCursorStatusCursorV1 {
+    pub cursor_event_id: String,
+    pub provider: String,
+    pub endpoint: Option<String>,
+    pub model: Option<String>,
+    pub cursor: Option<serde_json::Value>,
+    pub action: String,
+    pub reason: Option<String>,
+    pub run_session_id: Option<String>,
+    pub actor_id: String,
+    pub origin: String,
+    pub seq: u64,
+    pub timestamp_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ProviderCursorStatusV1Response {
+    pub thread_id: String,
+    pub active: Option<ProviderCursorStatusCursorV1>,
+    pub cursors: Vec<ProviderCursorStatusCursorV1>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ProviderCursorRotateV1Request {
+    pub provider: Option<String>,
+    pub endpoint: Option<String>,
+    pub model: Option<String>,
+    pub reason: Option<String>,
+    pub actor_id: String,
+    pub origin: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ProviderCursorRotateV1Response {
+    pub thread_id: String,
+    pub rotated: bool,
+    pub provider: Option<String>,
+    pub endpoint: Option<String>,
+    pub model: Option<String>,
+    pub cursor_event_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -1504,6 +1563,306 @@ impl ContinuityStore {
         })
     }
 
+    pub fn provider_cursor_status_v1(
+        &self,
+        thread_id: &str,
+        _req: ProviderCursorStatusV1Request,
+    ) -> Result<ProviderCursorStatusV1Response, String> {
+        if self.get(thread_id).is_none() {
+            return Err("not_found".to_string());
+        }
+
+        #[derive(Clone, PartialEq, Eq, Hash)]
+        struct Key {
+            provider: String,
+            endpoint: Option<String>,
+            model: Option<String>,
+        }
+
+        let mut active: Option<ProviderCursorStatusCursorV1> = None;
+        let mut by_key: HashMap<Key, ProviderCursorStatusCursorV1> = HashMap::new();
+
+        const INITIAL_TAIL_BYTES: usize = 256 * 1024;
+        const MAX_TAIL_BYTES: usize = 8 * 1024 * 1024;
+        const MAX_TAIL_EVENTS: usize = 10_000;
+        const MAX_KEYS: usize = 32;
+
+        let mut tail_bytes = INITIAL_TAIL_BYTES;
+        let mut scanned_sidecar = false;
+        while tail_bytes <= MAX_TAIL_BYTES {
+            match self
+                .stream_cache
+                .scan_tail(thread_id, MAX_TAIL_EVENTS, tail_bytes)
+            {
+                Ok(Some(tail)) => {
+                    scanned_sidecar = true;
+                    for event in tail.events.iter().rev() {
+                        let EventKind::ContinuityProviderCursorUpdated {
+                            provider,
+                            endpoint,
+                            model,
+                            cursor,
+                            action,
+                            reason,
+                            run_session_id,
+                            actor_id,
+                            origin,
+                        } = &event.kind
+                        else {
+                            continue;
+                        };
+
+                        let cursor_row = ProviderCursorStatusCursorV1 {
+                            cursor_event_id: event.id.clone(),
+                            provider: provider.clone(),
+                            endpoint: endpoint.clone(),
+                            model: model.clone(),
+                            cursor: cursor.clone(),
+                            action: action.clone(),
+                            reason: reason.clone(),
+                            run_session_id: run_session_id.clone(),
+                            actor_id: actor_id.clone(),
+                            origin: origin.clone(),
+                            seq: event.seq,
+                            timestamp_ms: event.timestamp_ms,
+                        };
+
+                        if active.is_none() {
+                            active = Some(cursor_row.clone());
+                        }
+
+                        let key = Key {
+                            provider: provider.clone(),
+                            endpoint: endpoint.clone(),
+                            model: model.clone(),
+                        };
+                        by_key.entry(key).or_insert(cursor_row);
+
+                        if by_key.len() >= MAX_KEYS {
+                            break;
+                        }
+                    }
+
+                    if tail.complete || by_key.len() >= MAX_KEYS {
+                        break;
+                    }
+                }
+                Ok(None) => break,
+                Err(_) => break,
+            }
+
+            tail_bytes = (tail_bytes * 2).min(MAX_TAIL_BYTES);
+        }
+
+        if !scanned_sidecar {
+            let events = self
+                .replay_events(thread_id)
+                .map_err(|err| format!("continuity replay failed: {err}"))?;
+
+            for event in events.iter().rev() {
+                let EventKind::ContinuityProviderCursorUpdated {
+                    provider,
+                    endpoint,
+                    model,
+                    cursor,
+                    action,
+                    reason,
+                    run_session_id,
+                    actor_id,
+                    origin,
+                } = &event.kind
+                else {
+                    continue;
+                };
+
+                let cursor_row = ProviderCursorStatusCursorV1 {
+                    cursor_event_id: event.id.clone(),
+                    provider: provider.clone(),
+                    endpoint: endpoint.clone(),
+                    model: model.clone(),
+                    cursor: cursor.clone(),
+                    action: action.clone(),
+                    reason: reason.clone(),
+                    run_session_id: run_session_id.clone(),
+                    actor_id: actor_id.clone(),
+                    origin: origin.clone(),
+                    seq: event.seq,
+                    timestamp_ms: event.timestamp_ms,
+                };
+
+                if active.is_none() {
+                    active = Some(cursor_row.clone());
+                }
+
+                let key = Key {
+                    provider: provider.clone(),
+                    endpoint: endpoint.clone(),
+                    model: model.clone(),
+                };
+                by_key.entry(key).or_insert(cursor_row);
+
+                if by_key.len() >= MAX_KEYS {
+                    break;
+                }
+            }
+        }
+
+        let mut cursors: Vec<ProviderCursorStatusCursorV1> = by_key.into_values().collect();
+        cursors.sort_by(|a, b| {
+            (
+                a.provider.as_str(),
+                a.endpoint.as_deref().unwrap_or(""),
+                a.model.as_deref().unwrap_or(""),
+            )
+                .cmp(&(
+                    b.provider.as_str(),
+                    b.endpoint.as_deref().unwrap_or(""),
+                    b.model.as_deref().unwrap_or(""),
+                ))
+        });
+
+        Ok(ProviderCursorStatusV1Response {
+            thread_id: thread_id.to_string(),
+            active,
+            cursors,
+        })
+    }
+
+    pub fn provider_cursor_rotate_v1(
+        &self,
+        thread_id: &str,
+        mut req: ProviderCursorRotateV1Request,
+    ) -> Result<ProviderCursorRotateV1Response, String> {
+        if self.get(thread_id).is_none() {
+            return Err("not_found".to_string());
+        }
+
+        if req.actor_id.trim().is_empty() {
+            req.actor_id = "user".to_string();
+        }
+        if req.origin.trim().is_empty() {
+            req.origin = "unknown".to_string();
+        }
+
+        let matches_filter = |provider: &str,
+                              endpoint: Option<&str>,
+                              model: Option<&str>,
+                              req: &ProviderCursorRotateV1Request|
+         -> bool {
+            if let Some(filter) = req.provider.as_deref() {
+                if provider != filter {
+                    return false;
+                }
+            }
+            if let Some(filter) = req.endpoint.as_deref() {
+                if endpoint != Some(filter) {
+                    return false;
+                }
+            }
+            if let Some(filter) = req.model.as_deref() {
+                if model != Some(filter) {
+                    return false;
+                }
+            }
+            true
+        };
+
+        const INITIAL_TAIL_BYTES: usize = 256 * 1024;
+        const MAX_TAIL_BYTES: usize = 8 * 1024 * 1024;
+        const MAX_TAIL_EVENTS: usize = 10_000;
+
+        let mut target: Option<(String, Option<String>, Option<String>)> = None;
+        let mut tail_bytes = INITIAL_TAIL_BYTES;
+        while tail_bytes <= MAX_TAIL_BYTES && target.is_none() {
+            match self
+                .stream_cache
+                .scan_tail(thread_id, MAX_TAIL_EVENTS, tail_bytes)
+            {
+                Ok(Some(tail)) => {
+                    for event in tail.events.iter().rev() {
+                        let EventKind::ContinuityProviderCursorUpdated {
+                            provider,
+                            endpoint,
+                            model,
+                            ..
+                        } = &event.kind
+                        else {
+                            continue;
+                        };
+                        if !matches_filter(provider, endpoint.as_deref(), model.as_deref(), &req) {
+                            continue;
+                        }
+                        target = Some((provider.clone(), endpoint.clone(), model.clone()));
+                        break;
+                    }
+                    if tail.complete {
+                        break;
+                    }
+                }
+                Ok(None) => break,
+                Err(_) => break,
+            }
+            tail_bytes = (tail_bytes * 2).min(MAX_TAIL_BYTES);
+        }
+
+        if target.is_none() {
+            let events = self
+                .replay_events(thread_id)
+                .map_err(|err| format!("continuity replay failed: {err}"))?;
+            for event in events.iter().rev() {
+                let EventKind::ContinuityProviderCursorUpdated {
+                    provider,
+                    endpoint,
+                    model,
+                    ..
+                } = &event.kind
+                else {
+                    continue;
+                };
+                if !matches_filter(provider, endpoint.as_deref(), model.as_deref(), &req) {
+                    continue;
+                }
+                target = Some((provider.clone(), endpoint.clone(), model.clone()));
+                break;
+            }
+        }
+
+        let Some((provider, endpoint, model)) = target else {
+            return Ok(ProviderCursorRotateV1Response {
+                thread_id: thread_id.to_string(),
+                rotated: false,
+                provider: None,
+                endpoint: None,
+                model: None,
+                cursor_event_id: None,
+            });
+        };
+
+        let id = self.append_provider_cursor_updated(
+            thread_id,
+            ProviderCursorUpdatedPayload {
+                provider: provider.clone(),
+                endpoint: endpoint.clone(),
+                model: model.clone(),
+                cursor: None,
+                action: "rotated".to_string(),
+                reason: req.reason.clone(),
+                run_session_id: None,
+                actor_id: req.actor_id,
+                origin: req.origin,
+            },
+        )?;
+
+        Ok(ProviderCursorRotateV1Response {
+            thread_id: thread_id.to_string(),
+            rotated: true,
+            provider: Some(provider),
+            endpoint,
+            model,
+            cursor_event_id: Some(id),
+        })
+    }
+
     pub fn compaction_auto_v1(
         &self,
         thread_id: &str,
@@ -2313,6 +2672,51 @@ impl ContinuityStore {
         Ok(id)
     }
 
+    pub(crate) fn append_provider_cursor_updated(
+        &self,
+        continuity_id: &str,
+        payload: ProviderCursorUpdatedPayload,
+    ) -> Result<String, String> {
+        let mut next_seq = self.next_seq.lock().expect("continuity seq mutex");
+        let seq = match next_seq.get(continuity_id).cloned() {
+            Some(seq) => seq,
+            None => {
+                let seq = self
+                    .load_next_seq_for(continuity_id)
+                    .map_err(|err| format!("resolve continuity seq: {err}"))?;
+                next_seq.insert(continuity_id.to_string(), seq);
+                seq
+            }
+        };
+
+        let id = Uuid::new_v4().to_string();
+        let event = Event {
+            id: id.clone(),
+            session_id: continuity_id.to_string(),
+            timestamp_ms: now_ms(),
+            seq,
+            kind: EventKind::ContinuityProviderCursorUpdated {
+                provider: payload.provider,
+                endpoint: payload.endpoint,
+                model: payload.model,
+                cursor: payload.cursor,
+                action: payload.action,
+                reason: payload.reason,
+                run_session_id: payload.run_session_id,
+                actor_id: payload.actor_id,
+                origin: payload.origin,
+            },
+        };
+        self.event_log
+            .append(&event)
+            .map_err(|err| format!("append continuity provider cursor updated: {err}"))?;
+        self.stream_cache.append_best_effort(&event);
+        let _ = self.sender.send(event.clone());
+
+        next_seq.insert(continuity_id.to_string(), seq + 1);
+        Ok(id)
+    }
+
     fn append_compaction_checkpoint_created(
         &self,
         continuity_id: &str,
@@ -2889,6 +3293,86 @@ mod tests {
             }
             other => panic!("expected continuity_created, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn provider_cursor_status_survives_sidecar_rotation() {
+        let dir = tempdir().expect("tmp");
+        let (_event_log, store, data_dir) = store_for(&dir);
+
+        let thread_id = store.ensure_default().expect("ensure");
+        store
+            .append_provider_cursor_updated(
+                &thread_id,
+                ProviderCursorUpdatedPayload {
+                    provider: "openresponses".to_string(),
+                    endpoint: Some("http://example.test/v1/responses".to_string()),
+                    model: Some("fixture-model".to_string()),
+                    cursor: Some(serde_json::json!({
+                        "previous_response_id": "resp_1"
+                    })),
+                    action: "set".to_string(),
+                    reason: Some("test".to_string()),
+                    run_session_id: Some("session-1".to_string()),
+                    actor_id: "user".to_string(),
+                    origin: "test".to_string(),
+                },
+            )
+            .expect("append cursor");
+
+        let first = store
+            .provider_cursor_status_v1(&thread_id, ProviderCursorStatusV1Request {})
+            .expect("status");
+        assert_eq!(first.thread_id, thread_id);
+        let active = first.active.expect("active");
+        assert_eq!(active.action, "set");
+        assert_eq!(
+            active
+                .cursor
+                .as_ref()
+                .and_then(|value| value.get("previous_response_id"))
+                .and_then(|value| value.as_str()),
+            Some("resp_1")
+        );
+
+        // Simulate cache loss / rotation: delete the continuity sidecar caches.
+        let _ = std::fs::remove_dir_all(data_dir.join("continuity_streams"));
+
+        let second = store
+            .provider_cursor_status_v1(&thread_id, ProviderCursorStatusV1Request {})
+            .expect("status after cache delete");
+        let active = second.active.expect("active");
+        assert_eq!(active.action, "set");
+        assert_eq!(
+            active
+                .cursor
+                .as_ref()
+                .and_then(|value| value.get("previous_response_id"))
+                .and_then(|value| value.as_str()),
+            Some("resp_1")
+        );
+
+        let rotated = store
+            .provider_cursor_rotate_v1(
+                &thread_id,
+                ProviderCursorRotateV1Request {
+                    provider: None,
+                    endpoint: None,
+                    model: None,
+                    reason: Some("manual".to_string()),
+                    actor_id: "user".to_string(),
+                    origin: "test".to_string(),
+                },
+            )
+            .expect("rotate");
+        assert!(rotated.rotated);
+
+        let status = store
+            .provider_cursor_status_v1(&thread_id, ProviderCursorStatusV1Request {})
+            .expect("status after rotate");
+        let active = status.active.expect("active");
+        assert_eq!(active.action, "rotated");
+        assert!(active.cursor.is_none());
     }
 
     #[test]

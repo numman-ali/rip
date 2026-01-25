@@ -1294,6 +1294,191 @@ async fn thread_compaction_checkpoint_creates_and_emits_checkpoint_event() {
 }
 
 #[tokio::test]
+async fn thread_provider_cursor_status_and_rotate_are_auditable() {
+    use axum::http::header::CONTENT_TYPE;
+    use axum::routing::post;
+    use axum::{response::IntoResponse, Router as AxumRouter};
+    use tokio::net::TcpListener;
+
+    let sse = "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_thread_1\"}}\n\n\
+data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n\
+data: [DONE]\n\n"
+        .to_string();
+    let provider_app = AxumRouter::new().route(
+        "/v1/responses",
+        post(move || {
+            let body = sse.clone();
+            async move { ([(CONTENT_TYPE, "text/event-stream")], body).into_response() }
+        }),
+    );
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    tokio::spawn(async move {
+        axum::serve(listener, provider_app).await.expect("serve");
+    });
+    let endpoint = format!("http://{addr}/v1/responses");
+
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app_with_openresponses_provider(&dir, endpoint, false);
+    let thread_id = ensure_thread_id(&app).await;
+    let posted = post_thread_message(&app, &thread_id, "hello").await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/threads/{thread_id}/events"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let mut reader = TestSseReader::new(response.into_body());
+
+    let cursor_set = timeout(Duration::from_secs(2), async {
+        while let Some(message) = reader.next_data_message().await {
+            let Some(value) = extract_data_json(&message) else {
+                continue;
+            };
+            if value.get("type").and_then(|value| value.as_str())
+                != Some("continuity_provider_cursor_updated")
+            {
+                continue;
+            }
+            if value.get("action").and_then(|value| value.as_str()) != Some("set") {
+                continue;
+            }
+            return Some(value);
+        }
+        None
+    })
+    .await
+    .expect("timeout")
+    .expect("cursor set event");
+
+    assert_eq!(
+        cursor_set.get("provider").and_then(|value| value.as_str()),
+        Some("openresponses")
+    );
+    assert_eq!(
+        cursor_set
+            .get("run_session_id")
+            .and_then(|value| value.as_str()),
+        Some(posted.session_id.as_str())
+    );
+    assert_eq!(
+        cursor_set
+            .get("cursor")
+            .and_then(|value| value.get("previous_response_id"))
+            .and_then(|value| value.as_str()),
+        Some("resp_thread_1")
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/threads/{thread_id}/provider-cursor-status"))
+                .header("content-type", "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let status_body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let status_json: serde_json::Value = serde_json::from_slice(&status_body).expect("json");
+    assert_eq!(
+        status_json
+            .get("active")
+            .and_then(|value| value.get("action"))
+            .and_then(|value| value.as_str()),
+        Some("set")
+    );
+
+    let rotate_payload = serde_json::json!({
+        "provider": null,
+        "endpoint": null,
+        "model": null,
+        "reason": "test",
+        "actor_id": "user",
+        "origin": "server"
+    });
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/threads/{thread_id}/provider-cursor-rotate"))
+                .header("content-type", "application/json")
+                .body(Body::from(rotate_payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let rotate_body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let rotate_json: serde_json::Value = serde_json::from_slice(&rotate_body).expect("json");
+    assert_eq!(
+        rotate_json.get("rotated").and_then(|value| value.as_bool()),
+        Some(true)
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/threads/{thread_id}/provider-cursor-status"))
+                .header("content-type", "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let status_body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let status_json: serde_json::Value = serde_json::from_slice(&status_body).expect("json");
+    assert_eq!(
+        status_json
+            .get("active")
+            .and_then(|value| value.get("action"))
+            .and_then(|value| value.as_str()),
+        Some("rotated")
+    );
+    assert!(
+        status_json
+            .get("active")
+            .and_then(|value| value.get("cursor"))
+            .is_none()
+            || status_json
+                .get("active")
+                .and_then(|value| value.get("cursor"))
+                .map(|cursor| cursor.is_null())
+                .unwrap_or(false)
+    );
+}
+
+#[tokio::test]
 async fn thread_compaction_cut_points_returns_latest_first_and_respects_limit() {
     let dir = tempdir().expect("tmp");
     let app = build_test_app(&dir);
@@ -2074,6 +2259,12 @@ async fn pty_task_supports_control_operations() {
     .await
     .expect("timeout");
 
+    let mut saw_stdin = false;
+    let mut saw_resize = false;
+    let mut saw_signal = false;
+    let mut saw_output = false;
+    let mut saw_terminal = false;
+
     let write = app
         .clone()
         .oneshot(
@@ -2088,47 +2279,11 @@ async fn pty_task_supports_control_operations() {
         .expect("response");
     assert_eq!(write.status(), axum::http::StatusCode::ACCEPTED);
 
-    let resize = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/tasks/{task_id}/resize"))
-                .header("content-type", "application/json")
-                .body(Body::from("{\"rows\":30,\"cols\":100}"))
-                .unwrap(),
-        )
-        .await
-        .expect("response");
-    assert_eq!(resize.status(), axum::http::StatusCode::ACCEPTED);
-
-    let signal = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/tasks/{task_id}/signal"))
-                .header("content-type", "application/json")
-                .body(Body::from("{\"signal\":\"SIGTERM\"}"))
-                .unwrap(),
-        )
-        .await
-        .expect("response");
-    assert_eq!(signal.status(), axum::http::StatusCode::ACCEPTED);
-
-    let mut saw_stdin = false;
-    let mut saw_resize = false;
-    let mut saw_signal = false;
-    let mut saw_output = false;
-    let mut saw_terminal = false;
-
     timeout(Duration::from_secs(5), async {
         while let Some(message) = reader.next_data_message().await {
             if let Some(value) = extract_data_json(&message) {
                 match value.get("type").and_then(|value| value.as_str()) {
                     Some("tool_task_stdin_written") => saw_stdin = true,
-                    Some("tool_task_resized") => saw_resize = true,
-                    Some("tool_task_signalled") => saw_signal = true,
                     Some("tool_task_output_delta") => {
                         if value
                             .get("chunk")
@@ -2148,6 +2303,82 @@ async fn pty_task_supports_control_operations() {
                     }
                     _ => {}
                 }
+                if saw_stdin && saw_output {
+                    break;
+                }
+            }
+        }
+    })
+    .await
+    .expect("timeout");
+
+    let resize = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tasks/{task_id}/resize"))
+                .header("content-type", "application/json")
+                .body(Body::from("{\"rows\":30,\"cols\":100}"))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(resize.status(), axum::http::StatusCode::ACCEPTED);
+
+    timeout(Duration::from_secs(5), async {
+        while let Some(message) = reader.next_data_message().await {
+            if let Some(value) = extract_data_json(&message) {
+                match value.get("type").and_then(|value| value.as_str()) {
+                    Some("tool_task_resized") => {
+                        saw_resize = true;
+                        break;
+                    }
+                    Some("tool_task_status") => {
+                        let status = value.get("status").and_then(|value| value.as_str());
+                        if matches!(status, Some("exited") | Some("cancelled") | Some("failed")) {
+                            saw_terminal = true;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    })
+    .await
+    .expect("timeout");
+
+    let signal = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tasks/{task_id}/signal"))
+                .header("content-type", "application/json")
+                .body(Body::from("{\"signal\":\"SIGTERM\"}"))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(signal.status(), axum::http::StatusCode::ACCEPTED);
+
+    timeout(Duration::from_secs(5), async {
+        while let Some(message) = reader.next_data_message().await {
+            if let Some(value) = extract_data_json(&message) {
+                match value.get("type").and_then(|value| value.as_str()) {
+                    Some("tool_task_signalled") => saw_signal = true,
+                    Some("tool_task_status") => {
+                        let status = value.get("status").and_then(|value| value.as_str());
+                        if matches!(status, Some("exited") | Some("cancelled") | Some("failed")) {
+                            saw_terminal = true;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if saw_signal && saw_terminal {
+                break;
             }
         }
     })

@@ -21,7 +21,8 @@ pub use continuities::{
     CompactionCheckpointCumulativeV1Request, CompactionCutPointV1, CompactionCutPointsV1Request,
     CompactionCutPointsV1Response, CompactionPlannedCutPointV1, CompactionStatusV1Request,
     CompactionStatusV1Response, ContinuityMeta, ContinuityRunLink, ContinuityStore,
-    ToolSideEffects,
+    ProviderCursorRotateV1Request, ProviderCursorRotateV1Response, ProviderCursorStatusCursorV1,
+    ProviderCursorStatusV1Request, ProviderCursorStatusV1Response, ToolSideEffects,
 };
 pub use runner::{SessionEngine, SessionHandle};
 

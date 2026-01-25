@@ -16,6 +16,8 @@ import {
   buildRipThreadHandoffArgs,
   buildRipThreadListArgs,
   buildRipThreadPostMessageArgs,
+  buildRipThreadProviderCursorRotateArgs,
+  buildRipThreadProviderCursorStatusArgs,
 } from "./util.js";
 
 export type RipOptions = {
@@ -207,6 +209,42 @@ export type RipThreadCompactionStatusResponse = {
   inflight_job_id: string | null;
   last_schedule_decision: RipThreadCompactionStatusScheduleDecision | null;
   last_job_outcome: RipThreadCompactionStatusJobOutcome | null;
+};
+
+export type RipThreadProviderCursorStatusCursor = {
+  cursor_event_id: string;
+  provider: string;
+  endpoint: string | null;
+  model: string | null;
+  cursor: unknown | null;
+  action: string;
+  reason: string | null;
+  run_session_id: string | null;
+  actor_id: string;
+  origin: string;
+  seq: number;
+  timestamp_ms: number;
+};
+
+export type RipThreadProviderCursorStatusResponse = {
+  thread_id: string;
+  active: RipThreadProviderCursorStatusCursor | null;
+  cursors: RipThreadProviderCursorStatusCursor[];
+};
+
+export type RipThreadProviderCursorRotateRequest = {
+  reason?: string;
+  actor_id?: string;
+  origin?: string;
+};
+
+export type RipThreadProviderCursorRotateResponse = {
+  thread_id: string;
+  rotated: boolean;
+  provider: string | null;
+  endpoint: string | null;
+  model: string | null;
+  cursor_event_id: string | null;
 };
 
 export type RipThreadCompactionAutoRequest = {
@@ -580,6 +618,36 @@ export class Rip {
       options,
     );
     return out as RipThreadCompactionStatusResponse;
+  }
+
+  async threadProviderCursorStatus(
+    threadId: string,
+    options: RipThreadOptions = {},
+  ): Promise<RipThreadProviderCursorStatusResponse> {
+    const out = await this.execJson(
+      buildRipThreadProviderCursorStatusArgs(threadId, { server: options.server }),
+      options,
+    );
+    return out as RipThreadProviderCursorStatusResponse;
+  }
+
+  async threadProviderCursorRotate(
+    threadId: string,
+    request: RipThreadProviderCursorRotateRequest = {},
+    options: RipThreadOptions = {},
+  ): Promise<RipThreadProviderCursorRotateResponse> {
+    const actorId = request.actor_id ?? "user";
+    const origin = request.origin ?? "sdk-ts";
+    const out = await this.execJson(
+      buildRipThreadProviderCursorRotateArgs(threadId, {
+        server: options.server,
+        reason: request.reason,
+        actorId,
+        origin,
+      }),
+      options,
+    );
+    return out as RipThreadProviderCursorRotateResponse;
   }
 
   async threadCompactionAuto(

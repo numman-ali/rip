@@ -34,6 +34,7 @@ Current focus
 - Implemented: workspace mutation serialization across sessions + background tasks (workspace lock) with contract + replay tests.
 - Implemented: continuity stream logs workspace-mutating tool side-effects with full provenance (`continuity_tool_side_effects`) and replay coverage under parallel runs/tasks.
 - Decision locked (ADR-0010): `context.compile` is the canonical way runs “remember” across time; provider cursors are optional caches only.
+- Implemented: provider cursor cache truth logging (ADR-0015): `continuity_provider_cursor_updated` + `thread.provider_cursor.{status,rotate}` across cli_h/tui/server/sdk; OpenResponses runs record `previous_response_id` on completion as a rebuildable cache.
 - Implemented: context compiler perf v1.1: per-continuity sidecar seek indexes + bounded window reads for `recent_messages_v1` non-tail anchors (caches only; replay-safe fallbacks).
 - Implemented: context compiler perf v1.2: messages+runs-only continuity sidecar + indexes; `recent_messages_v1` window reads are O(k) even with dense `continuity_tool_side_effects` between messages (caches only; replay-safe fallbacks).
 - Drafted contracts (docs-first):
@@ -62,7 +63,7 @@ Open risks / notes
 
 Active priorities
 - Keep roadmap Now/Next aligned with the implementation work.
-- Next slice (code): per-stream segmentation + hierarchical summaries while keeping jobs replay-safe (truth frames + artifact refs only).
+- Next slice (code): context selection strategy evolution truth logging (frames + capability + surface UX), then per-stream segmentation + hierarchical summaries.
 - Keep OpenResponses boundary full-fidelity while wiring new surfaces/adapters.
 - Keep OpenResponses follow-ups spec-canonical; any compatibility user message is opt-in.
 - Keep stateless history compatibility opt-in; default remains `previous_response_id`.

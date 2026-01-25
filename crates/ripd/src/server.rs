@@ -221,6 +221,8 @@ pub(crate) fn build_openapi_router() -> (Router<AppState>, String) {
         .routes(routes!(thread_compaction_checkpoint))
         .routes(routes!(thread_compaction_cut_points))
         .routes(routes!(thread_compaction_status))
+        .routes(routes!(thread_provider_cursor_status))
+        .routes(routes!(thread_provider_cursor_rotate))
         .routes(routes!(thread_compaction_auto))
         .routes(routes!(thread_compaction_auto_schedule))
         .routes(routes!(thread_stream_events))
@@ -729,6 +731,73 @@ async fn thread_compaction_status(
             if err_lower.contains("invalid_stride") {
                 return StatusCode::BAD_REQUEST.into_response();
             }
+            if err_lower.contains("not_found") {
+                return StatusCode::NOT_FOUND.into_response();
+            }
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/threads/{id}/provider-cursor-status",
+    params(
+        ("id" = String, Path, description = "Thread id")
+    ),
+    request_body = crate::ProviderCursorStatusV1Request,
+    responses(
+        (status = 200, description = "Provider cursor status projection", body = crate::ProviderCursorStatusV1Response),
+        (status = 404, description = "Thread not found")
+    )
+)]
+async fn thread_provider_cursor_status(
+    Path(thread_id): Path<String>,
+    State(state): State<AppState>,
+    Json(payload): Json<crate::ProviderCursorStatusV1Request>,
+) -> impl IntoResponse {
+    let store = state.engine.continuities();
+    match store.provider_cursor_status_v1(&thread_id, payload) {
+        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
+        Err(err) => {
+            let err_lower = err.to_ascii_lowercase();
+            if err_lower.contains("not_found") {
+                return StatusCode::NOT_FOUND.into_response();
+            }
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/threads/{id}/provider-cursor-rotate",
+    params(
+        ("id" = String, Path, description = "Thread id")
+    ),
+    request_body = crate::ProviderCursorRotateV1Request,
+    responses(
+        (status = 200, description = "Provider cursor rotation logged", body = crate::ProviderCursorRotateV1Response),
+        (status = 404, description = "Thread not found")
+    )
+)]
+async fn thread_provider_cursor_rotate(
+    Path(thread_id): Path<String>,
+    State(state): State<AppState>,
+    Json(mut payload): Json<crate::ProviderCursorRotateV1Request>,
+) -> impl IntoResponse {
+    if payload.actor_id.trim().is_empty() {
+        payload.actor_id = "user".to_string();
+    }
+    if payload.origin.trim().is_empty() {
+        payload.origin = "server".to_string();
+    }
+
+    let store = state.engine.continuities();
+    match store.provider_cursor_rotate_v1(&thread_id, payload) {
+        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
+        Err(err) => {
+            let err_lower = err.to_ascii_lowercase();
             if err_lower.contains("not_found") {
                 return StatusCode::NOT_FOUND.into_response();
             }

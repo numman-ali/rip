@@ -204,7 +204,7 @@ pub async fn run_session(context: SessionContext) {
                     }
                 }
                 if !skip_runtime_loop {
-                    let reason = run_openresponses_agent_loop(OpenResponsesRunContext {
+                    let outcome = run_openresponses_agent_loop(OpenResponsesRunContext {
                         http: &http_client,
                         config,
                         tool_runner: tool_runner.as_ref(),
@@ -218,6 +218,33 @@ pub async fn run_session(context: SessionContext) {
                         sink,
                     })
                     .await;
+                    let OpenResponsesLoopOutcome {
+                        reason,
+                        last_response_id,
+                    } = outcome;
+
+                    if reason == "completed" {
+                        if let (Some(link), Some(cursor)) =
+                            (continuity_run.as_ref(), last_response_id.as_deref())
+                        {
+                            let _ = continuities.append_provider_cursor_updated(
+                                &link.continuity_id,
+                                crate::continuities::ProviderCursorUpdatedPayload {
+                                    provider: "openresponses".to_string(),
+                                    endpoint: Some(config.endpoint.clone()),
+                                    model: config.model.clone(),
+                                    cursor: Some(serde_json::json!({
+                                        "previous_response_id": cursor
+                                    })),
+                                    action: "set".to_string(),
+                                    reason: Some("run_completed".to_string()),
+                                    run_session_id: Some(runtime_session_id.clone()),
+                                    actor_id: link.actor_id.clone(),
+                                    origin: link.origin.clone(),
+                                },
+                            );
+                        }
+                    }
                     emit_event(
                         Event {
                             id: Uuid::new_v4().to_string(),
@@ -895,7 +922,14 @@ struct OpenResponsesRunContext<'a> {
     sink: EventSink<'a>,
 }
 
-async fn run_openresponses_agent_loop(ctx: OpenResponsesRunContext<'_>) -> String {
+struct OpenResponsesLoopOutcome {
+    reason: String,
+    last_response_id: Option<String>,
+}
+
+async fn run_openresponses_agent_loop(
+    ctx: OpenResponsesRunContext<'_>,
+) -> OpenResponsesLoopOutcome {
     let OpenResponsesRunContext {
         http,
         config,
@@ -925,7 +959,10 @@ async fn run_openresponses_agent_loop(ctx: OpenResponsesRunContext<'_>) -> Strin
 
     loop {
         if tool_call_count >= DEFAULT_MAX_TOOL_CALLS {
-            return "max_tool_calls_exceeded".to_string();
+            return OpenResponsesLoopOutcome {
+                reason: "max_tool_calls_exceeded".to_string(),
+                last_response_id: previous_response_id,
+            };
         }
 
         let payload = if let Some(tool_outputs) = followup_tool_outputs.take() {
@@ -933,7 +970,10 @@ async fn run_openresponses_agent_loop(ctx: OpenResponsesRunContext<'_>) -> Strin
                 build_streaming_followup_request(config, None, history_items.clone())
             } else {
                 let Some(prev) = previous_response_id.as_deref() else {
-                    return "provider_error".to_string();
+                    return OpenResponsesLoopOutcome {
+                        reason: "provider_error".to_string(),
+                        last_response_id: previous_response_id,
+                    };
                 };
                 build_streaming_followup_request(config, Some(prev), tool_outputs)
             }
@@ -957,7 +997,10 @@ async fn run_openresponses_agent_loop(ctx: OpenResponsesRunContext<'_>) -> Strin
         )
         .await;
         if let Err(reason) = stream_result {
-            return reason;
+            return OpenResponsesLoopOutcome {
+                reason,
+                last_response_id: previous_response_id,
+            };
         }
 
         if let Some(id) = collector.response_id.clone() {
@@ -966,10 +1009,16 @@ async fn run_openresponses_agent_loop(ctx: OpenResponsesRunContext<'_>) -> Strin
 
         let tool_calls = collector.drain_function_calls();
         if tool_calls.is_empty() {
-            return "completed".to_string();
+            return OpenResponsesLoopOutcome {
+                reason: "completed".to_string(),
+                last_response_id: previous_response_id,
+            };
         }
         if previous_response_id.is_none() && !stateless_history {
-            return "provider_error".to_string();
+            return OpenResponsesLoopOutcome {
+                reason: "provider_error".to_string(),
+                last_response_id: previous_response_id,
+            };
         }
 
         let mut tool_outputs = Vec::new();
@@ -980,7 +1029,10 @@ async fn run_openresponses_agent_loop(ctx: OpenResponsesRunContext<'_>) -> Strin
         }
         for call in tool_calls {
             if tool_call_count >= DEFAULT_MAX_TOOL_CALLS {
-                return "max_tool_calls_exceeded".to_string();
+                return OpenResponsesLoopOutcome {
+                    reason: "max_tool_calls_exceeded".to_string(),
+                    last_response_id: previous_response_id,
+                };
             }
             tool_call_count += 1;
             let args_value = match serde_json::from_str::<Value>(&call.arguments) {
@@ -1817,7 +1869,7 @@ data: [DONE]\n\n";
         };
         let mut seq = 0;
         let http = reqwest::Client::new();
-        let reason = run_openresponses_agent_loop(OpenResponsesRunContext {
+        let outcome = run_openresponses_agent_loop(OpenResponsesRunContext {
             http: &http,
             config: &config,
             tool_runner: &tool_runner,
@@ -1831,7 +1883,8 @@ data: [DONE]\n\n";
             sink,
         })
         .await;
-        assert_eq!(reason, "completed");
+        assert_eq!(outcome.reason, "completed");
+        assert!(outcome.last_response_id.is_none());
         let events = buffer.lock().await;
         assert!(events
             .iter()
@@ -1904,7 +1957,7 @@ data: [DONE]\n\n";
         };
         let mut seq = 0;
         let http = reqwest::Client::new();
-        let reason = run_openresponses_agent_loop(OpenResponsesRunContext {
+        let outcome = run_openresponses_agent_loop(OpenResponsesRunContext {
             http: &http,
             config: &config,
             tool_runner: &tool_runner,
@@ -1918,7 +1971,8 @@ data: [DONE]\n\n";
             sink,
         })
         .await;
-        assert_eq!(reason, "provider_error");
+        assert_eq!(outcome.reason, "provider_error");
+        assert!(outcome.last_response_id.is_none());
     }
 
     #[tokio::test]
@@ -2003,7 +2057,7 @@ data: [DONE]\n\n";
         };
         let mut seq = 0;
         let http = reqwest::Client::new();
-        let reason = run_openresponses_agent_loop(OpenResponsesRunContext {
+        let outcome = run_openresponses_agent_loop(OpenResponsesRunContext {
             http: &http,
             config: &config,
             tool_runner: &tool_runner,
@@ -2017,7 +2071,8 @@ data: [DONE]\n\n";
             sink,
         })
         .await;
-        assert_eq!(reason, "completed");
+        assert_eq!(outcome.reason, "completed");
+        assert_eq!(outcome.last_response_id.as_deref(), Some("resp_1"));
         let events = buffer.lock().await;
         assert!(events
             .iter()

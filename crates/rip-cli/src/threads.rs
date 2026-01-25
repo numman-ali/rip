@@ -109,6 +109,25 @@ pub(crate) enum ThreadsCommand {
         #[arg(long)]
         stride_messages: Option<u64>,
     },
+    /// Show a truth-derived provider cursor cache status projection for a thread.
+    ProviderCursorStatus {
+        /// Thread id (continuity id).
+        id: String,
+    },
+    /// Rotate/reset the active provider cursor cache for a thread (truth-log only).
+    ProviderCursorRotate {
+        /// Thread id (continuity id).
+        id: String,
+        /// Optional stable reason for the rotation/reset (logged as truth).
+        #[arg(long)]
+        reason: Option<String>,
+        /// Actor id (provenance).
+        #[arg(long)]
+        actor_id: Option<String>,
+        /// Origin (provenance).
+        #[arg(long)]
+        origin: Option<String>,
+    },
     /// Run deterministic auto-compaction: spawn a summarizer job that emits checkpoints.
     CompactionAuto {
         /// Thread id (continuity id).
@@ -397,6 +416,44 @@ async fn run_threads_remote(server: String, command: ThreadsCommand) -> anyhow::
             let body = response.text().await?;
             println!("{body}");
         }
+        ThreadsCommand::ProviderCursorStatus { id } => {
+            let url = format!("{server}/threads/{id}/provider-cursor-status");
+            let response = client.post(url).json(&serde_json::json!({})).send().await?;
+            let status = response.status();
+            if !status.is_success() {
+                anyhow::bail!("thread provider-cursor-status failed: {status}");
+            }
+            let body = response.text().await?;
+            println!("{body}");
+        }
+        ThreadsCommand::ProviderCursorRotate {
+            id,
+            reason,
+            actor_id,
+            origin,
+        } => {
+            let actor_id = actor_id.unwrap_or_else(|| "user".to_string());
+            let origin = origin.unwrap_or_else(|| "cli".to_string());
+            let url = format!("{server}/threads/{id}/provider-cursor-rotate");
+            let response = client
+                .post(url)
+                .json(&serde_json::json!({
+                    "provider": null,
+                    "endpoint": null,
+                    "model": null,
+                    "reason": reason,
+                    "actor_id": actor_id,
+                    "origin": origin,
+                }))
+                .send()
+                .await?;
+            let status = response.status();
+            if !status.is_success() {
+                anyhow::bail!("thread provider-cursor-rotate failed: {status}");
+            }
+            let body = response.text().await?;
+            println!("{body}");
+        }
         ThreadsCommand::CompactionAuto {
             id,
             stride_messages,
@@ -647,6 +704,35 @@ async fn run_threads_local_with_engine(
             let resp = store
                 .compaction_status_v1(&id, ripd::CompactionStatusV1Request { stride_messages })
                 .map_err(|err| anyhow::anyhow!("thread compaction-status failed: {err}"))?;
+            println!("{}", serde_json::to_string(&resp)?);
+        }
+        ThreadsCommand::ProviderCursorStatus { id } => {
+            let resp = store
+                .provider_cursor_status_v1(&id, ripd::ProviderCursorStatusV1Request {})
+                .map_err(|err| anyhow::anyhow!("thread provider-cursor-status failed: {err}"))?;
+            println!("{}", serde_json::to_string(&resp)?);
+        }
+        ThreadsCommand::ProviderCursorRotate {
+            id,
+            reason,
+            actor_id,
+            origin,
+        } => {
+            let actor_id = actor_id.unwrap_or_else(|| "user".to_string());
+            let origin = origin.unwrap_or_else(|| "cli".to_string());
+            let resp = store
+                .provider_cursor_rotate_v1(
+                    &id,
+                    ripd::ProviderCursorRotateV1Request {
+                        provider: None,
+                        endpoint: None,
+                        model: None,
+                        reason,
+                        actor_id,
+                        origin,
+                    },
+                )
+                .map_err(|err| anyhow::anyhow!("thread provider-cursor-rotate failed: {err}"))?;
             println!("{}", serde_json::to_string(&resp)?);
         }
         ThreadsCommand::CompactionAuto {
@@ -949,6 +1035,26 @@ mod tests {
         )
         .await
         .expect("thread get");
+
+        run_threads_local_with_engine(
+            &engine,
+            ThreadsCommand::ProviderCursorStatus {
+                id: thread_id.clone(),
+            },
+        )
+        .await
+        .expect("thread provider-cursor-status");
+        run_threads_local_with_engine(
+            &engine,
+            ThreadsCommand::ProviderCursorRotate {
+                id: thread_id.clone(),
+                reason: Some("test".to_string()),
+                actor_id: None,
+                origin: None,
+            },
+        )
+        .await
+        .expect("thread provider-cursor-rotate");
 
         // Simulate a separate CLI invocation (fresh seq cache) so we exercise the
         // `load_next_seq_for` path.

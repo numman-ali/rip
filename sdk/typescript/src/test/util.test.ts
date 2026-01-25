@@ -14,6 +14,8 @@ import {
   buildRipThreadCompactionCutPointsArgs,
   buildRipThreadCompactionStatusArgs,
   buildRipThreadCompactionAutoArgs,
+  buildRipThreadProviderCursorStatusArgs,
+  buildRipThreadProviderCursorRotateArgs,
   collectOutputText,
 } from "../util.js";
 
@@ -174,6 +176,26 @@ test("buildRipThreadCompactionStatusArgs includes stride", () => {
     "--stride-messages",
     "10000",
   ]);
+});
+
+test("buildRipThreadProviderCursorStatusArgs builds status command", () => {
+  const args = buildRipThreadProviderCursorStatusArgs("t1", { server: "http://127.0.0.1:7341" });
+  assert.deepEqual(args, [
+    "threads",
+    "--server",
+    "http://127.0.0.1:7341",
+    "provider-cursor-status",
+    "t1",
+  ]);
+});
+
+test("buildRipThreadProviderCursorRotateArgs includes provenance and reason flags", () => {
+  const args = buildRipThreadProviderCursorRotateArgs("t1", {
+    reason: "reset",
+    actorId: "alice",
+    origin: "sdk-ts",
+  });
+  assert.deepEqual(args, ["threads", "provider-cursor-rotate", "t1", "--reason", "reset", "--actor-id", "alice", "--origin", "sdk-ts"]);
 });
 
 test("buildRipThreadCompactionAutoArgs includes dry-run and limits", () => {
