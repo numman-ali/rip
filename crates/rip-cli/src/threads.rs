@@ -211,6 +211,7 @@ pub(crate) struct ThreadEnsureResponse {
     pub(crate) thread_id: String,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct ThreadMeta {
     pub(crate) thread_id: String,
@@ -226,6 +227,7 @@ pub(crate) struct ThreadPostMessageResponse {
     pub(crate) session_id: String,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct ThreadBranchResponse {
     pub(crate) thread_id: String,
@@ -234,6 +236,7 @@ pub(crate) struct ThreadBranchResponse {
     pub(crate) parent_message_id: Option<String>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct ThreadHandoffResponse {
     pub(crate) thread_id: String,
@@ -242,6 +245,7 @@ pub(crate) struct ThreadHandoffResponse {
     pub(crate) from_message_id: Option<String>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct ThreadCompactionCheckpointResponse {
     pub(crate) thread_id: String,
@@ -258,7 +262,10 @@ pub(crate) async fn run_threads(
 ) -> anyhow::Result<()> {
     match server {
         Some(server) => run_threads_remote(server, command).await,
-        None => run_threads_local(command).await,
+        None => {
+            let server = crate::local_authority::ensure_local_authority().await?;
+            run_threads_remote(server, command).await
+        }
     }
 }
 
@@ -575,12 +582,7 @@ async fn run_threads_remote(server: String, command: ThreadsCommand) -> anyhow::
     Ok(())
 }
 
-async fn run_threads_local(command: ThreadsCommand) -> anyhow::Result<()> {
-    let engine =
-        ripd::SessionEngine::new_default().map_err(|err| anyhow::anyhow!("engine init: {err}"))?;
-    run_threads_local_with_engine(&engine, command).await
-}
-
+#[cfg(test)]
 async fn run_threads_local_with_engine(
     engine: &ripd::SessionEngine,
     command: ThreadsCommand,
@@ -842,7 +844,7 @@ async fn run_threads_local_with_engine(
                 .append_run_spawned(&id, &message_id, &session_id, actor_id, origin)
                 .map_err(|err| anyhow::anyhow!("thread post_message run link failed: {err}"))?;
 
-            engine.spawn_session(handle, content, Some(run_link));
+            engine.spawn_session(handle, content, Some(run_link), None);
 
             let payload = ThreadPostMessageResponse {
                 thread_id: id,
@@ -895,6 +897,7 @@ async fn stream_frames_sse(
     Ok(())
 }
 
+#[cfg(test)]
 async fn stream_frames_local(
     thread_id: &str,
     past: Vec<FrameEvent>,

@@ -8,6 +8,7 @@ mod continuities;
 mod continuity_seek_index;
 mod continuity_stream_cache;
 mod handoff_context_bundle;
+mod local_authority;
 mod message_ordinal_index;
 mod provider_openresponses;
 mod runner;
@@ -25,6 +26,10 @@ pub use continuities::{
     ContextSelectionStatusV1Response, ContinuityMeta, ContinuityRunLink, ContinuityStore,
     ProviderCursorRotateV1Request, ProviderCursorRotateV1Response, ProviderCursorStatusCursorV1,
     ProviderCursorStatusV1Request, ProviderCursorStatusV1Response, ToolSideEffects,
+};
+pub use local_authority::{
+    authority_dir, authority_lock_path, authority_meta_path, read_authority_lock_record,
+    read_authority_meta, AuthorityLockGuard, AuthorityLockRecord, AuthorityMeta,
 };
 pub use runner::{SessionEngine, SessionHandle};
 

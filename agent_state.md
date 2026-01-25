@@ -10,7 +10,7 @@ Current focus
 - Continuity OS posture is locked: continuity log is truth; provider state is cache; sessions are runs/turns (not user-facing by default).
 - Now: Continuities (threads) are the primary user-facing entity ("one chat forever") and must be implemented end-to-end across surfaces.
 - Phase 1 baseline remains: shared session runner across server + CLI (frames are canonical).
-- Default local execution: `rip` launches fullscreen TUI (in-process); `rip run` stays headless; `--server <url>` enables remote runs; `rip serve` stays the remote control plane.
+- Default local execution: `rip` (TUI) and `rip run` auto-start/auto-attach to a local authority for the store; `--server <url>` preserves explicit remote runs; `rip serve` stays the control plane.
 - Decision locked (ADR-0019): one store requires a single authority for truth writes; indexes are rebuildable caches; hybrid retrieval is a compiler stage and must be truth-logged by reference.
 - TUI UX is explicitly “conversational-first + drill-down”: ambient background signals (tools/tasks/agents), responsive layouts (phone/SSH/web terminals), and an experience review gate are tracked in `docs/02_architecture/tui/06_experience_review.md`.
 - OpenResponses provider compatibility: stateless history mode + tool schema strict=false; fix provider_errors without dropping raw fidelity.
@@ -34,6 +34,7 @@ Current focus
 - Implemented: `rip threads ...` CLI adapter + TypeScript SDK `thread.*` wrappers (ensure/list/get/post_message/branch/handoff/stream_events) while keeping ADR-0006 transport (SDK spawns `rip`; no TS HTTP/SSE client).
 - Implemented: workspace mutation serialization across sessions + background tasks (workspace lock) with contract + replay tests.
 - Implemented: continuity stream logs workspace-mutating tool side-effects with full provenance (`continuity_tool_side_effects`) and replay coverage under parallel runs/tasks.
+- Implemented: local authority “one store just works” v0.1 (ADR-0019): per-store authority discovery + store lock; local `rip`/`rip run`/`rip threads` auto-start/auto-attach by default; deterministic multi-client integration coverage.
 - Decision locked (ADR-0010): `context.compile` is the canonical way runs “remember” across time; provider cursors are optional caches only.
 - Implemented: provider cursor cache truth logging (ADR-0015): `continuity_provider_cursor_updated` + `thread.provider_cursor.{status,rotate}` across cli_h/tui/server/sdk; OpenResponses runs record `previous_response_id` on completion as a rebuildable cache.
 - Implemented: context selection strategy evolution truth logging v0.1 (ADR-0016): `continuity_context_selection_decided` + `thread.context_selection.status` across cli_h/tui/server/sdk; compiler selection/budgets/inputs/reasons are now auditable truth.
@@ -65,7 +66,6 @@ Open risks / notes
 
 Active priorities
 - Keep roadmap Now/Next aligned with the implementation work.
-- Next slice (code): make local multi-terminal safe by default (auto-start/auto-attach to a local authority for the store; enforce a store lock; eliminate multi-process writes to the same store) (ADR-0019).
 - SDK (TS): opt-in direct HTTP/SSE transport shipped (ADR-0017); bundling binaries remains deferred/roadmapped.
 - Keep OpenResponses boundary full-fidelity while wiring new surfaces/adapters.
 - Keep OpenResponses follow-ups spec-canonical; any compatibility user message is opt-in.
@@ -77,7 +77,7 @@ Next checkpoints
 - CI runs `scripts/check-fast` on push/PR.
 - SDK TS checks (local): `scripts/check-sdk-ts`.
 - Bench harness includes TTFT + end-to-end loop and is CI-gated (`scripts/bench`).
-- `rip run <prompt>` works without a separate `ripd` process (in-process session engine).
+- `rip run <prompt>` works without a manually started `rip serve` process (auto-start/auto-attach local authority).
 - `rip run <prompt> --server <url>` targets a remote server and streams identical event frames.
 - `rip serve` exposes the session API for remote clients; SDK can target it via `--server` (but defaults to local `rip` exec).
 - Manual smoke: `cargo test -p ripd live_openresponses_smoke -- --ignored` observes real provider SSE + at least one tool call.

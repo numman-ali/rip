@@ -34,11 +34,13 @@ Thread lifecycle (continuities; implemented)
 
 Notes
 - Today: `rip serve` (or `ripd`) exposes the session API for remote clients (SDKs can attach via `--server <url>`).
-- Today: `rip run` defaults to in-process execution; use `--server <url>` to target a remote server.
+- Default local: `rip run` (and `rip`) auto-start/auto-attach to a local authority for the store; use `--server <url>` to target a remote authority.
 - Today: `rip tasks --server <url> ...` is the CLI adapter over the task API.
 - SSE stream emits JSON event frames (`docs/03_contracts/event_frames.md`).
 - OpenAPI spec is exposed at `/openapi.json` (canonical) and may be mirrored in `schemas/`.
 - Authority posture (ADR-0019): the server/control plane is the single sequencer for truth writes for a store; many clients may attach concurrently.
+- Server bind addr: `RIP_SERVER_ADDR` (default: `127.0.0.1:7341`).
+- Local authority discovery: the authority writes `RIP_DATA_DIR/authority/meta.json` and holds a store lock at `RIP_DATA_DIR/authority/lock.json`.
 - Workspace-mutating operations are serialized across sessions and background tasks; read-only tools may run concurrently.
 - JSON input envelopes can trigger tool execution and checkpoint actions (used for deterministic tests):
   - Tool: `{"tool":"write","args":{"path":"a.txt","content":"hi"},"timeout_ms":1000}`

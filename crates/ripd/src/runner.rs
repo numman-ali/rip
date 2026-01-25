@@ -126,13 +126,15 @@ impl SessionEngine {
         handle: SessionHandle,
         input: String,
         continuity: Option<ContinuityRunLink>,
+        openresponses_override: Option<OpenResponsesConfig>,
     ) {
+        let openresponses = openresponses_override.or_else(|| self.openresponses.clone());
         tokio::spawn(run_session(SessionContext {
             runtime: self.runtime.clone(),
             tool_runner: self.tool_runner.clone(),
             workspace_lock: self.workspace_lock.clone(),
             http_client: self.http_client.clone(),
-            openresponses: self.openresponses.clone(),
+            openresponses,
             sender: handle.sender.clone(),
             events: handle.events.clone(),
             event_log: self.event_log.clone(),
@@ -272,7 +274,7 @@ mod tests {
 
         let handle = engine.create_session();
         let mut receiver = handle.subscribe();
-        engine.spawn_session(handle, "hello".to_string(), None);
+        engine.spawn_session(handle, "hello".to_string(), None, None);
 
         let mut saw_started = false;
         let mut saw_ended = false;
@@ -408,6 +410,7 @@ data: [DONE]\n\n";
                 actor_id: actor_id.clone(),
                 origin: origin.clone(),
             }),
+            None,
         );
 
         let _ = wait_for_event(&mut rx, |kind| {
@@ -663,6 +666,7 @@ data: [DONE]\n\n";
                 actor_id: actor_id.clone(),
                 origin: origin.clone(),
             }),
+            None,
         );
 
         let _ = wait_for_event(&mut rx, |kind| {
@@ -778,6 +782,7 @@ data: [DONE]\n\n";
                 actor_id: actor_id.clone(),
                 origin: origin.clone(),
             }),
+            None,
         );
 
         let handle_two = engine.create_session();
@@ -809,6 +814,7 @@ data: [DONE]\n\n";
                 actor_id: actor_id.clone(),
                 origin: origin.clone(),
             }),
+            None,
         );
 
         let _ = wait_for_event(&mut rx_one, |kind| {
@@ -920,6 +926,7 @@ data: [DONE]\n\n";
             handle_one.clone(),
             r#"{"tool":"bash","args":{"command":"sleep 0.2"}}"#.to_string(),
             None,
+            None,
         );
 
         let _ = wait_for_event(&mut rx_one, |kind| {
@@ -930,6 +937,7 @@ data: [DONE]\n\n";
         engine.spawn_session(
             handle_two.clone(),
             r#"{"tool":"bash","args":{"command":"printf 'ok'"}}"#.to_string(),
+            None,
             None,
         );
 
@@ -1032,6 +1040,7 @@ data: [DONE]\n\n";
         engine.spawn_session(
             session_handle.clone(),
             r#"{"tool":"bash","args":{"command":"printf 'ok'"}}"#.to_string(),
+            None,
             None,
         );
 
@@ -1137,6 +1146,7 @@ data: [DONE]\n\n";
                 actor_id: actor_id.clone(),
                 origin: origin.clone(),
             }),
+            None,
         );
 
         let _ = wait_for_event(&mut rx_one, |kind| {
@@ -1173,6 +1183,7 @@ data: [DONE]\n\n";
                 actor_id: actor_id.clone(),
                 origin: origin.clone(),
             }),
+            None,
         );
 
         let _ = wait_for_event(&mut rx_one, |kind| {
@@ -1354,6 +1365,7 @@ data: [DONE]\n\n";
                 actor_id: actor_id.clone(),
                 origin: origin.clone(),
             }),
+            None,
         );
 
         let _ = wait_for_event(&mut task_rx, |kind| {

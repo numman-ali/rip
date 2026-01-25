@@ -14,6 +14,8 @@ use tokio_stream::wrappers::BroadcastStream;
 use utoipa::{OpenApi, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
+use rip_provider_openresponses::ToolChoiceParam;
+
 use crate::provider_openresponses::OpenResponsesConfig;
 use crate::runner::{SessionEngine, SessionHandle};
 use crate::tasks::{
@@ -21,6 +23,8 @@ use crate::tasks::{
     TaskResizePayload, TaskSignalPayload, TaskSpawnPayload, TaskStatusResponse,
     TaskWriteStdinPayload,
 };
+#[cfg(not(test))]
+use crate::{AuthorityLockGuard, AuthorityMeta};
 
 #[cfg(not(test))]
 use std::net::SocketAddr;
@@ -59,6 +63,17 @@ pub(crate) struct ThreadPostMessagePayload {
     pub(crate) content: String,
     pub(crate) actor_id: Option<String>,
     pub(crate) origin: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) openresponses: Option<ThreadOpenResponsesOverrides>,
+}
+
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+pub(crate) struct ThreadOpenResponsesOverrides {
+    pub(crate) endpoint: String,
+    pub(crate) model: Option<String>,
+    pub(crate) stateless_history: bool,
+    pub(crate) parallel_tool_calls: bool,
+    pub(crate) followup_user_message: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
@@ -142,16 +157,36 @@ struct ApiDoc;
 
 #[cfg(not(test))]
 pub(crate) async fn serve(data_dir: std::path::PathBuf) {
-    let app = build_app(data_dir);
+    let workspace_root = workspace_root();
+    let addr = server_addr_from_env().unwrap_or_else(|| "127.0.0.1:7341".parse().expect("addr"));
 
-    let addr: SocketAddr = "127.0.0.1:7341".parse().expect("addr");
-    eprintln!("ripd listening on http://{addr}");
+    let lock = AuthorityLockGuard::try_acquire(&data_dir, &workspace_root)
+        .unwrap_or_else(|err| panic!("{err}"));
+
+    let app = build_app_with_workspace_root_and_provider(
+        data_dir.clone(),
+        workspace_root.clone(),
+        OpenResponsesConfig::from_env(),
+    );
 
     let listener = TcpListener::bind(addr).await.expect("bind");
+    let local_addr = listener.local_addr().expect("local addr");
+    let endpoint = format!("http://{local_addr}");
+    eprintln!("ripd listening on {endpoint}");
+
+    lock.write_meta(&AuthorityMeta {
+        endpoint,
+        pid: std::process::id(),
+        started_at_ms: crate::local_authority::now_ms(),
+        workspace_root: workspace_root.to_string_lossy().to_string(),
+    })
+    .unwrap_or_else(|err| panic!("{err}"));
+
     axum::serve(listener, app).await.expect("server");
 }
 
 #[cfg(not(test))]
+#[allow(dead_code)]
 pub(crate) fn build_app(data_dir: std::path::PathBuf) -> Router {
     build_app_with_workspace_root_and_provider(
         data_dir,
@@ -286,7 +321,9 @@ async fn send_input(
         }
     };
 
-    state.engine.spawn_session(handle, payload.input, None);
+    state
+        .engine
+        .spawn_session(handle, payload.input, None, None);
 
     StatusCode::ACCEPTED.into_response()
 }
@@ -451,15 +488,31 @@ async fn thread_post_message(
     State(state): State<AppState>,
     Json(payload): Json<ThreadPostMessagePayload>,
 ) -> impl IntoResponse {
-    let actor_id = payload.actor_id.unwrap_or_else(|| "user".to_string());
-    let origin = payload.origin.unwrap_or_else(|| "server".to_string());
+    let ThreadPostMessagePayload {
+        content,
+        actor_id,
+        origin,
+        openresponses,
+    } = payload;
+
+    let actor_id = actor_id.unwrap_or_else(|| "user".to_string());
+    let origin = origin.unwrap_or_else(|| "server".to_string());
+    let openresponses_override = openresponses.map(|cfg| OpenResponsesConfig {
+        endpoint: cfg.endpoint.clone(),
+        api_key: openresponses_api_key_for_endpoint(&cfg.endpoint),
+        model: cfg.model.clone(),
+        tool_choice: ToolChoiceParam::auto(),
+        followup_user_message: cfg.followup_user_message.clone(),
+        stateless_history: cfg.stateless_history,
+        parallel_tool_calls: cfg.parallel_tool_calls,
+    });
 
     let store = state.engine.continuities();
     let message_id = match store.append_message(
         &thread_id,
         actor_id.clone(),
         origin.clone(),
-        payload.content.clone(),
+        content.clone(),
     ) {
         Ok(id) => id,
         Err(_) => return StatusCode::NOT_FOUND.into_response(),
@@ -486,7 +539,7 @@ async fn thread_post_message(
     }
     state
         .engine
-        .spawn_session(handle, payload.content, Some(run_link));
+        .spawn_session(handle, content, Some(run_link), openresponses_override);
 
     (
         StatusCode::ACCEPTED,
@@ -1380,4 +1433,37 @@ fn allow_pty_tasks_from_env() -> bool {
         value.trim().to_ascii_lowercase().as_str(),
         "1" | "true" | "yes" | "on"
     )
+}
+
+fn openresponses_api_key_for_endpoint(endpoint: &str) -> Option<String> {
+    if let Ok(value) = std::env::var("RIP_OPENRESPONSES_API_KEY") {
+        if !value.trim().is_empty() {
+            return Some(value);
+        }
+    }
+
+    if endpoint.contains("api.openai.com") || endpoint.contains("openai.com") {
+        return std::env::var("OPENAI_API_KEY").ok();
+    }
+    if endpoint.contains("openrouter.ai") {
+        return std::env::var("OPENROUTER_API_KEY").ok();
+    }
+
+    None
+}
+
+#[cfg(not(test))]
+fn server_addr_from_env() -> Option<SocketAddr> {
+    let raw = std::env::var("RIP_SERVER_ADDR").ok()?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    match trimmed.parse::<SocketAddr>() {
+        Ok(addr) => Some(addr),
+        Err(err) => {
+            eprintln!("invalid RIP_SERVER_ADDR={raw:?}: {err}; using default");
+            None
+        }
+    }
 }

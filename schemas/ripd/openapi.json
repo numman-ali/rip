@@ -2442,6 +2442,37 @@
           }
         }
       },
+      "ThreadOpenResponsesOverrides": {
+        "type": "object",
+        "required": [
+          "endpoint",
+          "stateless_history",
+          "parallel_tool_calls"
+        ],
+        "properties": {
+          "endpoint": {
+            "type": "string"
+          },
+          "followup_user_message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parallel_tool_calls": {
+            "type": "boolean"
+          },
+          "stateless_history": {
+            "type": "boolean"
+          }
+        }
+      },
       "ThreadPostMessagePayload": {
         "type": "object",
         "required": [
@@ -2456,6 +2487,16 @@
           },
           "content": {
             "type": "string"
+          },
+          "openresponses": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThreadOpenResponsesOverrides"
+              }
+            ]
           },
           "origin": {
             "type": [

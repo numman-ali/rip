@@ -49,4 +49,8 @@ Rules to avoid confusion
 
 Implementation note (Phase 1)
 - Today, the `ripd` crate contains both runtime code and the HTTP/SSE control plane implementation. Treat them as **conceptually separate modules** even if they ship together in Phase 1.
-- Local multi-terminal posture: “one store just works” by auto-start/auto-attach to a local authority for that store (future slice; ADR-0019).
+- Local multi-terminal posture (implemented v0.1): “one store just works” by auto-start/auto-attach to a per-store local authority for that store (ADR-0019).
+  - Discovery: `RIP_DATA_DIR/authority/meta.json` (endpoint + pid).
+  - Lock: `RIP_DATA_DIR/authority/lock.json` (single-writer).
+  - Spawned authority binds `RIP_SERVER_ADDR=127.0.0.1:0` (ephemeral port); clients verify liveness via `/openapi.json`.
+  - Explicit `--server <url>` remains authoritative and bypasses local auto-start/attach.

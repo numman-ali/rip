@@ -49,8 +49,8 @@ Now
   - Continuity stream logs workspace-mutating tool side-effects (`continuity_tool_side_effects`) with provenance + replay coverage under parallel runs/tasks.
   - Implemented: provider cursor cache truth logging (ADR-0015): `continuity_provider_cursor_updated` + `thread.provider_cursor.{status,rotate}` across cli_h/tui/server/sdk; OpenResponses runs record `previous_response_id` on completion as a rebuildable cache.
   - Implemented: context selection strategy evolution truth logging v0.1 (ADR-0016): `continuity_context_selection_decided` + `thread.context_selection.status` across cli_h/tui/server/sdk; records strategy/budgets/inputs/reasons between `continuity_run_spawned` and `continuity_context_compiled`.
+  - Implemented: local authority “one store just works” v0.1: per-store authority discovery + store lock; local `rip`/`rip run`/`rip threads` auto-start/auto-attach to the store authority by default (no manual `--server`); deterministic integration coverage for concurrent local clients + seq invariants.
 - Ready:
-  - Authority: make local multi-terminal safe by default (auto-start/auto-attach to a local authority for the store; enforce a store lock; eliminate “multi-process writes to the same store” footgun) (ADR-0019).
   - Document the remaining envelope migration (eventually drop non-session `session_id`).
   - Perf: token-aware context packing + explicit budget policies (Phase 2; must be logged).
 - Done:

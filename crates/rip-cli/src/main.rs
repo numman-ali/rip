@@ -6,9 +6,11 @@ use reqwest::Client;
 use reqwest_eventsource::{Error as EventSourceError, Event, RequestBuilderExt};
 use rip_kernel::{Event as FrameEvent, EventKind};
 use serde_json::Value;
+#[cfg(test)]
 use tokio::sync::broadcast;
 
 mod fullscreen;
+mod local_authority;
 mod tasks_watch;
 #[cfg(test)]
 mod test_env;
@@ -184,7 +186,8 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     match cli.command {
         None => match (cli.server, cli.session, cli.task) {
             (None, None, None) => {
-                fullscreen::run_fullscreen_tui(cli.prompt).await?;
+                let server = local_authority::ensure_local_authority().await?;
+                fullscreen::run_fullscreen_tui_remote(server, cli.prompt).await?;
             }
             (Some(server), Some(session_id), None) => {
                 if let Some(prompt) = cli.prompt {
@@ -231,28 +234,60 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                     "openresponses flags are only supported for local runs; configure the server instead"
                 );
             }
-            if has_openresponses_flags {
+
+            let openresponses_overrides = if has_openresponses_flags {
                 let provider = provider.ok_or_else(|| {
                     anyhow::anyhow!("--provider is required when using openresponses flags")
                 })?;
+                let endpoint = match provider {
+                    Provider::Openai => "https://api.openai.com/v1/responses",
+                    Provider::Openrouter => "https://openrouter.ai/api/v1/responses",
+                };
+                Some(serde_json::json!({
+                    "endpoint": endpoint,
+                    "model": model.clone(),
+                    "stateless_history": stateless_history,
+                    "parallel_tool_calls": parallel_tool_calls,
+                    "followup_user_message": followup_user_message.clone(),
+                }))
+            } else {
+                None
+            };
+            if has_openresponses_flags {
                 apply_openresponses_env(
-                    provider,
-                    model,
+                    provider.expect("validated above"),
+                    model.clone(),
                     stateless_history,
                     parallel_tool_calls,
-                    followup_user_message,
+                    followup_user_message.clone(),
                 )?;
             }
             if let Some(server) = server {
                 if headless {
-                    run_headless_remote(prompt, server, view).await?;
+                    run_headless_remote(prompt, server, view, None).await?;
                 } else {
-                    run_interactive_remote(prompt, server, view).await?;
+                    run_interactive_remote(prompt, server, view, None).await?;
                 }
-            } else if headless {
-                run_headless_local(prompt, view).await?;
             } else {
-                run_interactive_local(prompt, view).await?;
+                #[cfg(test)]
+                {
+                    let _openresponses_overrides = openresponses_overrides;
+                    if headless {
+                        run_headless_local(prompt, view).await?;
+                    } else {
+                        run_interactive_local(prompt, view).await?;
+                    }
+                }
+                #[cfg(not(test))]
+                {
+                    let server = local_authority::ensure_local_authority().await?;
+                    if headless {
+                        run_headless_remote(prompt, server, view, openresponses_overrides).await?;
+                    } else {
+                        run_interactive_remote(prompt, server, view, openresponses_overrides)
+                            .await?;
+                    }
+                }
             }
         }
         Some(Commands::Serve) => {
@@ -528,27 +563,43 @@ async fn run_headless_remote(
     prompt: String,
     server: String,
     view: OutputView,
+    openresponses_overrides: Option<Value>,
 ) -> anyhow::Result<()> {
-    run_remote(prompt, server, view).await
+    run_remote(prompt, server, view, openresponses_overrides).await
 }
 
 async fn run_interactive_remote(
     prompt: String,
     server: String,
     view: OutputView,
+    openresponses_overrides: Option<Value>,
 ) -> anyhow::Result<()> {
-    run_remote(prompt, server, view).await
+    run_remote(prompt, server, view, openresponses_overrides).await
 }
 
-async fn run_remote(prompt: String, server: String, view: OutputView) -> anyhow::Result<()> {
+async fn run_remote(
+    prompt: String,
+    server: String,
+    view: OutputView,
+    openresponses_overrides: Option<Value>,
+) -> anyhow::Result<()> {
     let client = Client::new();
     let thread_id = ensure_thread(&client, &server).await?;
-    let response =
-        post_thread_message(&client, &server, &thread_id, &prompt, "user", "cli").await?;
+    let response = post_thread_message(
+        &client,
+        &server,
+        &thread_id,
+        &prompt,
+        "user",
+        "cli",
+        openresponses_overrides,
+    )
+    .await?;
     stream_events(&client, &server, &response.session_id, view).await?;
     Ok(())
 }
 
+#[cfg(test)]
 async fn run_headless_local(prompt: String, view: OutputView) -> anyhow::Result<()> {
     let engine =
         ripd::SessionEngine::new_default().map_err(|err| anyhow::anyhow!("engine init: {err}"))?;
@@ -557,6 +608,7 @@ async fn run_headless_local(prompt: String, view: OutputView) -> anyhow::Result<
     run_local_with_engine(&engine, prompt, view, &mut handle).await
 }
 
+#[cfg(test)]
 async fn run_interactive_local(prompt: String, view: OutputView) -> anyhow::Result<()> {
     run_headless_local(prompt, view).await
 }
@@ -579,17 +631,17 @@ async fn post_thread_message(
     content: &str,
     actor_id: &str,
     origin: &str,
+    openresponses_overrides: Option<Value>,
 ) -> anyhow::Result<threads::ThreadPostMessageResponse> {
     let url = format!("{server}/threads/{thread_id}/messages");
-    let response = client
-        .post(url)
-        .json(&serde_json::json!({
-            "content": content,
-            "actor_id": actor_id,
-            "origin": origin
-        }))
-        .send()
-        .await?;
+    let mut payload = serde_json::Map::new();
+    payload.insert("content".to_string(), Value::String(content.to_string()));
+    payload.insert("actor_id".to_string(), Value::String(actor_id.to_string()));
+    payload.insert("origin".to_string(), Value::String(origin.to_string()));
+    if let Some(overrides) = openresponses_overrides {
+        payload.insert("openresponses".to_string(), overrides);
+    }
+    let response = client.post(url).json(&payload).send().await?;
     let status = response.status();
     if !status.is_success() {
         anyhow::bail!("post message failed: {status}");
@@ -635,6 +687,7 @@ async fn stream_events_with_writer(
     Ok(())
 }
 
+#[cfg(test)]
 async fn run_local_with_engine(
     engine: &ripd::SessionEngine,
     prompt: String,
@@ -673,10 +726,11 @@ async fn run_local_with_engine(
         )
         .map_err(|err| anyhow::anyhow!("continuity run spawned: {err}"))?;
     let mut receiver = handle.subscribe();
-    engine.spawn_session(handle, prompt, Some(run_link));
+    engine.spawn_session(handle, prompt, Some(run_link), None);
     stream_events_from_receiver(&mut receiver, view, out).await
 }
 
+#[cfg(test)]
 async fn stream_events_from_receiver(
     receiver: &mut broadcast::Receiver<FrameEvent>,
     view: OutputView,
@@ -937,7 +991,7 @@ mod tests {
         });
 
         let client = Client::new();
-        let err = post_thread_message(&client, &server.base_url(), "t1", "hi", "user", "cli")
+        let err = post_thread_message(&client, &server.base_url(), "t1", "hi", "user", "cli", None)
             .await
             .unwrap_err();
         assert!(err.to_string().contains("post message failed"));
@@ -954,9 +1008,10 @@ mod tests {
         });
 
         let client = Client::new();
-        let response = post_thread_message(&client, &server.base_url(), "t1", "hi", "user", "cli")
-            .await
-            .expect("post message");
+        let response =
+            post_thread_message(&client, &server.base_url(), "t1", "hi", "user", "cli", None)
+                .await
+                .expect("post message");
         assert_eq!(response.session_id, "s1");
     }
 
