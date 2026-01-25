@@ -68,6 +68,7 @@ pub(crate) struct ContextSelectionDecidedPayload {
     pub(crate) compiler_strategy: String,
     pub(crate) limits: serde_json::Value,
     pub(crate) compaction_checkpoint: Option<rip_kernel::ContextSelectionCompactionCheckpointV1>,
+    pub(crate) compaction_checkpoints: Vec<rip_kernel::ContextSelectionCompactionCheckpointV1>,
     pub(crate) resets: Vec<rip_kernel::ContextSelectionResetV1>,
     pub(crate) reason: Option<serde_json::Value>,
     pub(crate) actor_id: String,
@@ -300,6 +301,8 @@ pub struct ContextSelectionStatusDecisionV1 {
     pub compiler_strategy: String,
     pub limits: serde_json::Value,
     pub compaction_checkpoint: Option<ContextSelectionStatusCheckpointV1>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub compaction_checkpoints: Vec<ContextSelectionStatusCheckpointV1>,
     pub resets: Vec<ContextSelectionStatusResetV1>,
     pub reason: Option<serde_json::Value>,
     pub actor_id: String,
@@ -646,6 +649,118 @@ impl ContinuityStore {
         }
 
         Ok(best)
+    }
+
+    pub(crate) fn hierarchical_compaction_checkpoints_for_compile_v1(
+        &self,
+        continuity_id: &str,
+        from_seq: u64,
+        max_levels: usize,
+    ) -> Result<Vec<CompactionCheckpointForCompile>, String> {
+        if max_levels == 0 {
+            return Ok(Vec::new());
+        }
+
+        if let Ok(Some(entries)) = self
+            .stream_cache
+            .hierarchical_compaction_checkpoints_before_or_at_seq_v1(
+                continuity_id,
+                from_seq,
+                max_levels,
+                Some(COMPACTION_SUMMARY_KIND_CUMULATIVE_V1),
+            )
+        {
+            let mut out: Vec<CompactionCheckpointForCompile> = entries
+                .into_iter()
+                .map(|entry| CompactionCheckpointForCompile {
+                    checkpoint_id: entry.checkpoint_id,
+                    summary_kind: entry.summary_kind,
+                    summary_artifact_id: entry.summary_artifact_id,
+                    to_seq: entry.to_seq,
+                })
+                .collect();
+            out.sort_by(|a, b| a.to_seq.cmp(&b.to_seq));
+            return Ok(out);
+        }
+
+        let events = self
+            .replay_events(continuity_id)
+            .map_err(|err| format!("continuity replay failed: {err}"))?;
+        if events.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut latest_by_to_seq: HashMap<u64, (u64, CompactionCheckpointForCompile)> =
+            HashMap::new();
+        for event in &events {
+            let EventKind::ContinuityCompactionCheckpointCreated {
+                checkpoint_id,
+                summary_kind,
+                summary_artifact_id,
+                to_seq,
+                ..
+            } = &event.kind
+            else {
+                continue;
+            };
+            if *to_seq > from_seq {
+                continue;
+            }
+            if summary_kind != COMPACTION_SUMMARY_KIND_CUMULATIVE_V1 {
+                continue;
+            }
+
+            let record = CompactionCheckpointForCompile {
+                checkpoint_id: checkpoint_id.clone(),
+                summary_kind: summary_kind.clone(),
+                summary_artifact_id: summary_artifact_id.clone(),
+                to_seq: *to_seq,
+            };
+
+            match latest_by_to_seq.get(to_seq) {
+                Some((existing_seq, _)) if *existing_seq >= event.seq => {}
+                _ => {
+                    latest_by_to_seq.insert(*to_seq, (event.seq, record));
+                }
+            }
+        }
+
+        let mut unique: Vec<CompactionCheckpointForCompile> = latest_by_to_seq
+            .into_values()
+            .map(|(_, record)| record)
+            .collect();
+        unique.sort_by(|a, b| a.to_seq.cmp(&b.to_seq));
+
+        let Some(latest) = unique.last().cloned() else {
+            return Ok(Vec::new());
+        };
+
+        let mut selected: Vec<CompactionCheckpointForCompile> = vec![latest.clone()];
+        let mut current_to_seq = latest.to_seq;
+        while selected.len() < max_levels {
+            if current_to_seq <= 1 {
+                break;
+            }
+            let threshold = current_to_seq / 2;
+            if threshold == 0 {
+                break;
+            }
+            let idx = match unique.binary_search_by(|entry| entry.to_seq.cmp(&threshold)) {
+                Ok(idx) => idx,
+                Err(0) => break,
+                Err(idx) => idx.saturating_sub(1),
+            };
+            let Some(candidate) = unique.get(idx).cloned() else {
+                break;
+            };
+            if candidate.to_seq >= current_to_seq {
+                break;
+            }
+            selected.push(candidate.clone());
+            current_to_seq = candidate.to_seq;
+        }
+        selected.sort_by(|a, b| a.to_seq.cmp(&b.to_seq));
+        Ok(selected)
     }
 
     pub(crate) fn workspace_root(&self) -> &Path {
@@ -1966,6 +2081,7 @@ impl ContinuityStore {
                             compiler_strategy,
                             limits,
                             compaction_checkpoint,
+                            compaction_checkpoints,
                             resets,
                             reason,
                             actor_id,
@@ -1983,6 +2099,16 @@ impl ContinuityStore {
                                 to_seq: ckpt.to_seq,
                             }
                         });
+
+                        let checkpoints = compaction_checkpoints
+                            .iter()
+                            .map(|ckpt| ContextSelectionStatusCheckpointV1 {
+                                checkpoint_id: ckpt.checkpoint_id.clone(),
+                                summary_kind: ckpt.summary_kind.clone(),
+                                summary_artifact_id: ckpt.summary_artifact_id.clone(),
+                                to_seq: ckpt.to_seq,
+                            })
+                            .collect();
 
                         let resets_v1 = resets
                             .iter()
@@ -2002,6 +2128,7 @@ impl ContinuityStore {
                             compiler_strategy: compiler_strategy.clone(),
                             limits: limits.clone(),
                             compaction_checkpoint: checkpoint,
+                            compaction_checkpoints: checkpoints,
                             resets: resets_v1,
                             reason: reason.clone(),
                             actor_id: actor_id.clone(),
@@ -2041,6 +2168,7 @@ impl ContinuityStore {
                     compiler_strategy,
                     limits,
                     compaction_checkpoint,
+                    compaction_checkpoints,
                     resets,
                     reason,
                     actor_id,
@@ -2060,6 +2188,16 @@ impl ContinuityStore {
                             to_seq: ckpt.to_seq,
                         });
 
+                let checkpoints = compaction_checkpoints
+                    .iter()
+                    .map(|ckpt| ContextSelectionStatusCheckpointV1 {
+                        checkpoint_id: ckpt.checkpoint_id.clone(),
+                        summary_kind: ckpt.summary_kind.clone(),
+                        summary_artifact_id: ckpt.summary_artifact_id.clone(),
+                        to_seq: ckpt.to_seq,
+                    })
+                    .collect();
+
                 let resets_v1 = resets
                     .iter()
                     .map(|reset| ContextSelectionStatusResetV1 {
@@ -2078,6 +2216,7 @@ impl ContinuityStore {
                     compiler_strategy: compiler_strategy.clone(),
                     limits: limits.clone(),
                     compaction_checkpoint: checkpoint,
+                    compaction_checkpoints: checkpoints,
                     resets: resets_v1,
                     reason: reason.clone(),
                     actor_id: actor_id.clone(),
@@ -2893,6 +3032,7 @@ impl ContinuityStore {
                 compiler_strategy: payload.compiler_strategy,
                 limits: payload.limits,
                 compaction_checkpoint: payload.compaction_checkpoint,
+                compaction_checkpoints: payload.compaction_checkpoints,
                 resets: payload.resets,
                 reason: payload.reason,
                 actor_id: payload.actor_id,
@@ -3690,6 +3830,7 @@ mod tests {
                     compiler_strategy: "recent_messages_v1".to_string(),
                     limits: serde_json::json!({ "recent_messages_v1_limit": 16 }),
                     compaction_checkpoint: None,
+                    compaction_checkpoints: Vec::new(),
                     resets: Vec::new(),
                     reason: Some(serde_json::json!({
                         "selected": "recent_messages_v1",
@@ -3735,6 +3876,14 @@ mod tests {
                             to_seq: 1,
                         },
                     ),
+                    compaction_checkpoints: vec![
+                        rip_kernel::ContextSelectionCompactionCheckpointV1 {
+                            checkpoint_id: "ckpt-1".to_string(),
+                            summary_kind: "cumulative_v1".to_string(),
+                            summary_artifact_id: "artifact-1".to_string(),
+                            to_seq: 1,
+                        },
+                    ],
                     resets: Vec::new(),
                     reason: Some(serde_json::json!({
                         "selected": "summaries_recent_messages_v1",
@@ -3813,6 +3962,7 @@ mod tests {
                     compiler_strategy: "recent_messages_v1".to_string(),
                     limits: serde_json::json!({ "recent_messages_v1_limit": 16 }),
                     compaction_checkpoint: None,
+                    compaction_checkpoints: Vec::new(),
                     resets: Vec::new(),
                     reason: Some(serde_json::json!({
                         "selected": "recent_messages_v1",

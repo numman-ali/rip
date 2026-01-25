@@ -473,6 +473,7 @@ data: [DONE]\n\n";
                     compiler_strategy,
                     limits,
                     compaction_checkpoint,
+                    compaction_checkpoints,
                     resets,
                     reason,
                     actor_id,
@@ -482,6 +483,7 @@ data: [DONE]\n\n";
                     assert_eq!(compiler_id, "rip.context_compiler.v1");
                     assert_eq!(compiler_strategy, "recent_messages_v1");
                     assert!(compaction_checkpoint.is_none());
+                    assert!(compaction_checkpoints.is_empty());
                     assert!(resets.is_empty());
                     assert_eq!(
                         limits
@@ -546,6 +548,155 @@ data: [DONE]\n\n";
                 .and_then(|v| v.as_str()),
             Some(handle.session_id.as_str())
         );
+    }
+
+    #[tokio::test]
+    async fn continuity_context_selection_records_checkpoint_hierarchy_when_available() {
+        use axum::extract::Json as AxumJson;
+        use axum::http::header::CONTENT_TYPE;
+        use axum::routing::post;
+        use axum::Router as AxumRouter;
+        use rip_provider_openresponses::ToolChoiceParam;
+        use tokio::net::TcpListener;
+
+        async fn handler(
+            AxumJson(payload): AxumJson<serde_json::Value>,
+        ) -> impl axum::response::IntoResponse {
+            assert!(payload.get("previous_response_id").is_none());
+            let input = payload
+                .get("input")
+                .and_then(|v| v.as_array())
+                .expect("input items");
+            assert!(!input.is_empty());
+            let last = input.last().expect("last item");
+            assert_eq!(last.get("type").and_then(|v| v.as_str()), Some("message"));
+            assert_eq!(last.get("role").and_then(|v| v.as_str()), Some("user"));
+
+            let body = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n\
+data: [DONE]\n\n";
+            ([(CONTENT_TYPE, "text/event-stream")], body.to_string())
+        }
+
+        let provider_app = AxumRouter::new().route("/v1/responses", post(handler));
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        tokio::spawn(async move {
+            axum::serve(listener, provider_app).await.expect("serve");
+        });
+
+        let dir = tempdir().expect("tmp");
+        let data_dir = dir.path().join("data");
+        let workspace_dir = dir.path().join("workspace");
+        std::fs::create_dir_all(&workspace_dir).expect("workspace");
+        let engine = SessionEngine::new(
+            data_dir.clone(),
+            workspace_dir,
+            Some(OpenResponsesConfig {
+                endpoint: format!("http://{addr}/v1/responses"),
+                api_key: None,
+                model: Some("fixture-model".to_string()),
+                tool_choice: ToolChoiceParam::auto(),
+                followup_user_message: None,
+                stateless_history: false,
+                parallel_tool_calls: false,
+            }),
+        )
+        .expect("engine");
+
+        let store = engine.continuities();
+        let thread_id = store.ensure_default().expect("thread");
+        let actor_id = "alice".to_string();
+        let origin = "cli".to_string();
+
+        let mut message_ids: Vec<String> = Vec::new();
+        for i in 0..12 {
+            let message_id = store
+                .append_message(
+                    &thread_id,
+                    actor_id.clone(),
+                    origin.clone(),
+                    format!("m{i}"),
+                )
+                .expect("append message");
+            message_ids.push(message_id);
+        }
+
+        for (idx, label) in [(3usize, "s4"), (7usize, "s8")] {
+            let to_message_id = message_ids.get(idx).cloned().expect("to_message_id");
+            let _ = store
+                .compaction_checkpoint_cumulative_v1(
+                    &thread_id,
+                    crate::continuities::CompactionCheckpointCumulativeV1Request {
+                        summary_markdown: Some(label.to_string()),
+                        summary_artifact_id: None,
+                        to_message_id: Some(to_message_id),
+                        to_seq: None,
+                        stride_messages: None,
+                        actor_id: actor_id.clone(),
+                        origin: origin.clone(),
+                    },
+                )
+                .expect("compaction checkpoint");
+        }
+
+        let handle = engine.create_session();
+        let mut rx = handle.subscribe();
+        let input = "hi".to_string();
+        let message_id = message_ids.last().cloned().expect("anchor message id");
+
+        store
+            .append_run_spawned(
+                &thread_id,
+                &message_id,
+                &handle.session_id,
+                actor_id.clone(),
+                origin.clone(),
+            )
+            .expect("run spawned");
+
+        engine.spawn_session(
+            handle.clone(),
+            input,
+            Some(ContinuityRunLink {
+                continuity_id: thread_id.clone(),
+                message_id: message_id.clone(),
+                actor_id: actor_id.clone(),
+                origin: origin.clone(),
+            }),
+        );
+
+        let _ = wait_for_event(&mut rx, |kind| {
+            matches!(kind, EventKind::SessionEnded { .. })
+        })
+        .await;
+
+        let thread_events = store.replay_events(&thread_id).expect("replay thread");
+
+        thread_events
+            .iter()
+            .find_map(|event| match &event.kind {
+                EventKind::ContinuityContextSelectionDecided {
+                    run_session_id,
+                    compiler_strategy,
+                    compaction_checkpoint,
+                    compaction_checkpoints,
+                    resets,
+                    ..
+                } if run_session_id == &handle.session_id => {
+                    assert_eq!(
+                        compiler_strategy,
+                        "hierarchical_summaries_recent_messages_v1"
+                    );
+                    assert!(resets.is_empty());
+                    assert!(compaction_checkpoint.is_some());
+                    assert_eq!(compaction_checkpoints.len(), 2);
+                    assert_eq!(compaction_checkpoints[0].to_seq, 4);
+                    assert_eq!(compaction_checkpoints[1].to_seq, 8);
+                    Some(())
+                }
+                _ => None,
+            })
+            .expect("selection payload");
     }
 
     #[tokio::test]

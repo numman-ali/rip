@@ -36,6 +36,7 @@ Now
   - Implemented: context compiler perf v1 tail-read continuity v1: sidecar tail scan for `head_seq`/next-seq recovery + `recent_messages_v1` compilation input (latest-message run starts avoid full continuity Vec loads).
   - Implemented: context compiler perf v1.1 seekable continuity reads: per-continuity sidecar seek indexes + bounded window reads for `recent_messages_v1` non-tail anchors (avoid full continuity Vec loads even when anchoring far from tail).
   - Implemented: context compiler perf v1.2 dense-event window reads: messages+runs-only per-continuity sidecar + indexes so `recent_messages_v1` reads are O(k) even with high `continuity_tool_side_effects` density between messages (no global `events.jsonl` scans when caches exist).
+  - Implemented: context compiler perf v1.3 per-kind segmentation + hierarchical summaries: compaction checkpoint index sidecar + `hierarchical_summaries_recent_messages_v1` (multi-level `summary_ref`s + bounded recent raw window) to keep `context.compile` O(k) at 1M+ events.
   - Implemented: compaction foundations v0.1: deterministic checkpoint frame `continuity_compaction_checkpoint_created` + summary artifacts (`rip.compaction_summary.v1`) + compile strategy `summaries_recent_messages_v1` (summary_ref + recent raw messages; fallback-safe).
   - Implemented: compaction auto v0.1: `compaction.cut_points` + `compaction.auto` with background summarizer jobs emitting `continuity_job_spawned`/`continuity_job_ended` (ADR-0012) and deterministic checkpoint frames + summary artifacts; parity across cli_h/tui/server/sdk.
   - Implemented: compaction auto v0.2 scheduling: `compaction.auto.schedule` emits `continuity_compaction_auto_schedule_decided` (policy + reasons) and triggers `compaction.auto` execution without touching `thread.post_message`; parity across cli_h/tui/server/sdk.
@@ -48,7 +49,7 @@ Now
   - Implemented: context selection strategy evolution truth logging v0.1 (ADR-0016): `continuity_context_selection_decided` + `thread.context_selection.status` across cli_h/tui/server/sdk; records strategy/budgets/inputs/reasons between `continuity_run_spawned` and `continuity_context_compiled`.
 - Ready:
   - Document the remaining envelope migration (eventually drop non-session `session_id`).
-  - Perf: keep `context.compile` O(k) at 1M+ events (tail-read continuity v1 + seekable non-tail anchors v1.1 + compaction cut points v0.1 done; next is per-stream segmentation + hierarchical summaries).
+  - Perf: token-aware context packing + explicit budget policies (Phase 2; must be logged).
 - Done:
   - Default UX is one continuity; surfaces "continue" by posting messages (sessions hidden by default).
   - Resume/branch/handoff works with deterministic replay and parity across CLI/TUI/server/SDK.

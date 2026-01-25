@@ -325,6 +325,7 @@ mod tests {
                     compiler_strategy: "recent_messages_v1".to_string(),
                     limits: serde_json::json!({ "recent_messages_v1_limit": 16 }),
                     compaction_checkpoint: None,
+                    compaction_checkpoints: Vec::new(),
                     resets: Vec::new(),
                     reason: Some(serde_json::json!({
                         "selected": "recent_messages_v1",

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -5,6 +6,13 @@ use std::path::{Path, PathBuf};
 use rip_kernel::{Event, EventKind, StreamKind};
 use serde::Deserialize;
 
+use crate::compaction_checkpoint_index::{
+    append_entry_best_effort_v1 as append_compaction_checkpoint_index_entry_best_effort_v1,
+    compaction_checkpoint_index_path_v1, load_index_v1 as load_compaction_checkpoint_index_v1,
+    rebuild_index_from_compaction_sidecar_v1 as rebuild_compaction_checkpoint_index_from_sidecar_v1,
+    rebuild_index_from_events_v1 as rebuild_compaction_checkpoint_index_from_events_v1,
+    CompactionCheckpointIndexEntryV1,
+};
 use crate::continuity_seek_index::{
     append_seq_index_entry_best_effort, best_offset_for_seq, insert_message_best_effort_v1,
     load_seq_index_v1, lookup_message_v1, message_index_path,
@@ -75,6 +83,10 @@ impl ContinuityStreamCache {
     // stream. The truth continuity stream remains canonical; this file is rebuildable.
     fn compaction_checkpoints_path_for_v1(&self, continuity_id: &str) -> PathBuf {
         self.dir.join(format!("{continuity_id}.comp.v1.jsonl"))
+    }
+
+    fn compaction_checkpoints_index_path_for_v1(&self, continuity_id: &str) -> PathBuf {
+        compaction_checkpoint_index_path_v1(&self.dir, continuity_id)
     }
 
     fn messages_runs_seq_index_path_v1(&self, continuity_id: &str) -> PathBuf {
@@ -266,6 +278,11 @@ impl ContinuityStreamCache {
             return;
         }
         let _ = writer.flush();
+
+        if let Some(entry) = CompactionCheckpointIndexEntryV1::from_event(event) {
+            let idx_path = self.compaction_checkpoints_index_path_for_v1(continuity_id);
+            append_compaction_checkpoint_index_entry_best_effort_v1(&idx_path, &entry);
+        }
     }
 
     fn rebuild_messages_runs_best_effort_v1(&self, continuity_id: &str, events: &[Event]) {
@@ -472,10 +489,16 @@ impl ContinuityStreamCache {
         if !wrote_any {
             let _ = fs::remove_file(&tmp_path);
             let _ = fs::remove_file(&path);
+            let _ = fs::remove_file(self.compaction_checkpoints_index_path_for_v1(continuity_id));
             return;
         }
 
         let _ = fs::rename(tmp_path, path);
+        let _ = rebuild_compaction_checkpoint_index_from_events_v1(
+            &self.compaction_checkpoints_index_path_for_v1(continuity_id),
+            continuity_id,
+            events,
+        );
     }
 
     /// Returns `Ok(None)` when the cache file doesn't exist.
@@ -642,6 +665,101 @@ impl ContinuityStreamCache {
         }
 
         Ok(best)
+    }
+
+    /// Returns `Ok(None)` when the cache index doesn't exist and cannot be built from sidecars.
+    pub(crate) fn hierarchical_compaction_checkpoints_before_or_at_seq_v1(
+        &self,
+        continuity_id: &str,
+        max_to_seq: u64,
+        max_levels: usize,
+        summary_kind: Option<&str>,
+    ) -> io::Result<Option<Vec<CompactionCheckpointIndexEntryV1>>> {
+        if max_levels == 0 {
+            return Ok(Some(Vec::new()));
+        }
+
+        let index_path =
+            match self.ensure_compaction_checkpoints_index_best_effort_v1(continuity_id)? {
+                Some(path) => path,
+                None => return Ok(None),
+            };
+
+        let mut entries = match load_compaction_checkpoint_index_v1(&index_path) {
+            Ok(Some(entries)) => entries,
+            Ok(None) => return Ok(None),
+            Err(_) => {
+                let sidecar_path = match self
+                    .ensure_compaction_checkpoints_sidecar_best_effort_v1(continuity_id)?
+                {
+                    Some(path) => path,
+                    None => return Ok(None),
+                };
+                let _ = rebuild_compaction_checkpoint_index_from_sidecar_v1(
+                    &sidecar_path,
+                    &index_path,
+                    continuity_id,
+                );
+                load_compaction_checkpoint_index_v1(&index_path)?.unwrap_or_default()
+            }
+        };
+
+        entries.retain(|entry| entry.to_seq <= max_to_seq);
+        if let Some(kind) = summary_kind {
+            entries.retain(|entry| entry.summary_kind == kind);
+        }
+        if entries.is_empty() {
+            return Ok(Some(Vec::new()));
+        }
+
+        let mut latest_by_to_seq: HashMap<u64, CompactionCheckpointIndexEntryV1> = HashMap::new();
+        for entry in entries {
+            match latest_by_to_seq.get(&entry.to_seq) {
+                Some(existing) if existing.seq >= entry.seq => {}
+                _ => {
+                    latest_by_to_seq.insert(entry.to_seq, entry);
+                }
+            }
+        }
+
+        let mut unique: Vec<CompactionCheckpointIndexEntryV1> =
+            latest_by_to_seq.into_values().collect();
+        unique.sort_by(|a, b| a.to_seq.cmp(&b.to_seq).then(a.seq.cmp(&b.seq)));
+
+        let Some(latest) = unique.last().cloned() else {
+            return Ok(Some(Vec::new()));
+        };
+
+        let mut selected: Vec<CompactionCheckpointIndexEntryV1> = vec![latest.clone()];
+        let mut current_to_seq = latest.to_seq;
+
+        while selected.len() < max_levels {
+            if current_to_seq <= 1 {
+                break;
+            }
+            let threshold = current_to_seq / 2;
+            if threshold == 0 {
+                break;
+            }
+
+            let idx = match unique.binary_search_by(|entry| entry.to_seq.cmp(&threshold)) {
+                Ok(idx) => idx,
+                Err(0) => break,
+                Err(idx) => idx.saturating_sub(1),
+            };
+            let candidate = unique.get(idx).cloned();
+            let Some(candidate) = candidate else {
+                break;
+            };
+            if candidate.to_seq >= current_to_seq {
+                break;
+            }
+            selected.push(candidate.clone());
+            current_to_seq = candidate.to_seq;
+        }
+
+        selected.sort_by(|a, b| a.to_seq.cmp(&b.to_seq));
+        Ok(Some(selected))
     }
 
     fn try_read_last_seq_for_sidecar_path(
@@ -1154,6 +1272,33 @@ impl ContinuityStreamCache {
         )?;
         if path.exists() {
             Ok(Some(path))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn ensure_compaction_checkpoints_index_best_effort_v1(
+        &self,
+        continuity_id: &str,
+    ) -> io::Result<Option<PathBuf>> {
+        let index_path = self.compaction_checkpoints_index_path_for_v1(continuity_id);
+        if index_path.exists() {
+            return Ok(Some(index_path));
+        }
+
+        let sidecar_path =
+            match self.ensure_compaction_checkpoints_sidecar_best_effort_v1(continuity_id)? {
+                Some(path) => path,
+                None => return Ok(None),
+            };
+
+        let _ = rebuild_compaction_checkpoint_index_from_sidecar_v1(
+            &sidecar_path,
+            &index_path,
+            continuity_id,
+        );
+        if index_path.exists() {
+            Ok(Some(index_path))
         } else {
             Ok(None)
         }

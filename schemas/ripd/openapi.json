@@ -1678,6 +1678,12 @@
               }
             ]
           },
+          "compaction_checkpoints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContextSelectionStatusCheckpointV1"
+            }
+          },
           "compiler_id": {
             "type": "string"
           },

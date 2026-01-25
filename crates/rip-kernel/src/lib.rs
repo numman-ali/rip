@@ -200,6 +200,8 @@ pub enum EventKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         compaction_checkpoint: Option<ContextSelectionCompactionCheckpointV1>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        compaction_checkpoints: Vec<ContextSelectionCompactionCheckpointV1>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
         resets: Vec<ContextSelectionResetV1>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<Value>,

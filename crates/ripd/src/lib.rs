@@ -1,5 +1,6 @@
 mod checkpoints;
 mod compaction_auto_summary;
+mod compaction_checkpoint_index;
 mod compaction_summary;
 mod context_bundle;
 mod context_compiler;

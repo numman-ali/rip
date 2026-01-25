@@ -38,7 +38,7 @@ Frame types
   - `run_session_id`: string (uuid)
   - `message_id`: string (uuid) (the triggering `continuity_message_appended` id)
   - `compiler_id`: string (example: `rip.context_compiler.v1`)
-  - `compiler_strategy`: string (example: `recent_messages_v1` | `summaries_recent_messages_v1`)
+  - `compiler_strategy`: string (example: `recent_messages_v1` | `summaries_recent_messages_v1` | `hierarchical_summaries_recent_messages_v1`)
   - `limits`: object (stable, versioned keys only)
     - v0.1: `{ "recent_messages_v1_limit": 16 }`
   - `compaction_checkpoint`: object | null (present when the selected strategy uses a summary checkpoint)
@@ -46,6 +46,13 @@ Frame types
     - `summary_kind`: string
     - `summary_artifact_id`: string (artifact id; schema `rip.compaction_summary.v1`)
     - `to_seq`: u64
+  - `compaction_checkpoints`: array (optional; may be empty)
+    - Purpose: record all selected compaction checkpoints when the strategy uses multiple summary refs (example: `hierarchical_summaries_recent_messages_v1`).
+    - Each entry:
+      - `checkpoint_id`: string (uuid)
+      - `summary_kind`: string
+      - `summary_artifact_id`: string (artifact id; schema `rip.compaction_summary.v1`)
+      - `to_seq`: u64
   - `resets`: array (optional; may be empty)
     - Each entry: `{ "input": string, "action": string, "reason": string, "ref": object | null }` (stable values/refs only)
   - `reason`: object | null (stable values only)

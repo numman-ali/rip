@@ -60,7 +60,7 @@ Architecture (target posture)
 - Compaction writes summary artifacts (`rip.compaction_summary.v1`) at deterministic cut points and emits checkpoint frames (`continuity_compaction_checkpoint_created`).
 - `context.compile` can include:
   - a handoff summary bundle as “base context” for a new thread, and
-  - compaction summaries + recent raw messages for long threads (example strategy: `summaries_recent_messages_v1`).
+  - compaction summaries + recent raw messages for long threads (example strategies: `summaries_recent_messages_v1`, `hierarchical_summaries_recent_messages_v1`).
 
 4) Provider adapters render bundles (no OpenResponses in core)
 - Provider adapters accept a bundle and produce provider requests.
