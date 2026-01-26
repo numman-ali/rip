@@ -157,8 +157,14 @@ impl TaskLogWriter {
         let remaining = self.max_bytes.saturating_sub(self.bytes_stored) as usize;
         let take = remaining.min(chunk.len());
         if take > 0 {
-            if self.file.write_all(&chunk[..take]).await.is_err() {
-                return Err(());
+            let mut written = 0;
+            while written < take {
+                match self.file.write(&chunk[written..take]).await {
+                    Ok(0) => return Err(()),
+                    Ok(n) => written += n,
+                    Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
+                    Err(_) => return Err(()),
+                }
             }
             self.bytes_stored = self.bytes_stored.saturating_add(take as u64);
         }

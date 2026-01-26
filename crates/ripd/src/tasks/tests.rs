@@ -913,8 +913,26 @@ async fn pipes_task_applies_cwd_and_env() {
         .output(&config, TaskOutputStream::Stdout, 0, 256)
         .await
         .expect("stdout");
-    assert!(stdout.content.contains("hello"));
-    assert!(stdout.content.contains("/subdir"));
+    assert!(
+        stdout.content.contains("hello"),
+        "stdout missing 'hello' (bytes={} total_bytes={} truncated={} artifact_id={} path={}): {:?}",
+        stdout.bytes,
+        stdout.total_bytes,
+        stdout.truncated,
+        stdout.artifact_id,
+        stdout.path,
+        stdout.content
+    );
+    assert!(
+        stdout.content.contains("/subdir"),
+        "stdout missing '/subdir' (bytes={} total_bytes={} truncated={} artifact_id={} path={}): {:?}",
+        stdout.bytes,
+        stdout.total_bytes,
+        stdout.truncated,
+        stdout.artifact_id,
+        stdout.path,
+        stdout.content
+    );
 }
 
 #[cfg(not(windows))]
@@ -953,8 +971,26 @@ async fn pty_task_applies_cwd_and_env() {
         .output(&config, TaskOutputStream::Pty, 0, 256)
         .await
         .expect("pty");
-    assert!(pty.content.contains("hello"));
-    assert!(pty.content.contains("/subdir"));
+    assert!(
+        pty.content.contains("hello"),
+        "pty missing 'hello' (bytes={} total_bytes={} truncated={} artifact_id={} path={}): {:?}",
+        pty.bytes,
+        pty.total_bytes,
+        pty.truncated,
+        pty.artifact_id,
+        pty.path,
+        pty.content
+    );
+    assert!(
+        pty.content.contains("/subdir"),
+        "pty missing '/subdir' (bytes={} total_bytes={} truncated={} artifact_id={} path={}): {:?}",
+        pty.bytes,
+        pty.total_bytes,
+        pty.truncated,
+        pty.artifact_id,
+        pty.path,
+        pty.content
+    );
 }
 
 #[cfg(not(windows))]
