@@ -297,3 +297,59 @@ test("Rip SDK exposes task.* locally without server", async () => {
     await cleanupDataDir(dataDir);
   }
 });
+
+test("Rip SDK streams task events locally without server", async () => {
+  const repoRoot = repoRootFromSdkCwd();
+  const ripPath = ripExecutablePath(repoRoot);
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-task-events-"));
+
+  const opts = {
+    cwd: repoRoot,
+    env: {
+      RIP_DATA_DIR: dataDir,
+      RIP_WORKSPACE_ROOT: path.join(repoRoot, "fixtures", "repo_small"),
+    },
+    unsetEnv: [
+      "RIP_OPENRESPONSES_ENDPOINT",
+      "RIP_OPENRESPONSES_API_KEY",
+      "RIP_OPENRESPONSES_MODEL",
+      "RIP_OPENRESPONSES_TOOL_CHOICE",
+      "RIP_OPENRESPONSES_STATELESS_HISTORY",
+      "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
+      "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
+    ],
+  } as const;
+
+  try {
+    const rip = new Rip({ executablePath: ripPath });
+    const created = await rip.taskSpawn(
+      { tool: "bash", args: { command: "sleep 1; echo done" }, title: "sdk-e2e-events" },
+      opts,
+    );
+    assert.ok(created.task_id.length > 0);
+
+    const terminalStatuses = new Set(["exited", "cancelled", "failed"]);
+    const { events, result } = await rip.taskEventsStreamed(created.task_id, opts);
+    let sawTerminal = false;
+
+    for await (const frame of events) {
+      if (frame.type !== "tool_task_status") continue;
+      const status = (frame as { status?: unknown }).status;
+      if (typeof status === "string" && terminalStatuses.has(status)) {
+        sawTerminal = true;
+        break;
+      }
+    }
+
+    const frames = await result;
+    const terminalFrame = frames.find((frame) => {
+      if (frame.type !== "tool_task_status") return false;
+      const status = (frame as { status?: unknown }).status;
+      return typeof status === "string" && terminalStatuses.has(status);
+    });
+    assert.ok(terminalFrame);
+    assert.ok(sawTerminal);
+  } finally {
+    await cleanupDataDir(dataDir);
+  }
+});
