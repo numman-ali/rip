@@ -10,7 +10,7 @@ Current focus
 - Continuity OS posture is locked: continuity log is truth; provider state is cache; sessions are runs/turns (not user-facing by default).
 - Now: Continuities (threads) are the primary user-facing entity ("one chat forever") and must be implemented end-to-end across surfaces.
 - Phase 1 baseline remains: shared session runner across server + CLI (frames are canonical).
-- Default local execution: `rip` (TUI) and `rip run` auto-start/auto-attach to a local authority for the store; `--server <url>` preserves explicit remote runs; `rip serve` stays the control plane.
+- Default local execution: `rip` (TUI), `rip run`, `rip threads`, and `rip tasks` auto-start/auto-attach to a local authority for the store; `--server <url>` preserves explicit remote runs; `rip serve` stays the control plane.
 - Decision locked (ADR-0019): one store requires a single authority for truth writes; indexes are rebuildable caches; hybrid retrieval is a compiler stage and must be truth-logged by reference.
 - TUI UX is explicitly “conversational-first + drill-down”: ambient background signals (tools/tasks/agents), responsive layouts (phone/SSH/web terminals), and an experience review gate are tracked in `docs/02_architecture/tui/06_experience_review.md`.
 - OpenResponses provider compatibility: stateless history mode + tool schema strict=false; fix provider_errors without dropping raw fidelity.
@@ -34,7 +34,7 @@ Current focus
 - Implemented: `rip threads ...` CLI adapter + TypeScript SDK `thread.*` wrappers (ensure/list/get/post_message/branch/handoff/stream_events) while keeping ADR-0006 transport (SDK spawns `rip`; no TS HTTP/SSE client).
 - Implemented: workspace mutation serialization across sessions + background tasks (workspace lock) with contract + replay tests.
 - Implemented: continuity stream logs workspace-mutating tool side-effects with full provenance (`continuity_tool_side_effects`) and replay coverage under parallel runs/tasks.
-- Implemented: local authority “one store just works” v0.1 (ADR-0019): per-store authority discovery + store lock; local `rip`/`rip run`/`rip threads` auto-start/auto-attach by default; deterministic multi-client integration coverage.
+- Implemented: local authority “one store just works” v0.1 (ADR-0019): per-store authority discovery + store lock; local `rip`/`rip run`/`rip threads`/`rip tasks` auto-start/auto-attach by default; deterministic multi-client integration coverage.
 - Implemented: local authority v0.3 lifecycle hardening: stale-lock recovery for both clients and `rip serve` startup (no-client recovery), graceful SIGTERM/SIGINT shutdown (best-effort lock/meta cleanup), explicit “locked/unavailable” UX (deterministic backoff + clear errors), and deterministic crash+restart integration coverage (seq contiguity + workspace mutation ordering).
 - Decision locked (ADR-0010): `context.compile` is the canonical way runs “remember” across time; provider cursors are optional caches only.
 - Implemented: provider cursor cache truth logging (ADR-0015): `continuity_provider_cursor_updated` + `thread.provider_cursor.{status,rotate}` across cli_h/tui/server/sdk; OpenResponses runs record `previous_response_id` on completion as a rebuildable cache.

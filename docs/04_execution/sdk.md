@@ -13,7 +13,7 @@ TypeScript SDK
   - Thread APIs are accessed via the `rip` CLI adapter (`rip threads ...`), keeping SDK transport consistent with ADR-0006:
     - JSON responses: `thread.ensure`, `thread.list`, `thread.get`, `thread.branch`, `thread.handoff`, `thread.post_message`
     - JSONL frames: `thread.stream_events` (continuity stream; past + live)
-  - Task APIs are accessed via the `rip` CLI adapter (`rip tasks --server ...`), keeping SDK transport consistent with ADR-0006.
+  - Task APIs are accessed via the `rip` CLI adapter (`rip tasks ...`, with optional `--server`), keeping SDK transport consistent with ADR-0006.
 
 Portability rules (Phase 1)
 - If the host can spawn a native binary and has a real workspace filesystem: use **exec transport** (default) and run locally (no daemon required).

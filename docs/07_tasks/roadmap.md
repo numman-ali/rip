@@ -68,12 +68,12 @@ Now
   - `docs/02_architecture/runtime_and_control_plane.md` (terminology: runtime vs control plane)
   - `docs/03_contracts/capability_registry.md`
   - `docs/02_architecture/capability_matrix.md`
-- Status (2026-01-21):
+- Status (2026-01-26):
   - Implemented: `pipes` tasks (spawn/list/status/cancel + SSE events) + artifact-backed log tailing (range fetch).
-  - Implemented: CLI adapter (`rip tasks --server ...`) + TS SDK wrappers (spawn via `rip`).
+  - Implemented: CLI adapter (`rip tasks ...`; local-first with optional `--server`) + TS SDK wrappers (spawn via `rip`).
   - Implemented: `pty` tasks (policy-gated via `RIP_TASKS_ALLOW_PTY`) + stdin/resize/signal + `stream=pty` log tailing.
   - Implemented: deterministic replay fixtures for `pipes` exit/cancel + PTY control ordering + artifact refs.
-  - Implemented: CLI watch (`rip tasks --server <url> watch`) for list/select/tail/cancel (minimal key support; no PTY attach).
+  - Implemented: CLI watch (`rip tasks watch`; local-first with optional `--server`) for list/select/tail/cancel (minimal key support; no PTY attach).
   - Cleared: `scripts/check` passes (including llvm-cov thresholds >= 90%).
   - Parity gap (operator gate): task entities are currently exercised via the server-backed task API; local headless (`rip run --headless`, no server) does not yet have an equivalent task runner/registry surface.
 - Spec snapshot:

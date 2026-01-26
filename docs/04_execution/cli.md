@@ -23,18 +23,19 @@ Task attach mode (remote)
 - `rip --server <url> --task <id>`
 - Attaches the fullscreen UI to an existing background task and streams task frames over SSE.
 
-Task commands (remote)
-- `rip tasks --server <url> spawn --tool bash --args '{"command":"<cmd>"}'` (default `--execution-mode pipes`)
-- `rip tasks --server <url> spawn --tool bash --args '{"command":"<cmd>"}' --execution-mode pty` (requires server `RIP_TASKS_ALLOW_PTY=1`)
-- `rip tasks --server <url> list`
-- `rip tasks --server <url> status <task_id>`
-- `rip tasks --server <url> cancel <task_id> --reason "<why>"`
-- `rip tasks --server <url> stdin <task_id> --text "<line>"` (PTY only; sends `<line>\n`)
-- `rip tasks --server <url> resize <task_id> --rows 24 --cols 80` (PTY only)
-- `rip tasks --server <url> signal <task_id> SIGINT` (PTY only today)
-- `rip tasks --server <url> output <task_id> --stream stdout --offset-bytes 0 --max-bytes 4096` (`--stream stderr|pty`)
-- `rip tasks --server <url> events <task_id>` (prints JSON frames until terminal `tool_task_status`)
-- `rip tasks --server <url> watch` (interactive list + tail + cancel; `--interval-ms` controls refresh; keys: `q`/`Esc`/`Ctrl+C` quit, `↑/↓` or `j/k` select, `c` cancel, `s` toggle stdout/stderr)
+Task commands (local or remote)
+- `rip tasks spawn --tool bash --args '{"command":"<cmd>"}'` (default `--execution-mode pipes`)
+- `rip tasks spawn --tool bash --args '{"command":"<cmd>"}' --execution-mode pty` (requires `RIP_TASKS_ALLOW_PTY=1`)
+- `rip tasks list`
+- `rip tasks status <task_id>`
+- `rip tasks cancel <task_id> --reason "<why>"`
+- `rip tasks stdin <task_id> --text "<line>"` (PTY only; sends `<line>\n`)
+- `rip tasks resize <task_id> --rows 24 --cols 80` (PTY only)
+- `rip tasks signal <task_id> SIGINT` (PTY only today)
+- `rip tasks output <task_id> --stream stdout --offset-bytes 0 --max-bytes 4096` (`--stream stderr|pty`)
+- `rip tasks events <task_id>` (prints JSON frames until terminal `tool_task_status`)
+- `rip tasks watch` (interactive list + tail + cancel; `--interval-ms` controls refresh; keys: `q`/`Esc`/`Ctrl+C` quit, `↑/↓` or `j/k` select, `c` cancel, `s` toggle stdout/stderr)
+- Add `--server <url>` after `tasks` to target a remote server: `rip tasks --server <url> ...`
 
 Thread commands (local or remote)
 - `rip threads ensure` (ensure default continuity)
@@ -64,7 +65,7 @@ Examples:
 
 Notes
 - CLI is a thin adapter over the shared session engine.
-- Default: interactive `rip` and headless `rip run` auto-start/auto-attach to a local authority for the store and stream frames over local HTTP/SSE.
+- Default: `rip`, `rip run`, `rip threads`, and `rip tasks` auto-start/auto-attach to a local authority for the store and stream frames over local HTTP/SSE.
 - Remote: `rip run ... --server <url>` posts to the default thread (continuity) and streams the resulting session frames over HTTP/SSE.
 - `rip serve` (or `ripd`) starts the agent server for remote clients (SDKs can target it via `--server <url>`).
 - Multi-terminal posture: one store needs a single authority for truth writes (ADR-0019).

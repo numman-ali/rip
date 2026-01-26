@@ -63,8 +63,9 @@ enum Commands {
     },
     Serve,
     Tasks {
+        /// Server base URL for remote mode. If omitted, auto-start/auto-attach the local authority.
         #[arg(long)]
-        server: String,
+        server: Option<String>,
         #[command(subcommand)]
         command: TaskCommand,
     },
@@ -294,6 +295,10 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             ripd::serve_default().await;
         }
         Some(Commands::Tasks { server, command }) => {
+            let server = match server {
+                Some(server) => server,
+                None => local_authority::ensure_local_authority().await?,
+            };
             let client = Client::new();
             match command {
                 TaskCommand::Spawn {
@@ -466,7 +471,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                     }
                 }
                 TaskCommand::Watch { interval_ms } => {
-                    tasks_watch::run_tasks_watch(server, interval_ms).await?;
+                    tasks_watch::run_tasks_watch(server.clone(), interval_ms).await?;
                 }
             }
         }

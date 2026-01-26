@@ -35,7 +35,7 @@ Thread lifecycle (continuities; implemented)
 Notes
 - Today: `rip serve` (or `ripd`) exposes the session API for remote clients (SDKs can attach via `--server <url>`).
 - Default local: `rip run` (and `rip`) auto-start/auto-attach to a local authority for the store; use `--server <url>` to target a remote authority.
-- Today: `rip tasks --server <url> ...` is the CLI adapter over the task API.
+- Today: `rip tasks ...` is the CLI adapter over the task API (local-first; use `--server <url>` for remote).
 - SSE stream emits JSON event frames (`docs/03_contracts/event_frames.md`).
 - OpenAPI spec is exposed at `/openapi.json` (canonical) and may be mirrored in `schemas/`.
 - Authority posture (ADR-0019): the server/control plane is the single sequencer for truth writes for a store; many clients may attach concurrently.
