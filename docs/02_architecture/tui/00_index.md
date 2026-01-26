@@ -28,7 +28,7 @@ Status: **Early Design** | Phase: 2 | Last updated: 2026-01-22
 
 ## Design Status
 
-These designs are **exploratory and subject to change**. RIP is in a research and experimental phase where we are building fast but require flexibility to pivot as capabilities evolve.
+These designs are **exploratory and subject to change**, but RIP must remain production-grade in determinism, safety, and performance. Treat the capability registry + contracts as the source of truth; treat these designs as intent and UX guidance.
 
 **For implementers**: When working from these designs, prioritize:
 - **Flexibility** — Components should be easy to add, remove, or reorganize

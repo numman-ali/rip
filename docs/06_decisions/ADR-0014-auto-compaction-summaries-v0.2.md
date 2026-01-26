@@ -36,8 +36,8 @@ Decision
   - The summarizer MUST treat the base summary artifact as an immutable input and only read new delta inputs from continuity truth after the base coverage end.
 - When no prior checkpoint exists, `basis.base_summary_artifact_id` MUST be null/absent.
 - Upgrade/compatibility:
-  - If the referenced base summary artifact exists but does not satisfy the v0.2 content contract (e.g., legacy metadata-only placeholders), the summarizer MAY “bootstrap” by regenerating a real cumulative summary directly from continuity truth for the full `0..to_seq` range.
-  - In bootstrap mode, `basis.base_summary_artifact_id` SHOULD still be recorded for auditability, but the produced `summary_markdown` must not embed legacy placeholder-only content.
+  - If the referenced base summary artifact exists but does not satisfy the v0.2 content contract (e.g., compat metadata-only placeholders), the summarizer MAY “bootstrap” by regenerating a real cumulative summary directly from continuity truth for the full `0..to_seq` range.
+  - In bootstrap mode, `basis.base_summary_artifact_id` SHOULD still be recorded for auditability, but the produced `summary_markdown` must not embed compat placeholder-only content.
 
 ## 3) Inputs and provenance are deterministic and auditable
 - Job inputs that affect the produced artifact MUST be derivable from:

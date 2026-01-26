@@ -2,7 +2,7 @@
 
 ## Foundational Stance: Build for Change
 
-RIP is in an **experimental research phase**. We are building fast, learning fast, and pivoting fast. These designs exist to communicate intent and guide implementation, not to constrain it.
+These designs are **early and subject to change**, but RIP must remain production-grade in determinism, safety, and performance. Treat the capability registry + contracts as the source of truth; treat these designs as intent and UX guidance.
 
 **For implementers**:
 
@@ -12,7 +12,7 @@ RIP is in an **experimental research phase**. We are building fast, learning fas
 
 3. **Capabilities will change** — The capability matrix is evolving. Build UI components that can appear, disappear, or transform without rewriting everything.
 
-4. **Experiment freely** — These wireframes show one valid interpretation. If you find a better layout, interaction, or flow — try it. Document what you learn.
+4. **Iterate deliberately** — These wireframes show one valid interpretation. If you find a better layout, interaction, or flow, implement it in a reversible way and document the rationale.
 
 5. **Ship and iterate** — A working screen that covers 70% of the design is better than no screen. Get it in front of users.
 

@@ -42,7 +42,7 @@ Now
   - Implemented: compaction foundations v0.1: deterministic checkpoint frame `continuity_compaction_checkpoint_created` + summary artifacts (`rip.compaction_summary.v1`) + compile strategy `summaries_recent_messages_v1` (summary_ref + recent raw messages; fallback-safe).
   - Implemented: compaction auto v0.1: `compaction.cut_points` + `compaction.auto` with background summarizer jobs emitting `continuity_job_spawned`/`continuity_job_ended` (ADR-0012) and deterministic checkpoint frames + summary artifacts; parity across cli_h/tui/server/sdk.
   - Implemented: compaction auto v0.2 scheduling: `compaction.auto.schedule` emits `continuity_compaction_auto_schedule_decided` (policy + reasons) and triggers `compaction.auto` execution without touching `thread.post_message`; parity across cli_h/tui/server/sdk.
-  - Implemented: auto summaries v0.2: cumulative summary artifacts chain `base_summary_artifact_id` + delta window; legacy metadata placeholders bootstrap to real summaries (ADR-0014).
+  - Implemented: auto summaries v0.2: cumulative summary artifacts chain `base_summary_artifact_id` + delta window; compat metadata placeholders bootstrap to real summaries (ADR-0014).
   - Implemented: `compaction.status` projection across cli_h/tui/server/sdk (latest checkpoint, next cut point, last schedule decision, last job outcome).
   - Server exposes `thread.*` plus `compaction.manual` (thread compaction checkpoints); headless CLI exposes `rip threads ...` (local + `--server`); TypeScript SDK exposes these by spawning `rip` (ADR-0006).
   - Workspace mutation serialization enforced across sessions + background tasks; replay/contract tests added.
