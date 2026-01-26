@@ -29,8 +29,9 @@ pub use continuities::{
 };
 pub use local_authority::{
     authority_dir, authority_lock_path, authority_meta_path, pid_liveness,
-    read_authority_lock_record, read_authority_meta, AuthorityLockGuard, AuthorityLockRecord,
-    AuthorityMeta, PidLiveness,
+    read_authority_lock_record, read_authority_meta, try_cleanup_corrupt_lock_file,
+    try_cleanup_stale_authority_files, AuthorityLockGuard, AuthorityLockRecord, AuthorityMeta,
+    PidLiveness,
 };
 pub use runner::{SessionEngine, SessionHandle};
 

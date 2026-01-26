@@ -50,7 +50,7 @@ Now
   - Implemented: provider cursor cache truth logging (ADR-0015): `continuity_provider_cursor_updated` + `thread.provider_cursor.{status,rotate}` across cli_h/tui/server/sdk; OpenResponses runs record `previous_response_id` on completion as a rebuildable cache.
   - Implemented: context selection strategy evolution truth logging v0.1 (ADR-0016): `continuity_context_selection_decided` + `thread.context_selection.status` across cli_h/tui/server/sdk; records strategy/budgets/inputs/reasons between `continuity_run_spawned` and `continuity_context_compiled`.
   - Implemented: local authority “one store just works” v0.1: per-store authority discovery + store lock; local `rip`/`rip run`/`rip threads` auto-start/auto-attach to the store authority by default (no manual `--server`); deterministic integration coverage for concurrent local clients + seq invariants.
-  - Implemented: local authority v0.2 hardening: stale-lock recovery (pid + endpoint liveness + atomic cleanup), explicit “locked/unavailable” UX with deterministic backoff, and crash+restart concurrent-client integration coverage (seq contiguity + workspace mutation ordering).
+  - Implemented: local authority v0.3 lifecycle hardening: stale-lock recovery for both clients and `rip serve` startup (no-client recovery), graceful SIGTERM/SIGINT shutdown (best-effort lock/meta cleanup), explicit “locked/unavailable” UX with deterministic backoff, and deterministic crash+restart integration coverage (seq contiguity + workspace mutation ordering).
 - Ready:
   - Document the remaining envelope migration (eventually drop non-session `session_id`).
   - Perf: token-aware context packing + explicit budget policies (Phase 2; must be logged).
@@ -218,6 +218,7 @@ Open questions
 - (empty)
 
 Done (recent)
+- 2026-01-26: Local authority v0.3 lifecycle hardening: `rip serve` self-heals stale `authority/lock.json` on startup (no-client recovery) and handles SIGTERM/SIGINT with best-effort `lock.json`/`meta.json` cleanup; deterministic restart+recovery integration test added.
 - 2026-01-25: Provider cursor cache truth logging (ADR-0015): `continuity_provider_cursor_updated` frame + `thread.provider_cursor.{status,rotate}` parity (cli_h/tui/server/sdk) + OpenResponses run cursor capture.
 - 2026-01-25: TypeScript SDK: opt-in direct HTTP/SSE transport added for server mode (sessions/threads/tasks), while keeping exec-by-default (ADR-0017).
 - 2026-01-20: TUI remote attach: `rip --server <url> --session <id>` streams server SSE frames into the fullscreen UI; fixture + snapshot parity test.

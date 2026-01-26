@@ -55,12 +55,17 @@ Implementation note (Phase 1)
   - Spawned authority binds `RIP_SERVER_ADDR=127.0.0.1:0` (ephemeral port); clients verify liveness via `/openapi.json`.
   - Explicit `--server <url>` remains authoritative and bypasses local auto-start/attach.
 
-## Local authority v0.2: lifecycle + stale-lock recovery
+## Local authority v0.3: authority process lifecycle
 
 Authority files
-- `RIP_DATA_DIR/authority/lock.json`: lock record `{pid, started_at_ms, workspace_root}` created by the authority process.
+- `RIP_DATA_DIR/authority/lock.json`: lock record `{pid, started_at_ms, workspace_root}` created by the authority process (best-effort removed on graceful shutdown; may remain after crash/kill).
 - `RIP_DATA_DIR/authority/meta.json`: discovery record `{endpoint, pid, started_at_ms, workspace_root}` written after bind (atomic write).
 - `RIP_DATA_DIR/authority/authority.log`: stdout/stderr for the background authority process (local auto-start only).
+
+Authority startup behavior (`rip serve`)
+- If `lock.json` already exists:
+  - If `meta.json` exists and `GET {endpoint}/openapi.json` succeeds: treat as an active authority and fail fast (single-writer invariant).
+  - If the endpoint is unreachable and the lock `pid` is **dead**: treat as **stale lock** and recover by atomically reclaiming `lock.json` (rename tombstone + delete), then proceed to start.
 
 Client attach behavior (default local CLI/TUI)
 - If `meta.json` exists and `GET {endpoint}/openapi.json` succeeds: attach immediately.
@@ -69,6 +74,9 @@ Client attach behavior (default local CLI/TUI)
   - If `pid` is **live**: treat as **authority unavailable/restarting** and wait (deterministic backoff).
   - If `pid` is **dead**: treat as **stale lock** and recover by atomically reclaiming `lock.json` (rename tombstone + delete), then respawn.
 - If `lock.json` is invalid JSON and `meta.json` is absent (crash/partial write): wait briefly, then recover by atomically reclaiming the lock under contention.
+
+Authority shutdown behavior (`rip serve`)
+- On SIGTERM/SIGINT: initiate a bounded graceful shutdown (stop accepting; close out within a short timeout) and best-effort remove `meta.json` + `lock.json`.
 
 Safety invariants
 - Never delete a lock based only on “no meta yet” or “endpoint unreachable”; cleanup requires `pid` death (or lock corruption after a grace period).

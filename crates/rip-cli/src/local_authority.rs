@@ -1,15 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use reqwest::Client;
-
-fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
-}
 
 fn update_last_state(last_state: &mut Option<String>, backoff_ms: &mut u64, next: String) {
     if last_state.as_deref() != Some(next.as_str()) {
@@ -81,8 +74,12 @@ async fn ensure_local_authority_with_paths(
             );
 
             if matches!(pid_liveness, ripd::PidLiveness::Dead) {
-                let cleaned =
-                    try_cleanup_stale_authority_files(&data_dir, meta.pid, meta.started_at_ms)?;
+                let cleaned = ripd::try_cleanup_stale_authority_files(
+                    &data_dir,
+                    meta.pid,
+                    meta.started_at_ms,
+                )
+                .map_err(anyhow::Error::msg)?;
                 if cleaned {
                     backoff_ms = 20;
                     continue;
@@ -113,11 +110,12 @@ async fn ensure_local_authority_with_paths(
 
                         lock_invalid_since = None;
                         if matches!(pid_liveness, ripd::PidLiveness::Dead) {
-                            let cleaned = try_cleanup_stale_authority_files(
+                            let cleaned = ripd::try_cleanup_stale_authority_files(
                                 &data_dir,
                                 lock.pid,
                                 lock.started_at_ms,
-                            )?;
+                            )
+                            .map_err(anyhow::Error::msg)?;
                             if cleaned {
                                 backoff_ms = 20;
                                 continue;
@@ -150,7 +148,8 @@ async fn ensure_local_authority_with_paths(
                                 .map(|since| since.elapsed() > Duration::from_secs(1))
                                 .unwrap_or(false)
                         {
-                            let cleaned = try_cleanup_corrupt_lock_file(&data_dir)?;
+                            let cleaned = ripd::try_cleanup_corrupt_lock_file(&data_dir)
+                                .map_err(anyhow::Error::msg)?;
                             if cleaned {
                                 lock_invalid_since = None;
                                 backoff_ms = 20;
@@ -230,84 +229,4 @@ fn spawn_local_authority(data_dir: &Path, workspace_root: &Path) -> anyhow::Resu
 
     let _child = cmd.spawn()?;
     Ok(())
-}
-
-fn try_cleanup_stale_authority_files(
-    data_dir: &Path,
-    expected_pid: u32,
-    _expected_started_at_ms: u64,
-) -> anyhow::Result<bool> {
-    let lock_path = ripd::authority_lock_path(data_dir);
-    let meta_path = ripd::authority_meta_path(data_dir);
-
-    if !lock_path.exists() {
-        return Ok(false);
-    }
-
-    let lock = match ripd::read_authority_lock_record(data_dir) {
-        Ok(Some(lock)) => lock,
-        Ok(None) => return Ok(false),
-        Err(_) => return Ok(false),
-    };
-    if lock.pid != expected_pid {
-        return Ok(false);
-    }
-    let lock_started_at_ms = lock.started_at_ms;
-
-    let lock_tombstone = lock_path.with_file_name(format!(
-        "{}.stale-{}-{}-{}",
-        lock_path.file_name().unwrap_or_default().to_string_lossy(),
-        expected_pid,
-        lock_started_at_ms,
-        now_ms()
-    ));
-    match std::fs::rename(&lock_path, &lock_tombstone) {
-        Ok(()) => {}
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-        Err(err) => return Err(err.into()),
-    }
-
-    if let Ok(Some(meta)) = ripd::read_authority_meta(data_dir) {
-        if meta.pid == expected_pid {
-            let meta_tombstone = meta_path.with_file_name(format!(
-                "{}.stale-{}-{}-{}",
-                meta_path.file_name().unwrap_or_default().to_string_lossy(),
-                expected_pid,
-                meta.started_at_ms,
-                now_ms()
-            ));
-            if std::fs::rename(&meta_path, &meta_tombstone).is_ok() {
-                let _ = std::fs::remove_file(meta_tombstone);
-            }
-        }
-    }
-
-    let _ = std::fs::remove_file(lock_tombstone);
-    Ok(true)
-}
-
-fn try_cleanup_corrupt_lock_file(data_dir: &Path) -> anyhow::Result<bool> {
-    let lock_path = ripd::authority_lock_path(data_dir);
-    if !lock_path.exists() {
-        return Ok(false);
-    }
-
-    if ripd::authority_meta_path(data_dir).exists() {
-        return Ok(false);
-    }
-
-    let tombstone = lock_path.with_file_name(format!(
-        "{}.corrupt-{}-{}",
-        lock_path.file_name().unwrap_or_default().to_string_lossy(),
-        std::process::id(),
-        now_ms()
-    ));
-    match std::fs::rename(&lock_path, &tombstone) {
-        Ok(()) => {}
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-        Err(err) => return Err(err.into()),
-    }
-
-    let _ = std::fs::remove_file(tombstone);
-    Ok(true)
 }

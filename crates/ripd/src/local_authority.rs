@@ -177,6 +177,85 @@ pub fn read_authority_lock_record(
     Ok(Some(record))
 }
 
+pub fn try_cleanup_stale_authority_files(
+    data_dir: impl AsRef<Path>,
+    expected_pid: u32,
+    expected_started_at_ms: u64,
+) -> Result<bool, String> {
+    let lock_path = authority_lock_path(&data_dir);
+    let meta_path = authority_meta_path(&data_dir);
+
+    if !lock_path.exists() {
+        return Ok(false);
+    }
+
+    let lock = match read_authority_lock_record(&data_dir) {
+        Ok(Some(lock)) => lock,
+        Ok(None) => return Ok(false),
+        Err(_) => return Ok(false),
+    };
+    if lock.pid != expected_pid || lock.started_at_ms != expected_started_at_ms {
+        return Ok(false);
+    }
+
+    let lock_tombstone = lock_path.with_file_name(format!(
+        "{}.stale-{}-{}-{}",
+        lock_path.file_name().unwrap_or_default().to_string_lossy(),
+        expected_pid,
+        expected_started_at_ms,
+        now_ms()
+    ));
+    match fs::rename(&lock_path, &lock_tombstone) {
+        Ok(()) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(err) => return Err(format!("rename stale lock failed: {err}")),
+    }
+
+    if let Ok(Some(meta)) = read_authority_meta(&data_dir) {
+        if meta.pid == expected_pid && meta.started_at_ms == expected_started_at_ms {
+            let meta_tombstone = meta_path.with_file_name(format!(
+                "{}.stale-{}-{}-{}",
+                meta_path.file_name().unwrap_or_default().to_string_lossy(),
+                expected_pid,
+                expected_started_at_ms,
+                now_ms()
+            ));
+            if fs::rename(&meta_path, &meta_tombstone).is_ok() {
+                let _ = fs::remove_file(meta_tombstone);
+            }
+        }
+    }
+
+    let _ = fs::remove_file(lock_tombstone);
+    Ok(true)
+}
+
+pub fn try_cleanup_corrupt_lock_file(data_dir: impl AsRef<Path>) -> Result<bool, String> {
+    let lock_path = authority_lock_path(&data_dir);
+    if !lock_path.exists() {
+        return Ok(false);
+    }
+
+    if authority_meta_path(&data_dir).exists() {
+        return Ok(false);
+    }
+
+    let tombstone = lock_path.with_file_name(format!(
+        "{}.corrupt-{}-{}",
+        lock_path.file_name().unwrap_or_default().to_string_lossy(),
+        std::process::id(),
+        now_ms()
+    ));
+    match fs::rename(&lock_path, &tombstone) {
+        Ok(()) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(err) => return Err(format!("rename corrupt lock failed: {err}")),
+    }
+
+    let _ = fs::remove_file(tombstone);
+    Ok(true)
+}
+
 fn atomic_write_file(path: &Path, payload: &[u8]) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
