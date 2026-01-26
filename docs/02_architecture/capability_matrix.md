@@ -3,6 +3,7 @@
 Summary
 - Maps capability groups to delivery phases and primary hook points.
 - Keeps the core small while proving extensibility early.
+- Phase labels describe the *target plan*; the roadmap is the source of truth for what has been pulled forward/implemented.
 
 Phase 1 — Foundation
 - Continuities & runs (sessions): continuity-backed “one chat” state + session runner + event log + server API + CLI (interactive + headless); hook: session lifecycle events.

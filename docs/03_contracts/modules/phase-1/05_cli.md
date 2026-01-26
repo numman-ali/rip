@@ -1,9 +1,9 @@
 # Contract: CLI (interactive + headless)
 
 Summary
-- Interactive: lightweight streaming UI (no diffs/approvals in Phase 1).
-- Headless: JSON events for automation.
-- Full-screen TUI is a separate surface (`rip-tui`) with the same capability ids (Phase 2).
+- Interactive: fullscreen, frame-driven terminal UI (`rip`) for observing/running sessions and managing continuities/tasks (no business logic in the UI).
+- Headless: `rip run --headless` emits newline-delimited JSON event frames for automation.
+- Local-first: by default, CLI auto-starts/auto-attaches to the local authority for the store; `--server <url>` targets a remote control plane.
 
 Inputs
 - User prompts and commands.

@@ -7,13 +7,15 @@ Summary
 
 Inputs
 - Session lifecycle requests (start, send input, cancel).
-- Thread ("continuity") requests (ensure/list/get/post message/branch/handoff/compaction-checkpoint).
+- Thread ("continuity") requests (`thread.*`, `compaction.*`, provider cursor status/rotate, context selection status).
+- Background tool task requests (`tool.task_*`, including optional PTY controls when policy-enabled).
 - Tool/checkpoint command envelopes via session input (for deterministic testing).
 
 Outputs
 - Structured event stream over SSE (event frames: `docs/03_contracts/event_frames.md`).
 - Session status and artifacts.
 - Thread ("continuity") event streams over SSE (messages, run links, summaries).
+- Task event streams over SSE (spawn/status/output deltas; terminal status).
 - OpenAPI spec generated from server code and exposed at a canonical endpoint.
 
 Config
@@ -30,12 +32,9 @@ Tests
 - OpenAPI schema generation/validation tests.
 
 Phase 2 planned extensions
-- Continuities (“threads”) advanced semantics:
-  - reference/share semantics (beyond branch/handoff)
-  - context compiler (`context.compile`) and compiled context bundle artifacts (`rip.context_bundle.v1`)
-  - artifact fetch/read surface for handoff bundles (range reads) + richer ref resolution
-  - compaction + summarization checkpoints + cursor rotation logs
-- Background tool tasks (task entities) with their own event streams and control APIs:
-  - spawn/status/cancel + stream events
-  - interactive PTY control (stdin/resize/signal) when enabled by policy
-- See `docs/06_decisions/ADR-0007-tool-tasks-pty.md` and `docs/03_contracts/modules/phase-2/03_tool_tasks.md`.
+- Auth/ACL policy (multi-actor) for remote control planes.
+- Advanced continuity semantics:
+  - tags/search/archive/share/reference/map capabilities
+  - cross-thread/global memory refs (Phase 3 posture)
+- Artifact fetch/read surfaces beyond task logs (generic artifact range reads for large outputs).
+- RPC/multiplexed execution modes and additional SDK transports.

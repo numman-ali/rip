@@ -2,7 +2,7 @@
 
 Summary
 - Central runtime that executes agent sessions and routes events.
-- Owns scheduling, sub-agent orchestration, and tool dispatch.
+- Owns session lifecycle, provider streaming integration, and tool dispatch.
 
 Inputs
 - Client requests from CLI/server (start session, send input, cancel).
@@ -15,9 +15,9 @@ Outputs
 - Tool invocations to tool runtime.
 
 Config
-- Max concurrency (agents, tools).
+- Max concurrency (sessions, tools, tasks).
 - Tool budgets and timeouts.
-- Policy profile (fast vs deep).
+- Workspace root and artifact store paths.
 
 Invariants
 - Deterministic processing order given the same event stream.
@@ -27,9 +27,7 @@ Invariants
 
 Tests
 - Replay a golden stream and compare final snapshot.
-- Concurrency tests for sub-agent scheduling.
 - Concurrency tests for workspace mutation serialization across sessions + tasks.
 
 Benchmarks
 - Event routing latency (per event).
-- Sub-agent spawn latency.
