@@ -23,3 +23,6 @@ Compliance
 - Each surface declares support for each capability version.
 - Parity gaps must be explicitly tracked and approved.
 - Surface-specific capabilities (UI/transport only) still require explicit support/unsupported declarations on every surface.
+
+Active surfaces
+- Parity is enforced only across **active surfaces**: surfaces that have at least one capability marked `supported` in `docs/03_contracts/capability_registry.md` (see `docs/05_quality/surface-parity.md`).

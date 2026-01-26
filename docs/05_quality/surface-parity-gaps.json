@@ -81,126 +81,98 @@
       "capability_id": "session.cancel",
       "surface": "tui",
       "owner": "tui",
-      "reason": "TUI activation is in progress; session control parity work is pending beyond compaction auto v0.1.",
+      "reason": "Fullscreen TUI starts runs via `thread.post_message` (continuity-first) and does not yet expose low-level session lifecycle controls (cancel) as first-class actions.",
       "expires_on": "2026-03-01"
     },
     {
       "capability_id": "session.create",
       "surface": "tui",
       "owner": "tui",
-      "reason": "TUI activation is in progress; session control parity work is pending beyond compaction auto v0.1.",
+      "reason": "Fullscreen TUI starts runs via `thread.post_message` (continuity-first) and does not yet expose low-level session lifecycle controls (create) as first-class actions.",
       "expires_on": "2026-03-01"
     },
     {
       "capability_id": "session.send_input",
       "surface": "tui",
       "owner": "tui",
-      "reason": "TUI activation is in progress; session control parity work is pending beyond compaction auto v0.1.",
-      "expires_on": "2026-03-01"
-    },
-    {
-      "capability_id": "session.stream_events",
-      "surface": "tui",
-      "owner": "tui",
-      "reason": "TUI activation is in progress; session control parity work is pending beyond compaction auto v0.1.",
+      "reason": "Fullscreen TUI starts single-turn runs and does not yet expose sending additional input to an active session as a first-class action.",
       "expires_on": "2026-03-01"
     },
     {
       "capability_id": "thread.branch",
       "surface": "tui",
       "owner": "tui",
-      "reason": "TUI activation is in progress; thread management parity work is pending beyond compaction auto v0.1.",
-      "expires_on": "2026-03-01"
-    },
-    {
-      "capability_id": "thread.ensure",
-      "surface": "tui",
-      "owner": "tui",
-      "reason": "TUI activation is in progress; thread management parity work is pending beyond compaction auto v0.1.",
+      "reason": "Fullscreen TUI does not yet expose first-class thread management UI (branch/handoff/browse); use `rip threads ...` or sdk/server.",
       "expires_on": "2026-03-01"
     },
     {
       "capability_id": "thread.get",
       "surface": "tui",
       "owner": "tui",
-      "reason": "TUI activation is in progress; thread management parity work is pending beyond compaction auto v0.1.",
+      "reason": "Fullscreen TUI does not yet expose first-class thread browsing; use `rip threads ...` or sdk/server.",
       "expires_on": "2026-03-01"
     },
     {
       "capability_id": "thread.handoff",
       "surface": "tui",
       "owner": "tui",
-      "reason": "TUI activation is in progress; thread management parity work is pending beyond compaction auto v0.1.",
+      "reason": "Fullscreen TUI does not yet expose first-class thread management UI (branch/handoff/browse); use `rip threads ...` or sdk/server.",
       "expires_on": "2026-03-01"
     },
     {
       "capability_id": "thread.list",
       "surface": "tui",
       "owner": "tui",
-      "reason": "TUI activation is in progress; thread management parity work is pending beyond compaction auto v0.1.",
-      "expires_on": "2026-03-01"
-    },
-    {
-      "capability_id": "thread.post_message",
-      "surface": "tui",
-      "owner": "tui",
-      "reason": "TUI activation is in progress; thread management parity work is pending beyond compaction auto v0.1.",
+      "reason": "Fullscreen TUI does not yet expose first-class thread browsing; use `rip threads ...` or sdk/server.",
       "expires_on": "2026-03-01"
     },
     {
       "capability_id": "thread.stream_events",
       "surface": "tui",
       "owner": "tui",
-      "reason": "TUI activation is in progress; thread management parity work is pending beyond compaction auto v0.1.",
+      "reason": "Fullscreen TUI does not yet expose first-class thread event streaming UI; use `rip threads events ...` or sdk/server.",
       "expires_on": "2026-03-01"
     },
     {
       "capability_id": "tool.task_cancel",
       "surface": "tui",
       "owner": "tui",
-      "reason": "TUI does not yet expose first-class task management controls; use cli_h/server/sdk for task operations.",
+      "reason": "Fullscreen TUI can attach to an existing task stream (`--task <id>`), but does not yet expose first-class task management controls (spawn/cancel/controls); use `rip tasks ...` or sdk/server.",
       "expires_on": "2026-03-01"
     },
     {
       "capability_id": "tool.task_resize",
       "surface": "tui",
       "owner": "tui",
-      "reason": "TUI does not yet expose first-class task management controls; use cli_h/server/sdk for task operations.",
+      "reason": "Fullscreen TUI can attach to an existing task stream (`--task <id>`), but does not yet expose first-class task management controls (spawn/cancel/controls); use `rip tasks ...` or sdk/server.",
       "expires_on": "2026-03-01"
     },
     {
       "capability_id": "tool.task_signal",
       "surface": "tui",
       "owner": "tui",
-      "reason": "TUI does not yet expose first-class task management controls; use cli_h/server/sdk for task operations.",
+      "reason": "Fullscreen TUI can attach to an existing task stream (`--task <id>`), but does not yet expose first-class task management controls (spawn/cancel/controls); use `rip tasks ...` or sdk/server.",
       "expires_on": "2026-03-01"
     },
     {
       "capability_id": "tool.task_spawn",
       "surface": "tui",
       "owner": "tui",
-      "reason": "TUI does not yet expose first-class task management controls; use cli_h/server/sdk for task operations.",
+      "reason": "Fullscreen TUI can attach to an existing task stream (`--task <id>`), but does not yet expose first-class task management controls (spawn/cancel/controls); use `rip tasks ...` or sdk/server.",
       "expires_on": "2026-03-01"
     },
     {
       "capability_id": "tool.task_status",
       "surface": "tui",
       "owner": "tui",
-      "reason": "TUI does not yet expose first-class task management controls; use cli_h/server/sdk for task operations.",
-      "expires_on": "2026-03-01"
-    },
-    {
-      "capability_id": "tool.task_stream_events",
-      "surface": "tui",
-      "owner": "tui",
-      "reason": "TUI does not yet expose first-class task management controls; use cli_h/server/sdk for task operations.",
+      "reason": "Fullscreen TUI can attach to an existing task stream (`--task <id>`), but does not yet expose first-class task management controls (spawn/cancel/controls); use `rip tasks ...` or sdk/server.",
       "expires_on": "2026-03-01"
     },
     {
       "capability_id": "tool.task_write_stdin",
       "surface": "tui",
       "owner": "tui",
-      "reason": "TUI does not yet expose first-class task management controls; use cli_h/server/sdk for task operations.",
+      "reason": "Fullscreen TUI can attach to an existing task stream (`--task <id>`), but does not yet expose first-class task management controls (spawn/cancel/controls); use `rip tasks ...` or sdk/server.",
       "expires_on": "2026-03-01"
     }
   ]

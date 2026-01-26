@@ -73,6 +73,7 @@ Open risks / notes
 - Perf: context compiler hot path avoids global `events.jsonl` scans when caches exist (snapshot-first session aggregation + per-continuity sidecar replay); avoids full continuity stream loads for `recent_messages_v1` both for latest-message run starts (tail-read continuity v1), non-tail anchors (seekable window reads v1.1), high tool-event density between messages (messages+runs sidecar v1.2), and long-thread compaction selection (compaction checkpoint index sidecar v1.3) with hierarchical summary refs.
 - Perf: prompt cache friendliness requires deterministic tool ordering + stable instruction blocks + append-only context changes within a run (`docs/03_contracts/modules/phase-1/02_provider_adapters.md`, `https://openai.com/index/unrolling-the-codex-agent-loop/`).
 - Determinism: task output pumps retry EINTR (pipes + pty), fixing rare missing stderr in `tasks::tests::run_task_writes_stdout_and_stderr_logs`.
+- Docs: clarified surface parity “active surfaces” semantics and aligned TUI capability statuses/gaps with current shipped fullscreen UX.
 
 Active priorities
 - Keep roadmap Now/Next aligned with the implementation work.

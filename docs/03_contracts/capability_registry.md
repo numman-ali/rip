@@ -8,11 +8,11 @@ Summary
 Legend
 - phase: P1, P2, P3
 - surface keys:
-  - cli_i: interactive CLI
-  - cli_h: headless CLI
-  - server: server API (HTTP/SSE + OpenAPI)
+  - cli_i: interactive CLI (line-oriented; reserved/inactive unless explicitly marked `supported`)
+  - cli_h: headless CLI + subcommands (automation surface; JSONL frames + JSON endpoints via `rip`)
+  - server: control plane API (HTTP/SSE + OpenAPI)
   - sdk: SDK surface
-  - tui: TUI surface
+  - tui: fullscreen terminal UI (`rip` default UX; frame-driven)
   - mcp: MCP surface
 - status values:
   - supported: implemented and exposed
@@ -35,12 +35,12 @@ Notes
 | session.create | v1 | P1 | planned | supported | supported | supported | planned | planned | Start a new session. |
 | session.send_input | v1 | P1 | planned | supported | supported | supported | planned | planned | Send input to an active session. |
 | session.set_model | v1 | P2 | planned | planned | planned | planned | planned | planned | Change the active session's provider/model selection (applies forward only). |
-| session.stream_events | v1 | P1 | planned | supported | supported | supported | planned | planned | Stream session events. |
+| session.stream_events | v1 | P1 | planned | supported | supported | supported | supported | planned | Stream session events. |
 | session.cancel | v1 | P1 | planned | supported | supported | supported | planned | planned | Cancel an active session. |
 | session.resume | v1 | P2 | planned | planned | planned | planned | planned | planned | Resume a prior session/run by id (debug/power feature; not the primary UX). |
 | session.previous_response | v1 | P2 | planned | planned | planned | planned | planned | planned | Continue from a prior response id (previous_response_id semantics). |
-| thread.ensure | v1 | P1 | planned | supported | supported | supported | planned | planned | Ensure a default continuity exists for the current workspace/user and return its id. |
-| thread.post_message | v1 | P1 | planned | supported | supported | supported | planned | planned | Append an actor message to a continuity; may trigger a new run and returns linkage. |
+| thread.ensure | v1 | P1 | planned | supported | supported | supported | supported | planned | Ensure a default continuity exists for the current workspace/user and return its id. |
+| thread.post_message | v1 | P1 | planned | supported | supported | supported | supported | planned | Append an actor message to a continuity; may trigger a new run and returns linkage. |
 | thread.stream_events | v1 | P1 | planned | supported | supported | supported | planned | planned | Stream continuity-level events (messages, summaries, links) independent of session runs. |
 | thread.list | v1 | P1 | planned | supported | supported | supported | planned | planned | List continuities (power/debug; filters by tags/query). |
 | thread.get | v1 | P1 | planned | supported | supported | supported | planned | planned | Get continuity metadata by id. |
@@ -114,7 +114,7 @@ Notes
 | id | v | phase | cli_i | cli_h | server | sdk | tui | mcp | intent |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | execution.interactive_cli | v1 | P1 | planned | not_applicable | not_applicable | not_applicable | not_applicable | not_applicable | Interactive CLI mode. |
-| execution.interactive_tui | v1 | P2 | not_applicable | not_applicable | not_applicable | not_applicable | planned | not_applicable | Interactive TUI mode. |
+| execution.interactive_tui | v1 | P2 | not_applicable | not_applicable | not_applicable | not_applicable | supported | not_applicable | Interactive TUI mode. |
 | execution.headless | v1 | P1 | not_applicable | supported | not_applicable | not_applicable | not_applicable | not_applicable | Headless execute mode. |
 | execution.json_stream | v1 | P1 | planned | supported | supported | supported | planned | planned | Streaming JSON output. |
 | execution.stream_options | v1 | P1 | planned | planned | planned | planned | planned | planned | Stream options for usage/extras emission. |
@@ -158,7 +158,7 @@ Notes
 | tool.task_spawn | v1 | P2 | planned | supported | supported | supported | planned | planned | Run a tool invocation in the background (returns task id; streams events). |
 | tool.task_status | v1 | P2 | planned | supported | supported | supported | planned | planned | Query background tool task status/metadata independent of the live stream. |
 | tool.task_cancel | v1 | P2 | planned | supported | supported | supported | planned | planned | Cancel/kill a running tool task (best-effort, logged). |
-| tool.task_stream_events | v1 | P2 | planned | supported | supported | supported | planned | planned | Subscribe to a background tool task event stream (SSE/JSONL) by `task_id`. |
+| tool.task_stream_events | v1 | P2 | planned | supported | supported | supported | supported | planned | Subscribe to a background tool task event stream (SSE/JSONL) by `task_id`. |
 | tool.task_write_stdin | v1 | P2 | planned | supported | supported | supported | planned | planned | Send stdin bytes/keys to an interactive tool task (PTY mode only). |
 | tool.task_resize | v1 | P2 | planned | supported | supported | supported | planned | planned | Resize an interactive tool task terminal (rows/cols; PTY mode only). |
 | tool.task_signal | v1 | P2 | planned | supported | supported | supported | planned | planned | Send a signal to a running tool task (SIGINT/SIGTERM/etc; platform-mapped). |
@@ -283,10 +283,10 @@ Notes
 | ui.edit_message | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable | Edit prior message to revert downstream changes. |
 | ui.command_palette | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable | Custom commands via palette. |
 | ui.shortcuts | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable | Keyboard shortcuts and integrations. |
-| ui.keybindings | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable | Customizable keybindings (including key-event debugging). |
-| ui.theme | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable | Theme selection and runtime switching. |
-| ui.raw_events | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable | Raw frame/event viewing mode (rendered ↔ raw). |
-| ui.clipboard | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable | Clipboard read/write for copy/paste affordances. |
+| ui.keybindings | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | supported | not_applicable | Customizable keybindings (including key-event debugging). |
+| ui.theme | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | supported | not_applicable | Theme selection and runtime switching. |
+| ui.raw_events | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | supported | not_applicable | Raw frame/event viewing mode (rendered ↔ raw). |
+| ui.clipboard | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | supported | not_applicable | Clipboard read/write for copy/paste affordances. |
 | ui.background_tasks | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable | Background task status updates. |
 | ui.shell_input | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable | Direct shell input mode. |
 | ui.permission_modes | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable | Permission mode toggles. |
