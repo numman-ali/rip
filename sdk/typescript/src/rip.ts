@@ -1422,6 +1422,7 @@ export class Rip {
       let wake: (() => void) | null = null;
       let ended = false;
       let streamError: unknown | null = null;
+      const terminalStatuses = new Set(["exited", "cancelled", "failed"]);
 
       const wakeWaiters = () => {
         if (wake) {
@@ -1448,6 +1449,13 @@ export class Rip {
             frames.push(frame);
             queue.push(frame);
             wakeWaiters();
+
+            // The server-side task SSE stream is open-ended (kept alive with pings), so we
+            // terminate locally once a terminal status is observed, matching `rip tasks events`.
+            if (frame.type === "tool_task_status") {
+              const status = (frame as { status?: unknown }).status;
+              if (typeof status === "string" && terminalStatuses.has(status)) break;
+            }
           }
           return frames;
         } finally {

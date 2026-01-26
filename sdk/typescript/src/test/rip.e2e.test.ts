@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -45,6 +46,83 @@ async function killAuthority(dataDir: string): Promise<void> {
 async function cleanupDataDir(dataDir: string): Promise<void> {
   await killAuthority(dataDir);
   await rm(dataDir, { recursive: true, force: true });
+}
+
+type AuthorityMeta = { endpoint?: unknown; pid?: unknown };
+
+async function waitForAuthorityEndpoint(
+  dataDir: string,
+  child: ReturnType<typeof spawn> | null,
+  stderrSnapshot: () => string,
+  timeoutMs = 10_000,
+  childError: () => unknown | null = () => null,
+): Promise<string> {
+  const metaPath = path.join(dataDir, "authority", "meta.json");
+  const deadline = Date.now() + timeoutMs;
+  let lastErr: unknown | null = null;
+
+  while (Date.now() < deadline) {
+    const err = childError();
+    if (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      throw new Error(`rip serve failed to start: ${detail}\n${stderrSnapshot()}`);
+    }
+    if (child && child.exitCode !== null) {
+      throw new Error(`rip serve exited early: exitCode=${child.exitCode}\n${stderrSnapshot()}`);
+    }
+
+    try {
+      const raw = await readFile(metaPath, "utf8");
+      const meta = JSON.parse(raw) as AuthorityMeta;
+      if (meta && typeof meta.endpoint === "string" && meta.endpoint.trim()) return meta.endpoint.trim();
+    } catch (err) {
+      lastErr = err;
+    }
+
+    await sleep(50);
+  }
+
+  const detail = lastErr instanceof Error ? lastErr.message : String(lastErr ?? "");
+  throw new Error(`timed out waiting for authority meta.json endpoint at ${metaPath}${detail ? `: ${detail}` : ""}\n${stderrSnapshot()}`);
+}
+
+async function waitForServerReady(endpoint: string, timeoutMs = 10_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${endpoint}/openapi.json`);
+      if (res.ok) return;
+    } catch {
+      // ignore
+    }
+    await sleep(50);
+  }
+  throw new Error(`timed out waiting for server ready: ${endpoint}`);
+}
+
+async function stopRipServer(child: ReturnType<typeof spawn>): Promise<void> {
+  if (child.exitCode !== null) return;
+
+  const killAndWait = async (signal: NodeJS.Signals, timeoutMs: number) => {
+    try {
+      child.kill(signal);
+    } catch {
+      try {
+        child.kill();
+      } catch {
+        return;
+      }
+    }
+
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline && child.exitCode === null) {
+      await sleep(25);
+    }
+  };
+
+  await killAndWait("SIGTERM", 2_000);
+  if (child.exitCode !== null) return;
+  await killAndWait("SIGKILL", 2_000);
 }
 
 async function sleep(ms: number): Promise<void> {
@@ -351,5 +429,83 @@ test("Rip SDK streams task events locally without server", async () => {
     assert.ok(sawTerminal);
   } finally {
     await cleanupDataDir(dataDir);
+  }
+});
+
+test("Rip SDK streams task events over HTTP transport until terminal status", async () => {
+  const repoRoot = repoRootFromSdkCwd();
+  const ripPath = ripExecutablePath(repoRoot);
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-http-task-events-"));
+  const workspaceDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-http-workspace-"));
+
+  const env = { ...process.env };
+  env.RIP_DATA_DIR = dataDir;
+  env.RIP_WORKSPACE_ROOT = workspaceDir;
+  env.RIP_SERVER_ADDR = "127.0.0.1:0";
+  for (const key of [
+    "RIP_OPENRESPONSES_ENDPOINT",
+    "RIP_OPENRESPONSES_API_KEY",
+    "RIP_OPENRESPONSES_MODEL",
+    "RIP_OPENRESPONSES_TOOL_CHOICE",
+    "RIP_OPENRESPONSES_STATELESS_HISTORY",
+    "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
+    "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
+  ]) {
+    delete env[key];
+  }
+
+  let stderr = "";
+  let childError: unknown | null = null;
+  const child = spawn(ripPath, ["serve"], { cwd: repoRoot, env, stdio: ["ignore", "ignore", "pipe"] });
+  child.once("error", (err) => {
+    childError = err;
+  });
+  child.stderr?.setEncoding("utf8");
+  child.stderr?.on("data", (chunk) => {
+    stderr += chunk;
+    if (stderr.length > 20_000) stderr = stderr.slice(-20_000);
+  });
+  const stderrSnapshot = () => stderr.trim();
+
+  try {
+    const endpoint = await waitForAuthorityEndpoint(dataDir, child, stderrSnapshot, 10_000, () => childError);
+    await waitForServerReady(endpoint);
+
+    const rip = new Rip({ transport: "http", server: endpoint });
+    const created = await rip.taskSpawn({ tool: "bash", args: { command: "sleep 0.2; echo done" }, title: "sdk-e2e-http-events" }, {});
+    assert.ok(created.task_id.length > 0);
+
+    const terminalStatuses = new Set(["exited", "cancelled", "failed"]);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
+
+    try {
+      const { events, result } = await rip.taskEventsStreamed(created.task_id, { signal: controller.signal });
+
+      let sawTerminal = false;
+      for await (const frame of events) {
+        if (frame.type !== "tool_task_status") continue;
+        const status = (frame as { status?: unknown }).status;
+        if (typeof status === "string" && terminalStatuses.has(status)) {
+          sawTerminal = true;
+        }
+      }
+
+      const frames = await result;
+      const terminalFrame = frames.find((frame) => {
+        if (frame.type !== "tool_task_status") return false;
+        const status = (frame as { status?: unknown }).status;
+        return typeof status === "string" && terminalStatuses.has(status);
+      });
+
+      assert.ok(terminalFrame);
+      assert.ok(sawTerminal);
+    } finally {
+      clearTimeout(timer);
+    }
+  } finally {
+    await stopRipServer(child);
+    await cleanupDataDir(dataDir);
+    await rm(workspaceDir, { recursive: true, force: true });
   }
 });

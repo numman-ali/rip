@@ -189,3 +189,23 @@ test("Rip SDK http transport supports thread.* and task.* surfaces", async () =>
   const taskFrames = await taskStream;
   assert.equal(taskFrames.length, 1);
 });
+
+test("Rip SDK http transport taskEventsStreamed throws when server is missing", async () => {
+  const rip = new Rip({
+    transport: "http",
+    fetch: async () => {
+      throw new Error("fetch should not be called");
+    },
+  });
+
+  await assert.rejects(
+    async () => {
+      await rip.taskEventsStreamed("task1", {});
+    },
+    (err: unknown) => {
+      assert.ok(err instanceof Error);
+      assert.equal(err.message, "taskEventsStreamed with http transport requires server");
+      return true;
+    },
+  );
+});
