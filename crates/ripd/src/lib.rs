@@ -28,8 +28,9 @@ pub use continuities::{
     ProviderCursorStatusV1Request, ProviderCursorStatusV1Response, ToolSideEffects,
 };
 pub use local_authority::{
-    authority_dir, authority_lock_path, authority_meta_path, read_authority_lock_record,
-    read_authority_meta, AuthorityLockGuard, AuthorityLockRecord, AuthorityMeta,
+    authority_dir, authority_lock_path, authority_meta_path, pid_liveness,
+    read_authority_lock_record, read_authority_meta, AuthorityLockGuard, AuthorityLockRecord,
+    AuthorityMeta, PidLiveness,
 };
 pub use runner::{SessionEngine, SessionHandle};
 

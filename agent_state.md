@@ -35,6 +35,7 @@ Current focus
 - Implemented: workspace mutation serialization across sessions + background tasks (workspace lock) with contract + replay tests.
 - Implemented: continuity stream logs workspace-mutating tool side-effects with full provenance (`continuity_tool_side_effects`) and replay coverage under parallel runs/tasks.
 - Implemented: local authority “one store just works” v0.1 (ADR-0019): per-store authority discovery + store lock; local `rip`/`rip run`/`rip threads` auto-start/auto-attach by default; deterministic multi-client integration coverage.
+- Implemented: local authority v0.2 hardening: stale-lock recovery (pid + endpoint liveness + atomic cleanup), explicit “locked/unavailable” UX (deterministic backoff + clear errors), and crash+restart concurrent-client integration coverage (seq contiguity + workspace mutation ordering).
 - Decision locked (ADR-0010): `context.compile` is the canonical way runs “remember” across time; provider cursors are optional caches only.
 - Implemented: provider cursor cache truth logging (ADR-0015): `continuity_provider_cursor_updated` + `thread.provider_cursor.{status,rotate}` across cli_h/tui/server/sdk; OpenResponses runs record `previous_response_id` on completion as a rebuildable cache.
 - Implemented: context selection strategy evolution truth logging v0.1 (ADR-0016): `continuity_context_selection_decided` + `thread.context_selection.status` across cli_h/tui/server/sdk; compiler selection/budgets/inputs/reasons are now auditable truth.

@@ -9,6 +9,45 @@ const AUTHORITY_DIR: &str = "authority";
 const LOCK_FILE: &str = "lock.json";
 const META_FILE: &str = "meta.json";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PidLiveness {
+    Alive,
+    Dead,
+    Unknown,
+}
+
+pub fn pid_liveness(pid: u32) -> PidLiveness {
+    #[cfg(unix)]
+    {
+        use std::os::raw::c_int;
+
+        extern "C" {
+            fn kill(pid: i32, sig: c_int) -> c_int;
+        }
+
+        const SIGNAL_0: c_int = 0;
+        const EPERM: i32 = 1;
+        const ESRCH: i32 = 3;
+
+        let result = unsafe { kill(pid as i32, SIGNAL_0) };
+        if result == 0 {
+            return PidLiveness::Alive;
+        }
+
+        match std::io::Error::last_os_error().raw_os_error() {
+            Some(ESRCH) => PidLiveness::Dead,
+            Some(EPERM) => PidLiveness::Alive,
+            _ => PidLiveness::Unknown,
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        PidLiveness::Unknown
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthorityLockRecord {
     pub pid: u32,
@@ -46,6 +85,7 @@ pub fn now_ms() -> u64 {
 pub struct AuthorityLockGuard {
     lock_path: PathBuf,
     meta_path: PathBuf,
+    record: AuthorityLockRecord,
 }
 
 impl AuthorityLockGuard {
@@ -86,11 +126,23 @@ impl AuthorityLockGuard {
         Ok(Self {
             lock_path,
             meta_path,
+            record,
         })
     }
 
-    pub fn write_meta(&self, meta: &AuthorityMeta) -> Result<(), String> {
-        let payload = serde_json::to_vec(meta).map_err(|err| format!("meta json failed: {err}"))?;
+    pub fn record(&self) -> &AuthorityLockRecord {
+        &self.record
+    }
+
+    pub fn write_meta(&self, endpoint: impl Into<String>) -> Result<(), String> {
+        let meta = AuthorityMeta {
+            endpoint: endpoint.into(),
+            pid: self.record.pid,
+            started_at_ms: self.record.started_at_ms,
+            workspace_root: self.record.workspace_root.clone(),
+        };
+        let payload =
+            serde_json::to_vec(&meta).map_err(|err| format!("meta json failed: {err}"))?;
         atomic_write_file(&self.meta_path, &payload)
             .map_err(|err| format!("write meta failed: {err}"))
     }

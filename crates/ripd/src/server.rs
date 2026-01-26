@@ -24,7 +24,7 @@ use crate::tasks::{
     TaskWriteStdinPayload,
 };
 #[cfg(not(test))]
-use crate::{AuthorityLockGuard, AuthorityMeta};
+use crate::AuthorityLockGuard;
 
 #[cfg(not(test))]
 use std::net::SocketAddr;
@@ -174,13 +174,8 @@ pub(crate) async fn serve(data_dir: std::path::PathBuf) {
     let endpoint = format!("http://{local_addr}");
     eprintln!("ripd listening on {endpoint}");
 
-    lock.write_meta(&AuthorityMeta {
-        endpoint,
-        pid: std::process::id(),
-        started_at_ms: crate::local_authority::now_ms(),
-        workspace_root: workspace_root.to_string_lossy().to_string(),
-    })
-    .unwrap_or_else(|err| panic!("{err}"));
+    lock.write_meta(endpoint)
+        .unwrap_or_else(|err| panic!("{err}"));
 
     axum::serve(listener, app).await.expect("server");
 }

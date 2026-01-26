@@ -54,3 +54,23 @@ Implementation note (Phase 1)
   - Lock: `RIP_DATA_DIR/authority/lock.json` (single-writer).
   - Spawned authority binds `RIP_SERVER_ADDR=127.0.0.1:0` (ephemeral port); clients verify liveness via `/openapi.json`.
   - Explicit `--server <url>` remains authoritative and bypasses local auto-start/attach.
+
+## Local authority v0.2: lifecycle + stale-lock recovery
+
+Authority files
+- `RIP_DATA_DIR/authority/lock.json`: lock record `{pid, started_at_ms, workspace_root}` created by the authority process.
+- `RIP_DATA_DIR/authority/meta.json`: discovery record `{endpoint, pid, started_at_ms, workspace_root}` written after bind (atomic write).
+- `RIP_DATA_DIR/authority/authority.log`: stdout/stderr for the background authority process (local auto-start only).
+
+Client attach behavior (default local CLI/TUI)
+- If `meta.json` exists and `GET {endpoint}/openapi.json` succeeds: attach immediately.
+- If `lock.json` exists but `meta.json` is missing: treat as **authority starting** and wait (no cleanup while `pid` is live).
+- If `meta.json` exists but the endpoint is unreachable:
+  - If `pid` is **live**: treat as **authority unavailable/restarting** and wait (deterministic backoff).
+  - If `pid` is **dead**: treat as **stale lock** and recover by atomically reclaiming `lock.json` (rename tombstone + delete), then respawn.
+- If `lock.json` is invalid JSON and `meta.json` is absent (crash/partial write): wait briefly, then recover by atomically reclaiming the lock under contention.
+
+Safety invariants
+- Never delete a lock based only on “no meta yet” or “endpoint unreachable”; cleanup requires `pid` death (or lock corruption after a grace period).
+- Cleanup is contention-safe: clients atomically rename the observed `lock.json` before deleting, so they cannot remove a newly-created lock.
+- Workspace-root mismatches are fatal: a store is bound to exactly one `workspace_root` per authority; clients refuse to attach/recover when roots disagree.

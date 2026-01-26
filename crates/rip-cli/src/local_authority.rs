@@ -1,8 +1,22 @@
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use reqwest::Client;
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+fn update_last_state(last_state: &mut Option<String>, backoff_ms: &mut u64, next: String) {
+    if last_state.as_deref() != Some(next.as_str()) {
+        *last_state = Some(next);
+        *backoff_ms = 20;
+    }
+}
 
 pub(crate) fn default_data_dir() -> PathBuf {
     if let Ok(value) = std::env::var("RIP_DATA_DIR") {
@@ -34,15 +48,18 @@ async fn ensure_local_authority_with_paths(
         .timeout(Duration::from_millis(250))
         .build()?;
 
-    let mut lock_without_meta_since: Option<std::time::Instant> = None;
-    let mut meta_unreachable_since: Option<std::time::Instant> = None;
-    let mut spawned_since: Option<std::time::Instant> = None;
+    let mut last_spawned_at: Option<std::time::Instant> = None;
+    let mut lock_invalid_since: Option<std::time::Instant> = None;
+    let mut backoff_ms: u64 = 20;
+    let mut last_state: Option<String> = None;
 
     let deadline = std::time::Instant::now() + Duration::from_secs(8);
     loop {
+        let workspace_root_str = workspace_root.to_string_lossy().to_string();
         let meta = ripd::read_authority_meta(&data_dir).map_err(anyhow::Error::msg)?;
         if let Some(meta) = meta {
-            if meta.workspace_root != workspace_root.to_string_lossy() {
+            lock_invalid_since = None;
+            if meta.workspace_root != workspace_root_str {
                 anyhow::bail!(
                     "store authority workspace mismatch: authority_root={} current_root={}",
                     meta.workspace_root,
@@ -52,51 +69,133 @@ async fn ensure_local_authority_with_paths(
             if ping(&client, &meta.endpoint).await {
                 return Ok(meta.endpoint);
             }
-            meta_unreachable_since.get_or_insert(std::time::Instant::now());
-        } else {
-            meta_unreachable_since = None;
-        }
 
-        let lock_path = ripd::authority_lock_path(&data_dir);
-        if lock_path.exists() {
-            lock_without_meta_since.get_or_insert(std::time::Instant::now());
+            let pid_liveness = ripd::pid_liveness(meta.pid);
+            update_last_state(
+                &mut last_state,
+                &mut backoff_ms,
+                format!(
+                    "authority unavailable: endpoint={} pid={} pid_liveness={pid_liveness:?}",
+                    meta.endpoint, meta.pid
+                ),
+            );
 
-            let lock_has_meta = ripd::authority_meta_path(&data_dir).exists();
-            if !lock_has_meta {
-                let grace = Duration::from_secs(3);
-                if lock_without_meta_since
-                    .map(|since| since.elapsed() > grace)
-                    .unwrap_or(false)
-                {
-                    cleanup_stale_lock(&data_dir);
-                    lock_without_meta_since = None;
+            if matches!(pid_liveness, ripd::PidLiveness::Dead) {
+                let cleaned =
+                    try_cleanup_stale_authority_files(&data_dir, meta.pid, meta.started_at_ms)?;
+                if cleaned {
+                    backoff_ms = 20;
+                    continue;
                 }
-            } else if meta_unreachable_since
-                .map(|since| since.elapsed() > Duration::from_secs(1))
-                .unwrap_or(false)
-            {
-                cleanup_stale_lock(&data_dir);
-                meta_unreachable_since = None;
             }
         } else {
-            lock_without_meta_since = None;
-            meta_unreachable_since = None;
-            if spawned_since
-                .map(|since| since.elapsed() > Duration::from_millis(200))
-                .unwrap_or(true)
-            {
-                spawn_local_authority(&data_dir, &workspace_root)?;
-                spawned_since = Some(std::time::Instant::now());
+            let lock_path = ripd::authority_lock_path(&data_dir);
+            if lock_path.exists() {
+                match ripd::read_authority_lock_record(&data_dir) {
+                    Ok(Some(lock)) => {
+                        if lock.workspace_root != workspace_root_str {
+                            anyhow::bail!(
+                                "store authority workspace mismatch: authority_root={} current_root={}",
+                                lock.workspace_root,
+                                workspace_root.display()
+                            );
+                        }
+
+                        let pid_liveness = ripd::pid_liveness(lock.pid);
+                        update_last_state(
+                            &mut last_state,
+                            &mut backoff_ms,
+                            format!(
+                                "authority starting (meta.json missing): pid={} pid_liveness={pid_liveness:?}",
+                                lock.pid
+                            ),
+                        );
+
+                        lock_invalid_since = None;
+                        if matches!(pid_liveness, ripd::PidLiveness::Dead) {
+                            let cleaned = try_cleanup_stale_authority_files(
+                                &data_dir,
+                                lock.pid,
+                                lock.started_at_ms,
+                            )?;
+                            if cleaned {
+                                backoff_ms = 20;
+                                continue;
+                            }
+                        }
+                    }
+                    Ok(None) => {
+                        update_last_state(
+                            &mut last_state,
+                            &mut backoff_ms,
+                            format!(
+                                "authority lock exists but cannot be read: {}",
+                                lock_path.display()
+                            ),
+                        );
+                    }
+                    Err(err) => {
+                        lock_invalid_since.get_or_insert(std::time::Instant::now());
+                        update_last_state(
+                            &mut last_state,
+                            &mut backoff_ms,
+                            format!(
+                                "authority lock exists but is invalid json (waiting): {} ({err})",
+                                lock_path.display()
+                            ),
+                        );
+
+                        if err.contains("lock json invalid")
+                            && lock_invalid_since
+                                .map(|since| since.elapsed() > Duration::from_secs(1))
+                                .unwrap_or(false)
+                        {
+                            let cleaned = try_cleanup_corrupt_lock_file(&data_dir)?;
+                            if cleaned {
+                                lock_invalid_since = None;
+                                backoff_ms = 20;
+                                continue;
+                            }
+                        }
+                    }
+                }
+            } else {
+                lock_invalid_since = None;
+                update_last_state(
+                    &mut last_state,
+                    &mut backoff_ms,
+                    "spawning local authority".to_string(),
+                );
+
+                let spawn_cooldown = Duration::from_millis(500);
+                if last_spawned_at
+                    .map(|since| since.elapsed() > spawn_cooldown)
+                    .unwrap_or(true)
+                {
+                    spawn_local_authority(&data_dir, &workspace_root)?;
+                    last_spawned_at = Some(std::time::Instant::now());
+                    backoff_ms = 20;
+                    continue;
+                }
             }
         }
 
         if std::time::Instant::now() >= deadline {
+            let lock_path = ripd::authority_lock_path(&data_dir);
+            let meta_path = ripd::authority_meta_path(&data_dir);
+            let log_path = ripd::authority_dir(&data_dir).join("authority.log");
             anyhow::bail!(
-                "timed out waiting for local authority (store={})",
-                data_dir.display()
+                "timed out waiting for local authority (store={}). last_state={}. lock_path={} meta_path={} log_path={}",
+                data_dir.display(),
+                last_state.unwrap_or_else(|| "unknown".to_string()),
+                lock_path.display(),
+                meta_path.display(),
+                log_path.display()
             );
         }
-        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+        backoff_ms = (backoff_ms.saturating_mul(2)).min(200);
     }
 }
 
@@ -133,7 +232,82 @@ fn spawn_local_authority(data_dir: &Path, workspace_root: &Path) -> anyhow::Resu
     Ok(())
 }
 
-fn cleanup_stale_lock(data_dir: &Path) {
-    let _ = std::fs::remove_file(ripd::authority_meta_path(data_dir));
-    let _ = std::fs::remove_file(ripd::authority_lock_path(data_dir));
+fn try_cleanup_stale_authority_files(
+    data_dir: &Path,
+    expected_pid: u32,
+    _expected_started_at_ms: u64,
+) -> anyhow::Result<bool> {
+    let lock_path = ripd::authority_lock_path(data_dir);
+    let meta_path = ripd::authority_meta_path(data_dir);
+
+    if !lock_path.exists() {
+        return Ok(false);
+    }
+
+    let lock = match ripd::read_authority_lock_record(data_dir) {
+        Ok(Some(lock)) => lock,
+        Ok(None) => return Ok(false),
+        Err(_) => return Ok(false),
+    };
+    if lock.pid != expected_pid {
+        return Ok(false);
+    }
+    let lock_started_at_ms = lock.started_at_ms;
+
+    let lock_tombstone = lock_path.with_file_name(format!(
+        "{}.stale-{}-{}-{}",
+        lock_path.file_name().unwrap_or_default().to_string_lossy(),
+        expected_pid,
+        lock_started_at_ms,
+        now_ms()
+    ));
+    match std::fs::rename(&lock_path, &lock_tombstone) {
+        Ok(()) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(err) => return Err(err.into()),
+    }
+
+    if let Ok(Some(meta)) = ripd::read_authority_meta(data_dir) {
+        if meta.pid == expected_pid {
+            let meta_tombstone = meta_path.with_file_name(format!(
+                "{}.stale-{}-{}-{}",
+                meta_path.file_name().unwrap_or_default().to_string_lossy(),
+                expected_pid,
+                meta.started_at_ms,
+                now_ms()
+            ));
+            if std::fs::rename(&meta_path, &meta_tombstone).is_ok() {
+                let _ = std::fs::remove_file(meta_tombstone);
+            }
+        }
+    }
+
+    let _ = std::fs::remove_file(lock_tombstone);
+    Ok(true)
+}
+
+fn try_cleanup_corrupt_lock_file(data_dir: &Path) -> anyhow::Result<bool> {
+    let lock_path = ripd::authority_lock_path(data_dir);
+    if !lock_path.exists() {
+        return Ok(false);
+    }
+
+    if ripd::authority_meta_path(data_dir).exists() {
+        return Ok(false);
+    }
+
+    let tombstone = lock_path.with_file_name(format!(
+        "{}.corrupt-{}-{}",
+        lock_path.file_name().unwrap_or_default().to_string_lossy(),
+        std::process::id(),
+        now_ms()
+    ));
+    match std::fs::rename(&lock_path, &tombstone) {
+        Ok(()) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(err) => return Err(err.into()),
+    }
+
+    let _ = std::fs::remove_file(tombstone);
+    Ok(true)
 }
