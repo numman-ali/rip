@@ -517,6 +517,58 @@ test("Rip SDK runs sessions over HTTP transport with a real rip serve (ends on s
   }
 });
 
+test("Rip SDK streams thread events over HTTP transport with maxEvents termination", async () => {
+  const repoRoot = repoRootFromSdkCwd();
+  const ripPath = ripExecutablePath(repoRoot);
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-http-thread-events-"));
+
+  const env = { ...process.env };
+  env.RIP_DATA_DIR = dataDir;
+  env.RIP_WORKSPACE_ROOT = path.join(repoRoot, "fixtures", "repo_small");
+  env.RIP_SERVER_ADDR = "127.0.0.1:0";
+  for (const key of [
+    "RIP_OPENRESPONSES_ENDPOINT",
+    "RIP_OPENRESPONSES_API_KEY",
+    "RIP_OPENRESPONSES_MODEL",
+    "RIP_OPENRESPONSES_TOOL_CHOICE",
+    "RIP_OPENRESPONSES_STATELESS_HISTORY",
+    "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
+    "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
+  ]) {
+    delete env[key];
+  }
+
+  let server: SpawnedRipServer | null = null;
+  const controller = new AbortController();
+  let timer: NodeJS.Timeout | null = null;
+
+  try {
+    server = await spawnRipServer(ripPath, repoRoot, dataDir, env);
+    const rip = new Rip({ transport: "http", server: server.endpoint });
+
+    const ensured = await rip.threadEnsure();
+    await rip.threadPostMessage(ensured.thread_id, { content: "hello" });
+
+    timer = setTimeout(() => controller.abort(), 10_000);
+    const { events, result } = await rip.threadEventsStreamed(ensured.thread_id, { signal: controller.signal }, { maxEvents: 3 });
+
+    const streamedFrames: Array<{ type: string }> = [];
+    for await (const frame of events) streamedFrames.push(frame);
+
+    const frames = await result;
+    assert.equal(frames.length, 3);
+    assert.equal(streamedFrames.length, 3);
+    assert.deepEqual(
+      new Set(frames.map((frame) => frame.type)),
+      new Set(["continuity_created", "continuity_message_appended", "continuity_run_spawned"]),
+    );
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (server) await stopRipServer(server.child);
+    await cleanupDataDir(dataDir);
+  }
+});
+
 test("Rip SDK streams task events over HTTP transport until terminal status", async () => {
   const repoRoot = repoRootFromSdkCwd();
   const ripPath = ripExecutablePath(repoRoot);
