@@ -649,6 +649,107 @@ test("Rip SDK branches/handoffs threads over HTTP transport and streams branch/h
   }
 });
 
+test("Rip SDK exercises thread.* JSON endpoints over HTTP transport with a real rip serve", async () => {
+  const repoRoot = repoRootFromSdkCwd();
+  const ripPath = ripExecutablePath(repoRoot);
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-http-thread-json-"));
+
+  const env = { ...process.env };
+  env.RIP_DATA_DIR = dataDir;
+  env.RIP_WORKSPACE_ROOT = path.join(repoRoot, "fixtures", "repo_small");
+  env.RIP_SERVER_ADDR = "127.0.0.1:0";
+  for (const key of [
+    "RIP_OPENRESPONSES_ENDPOINT",
+    "RIP_OPENRESPONSES_API_KEY",
+    "RIP_OPENRESPONSES_MODEL",
+    "RIP_OPENRESPONSES_TOOL_CHOICE",
+    "RIP_OPENRESPONSES_STATELESS_HISTORY",
+    "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
+    "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
+  ]) {
+    delete env[key];
+  }
+
+  let server: SpawnedRipServer | null = null;
+  const controller = new AbortController();
+  let timer: NodeJS.Timeout | null = null;
+
+  try {
+    server = await spawnRipServer(ripPath, repoRoot, dataDir, env);
+    const rip = new Rip({ transport: "http", server: server.endpoint });
+
+    timer = setTimeout(() => controller.abort(), 10_000);
+
+    const ensured = await rip.threadEnsure({ signal: controller.signal });
+    assert.ok(ensured.thread_id.length > 0);
+
+    const list = await rip.threadList({ signal: controller.signal });
+    assert.ok(list.some((thread) => thread.thread_id === ensured.thread_id));
+
+    const meta = await rip.threadGet(ensured.thread_id, { signal: controller.signal });
+    assert.equal(meta.thread_id, ensured.thread_id);
+
+    const posted = await rip.threadPostMessage(ensured.thread_id, { content: "hello" }, { signal: controller.signal });
+    assert.equal(posted.thread_id, ensured.thread_id);
+    assert.ok(posted.message_id.length > 0);
+    assert.ok(posted.session_id.length > 0);
+
+    const selection = await rip.threadContextSelectionStatus(
+      ensured.thread_id,
+      { limit: 1 },
+      { signal: controller.signal },
+    );
+    assert.equal(selection.thread_id, ensured.thread_id);
+    assert.ok(Array.isArray(selection.decisions));
+
+    const cursorStatus = await rip.threadProviderCursorStatus(ensured.thread_id, { signal: controller.signal });
+    assert.equal(cursorStatus.thread_id, ensured.thread_id);
+    assert.ok(Array.isArray(cursorStatus.cursors));
+
+    const rotated = await rip.threadProviderCursorRotate(
+      ensured.thread_id,
+      { reason: "sdk-e2e" },
+      { signal: controller.signal },
+    );
+    assert.equal(rotated.thread_id, ensured.thread_id);
+    assert.equal(typeof rotated.rotated, "boolean");
+
+    const statusBefore = await rip.threadCompactionStatus(ensured.thread_id, { stride_messages: 1 }, { signal: controller.signal });
+    assert.equal(statusBefore.thread_id, ensured.thread_id);
+    assert.equal(statusBefore.stride_messages, 1);
+    assert.ok(statusBefore.message_count >= 1);
+
+    const cutPoints = await rip.threadCompactionCutPoints(
+      ensured.thread_id,
+      { stride_messages: 1, limit: 1 },
+      { signal: controller.signal },
+    );
+    assert.equal(cutPoints.thread_id, ensured.thread_id);
+    assert.equal(cutPoints.stride_messages, 1);
+    assert.ok(Array.isArray(cutPoints.cut_points));
+    assert.ok(cutPoints.cut_points.length >= 1);
+
+    const checkpoint = await rip.threadCompactionCheckpoint(
+      ensured.thread_id,
+      { summary_markdown: "summary", to_message_id: posted.message_id },
+      { signal: controller.signal },
+    );
+    assert.equal(checkpoint.thread_id, ensured.thread_id);
+    assert.ok(checkpoint.checkpoint_id.length > 0);
+    assert.ok(checkpoint.summary_artifact_id.length > 0);
+    assert.equal(checkpoint.to_message_id, posted.message_id);
+
+    const statusAfter = await rip.threadCompactionStatus(ensured.thread_id, { stride_messages: 1 }, { signal: controller.signal });
+    assert.equal(statusAfter.thread_id, ensured.thread_id);
+    assert.ok(statusAfter.latest_checkpoint);
+    assert.equal(statusAfter.latest_checkpoint?.to_message_id, posted.message_id);
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (server) await stopRipServer(server.child);
+    await cleanupDataDir(dataDir);
+  }
+});
+
 test("Rip SDK streams task events over HTTP transport until terminal status", async () => {
   const repoRoot = repoRootFromSdkCwd();
   const ripPath = ripExecutablePath(repoRoot);
