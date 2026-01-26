@@ -75,7 +75,7 @@ Now
   - Implemented: deterministic replay fixtures for `pipes` exit/cancel + PTY control ordering + artifact refs.
   - Implemented: CLI watch (`rip tasks watch`; local-first with optional `--server`) for list/select/tail/cancel (minimal key support; no PTY attach).
   - Cleared: `scripts/check` passes (including llvm-cov thresholds >= 90%).
-  - Parity gap (operator gate): task entities are currently exercised via the server-backed task API; local headless (`rip run --headless`, no server) does not yet have an equivalent task runner/registry surface.
+  - Parity note (operator gate): task entities are exposed via the control plane; local-first CLI/TUI auto-start/attach to a per-store local authority by default, but there is no pure in-process (no control plane) task registry surface yet.
 - Spec snapshot:
   - Background work is a **task entity** (`task_id`) with its own event stream; Phase 1 session invariant remains (one session == one run).
   - Execution modes: `pipes` (default) and `pty` (opt-in; stdin/resize/signal).
@@ -91,20 +91,24 @@ Now
 
 Next
 
-## TUI: interaction foundations (themes, keybindings, raw view, clipboard) [confirm spec]
+## TUI: UX v1 experience review journeys (conversational-first + drill-down) [confirm spec]
 - Refs:
-  - `docs/02_architecture/tui/00_index.md`
+  - `docs/02_architecture/tui/06_experience_review.md`
   - `docs/02_architecture/tui/03_interaction_patterns.md`
+  - `docs/02_architecture/tui/04_graceful_degradation.md`
   - `docs/02_architecture/tui/screens/04_live_session.md`
   - `docs/02_architecture/tui/screens/05_tool_detail.md`
-  - `docs/02_architecture/tui/screens/11_command_palette.md`
-  - `docs/03_contracts/capability_registry.md`
+  - `docs/02_architecture/tui/screens/07_background_tasks.md`
 - Ready:
-  - Add an explicit **experience review** gate: “conversational-first + drill-down”, ambient background signals (tools/tasks/agents), responsive layouts (phone/SSH/web terminals), and a visual language (icons/colors) with graceful degradation.
-  - Implement `ui.theme`, `ui.keybindings`, `ui.raw_events`, and `ui.clipboard` in `rip-tui` without adding business logic (frame-driven).
-  - Add ratatui golden snapshots covering: rendered<->raw toggle, theme switch, and copy-to-clipboard fallback behavior.
+  - Write 2–3 journey docs (short) that exercise the Experience Review pillars:
+    - “follow a run” (output + tool drill-down),
+    - “background task awareness” (tasks list + attach),
+    - “recover from error / stall” (visibility + cancel/retry).
+  - Add ratatui golden snapshots at XS/S/M breakpoints for each journey.
+  - Confirm parity for each journey: every action/info has a CLI/server/SDK equivalent or an approved gap with expiry.
 - Done:
-  - The above UI capabilities are available in the default fullscreen UX and are replay-testable via golden snapshots.
+  - Journeys feel calm and usable at phone/SSH sizes (XS/S), and remain smooth at 10k+ frames (bounded rendering).
+  - Experience Review gates are satisfied for each journey (docs + snapshots + parity evidence).
 
 Later
 - SDK distribution: bundled binaries (npm) [needs work]
@@ -218,6 +222,7 @@ Open questions
 - (empty)
 
 Done (recent)
+- 2026-01-26: TUI interaction foundations shipped (theme switching, keybindings, rendered↔raw toggle, clipboard copy/paste fallbacks); this is baseline plumbing, not the final UX.
 - 2026-01-26: Local authority v0.3 lifecycle hardening: `rip serve` self-heals stale `authority/lock.json` on startup (no-client recovery) and handles SIGTERM/SIGINT with best-effort `lock.json`/`meta.json` cleanup; deterministic restart+recovery integration test added.
 - 2026-01-25: Provider cursor cache truth logging (ADR-0015): `continuity_provider_cursor_updated` frame + `thread.provider_cursor.{status,rotate}` parity (cli_h/tui/server/sdk) + OpenResponses run cursor capture.
 - 2026-01-25: TypeScript SDK: opt-in direct HTTP/SSE transport added for server mode (sessions/threads/tasks), while keeping exec-by-default (ADR-0017).
