@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -1074,6 +1074,112 @@ struct OpenResponsesLoopOutcome {
     last_response_id: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+enum ToolChoiceEnforcement {
+    AllFunctions,
+    NoTools,
+    OnlyFunctions(HashSet<String>),
+}
+
+impl ToolChoiceEnforcement {
+    fn from_tool_choice(tool_choice: &rip_provider_openresponses::ToolChoiceParam) -> Self {
+        Self::from_value(tool_choice.value())
+    }
+
+    fn from_value(value: &Value) -> Self {
+        match value {
+            Value::String(value) => match value.as_str() {
+                "none" => Self::NoTools,
+                _ => Self::AllFunctions,
+            },
+            Value::Object(obj) => match obj.get("type").and_then(|value| value.as_str()) {
+                Some("function") => {
+                    let mut allowed = HashSet::new();
+                    if let Some(name) = obj.get("name").and_then(|value| value.as_str()) {
+                        if !name.is_empty() {
+                            allowed.insert(name.to_string());
+                        }
+                    }
+                    Self::OnlyFunctions(allowed)
+                }
+                Some("allowed_tools") => {
+                    if obj.get("mode").and_then(|value| value.as_str()) == Some("none") {
+                        return Self::NoTools;
+                    }
+                    let mut allowed = HashSet::new();
+                    if let Some(tools) = obj.get("tools").and_then(|value| value.as_array()) {
+                        for tool in tools {
+                            let Some(tool) = tool.as_object() else {
+                                continue;
+                            };
+                            if tool.get("type").and_then(|value| value.as_str()) != Some("function")
+                            {
+                                continue;
+                            }
+                            let Some(name) = tool.get("name").and_then(|value| value.as_str())
+                            else {
+                                continue;
+                            };
+                            if name.is_empty() {
+                                continue;
+                            }
+                            allowed.insert(name.to_string());
+                        }
+                    }
+                    Self::OnlyFunctions(allowed)
+                }
+                _ => Self::AllFunctions,
+            },
+            _ => Self::AllFunctions,
+        }
+    }
+
+    fn allows_function(&self, name: &str) -> bool {
+        match self {
+            ToolChoiceEnforcement::AllFunctions => true,
+            ToolChoiceEnforcement::NoTools => false,
+            ToolChoiceEnforcement::OnlyFunctions(allowed) => allowed.contains(name),
+        }
+    }
+}
+
+fn rejected_tool_invocation_events(
+    session_id: &str,
+    seq: &mut u64,
+    invocation: &ToolInvocation,
+    call_id: &str,
+    error: &str,
+) -> Vec<Event> {
+    let tool_id = format!("tool_denied_{call_id}");
+    let started = Event {
+        id: Uuid::new_v4().to_string(),
+        session_id: session_id.to_string(),
+        timestamp_ms: now_ms(),
+        seq: *seq,
+        kind: EventKind::ToolStarted {
+            tool_id: tool_id.clone(),
+            name: invocation.name.clone(),
+            args: invocation.args.clone(),
+            timeout_ms: invocation.timeout_ms,
+        },
+    };
+    *seq += 1;
+
+    let failed = Event {
+        id: Uuid::new_v4().to_string(),
+        session_id: session_id.to_string(),
+        timestamp_ms: now_ms(),
+        seq: *seq,
+        kind: EventKind::ToolFailed {
+            tool_id,
+            error: error.to_string(),
+        },
+    };
+    *seq += 1;
+
+    vec![started, failed]
+}
+
 async fn run_openresponses_agent_loop(
     ctx: OpenResponsesRunContext<'_>,
 ) -> OpenResponsesLoopOutcome {
@@ -1094,6 +1200,7 @@ async fn run_openresponses_agent_loop(
     let mut followup_tool_outputs: Option<Vec<ItemParam>> = None;
     let mut tool_call_count: u64 = 0;
     let stateless_history = config.stateless_history;
+    let tool_choice_enforcement = ToolChoiceEnforcement::from_tool_choice(&config.tool_choice);
     let mut initial_request_items = initial_items;
     let mut history_items = if stateless_history {
         match initial_request_items.as_ref() {
@@ -1191,7 +1298,22 @@ async fn run_openresponses_agent_loop(
                 args: args_value,
                 timeout_ms: None,
             };
-            let output_value = if requires_workspace_lock(&invocation.name) {
+            let output_value = if !tool_choice_enforcement.allows_function(&invocation.name) {
+                let error = format!(
+                    "tool call rejected by tool_choice (call_id={}, name={})",
+                    call.call_id, call.name
+                );
+                let tool_events = rejected_tool_invocation_events(
+                    session_id,
+                    seq,
+                    &invocation,
+                    &call.call_id,
+                    &error,
+                );
+                let output_value = tool_events_to_function_call_output(&call.name, &tool_events);
+                sink.emit_all(tool_events).await;
+                output_value
+            } else if requires_workspace_lock(&invocation.name) {
                 let _guard = workspace_lock.acquire().await;
                 let tool_events = tool_runner.run(session_id, seq, invocation).await;
                 let side_effects = summarize_continuity_tool_side_effects(&tool_events);
@@ -2039,6 +2161,155 @@ data: [DONE]\n\n";
     }
 
     #[tokio::test]
+    async fn run_openresponses_agent_loop_rejects_tools_when_tool_choice_none() {
+        use axum::extract::{Json, State};
+        use axum::http::header::CONTENT_TYPE;
+        use axum::routing::post;
+        use axum::Router as AxumRouter;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use tokio::net::TcpListener;
+
+        #[derive(Clone)]
+        struct ProviderState {
+            counter: Arc<AtomicUsize>,
+            requests: Arc<Mutex<Vec<Value>>>,
+            tool_sse: Arc<String>,
+            output_sse: Arc<String>,
+        }
+
+        async fn handler(
+            State(state): State<ProviderState>,
+            Json(body): Json<Value>,
+        ) -> impl axum::response::IntoResponse {
+            state.requests.lock().await.push(body);
+            let idx = state.counter.fetch_add(1, Ordering::SeqCst);
+            let sse = if idx == 0 {
+                state.tool_sse.as_str()
+            } else {
+                state.output_sse.as_str()
+            };
+            ([(CONTENT_TYPE, "text/event-stream")], sse.to_string())
+        }
+
+        let tool_sse = "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"noop\",\"arguments\":\"{}\"}}\n\n\
+data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"noop\",\"arguments\":\"{}\"}}\n\n\
+data: [DONE]\n\n";
+        let output_sse = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n\
+data: [DONE]\n\n";
+
+        let state = ProviderState {
+            counter: Arc::new(AtomicUsize::new(0)),
+            requests: Arc::new(Mutex::new(Vec::new())),
+            tool_sse: Arc::new(tool_sse.to_string()),
+            output_sse: Arc::new(output_sse.to_string()),
+        };
+        let provider_app = AxumRouter::new()
+            .route("/v1/responses", post(handler))
+            .with_state(state.clone());
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        tokio::spawn(async move {
+            axum::serve(listener, provider_app).await.expect("serve");
+        });
+
+        let dir = tempdir().expect("tmp");
+        let log = EventLog::new(dir.path().join("events.jsonl")).expect("log");
+        let buffer = Arc::new(Mutex::new(Vec::new()));
+        let (sender, _) = broadcast::channel(8);
+        let sink = EventSink {
+            sender: &sender,
+            buffer: &buffer,
+            event_log: &log,
+        };
+
+        let executed = Arc::new(AtomicUsize::new(0));
+        let registry = Arc::new(rip_tools::ToolRegistry::default());
+        registry.register(
+            "noop",
+            Arc::new({
+                let executed = executed.clone();
+                move |_invocation| {
+                    let executed = executed.clone();
+                    Box::pin(async move {
+                        executed.fetch_add(1, Ordering::SeqCst);
+                        rip_tools::ToolOutput::success(vec![])
+                    })
+                }
+            }),
+        );
+        let tool_runner = ToolRunner::new(registry, 1);
+        let workspace_lock = crate::workspace_lock::WorkspaceLock::new();
+        let continuity_workspace = dir.path().join("workspace");
+        std::fs::create_dir_all(&continuity_workspace).expect("workspace");
+        let continuity_log =
+            Arc::new(EventLog::new(dir.path().join("continuity_events.jsonl")).expect("log"));
+        let continuity_store = ContinuityStore::new(
+            dir.path().join("continuity_data"),
+            continuity_workspace,
+            continuity_log,
+        )
+        .expect("continuities");
+
+        let config = OpenResponsesConfig {
+            endpoint: format!("http://{addr}/v1/responses"),
+            api_key: None,
+            model: Some("fixture-model".to_string()),
+            tool_choice: ToolChoiceParam::none(),
+            followup_user_message: None,
+            stateless_history: true,
+            parallel_tool_calls: false,
+        };
+        let mut seq = 0;
+        let http = reqwest::Client::new();
+        let outcome = run_openresponses_agent_loop(OpenResponsesRunContext {
+            http: &http,
+            config: &config,
+            tool_runner: &tool_runner,
+            workspace_lock: &workspace_lock,
+            continuities: &continuity_store,
+            continuity_run: None,
+            session_id: "s1",
+            initial_items: None,
+            prompt: "hi",
+            seq: &mut seq,
+            sink,
+        })
+        .await;
+
+        assert_eq!(outcome.reason, "completed");
+        assert_eq!(executed.load(Ordering::SeqCst), 0);
+
+        let requests = state.requests.lock().await;
+        assert_eq!(requests.len(), 2);
+        let input = requests[1]
+            .get("input")
+            .and_then(|value| value.as_array())
+            .expect("input items");
+        let output_item = input
+            .iter()
+            .find(|item| {
+                item.get("type").and_then(|value| value.as_str()) == Some("function_call_output")
+                    && item.get("call_id").and_then(|value| value.as_str()) == Some("call_1")
+            })
+            .expect("function_call_output item");
+        let output = output_item
+            .get("output")
+            .and_then(|value| value.as_str())
+            .expect("output string");
+        let output_value: Value = serde_json::from_str(output).expect("output json");
+        assert_eq!(
+            output_value.get("ok").and_then(|value| value.as_bool()),
+            Some(false)
+        );
+        assert!(output_value
+            .get("error")
+            .and_then(|value| value.as_str())
+            .unwrap_or("")
+            .contains("rejected"));
+    }
+
+    #[tokio::test]
     async fn run_openresponses_agent_loop_requires_previous_response_id() {
         use axum::http::header::CONTENT_TYPE;
         use axum::routing::post;
@@ -2120,6 +2391,178 @@ data: [DONE]\n\n";
         .await;
         assert_eq!(outcome.reason, "provider_error");
         assert!(outcome.last_response_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn run_openresponses_agent_loop_enforces_allowed_tools() {
+        use axum::extract::{Json, State};
+        use axum::http::header::CONTENT_TYPE;
+        use axum::routing::post;
+        use axum::Router as AxumRouter;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use tokio::net::TcpListener;
+
+        #[derive(Clone)]
+        struct ProviderState {
+            counter: Arc<AtomicUsize>,
+            requests: Arc<Mutex<Vec<Value>>>,
+            tool_sse: Arc<String>,
+            output_sse: Arc<String>,
+        }
+
+        async fn handler(
+            State(state): State<ProviderState>,
+            Json(body): Json<Value>,
+        ) -> impl axum::response::IntoResponse {
+            state.requests.lock().await.push(body);
+            let idx = state.counter.fetch_add(1, Ordering::SeqCst);
+            let sse = if idx == 0 {
+                state.tool_sse.as_str()
+            } else {
+                state.output_sse.as_str()
+            };
+            ([(CONTENT_TYPE, "text/event-stream")], sse.to_string())
+        }
+
+        let tool_sse = "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_a\",\"name\":\"noop_allowed\",\"arguments\":\"{}\"}}\n\n\
+data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_a\",\"name\":\"noop_allowed\",\"arguments\":\"{}\"}}\n\n\
+data: {\"type\":\"response.output_item.added\",\"output_index\":1,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_b\",\"name\":\"noop_disallowed\",\"arguments\":\"{}\"}}\n\n\
+data: {\"type\":\"response.output_item.done\",\"output_index\":1,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_b\",\"name\":\"noop_disallowed\",\"arguments\":\"{}\"}}\n\n\
+data: [DONE]\n\n";
+        let output_sse = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n\
+data: [DONE]\n\n";
+
+        let state = ProviderState {
+            counter: Arc::new(AtomicUsize::new(0)),
+            requests: Arc::new(Mutex::new(Vec::new())),
+            tool_sse: Arc::new(tool_sse.to_string()),
+            output_sse: Arc::new(output_sse.to_string()),
+        };
+        let provider_app = AxumRouter::new()
+            .route("/v1/responses", post(handler))
+            .with_state(state.clone());
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        tokio::spawn(async move {
+            axum::serve(listener, provider_app).await.expect("serve");
+        });
+
+        let dir = tempdir().expect("tmp");
+        let log = EventLog::new(dir.path().join("events.jsonl")).expect("log");
+        let buffer = Arc::new(Mutex::new(Vec::new()));
+        let (sender, _) = broadcast::channel(8);
+        let sink = EventSink {
+            sender: &sender,
+            buffer: &buffer,
+            event_log: &log,
+        };
+
+        let allowed_executed = Arc::new(AtomicUsize::new(0));
+        let disallowed_executed = Arc::new(AtomicUsize::new(0));
+        let registry = Arc::new(rip_tools::ToolRegistry::default());
+        registry.register(
+            "noop_allowed",
+            Arc::new({
+                let allowed_executed = allowed_executed.clone();
+                move |_invocation| {
+                    let allowed_executed = allowed_executed.clone();
+                    Box::pin(async move {
+                        allowed_executed.fetch_add(1, Ordering::SeqCst);
+                        rip_tools::ToolOutput::success(vec![])
+                    })
+                }
+            }),
+        );
+        registry.register(
+            "noop_disallowed",
+            Arc::new({
+                let disallowed_executed = disallowed_executed.clone();
+                move |_invocation| {
+                    let disallowed_executed = disallowed_executed.clone();
+                    Box::pin(async move {
+                        disallowed_executed.fetch_add(1, Ordering::SeqCst);
+                        rip_tools::ToolOutput::success(vec![])
+                    })
+                }
+            }),
+        );
+        let tool_runner = ToolRunner::new(registry, 1);
+        let workspace_lock = crate::workspace_lock::WorkspaceLock::new();
+        let continuity_workspace = dir.path().join("workspace");
+        std::fs::create_dir_all(&continuity_workspace).expect("workspace");
+        let continuity_log =
+            Arc::new(EventLog::new(dir.path().join("continuity_events.jsonl")).expect("log"));
+        let continuity_store = ContinuityStore::new(
+            dir.path().join("continuity_data"),
+            continuity_workspace,
+            continuity_log,
+        )
+        .expect("continuities");
+
+        let tool_choice = ToolChoiceParam::new(serde_json::json!({
+            "type": "allowed_tools",
+            "tools": [{ "type": "function", "name": "noop_allowed" }],
+            "mode": "auto",
+        }));
+        assert!(tool_choice.errors().is_empty());
+        let config = OpenResponsesConfig {
+            endpoint: format!("http://{addr}/v1/responses"),
+            api_key: None,
+            model: Some("fixture-model".to_string()),
+            tool_choice,
+            followup_user_message: None,
+            stateless_history: true,
+            parallel_tool_calls: false,
+        };
+        let mut seq = 0;
+        let http = reqwest::Client::new();
+        let outcome = run_openresponses_agent_loop(OpenResponsesRunContext {
+            http: &http,
+            config: &config,
+            tool_runner: &tool_runner,
+            workspace_lock: &workspace_lock,
+            continuities: &continuity_store,
+            continuity_run: None,
+            session_id: "s1",
+            initial_items: None,
+            prompt: "hi",
+            seq: &mut seq,
+            sink,
+        })
+        .await;
+
+        assert_eq!(outcome.reason, "completed");
+        assert_eq!(allowed_executed.load(Ordering::SeqCst), 1);
+        assert_eq!(disallowed_executed.load(Ordering::SeqCst), 0);
+
+        let requests = state.requests.lock().await;
+        assert_eq!(requests.len(), 2);
+        let input = requests[1]
+            .get("input")
+            .and_then(|value| value.as_array())
+            .expect("input items");
+        let output_item = input
+            .iter()
+            .find(|item| {
+                item.get("type").and_then(|value| value.as_str()) == Some("function_call_output")
+                    && item.get("call_id").and_then(|value| value.as_str()) == Some("call_b")
+            })
+            .expect("function_call_output call_b item");
+        let output = output_item
+            .get("output")
+            .and_then(|value| value.as_str())
+            .expect("output string");
+        let output_value: Value = serde_json::from_str(output).expect("output json");
+        assert_eq!(
+            output_value.get("ok").and_then(|value| value.as_bool()),
+            Some(false)
+        );
+        assert!(output_value
+            .get("error")
+            .and_then(|value| value.as_str())
+            .unwrap_or("")
+            .contains("rejected"));
     }
 
     #[tokio::test]

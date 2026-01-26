@@ -74,6 +74,7 @@ Open risks / notes
 - Perf: prompt cache friendliness requires deterministic tool ordering + stable instruction blocks + append-only context changes within a run (`docs/03_contracts/modules/phase-1/02_provider_adapters.md`, `https://openai.com/index/unrolling-the-codex-agent-loop/`).
 - Determinism: task output pumps retry EINTR (pipes + pty), fixing rare missing stderr in `tasks::tests::run_task_writes_stdout_and_stderr_logs`.
 - Docs: clarified surface parity “active surfaces” semantics and aligned TUI capability statuses/gaps with current shipped fullscreen UX.
+- OpenResponses: `tool_choice`/`allowed_tools` are now enforced for function tool execution (disallowed calls emit tool failure + `function_call_output.ok=false`).
 
 Active priorities
 - Keep roadmap Now/Next aligned with the implementation work.
