@@ -42,8 +42,8 @@ Current focus
 - Implemented: TS SDK `run()` HTTP transport real-server e2e coverage (spawn `rip serve`; session SSE terminates on `session_ended`).
 - Implemented: TS SDK `threadEventsStreamed()` HTTP transport real-server e2e coverage (spawn `rip serve`; client terminates via `maxEvents`; asserts key continuity frames).
 - Implemented: TS SDK HTTP transport real-server e2e coverage for `threadBranch()`/`threadHandoff()` + branch/handoff stream frame assertions.
-- Implemented: TS SDK HTTP transport real-server e2e coverage for thread.* JSON endpoints (list/get/context-selection/provider-cursor/compaction).
-- Implemented: TS SDK HTTP transport real-server e2e coverage for task.* JSON endpoints (spawn/list/status/output/cancel).
+- Implemented: TS SDK HTTP transport real-server e2e coverage for thread.* JSON endpoints (list/get/context-selection/provider-cursor/compaction including auto + schedule via dry_run/no_execute).
+- Implemented: TS SDK HTTP transport real-server e2e coverage for task.* JSON endpoints (spawn/list/status/output/cancel + PTY stdin/resize/signal behind `RIP_TASKS_ALLOW_PTY=1`).
 - Decision locked (ADR-0010): `context.compile` is the canonical way runs “remember” across time; provider cursors are optional caches only.
 - Implemented: provider cursor cache truth logging (ADR-0015): `continuity_provider_cursor_updated` + `thread.provider_cursor.{status,rotate}` across cli_h/tui/server/sdk; OpenResponses runs record `previous_response_id` on completion as a rebuildable cache.
 - Implemented: context selection strategy evolution truth logging v0.1 (ADR-0016): `continuity_context_selection_decided` + `thread.context_selection.status` across cli_h/tui/server/sdk; compiler selection/budgets/inputs/reasons are now auditable truth.

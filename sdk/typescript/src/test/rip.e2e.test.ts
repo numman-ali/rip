@@ -690,6 +690,8 @@ test("Rip SDK exercises thread.* JSON endpoints over HTTP transport with a real 
     assert.equal(meta.thread_id, ensured.thread_id);
 
     const posted = await rip.threadPostMessage(ensured.thread_id, { content: "hello" }, { signal: controller.signal });
+    await rip.threadPostMessage(ensured.thread_id, { content: "hello2" }, { signal: controller.signal });
+    await rip.threadPostMessage(ensured.thread_id, { content: "hello3" }, { signal: controller.signal });
     assert.equal(posted.thread_id, ensured.thread_id);
     assert.ok(posted.message_id.length > 0);
     assert.ok(posted.session_id.length > 0);
@@ -717,7 +719,7 @@ test("Rip SDK exercises thread.* JSON endpoints over HTTP transport with a real 
     const statusBefore = await rip.threadCompactionStatus(ensured.thread_id, { stride_messages: 1 }, { signal: controller.signal });
     assert.equal(statusBefore.thread_id, ensured.thread_id);
     assert.equal(statusBefore.stride_messages, 1);
-    assert.ok(statusBefore.message_count >= 1);
+    assert.ok(statusBefore.message_count >= 3);
 
     const cutPoints = await rip.threadCompactionCutPoints(
       ensured.thread_id,
@@ -728,6 +730,32 @@ test("Rip SDK exercises thread.* JSON endpoints over HTTP transport with a real 
     assert.equal(cutPoints.stride_messages, 1);
     assert.ok(Array.isArray(cutPoints.cut_points));
     assert.ok(cutPoints.cut_points.length >= 1);
+
+    const auto = await rip.threadCompactionAuto(
+      ensured.thread_id,
+      { stride_messages: 1, max_new_checkpoints: 1, dry_run: true },
+      { signal: controller.signal },
+    );
+    assert.equal(auto.thread_id, ensured.thread_id);
+    assert.equal(auto.stride_messages, 1);
+    assert.ok(Array.isArray(auto.planned));
+    assert.ok(Array.isArray(auto.result));
+    assert.equal(auto.error, null);
+
+    const scheduled = await rip.threadCompactionAutoSchedule(
+      ensured.thread_id,
+      { stride_messages: 1, max_new_checkpoints: 1, dry_run: true, no_execute: true },
+      { signal: controller.signal },
+    );
+    assert.equal(scheduled.thread_id, ensured.thread_id);
+    assert.equal(scheduled.stride_messages, 1);
+    assert.equal(scheduled.max_new_checkpoints, 1);
+    assert.equal(scheduled.execute, false);
+    assert.ok(typeof scheduled.decision === "string" && scheduled.decision.length > 0);
+    assert.ok(typeof scheduled.policy_id === "string" && scheduled.policy_id.length > 0);
+    assert.ok(Array.isArray(scheduled.planned));
+    assert.ok(Array.isArray(scheduled.result));
+    assert.equal(scheduled.error, null);
 
     const checkpoint = await rip.threadCompactionCheckpoint(
       ensured.thread_id,
@@ -819,6 +847,117 @@ test("Rip SDK exercises task.* JSON endpoints over HTTP transport with a real ri
       cancelled = await rip.taskStatus(long.task_id, { signal: controller.signal });
     }
     assert.ok(["cancelled", "exited", "failed"].includes(cancelled.status));
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (server) await stopRipServer(server.child);
+    await cleanupDataDir(dataDir);
+    await rm(workspaceDir, { recursive: true, force: true });
+  }
+});
+
+test("Rip SDK exercises PTY task control endpoints over HTTP transport when RIP_TASKS_ALLOW_PTY=1", async () => {
+  if (process.platform === "win32") return;
+
+  const repoRoot = repoRootFromSdkCwd();
+  const ripPath = ripExecutablePath(repoRoot);
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-http-task-pty-"));
+  const workspaceDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-http-task-pty-workspace-"));
+
+  const env = { ...process.env };
+  env.RIP_DATA_DIR = dataDir;
+  env.RIP_WORKSPACE_ROOT = workspaceDir;
+  env.RIP_SERVER_ADDR = "127.0.0.1:0";
+  env.RIP_TASKS_ALLOW_PTY = "1";
+  for (const key of [
+    "RIP_OPENRESPONSES_ENDPOINT",
+    "RIP_OPENRESPONSES_API_KEY",
+    "RIP_OPENRESPONSES_MODEL",
+    "RIP_OPENRESPONSES_TOOL_CHOICE",
+    "RIP_OPENRESPONSES_STATELESS_HISTORY",
+    "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
+    "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
+  ]) {
+    delete env[key];
+  }
+
+  let server: SpawnedRipServer | null = null;
+  const controller = new AbortController();
+  let timer: NodeJS.Timeout | null = null;
+
+  const retryDeadlineMs = 5_000;
+
+  try {
+    server = await spawnRipServer(ripPath, repoRoot, dataDir, env);
+    const rip = new Rip({ transport: "http", server: server.endpoint });
+
+    timer = setTimeout(() => controller.abort(), 10_000);
+
+    const created = await rip.taskSpawn(
+      { tool: "bash", args: { command: "stty -echo; cat" }, title: "sdk-e2e-http-task-pty", execution_mode: "pty" },
+      { signal: controller.signal },
+    );
+    assert.ok(created.task_id.length > 0);
+
+    const readyDeadline = Date.now() + retryDeadlineMs;
+    while (true) {
+      try {
+        await rip.taskResize(created.task_id, { signal: controller.signal }, { rows: 24, cols: 80 });
+        break;
+      } catch (err) {
+        if (Date.now() > readyDeadline) throw err;
+        await sleep(50);
+      }
+    }
+
+    const stdinDeadline = Date.now() + retryDeadlineMs;
+    while (true) {
+      try {
+        await rip.taskWriteStdinText(created.task_id, { signal: controller.signal }, "hello");
+        break;
+      } catch (err) {
+        if (Date.now() > stdinDeadline) throw err;
+        await sleep(50);
+      }
+    }
+
+    const outputDeadline = Date.now() + retryDeadlineMs;
+    let sawHello = false;
+    while (Date.now() < outputDeadline) {
+      try {
+        const output = await rip.taskOutput(
+          created.task_id,
+          { signal: controller.signal },
+          { stream: "pty", offsetBytes: 0, maxBytes: 256 },
+        );
+        if (output.content.includes("hello")) {
+          sawHello = true;
+          break;
+        }
+      } catch {
+        // ignore and retry
+      }
+      await sleep(50);
+    }
+    assert.ok(sawHello, "expected PTY output to include written stdin");
+
+    const signalDeadline = Date.now() + retryDeadlineMs;
+    while (true) {
+      try {
+        await rip.taskSignal(created.task_id, { signal: controller.signal }, "SIGTERM");
+        break;
+      } catch (err) {
+        if (Date.now() > signalDeadline) throw err;
+        await sleep(50);
+      }
+    }
+
+    const deadline = Date.now() + 10_000;
+    let terminal = await rip.taskStatus(created.task_id, { signal: controller.signal });
+    while (Date.now() < deadline && (terminal.status === "queued" || terminal.status === "running")) {
+      await sleep(50);
+      terminal = await rip.taskStatus(created.task_id, { signal: controller.signal });
+    }
+    assert.ok(["exited", "cancelled", "failed"].includes(terminal.status));
   } finally {
     if (timer) clearTimeout(timer);
     if (server) await stopRipServer(server.child);
