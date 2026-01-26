@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -18,6 +18,37 @@ function ripExecutablePath(repoRoot: string): string {
 
   const exe = process.platform === "win32" ? "rip.exe" : "rip";
   return path.join(repoRoot, "target", "debug", exe);
+}
+
+async function killAuthority(dataDir: string): Promise<void> {
+  const metaPath = path.join(dataDir, "authority", "meta.json");
+  let raw: string;
+  try {
+    raw = await readFile(metaPath, "utf8");
+  } catch {
+    return;
+  }
+  let meta: { pid?: number } | null = null;
+  try {
+    meta = JSON.parse(raw) as { pid?: number };
+  } catch {
+    return;
+  }
+  if (!meta || typeof meta.pid !== "number") return;
+  try {
+    process.kill(meta.pid, "SIGTERM");
+  } catch {
+    return;
+  }
+}
+
+async function cleanupDataDir(dataDir: string): Promise<void> {
+  await killAuthority(dataDir);
+  await rm(dataDir, { recursive: true, force: true });
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 test("Rip SDK runs `rip` locally and parses JSONL frames", async () => {
@@ -50,7 +81,7 @@ test("Rip SDK runs `rip` locally and parses JSONL frames", async () => {
     assert.ok(turn.frames.some((frame) => frame.type === "output_text_delta"));
     assert.ok(turn.frames.some((frame) => frame.type === "session_ended"));
   } finally {
-    await rm(dataDir, { recursive: true, force: true });
+    await cleanupDataDir(dataDir);
   }
 });
 
@@ -129,7 +160,7 @@ test("Rip SDK exposes continuity-first thread.* via `rip threads`", async () => 
     assert.equal(handoffFrame.from_thread_id, ensured.thread_id);
     assert.equal(handoffFrame.summary_markdown, "summary");
   } finally {
-    await rm(dataDir, { recursive: true, force: true });
+    await cleanupDataDir(dataDir);
   }
 });
 
@@ -170,7 +201,7 @@ test("Rip SDK exposes compaction checkpoints via `rip threads`", async () => {
     assert.ok(checkpoint.summary_artifact_id.length > 0);
     assert.equal(checkpoint.to_message_id, posted.message_id);
   } finally {
-    await rm(dataDir, { recursive: true, force: true });
+    await cleanupDataDir(dataDir);
     await rm(workspaceDir, { recursive: true, force: true });
   }
 });
@@ -210,7 +241,59 @@ test("Rip SDK exposes compaction status via `rip threads`", async () => {
     assert.ok(status.next_cut_point);
     assert.equal(status.next_cut_point.to_message_id.length > 0, true);
   } finally {
-    await rm(dataDir, { recursive: true, force: true });
+    await cleanupDataDir(dataDir);
     await rm(workspaceDir, { recursive: true, force: true });
+  }
+});
+
+test("Rip SDK exposes task.* locally without server", async () => {
+  const repoRoot = repoRootFromSdkCwd();
+  const ripPath = ripExecutablePath(repoRoot);
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-tasks-"));
+
+  const opts = {
+    cwd: repoRoot,
+    env: {
+      RIP_DATA_DIR: dataDir,
+      RIP_WORKSPACE_ROOT: path.join(repoRoot, "fixtures", "repo_small"),
+    },
+    unsetEnv: [
+      "RIP_OPENRESPONSES_ENDPOINT",
+      "RIP_OPENRESPONSES_API_KEY",
+      "RIP_OPENRESPONSES_MODEL",
+      "RIP_OPENRESPONSES_TOOL_CHOICE",
+      "RIP_OPENRESPONSES_STATELESS_HISTORY",
+      "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
+      "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
+    ],
+  } as const;
+
+  try {
+    const rip = new Rip({ executablePath: ripPath });
+    const created = await rip.taskSpawn({ tool: "bash", args: { command: "sleep 30" }, title: "sdk-e2e" }, opts);
+    assert.ok(created.task_id.length > 0);
+
+    const status = await rip.taskStatus(created.task_id, opts);
+    assert.equal(status.task_id, created.task_id);
+
+    const list = await rip.taskList(opts);
+    assert.ok(list.some((task) => task.task_id === created.task_id));
+
+    const output = await rip.taskOutput(created.task_id, opts);
+    assert.equal(output.task_id, created.task_id);
+
+    await rip.taskCancel(created.task_id, opts, "sdk-e2e-cancel");
+
+    const deadline = Date.now() + 10_000;
+    let terminal = await rip.taskStatus(created.task_id, opts);
+    while (Date.now() < deadline && (terminal.status === "queued" || terminal.status === "running")) {
+      await sleep(50);
+      terminal = await rip.taskStatus(created.task_id, opts);
+    }
+
+    assert.equal(terminal.task_id, created.task_id);
+    assert.ok(["cancelled", "exited", "failed"].includes(terminal.status));
+  } finally {
+    await cleanupDataDir(dataDir);
   }
 });

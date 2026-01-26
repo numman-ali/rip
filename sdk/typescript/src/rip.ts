@@ -50,7 +50,7 @@ export type RipRunOptions = {
 };
 
 export type RipTaskOptions = {
-  server: string;
+  server?: string;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   unsetEnv?: readonly string[];
@@ -1210,7 +1210,9 @@ export class Rip {
   async taskSpawn(request: RipTaskSpawnRequest, options: RipTaskOptions): Promise<RipTaskCreated> {
     const transport = resolveTransport(options.transport ?? this.base.transport);
     if (transport === "http") {
-      const config = this.httpConfig(options.server, options);
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("taskSpawn with http transport requires server");
+      const config = this.httpConfig(server, options);
       const body = JSON.stringify({
         tool: request.tool,
         args: request.args ?? null,
@@ -1227,9 +1229,7 @@ export class Rip {
     }
     const executionMode = request.execution_mode ?? "pipes";
     const out = await this.execJson(
-      [
-        "tasks",
-        "--server",
+      buildRipTaskArgs(
         options.server,
         "spawn",
         "--tool",
@@ -1239,7 +1239,7 @@ export class Rip {
         ...(request.title ? ["--title", request.title] : []),
         "--execution-mode",
         executionMode,
-      ],
+      ),
       options,
     );
     return out as RipTaskCreated;
@@ -1248,29 +1248,35 @@ export class Rip {
   async taskList(options: RipTaskOptions): Promise<RipTaskStatus[]> {
     const transport = resolveTransport(options.transport ?? this.base.transport);
     if (transport === "http") {
-      const config = this.httpConfig(options.server, options);
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("taskList with http transport requires server");
+      const config = this.httpConfig(server, options);
       const out = await httpJson(config, "/tasks", { method: "GET", signal: options.signal });
       return out as RipTaskStatus[];
     }
-    const out = await this.execJson(["tasks", "--server", options.server, "list"], options);
+    const out = await this.execJson(buildRipTaskArgs(options.server, "list"), options);
     return out as RipTaskStatus[];
   }
 
   async taskStatus(taskId: string, options: RipTaskOptions): Promise<RipTaskStatus> {
     const transport = resolveTransport(options.transport ?? this.base.transport);
     if (transport === "http") {
-      const config = this.httpConfig(options.server, options);
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("taskStatus with http transport requires server");
+      const config = this.httpConfig(server, options);
       const out = await httpJson(config, `/tasks/${taskId}`, { method: "GET", signal: options.signal });
       return out as RipTaskStatus;
     }
-    const out = await this.execJson(["tasks", "--server", options.server, "status", taskId], options);
+    const out = await this.execJson(buildRipTaskArgs(options.server, "status", taskId), options);
     return out as RipTaskStatus;
   }
 
   async taskCancel(taskId: string, options: RipTaskOptions, reason?: string): Promise<void> {
     const transport = resolveTransport(options.transport ?? this.base.transport);
     if (transport === "http") {
-      const config = this.httpConfig(options.server, options);
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("taskCancel with http transport requires server");
+      const config = this.httpConfig(server, options);
       await httpRequest(config, `/tasks/${taskId}/cancel`, {
         method: "POST",
         signal: options.signal,
@@ -1280,7 +1286,7 @@ export class Rip {
       return;
     }
     await this.execRaw(
-      ["tasks", "--server", options.server, "cancel", taskId, ...(reason ? ["--reason", reason] : [])],
+      buildRipTaskArgs(options.server, "cancel", taskId, ...(reason ? ["--reason", reason] : [])),
       options,
     );
   }
@@ -1294,7 +1300,9 @@ export class Rip {
     const offset = query.offsetBytes ?? 0;
     const transport = resolveTransport(options.transport ?? this.base.transport);
     if (transport === "http") {
-      const config = this.httpConfig(options.server, options);
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("taskOutput with http transport requires server");
+      const config = this.httpConfig(server, options);
       const qs = new URLSearchParams();
       qs.set("stream", stream);
       qs.set("offset_bytes", String(offset));
@@ -1302,7 +1310,7 @@ export class Rip {
       const out = await httpJson(config, `/tasks/${taskId}/output?${qs.toString()}`, { method: "GET", signal: options.signal });
       return out as RipTaskOutput;
     }
-    const args = ["tasks", "--server", options.server, "output", taskId, "--stream", stream, "--offset-bytes", String(offset)];
+    const args = buildRipTaskArgs(options.server, "output", taskId, "--stream", stream, "--offset-bytes", String(offset));
     if (typeof query.maxBytes === "number") args.push("--max-bytes", String(query.maxBytes));
     const out = await this.execJson(args, options);
     return out as RipTaskOutput;
@@ -1312,7 +1320,9 @@ export class Rip {
     const chunkB64 = Buffer.from(chunk).toString("base64");
     const transport = resolveTransport(options.transport ?? this.base.transport);
     if (transport === "http") {
-      const config = this.httpConfig(options.server, options);
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("taskWriteStdin with http transport requires server");
+      const config = this.httpConfig(server, options);
       await httpRequest(config, `/tasks/${taskId}/stdin`, {
         method: "POST",
         signal: options.signal,
@@ -1321,7 +1331,7 @@ export class Rip {
       });
       return;
     }
-    await this.execRaw(["tasks", "--server", options.server, "stdin", taskId, "--chunk-b64", chunkB64], options);
+    await this.execRaw(buildRipTaskArgs(options.server, "stdin", taskId, "--chunk-b64", chunkB64), options);
   }
 
   async taskWriteStdinText(
@@ -1331,13 +1341,29 @@ export class Rip {
     opts: { noNewline?: boolean } = {},
   ): Promise<void> {
     const payload = opts.noNewline ? text : `${text}\n`;
-    await this.execRaw(["tasks", "--server", options.server, "stdin", taskId, "--text", payload, "--no-newline"], options);
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("taskWriteStdinText with http transport requires server");
+      const config = this.httpConfig(server, options);
+      const chunkB64 = Buffer.from(payload).toString("base64");
+      await httpRequest(config, `/tasks/${taskId}/stdin`, {
+        method: "POST",
+        signal: options.signal,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ chunk_b64: chunkB64 }),
+      });
+      return;
+    }
+    await this.execRaw(buildRipTaskArgs(options.server, "stdin", taskId, "--text", payload, "--no-newline"), options);
   }
 
   async taskResize(taskId: string, options: RipTaskOptions, size: { rows: number; cols: number }): Promise<void> {
     const transport = resolveTransport(options.transport ?? this.base.transport);
     if (transport === "http") {
-      const config = this.httpConfig(options.server, options);
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("taskResize with http transport requires server");
+      const config = this.httpConfig(server, options);
       await httpRequest(config, `/tasks/${taskId}/resize`, {
         method: "POST",
         signal: options.signal,
@@ -1347,7 +1373,7 @@ export class Rip {
       return;
     }
     await this.execRaw(
-      ["tasks", "--server", options.server, "resize", taskId, "--rows", String(size.rows), "--cols", String(size.cols)],
+      buildRipTaskArgs(options.server, "resize", taskId, "--rows", String(size.rows), "--cols", String(size.cols)),
       options,
     );
   }
@@ -1355,7 +1381,9 @@ export class Rip {
   async taskSignal(taskId: string, options: RipTaskOptions, signal: string): Promise<void> {
     const transport = resolveTransport(options.transport ?? this.base.transport);
     if (transport === "http") {
-      const config = this.httpConfig(options.server, options);
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("taskSignal with http transport requires server");
+      const config = this.httpConfig(server, options);
       await httpRequest(config, `/tasks/${taskId}/signal`, {
         method: "POST",
         signal: options.signal,
@@ -1364,7 +1392,7 @@ export class Rip {
       });
       return;
     }
-    await this.execRaw(["tasks", "--server", options.server, "signal", taskId, signal], options);
+    await this.execRaw(buildRipTaskArgs(options.server, "signal", taskId, signal), options);
   }
 
   async taskEventsStreamed(
@@ -1373,7 +1401,9 @@ export class Rip {
   ): Promise<{ events: AsyncGenerator<RipEventFrame>; result: Promise<RipEventFrame[]> }> {
     const transport = resolveTransport(options.transport ?? this.base.transport);
     if (transport === "http") {
-      const config = this.httpConfig(options.server, options);
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("taskEventsStreamed with http transport requires server");
+      const config = this.httpConfig(server, options);
       const controller = new AbortController();
       const abort = () => controller.abort();
       if (options.signal) {
@@ -1449,7 +1479,7 @@ export class Rip {
 
       return { events: events(), result };
     }
-    const args = ["tasks", "--server", options.server, "events", taskId];
+    const args = buildRipTaskArgs(options.server, "events", taskId);
     const { events, result } = await this.execJsonlFrames(args, options);
     return { events, result };
   }
@@ -1633,6 +1663,15 @@ function mergeEnv(...envs: Array<NodeJS.ProcessEnv | undefined>): Record<string,
     }
   }
   return merged;
+}
+
+function buildRipTaskArgs(server: string | undefined, ...rest: string[]): string[] {
+  const args: string[] = ["tasks"];
+  if (server) {
+    args.push("--server", server);
+  }
+  args.push(...rest);
+  return args;
 }
 
 function unsetEnvVars(env: Record<string, string>, unset: readonly string[] | undefined) {

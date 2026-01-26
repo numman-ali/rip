@@ -32,6 +32,7 @@ Current focus
 - Implemented: handoff writes an artifact-backed context bundle referenced by `continuity_handoff_created.summary_artifact_id` (`docs/03_contracts/handoff_context_bundle.md`).
 - Implemented: server exposes `thread.*` (ensure/list/get/post_message/branch/handoff/stream_events) and OpenAPI is updated.
 - Implemented: `rip threads ...` CLI adapter + TypeScript SDK `thread.*` wrappers (ensure/list/get/post_message/branch/handoff/stream_events) while keeping ADR-0006 transport (SDK spawns `rip`; no TS HTTP/SSE client).
+- Implemented: TypeScript SDK task APIs are local-first on exec transport (no required `server`) with e2e spawn/output/status/cancel coverage + authority cleanup.
 - Implemented: workspace mutation serialization across sessions + background tasks (workspace lock) with contract + replay tests.
 - Implemented: continuity stream logs workspace-mutating tool side-effects with full provenance (`continuity_tool_side_effects`) and replay coverage under parallel runs/tasks.
 - Implemented: local authority “one store just works” v0.1 (ADR-0019): per-store authority discovery + store lock; local `rip`/`rip run`/`rip threads`/`rip tasks` auto-start/auto-attach by default; deterministic multi-client integration coverage.
