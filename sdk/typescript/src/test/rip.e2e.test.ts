@@ -569,6 +569,86 @@ test("Rip SDK streams thread events over HTTP transport with maxEvents terminati
   }
 });
 
+test("Rip SDK branches/handoffs threads over HTTP transport and streams branch/handoff frames", async () => {
+  const repoRoot = repoRootFromSdkCwd();
+  const ripPath = ripExecutablePath(repoRoot);
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-http-thread-branch-handoff-"));
+
+  const env = { ...process.env };
+  env.RIP_DATA_DIR = dataDir;
+  env.RIP_WORKSPACE_ROOT = path.join(repoRoot, "fixtures", "repo_small");
+  env.RIP_SERVER_ADDR = "127.0.0.1:0";
+  for (const key of [
+    "RIP_OPENRESPONSES_ENDPOINT",
+    "RIP_OPENRESPONSES_API_KEY",
+    "RIP_OPENRESPONSES_MODEL",
+    "RIP_OPENRESPONSES_TOOL_CHOICE",
+    "RIP_OPENRESPONSES_STATELESS_HISTORY",
+    "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
+    "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
+  ]) {
+    delete env[key];
+  }
+
+  let server: SpawnedRipServer | null = null;
+  const controller = new AbortController();
+  let timer: NodeJS.Timeout | null = null;
+
+  try {
+    server = await spawnRipServer(ripPath, repoRoot, dataDir, env);
+    const rip = new Rip({ transport: "http", server: server.endpoint });
+
+    timer = setTimeout(() => controller.abort(), 10_000);
+
+    const ensured = await rip.threadEnsure({ signal: controller.signal });
+    const posted = await rip.threadPostMessage(ensured.thread_id, { content: "hello" }, { signal: controller.signal });
+
+    const branched = await rip.threadBranch(ensured.thread_id, { from_message_id: posted.message_id }, { signal: controller.signal });
+    const handed = await rip.threadHandoff(
+      ensured.thread_id,
+      { from_message_id: posted.message_id, summary_markdown: "summary" },
+      { signal: controller.signal },
+    );
+
+    const { events: branchEvents, result: branchResult } = await rip.threadEventsStreamed(
+      branched.thread_id,
+      { signal: controller.signal },
+      { maxEvents: 2 },
+    );
+    const streamedBranchFrames: Array<{ type: string }> = [];
+    for await (const frame of branchEvents) streamedBranchFrames.push(frame);
+    const branchFrames = await branchResult;
+    assert.equal(branchFrames.length, 2);
+    assert.equal(streamedBranchFrames.length, 2);
+    assert.deepEqual(new Set(branchFrames.map((frame) => frame.type)), new Set(["continuity_created", "continuity_branched"]));
+
+    const { events: handoffEvents, result: handoffResult } = await rip.threadEventsStreamed(
+      handed.thread_id,
+      { signal: controller.signal },
+      { maxEvents: 2 },
+    );
+    const streamedHandoffFrames: Array<{ type: string }> = [];
+    for await (const frame of handoffEvents) streamedHandoffFrames.push(frame);
+    const handoffFrames = await handoffResult;
+    assert.equal(handoffFrames.length, 2);
+    assert.equal(streamedHandoffFrames.length, 2);
+    assert.deepEqual(
+      new Set(handoffFrames.map((frame) => frame.type)),
+      new Set(["continuity_created", "continuity_handoff_created"]),
+    );
+    const handoffFrame = handoffFrames.find((frame) => frame.type === "continuity_handoff_created") as
+      | Record<string, unknown>
+      | undefined;
+    assert.ok(handoffFrame);
+    assert.equal(handoffFrame.from_thread_id, ensured.thread_id);
+    assert.equal(handoffFrame.summary_markdown, "summary");
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (server) await stopRipServer(server.child);
+    await cleanupDataDir(dataDir);
+  }
+});
+
 test("Rip SDK streams task events over HTTP transport until terminal status", async () => {
   const repoRoot = repoRootFromSdkCwd();
   const ripPath = ripExecutablePath(repoRoot);
