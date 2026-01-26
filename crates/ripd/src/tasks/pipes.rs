@@ -257,6 +257,7 @@ async fn pump_output_stream(
         let n = match reader.read(&mut buf).await {
             Ok(0) => break,
             Ok(n) => n,
+            Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
             Err(_) => break,
         };
         let chunk = &buf[..n];

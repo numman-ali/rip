@@ -355,19 +355,46 @@ async fn run_task_writes_stdout_and_stderr_logs() {
         .output(&config, TaskOutputStream::Stdout, 0, 64)
         .await
         .expect("stdout");
-    assert!(stdout.content.contains("out"));
+    assert!(
+        stdout.content.contains("out"),
+        "stdout missing 'out' (bytes={} total_bytes={} truncated={} artifact_id={} path={}): {:?}",
+        stdout.bytes,
+        stdout.total_bytes,
+        stdout.truncated,
+        stdout.artifact_id,
+        stdout.path,
+        stdout.content
+    );
 
     let stderr = handle
         .output(&config, TaskOutputStream::Stderr, 0, 64)
         .await
         .expect("stderr");
-    assert!(stderr.content.contains("err"));
+    assert!(
+        stderr.content.contains("err"),
+        "stderr missing 'err' (bytes={} total_bytes={} truncated={} artifact_id={} path={}): {:?}",
+        stderr.bytes,
+        stderr.total_bytes,
+        stderr.truncated,
+        stderr.artifact_id,
+        stderr.path,
+        stderr.content
+    );
 
     let range = handle
         .output(&config, TaskOutputStream::Stdout, 1, 64)
         .await
         .expect("range");
-    assert!(range.content.starts_with("ut"));
+    assert!(
+        range.content.starts_with("ut"),
+        "range content mismatch (bytes={} total_bytes={} truncated={} artifact_id={} path={}): {:?}",
+        range.bytes,
+        range.total_bytes,
+        range.truncated,
+        range.artifact_id,
+        range.path,
+        range.content
+    );
 }
 
 #[test]

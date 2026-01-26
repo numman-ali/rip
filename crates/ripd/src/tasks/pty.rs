@@ -137,6 +137,7 @@ pub(super) async fn run_pty_task(handle: &TaskHandle, ctx: TaskRunContext) {
             let n = match reader.read(&mut buf) {
                 Ok(0) => break,
                 Ok(n) => n,
+                Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
                 Err(_) => break,
             };
             if output_tx.blocking_send(buf[..n].to_vec()).is_err() {
