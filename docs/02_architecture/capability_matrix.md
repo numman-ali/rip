@@ -6,10 +6,10 @@ Summary
 - Phase labels describe the *target plan*; the roadmap is the source of truth for what has been pulled forward/implemented.
 
 Phase 1 — Foundation
-- Continuities & runs (sessions): continuity-backed “one chat” state + session runner + event log + server API + CLI (interactive + headless); hook: session lifecycle events.
+- Continuities & runs (sessions): continuity-backed “one chat” state + session runner + event log + server API + CLI (fullscreen `rip` + headless); hook: session lifecycle events.
 - Session storage & replay: append-only log + snapshot reader; hook: replay reader for deterministic tests.
 - Context compiler kernel (pulled-forward slice of Phase 2 `context.compile`): deterministic compilation (context bundles + compile frames) so runs can start from continuity truth without relying on provider cursors; hook: prompt assembly pipeline.
-- Execution modes: interactive CLI, headless CLI, JSONL output + JSON Schema; hook: output renderer.
+- Execution modes: fullscreen terminal UI, headless CLI, JSONL output + JSON Schema; hook: output renderer.
 - Models & providers: Open Responses adapter boundary + full schema/streaming fidelity + model selection stub; hook: provider adapter boundary.
 - OpenResponses boundary: request/response/streaming fidelity + item lifecycle + tool/content unions; hook: provider adapter boundary.
 - Tools & tooling: tool registry, allowlist, sandbox policy; hook: tool dispatch pipeline.

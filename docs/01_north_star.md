@@ -20,11 +20,11 @@ Performance budgets (phase 1)
 - End-to-end loop latency (plan -> tools -> patch -> verify -> done).
 
 Product surfaces
-- Interactive CLI (primary UX).
-- Headless CLI (scriptable JSON output).
-- Agent server (exposes agent sessions, not Open Responses API).
+- Fullscreen terminal UI (`rip`) (primary UX).
+- Headless CLI (`rip run --headless`) (scriptable JSON output).
+- Agent server / control plane (`rip serve`) (exposes agent sessions, not an Open Responses API).
 - SDK (TypeScript first; optional Python later).
-- Rich TUI interactions (threads/palette/editor) and MCP surface are planned expansions (the base terminal UI ships as the default `rip` UX).
+- Planned expansions: richer TUI interactions (threads/palette/editor) and MCP surface.
 
 Design stance
 - Open Responses used only for provider adapters (ingress/egress).
