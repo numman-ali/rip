@@ -750,6 +750,83 @@ test("Rip SDK exercises thread.* JSON endpoints over HTTP transport with a real 
   }
 });
 
+test("Rip SDK exercises task.* JSON endpoints over HTTP transport with a real rip serve", async () => {
+  const repoRoot = repoRootFromSdkCwd();
+  const ripPath = ripExecutablePath(repoRoot);
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-http-task-json-"));
+  const workspaceDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-http-task-json-workspace-"));
+
+  const env = { ...process.env };
+  env.RIP_DATA_DIR = dataDir;
+  env.RIP_WORKSPACE_ROOT = workspaceDir;
+  env.RIP_SERVER_ADDR = "127.0.0.1:0";
+  for (const key of [
+    "RIP_OPENRESPONSES_ENDPOINT",
+    "RIP_OPENRESPONSES_API_KEY",
+    "RIP_OPENRESPONSES_MODEL",
+    "RIP_OPENRESPONSES_TOOL_CHOICE",
+    "RIP_OPENRESPONSES_STATELESS_HISTORY",
+    "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
+    "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
+  ]) {
+    delete env[key];
+  }
+
+  let server: SpawnedRipServer | null = null;
+  const controller = new AbortController();
+  let timer: NodeJS.Timeout | null = null;
+
+  try {
+    server = await spawnRipServer(ripPath, repoRoot, dataDir, env);
+    const rip = new Rip({ transport: "http", server: server.endpoint });
+
+    timer = setTimeout(() => controller.abort(), 10_000);
+
+    const created = await rip.taskSpawn(
+      { tool: "bash", args: { command: "echo done" }, title: "sdk-e2e-http-task-json" },
+      { signal: controller.signal },
+    );
+    assert.ok(created.task_id.length > 0);
+
+    const list = await rip.taskList({ signal: controller.signal });
+    assert.ok(list.some((task) => task.task_id === created.task_id));
+
+    const deadline = Date.now() + 10_000;
+    let terminal = await rip.taskStatus(created.task_id, { signal: controller.signal });
+    while (Date.now() < deadline && (terminal.status === "queued" || terminal.status === "running")) {
+      await sleep(50);
+      terminal = await rip.taskStatus(created.task_id, { signal: controller.signal });
+    }
+    assert.ok(["exited", "cancelled", "failed"].includes(terminal.status));
+
+    const output = await rip.taskOutput(created.task_id, { signal: controller.signal });
+    assert.equal(output.task_id, created.task_id);
+    assert.equal(output.stream, "stdout");
+    assert.ok(output.content.includes("done"));
+
+    const long = await rip.taskSpawn(
+      { tool: "bash", args: { command: "sleep 30" }, title: "sdk-e2e-http-task-cancel" },
+      { signal: controller.signal },
+    );
+    assert.ok(long.task_id.length > 0);
+
+    await rip.taskCancel(long.task_id, { signal: controller.signal }, "sdk-e2e-cancel");
+
+    const cancelDeadline = Date.now() + 10_000;
+    let cancelled = await rip.taskStatus(long.task_id, { signal: controller.signal });
+    while (Date.now() < cancelDeadline && (cancelled.status === "queued" || cancelled.status === "running")) {
+      await sleep(50);
+      cancelled = await rip.taskStatus(long.task_id, { signal: controller.signal });
+    }
+    assert.ok(["cancelled", "exited", "failed"].includes(cancelled.status));
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (server) await stopRipServer(server.child);
+    await cleanupDataDir(dataDir);
+    await rm(workspaceDir, { recursive: true, force: true });
+  }
+});
+
 test("Rip SDK streams task events over HTTP transport until terminal status", async () => {
   const repoRoot = repoRootFromSdkCwd();
   const ripPath = ripExecutablePath(repoRoot);
