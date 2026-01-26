@@ -39,6 +39,7 @@ Current focus
 - Implemented: local authority v0.3 lifecycle hardening: stale-lock recovery for both clients and `rip serve` startup (no-client recovery), graceful SIGTERM/SIGINT shutdown (best-effort lock/meta cleanup), explicit “locked/unavailable” UX (deterministic backoff + clear errors), and deterministic crash+restart integration coverage (seq contiguity + workspace mutation ordering).
 - Implemented: TS SDK taskEventsStreamed local exec e2e coverage (spawn → stream until terminal `tool_task_status`).
 - Implemented: TS SDK taskEventsStreamed HTTP transport parity (server required + e2e streaming; client terminates on terminal `tool_task_status` because server SSE is open-ended/keep-alive).
+- Implemented: TS SDK `run()` HTTP transport real-server e2e coverage (spawn `rip serve`; session SSE terminates on `session_ended`).
 - Decision locked (ADR-0010): `context.compile` is the canonical way runs “remember” across time; provider cursors are optional caches only.
 - Implemented: provider cursor cache truth logging (ADR-0015): `continuity_provider_cursor_updated` + `thread.provider_cursor.{status,rotate}` across cli_h/tui/server/sdk; OpenResponses runs record `previous_response_id` on completion as a rebuildable cache.
 - Implemented: context selection strategy evolution truth logging v0.1 (ADR-0016): `continuity_context_selection_decided` + `thread.context_selection.status` across cli_h/tui/server/sdk; compiler selection/budgets/inputs/reasons are now auditable truth.

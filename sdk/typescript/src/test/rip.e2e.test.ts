@@ -125,6 +125,47 @@ async function stopRipServer(child: ReturnType<typeof spawn>): Promise<void> {
   await killAndWait("SIGKILL", 2_000);
 }
 
+type SpawnedRipServer = {
+  endpoint: string;
+  child: ReturnType<typeof spawn>;
+  stderrSnapshot: () => string;
+};
+
+async function spawnRipServer(
+  ripPath: string,
+  repoRoot: string,
+  dataDir: string,
+  env: NodeJS.ProcessEnv,
+  timeoutMs = 10_000,
+): Promise<SpawnedRipServer> {
+  let stderr = "";
+  let childError: unknown | null = null;
+  const child = spawn(ripPath, ["serve"], { cwd: repoRoot, env, stdio: ["ignore", "ignore", "pipe"] });
+  child.once("error", (err) => {
+    childError = err;
+  });
+  child.stderr?.setEncoding("utf8");
+  child.stderr?.on("data", (chunk) => {
+    stderr += chunk;
+    if (stderr.length > 20_000) stderr = stderr.slice(-20_000);
+  });
+  const stderrSnapshot = () => stderr.trim();
+
+  try {
+    const endpoint = await waitForAuthorityEndpoint(dataDir, child, stderrSnapshot, timeoutMs, () => childError);
+    try {
+      await waitForServerReady(endpoint, timeoutMs);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      throw new Error(`${detail}\n${stderrSnapshot()}`);
+    }
+    return { endpoint, child, stderrSnapshot };
+  } catch (err) {
+    await stopRipServer(child);
+    throw err;
+  }
+}
+
 async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -432,6 +473,50 @@ test("Rip SDK streams task events locally without server", async () => {
   }
 });
 
+test("Rip SDK runs sessions over HTTP transport with a real rip serve (ends on session_ended)", async () => {
+  const repoRoot = repoRootFromSdkCwd();
+  const ripPath = ripExecutablePath(repoRoot);
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-http-session-"));
+
+  const env = { ...process.env };
+  env.RIP_DATA_DIR = dataDir;
+  env.RIP_WORKSPACE_ROOT = path.join(repoRoot, "fixtures", "repo_small");
+  env.RIP_SERVER_ADDR = "127.0.0.1:0";
+  for (const key of [
+    "RIP_OPENRESPONSES_ENDPOINT",
+    "RIP_OPENRESPONSES_API_KEY",
+    "RIP_OPENRESPONSES_MODEL",
+    "RIP_OPENRESPONSES_TOOL_CHOICE",
+    "RIP_OPENRESPONSES_STATELESS_HISTORY",
+    "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
+    "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
+  ]) {
+    delete env[key];
+  }
+
+  let server: SpawnedRipServer | null = null;
+  const controller = new AbortController();
+  let timer: NodeJS.Timeout | null = null;
+
+  try {
+    server = await spawnRipServer(ripPath, repoRoot, dataDir, env);
+    const rip = new Rip({ transport: "http", server: server.endpoint });
+
+    timer = setTimeout(() => controller.abort(), 10_000);
+    const turn = await rip.run("hello", { signal: controller.signal });
+    assert.equal(turn.exitCode, 0);
+    assert.equal(turn.finalOutput, "ack: hello");
+    assert.ok(turn.frames.some((frame) => frame.type === "session_started"));
+    assert.ok(turn.frames.some((frame) => frame.type === "output_text_delta"));
+    assert.ok(turn.frames.some((frame) => frame.type === "session_ended"));
+    assert.equal(turn.frames.at(-1)?.type, "session_ended");
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (server) await stopRipServer(server.child);
+    await cleanupDataDir(dataDir);
+  }
+});
+
 test("Rip SDK streams task events over HTTP transport until terminal status", async () => {
   const repoRoot = repoRootFromSdkCwd();
   const ripPath = ripExecutablePath(repoRoot);
@@ -454,22 +539,11 @@ test("Rip SDK streams task events over HTTP transport until terminal status", as
     delete env[key];
   }
 
-  let stderr = "";
-  let childError: unknown | null = null;
-  const child = spawn(ripPath, ["serve"], { cwd: repoRoot, env, stdio: ["ignore", "ignore", "pipe"] });
-  child.once("error", (err) => {
-    childError = err;
-  });
-  child.stderr?.setEncoding("utf8");
-  child.stderr?.on("data", (chunk) => {
-    stderr += chunk;
-    if (stderr.length > 20_000) stderr = stderr.slice(-20_000);
-  });
-  const stderrSnapshot = () => stderr.trim();
+  let server: SpawnedRipServer | null = null;
 
   try {
-    const endpoint = await waitForAuthorityEndpoint(dataDir, child, stderrSnapshot, 10_000, () => childError);
-    await waitForServerReady(endpoint);
+    server = await spawnRipServer(ripPath, repoRoot, dataDir, env);
+    const endpoint = server.endpoint;
 
     const rip = new Rip({ transport: "http", server: endpoint });
     const created = await rip.taskSpawn({ tool: "bash", args: { command: "sleep 0.2; echo done" }, title: "sdk-e2e-http-events" }, {});
@@ -504,7 +578,7 @@ test("Rip SDK streams task events over HTTP transport until terminal status", as
       clearTimeout(timer);
     }
   } finally {
-    await stopRipServer(child);
+    if (server) await stopRipServer(server.child);
     await cleanupDataDir(dataDir);
     await rm(workspaceDir, { recursive: true, force: true });
   }
