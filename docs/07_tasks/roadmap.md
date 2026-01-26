@@ -99,6 +99,8 @@ Next
   - `docs/02_architecture/tui/screens/04_live_session.md`
   - `docs/02_architecture/tui/screens/05_tool_detail.md`
   - `docs/02_architecture/tui/screens/07_background_tasks.md`
+- Status (2026-01-26):
+  - Drafted journey docs: `docs/02_architecture/tui/journeys/01_follow_a_run.md`, `docs/02_architecture/tui/journeys/02_background_task_awareness.md`, `docs/02_architecture/tui/journeys/03_recover_from_stall_or_error.md`.
 - Ready:
   - Write 2–3 journey docs (short) that exercise the Experience Review pillars:
     - “follow a run” (output + tool drill-down),

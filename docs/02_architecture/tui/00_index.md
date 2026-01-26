@@ -141,6 +141,9 @@ Complete mapping of capability IDs to TUI elements with phase and parity notes.
 **Screens**
 - [Screens](screens/) — Individual screen specifications (12 screens)
 
+**Journeys**
+- [Journeys](journeys/) — Experience Review journey specs (short, gated, snapshot-backed)
+
 ---
 
 ## Open Questions

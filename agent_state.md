@@ -75,6 +75,7 @@ Open risks / notes
 - Determinism: task output pumps retry EINTR (pipes + pty), fixing rare missing stderr in `tasks::tests::run_task_writes_stdout_and_stderr_logs`.
 - Docs: clarified surface parity “active surfaces” semantics and aligned TUI capability statuses/gaps with current shipped fullscreen UX.
 - OpenResponses: `tool_choice`/`allowed_tools` are now enforced for function tool execution (disallowed calls emit tool failure + `function_call_output.ok=false`).
+- TUI: Experience Review journey docs drafted; golden snapshots + implementation remain Next (`docs/07_tasks/roadmap.md`).
 
 Active priorities
 - Keep roadmap Now/Next aligned with the implementation work.
