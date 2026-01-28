@@ -13,6 +13,8 @@ While a run is ongoing (or after it ends), background tool tasks exist (pipes/pt
 - quick drill-down into logs (bounded; artifact-backed),
 - the ability to cancel safely.
 
+Primary feeling: **alive, gentle, never noisy**.
+
 ---
 
 ## Preconditions
@@ -27,7 +29,7 @@ While a run is ongoing (or after it ends), background tool tasks exist (pipes/pt
 1. A background task starts (spawned explicitly or indirectly by a tool).
 2. UI shows an ambient indicator:
    - count of running tasks in the status bar,
-   - and/or a compact tasks list in the sidebar on larger screens.
+   - and/or compact “task chips” in an Activity rail/drawer on larger screens.
 3. User opens the tasks view (overlay/panel) and selects a task.
 4. User drills down:
    - sees task metadata (tool, cwd/title, started_at),
@@ -61,7 +63,7 @@ While a run is ongoing (or after it ends), background tool tasks exist (pipes/pt
 
 ### S/M: tasks in sidebar or dedicated panel
 
-At S, tasks may be an overlay; at M, tasks can live in a sidebar region (see `screens/07_background_tasks.md`).
+At S, tasks should be an overlay/drawer by default; at M, tasks may be pinned as an Activity rail without stealing attention from the Canvas.
 
 ---
 
@@ -92,4 +94,3 @@ Documented in `docs/02_architecture/tui/03_interaction_patterns.md`. This journe
   - cancel flow + terminal status.
 - Deterministic fixtures for `pipes` and policy-gated `pty` ordering (no reliance on wall-clock timing).
 - Performance check: does not regress frame render budget; log tailing uses bounded range reads.
-

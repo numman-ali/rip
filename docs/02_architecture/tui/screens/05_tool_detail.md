@@ -1,5 +1,9 @@
 # Tool Detail
 
+Status: **Sketch** | Phase: 2
+
+This screen doc is conceptual. Canonical UX gates are the journey specs in `docs/02_architecture/tui/journeys/` plus [Canvas + X-ray](../07_canvas_and_xray.md).
+
 ## Purpose
 
 Deep inspection of a tool execution. Shows inputs, outputs, timing, diffs, and allows revert actions.

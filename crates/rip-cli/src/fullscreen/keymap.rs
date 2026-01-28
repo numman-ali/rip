@@ -8,6 +8,9 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 pub enum Command {
     Quit,
     Submit,
+    CloseOverlay,
+    ToggleActivity,
+    ToggleTasks,
     ToggleDetailsMode,
     ToggleFollow,
     ToggleOutputView,
@@ -35,7 +38,9 @@ impl Keymap {
 
         // Core lifecycle
         bindings.insert("C-c".to_string(), Command::Quit);
+        bindings.insert("C-d".to_string(), Command::Quit);
         bindings.insert("Enter".to_string(), Command::Submit);
+        bindings.insert("Esc".to_string(), Command::CloseOverlay);
 
         // View
         bindings.insert("Tab".to_string(), Command::ToggleDetailsMode);
@@ -43,15 +48,12 @@ impl Keymap {
         bindings.insert("Down".to_string(), Command::SelectNext);
         bindings.insert("C-f".to_string(), Command::ToggleFollow);
         bindings.insert("C-r".to_string(), Command::ToggleOutputView);
-        bindings.insert("C-t".to_string(), Command::ToggleTheme);
+        bindings.insert("C-b".to_string(), Command::ToggleActivity);
+        bindings.insert("C-t".to_string(), Command::ToggleTasks);
+        bindings.insert("M-t".to_string(), Command::ToggleTheme);
         bindings.insert("C-y".to_string(), Command::CopySelected);
-        bindings.insert("C-k".to_string(), Command::CompactionAuto);
-        bindings.insert("C-j".to_string(), Command::CompactionAutoSchedule);
-        bindings.insert("C-g".to_string(), Command::CompactionCutPoints);
-        bindings.insert("C-o".to_string(), Command::CompactionStatus);
-        bindings.insert("C-p".to_string(), Command::ProviderCursorStatus);
-        bindings.insert("C-x".to_string(), Command::ProviderCursorRotate);
-        bindings.insert("C-u".to_string(), Command::ContextSelectionStatus);
+        // Advanced control-plane actions are intentionally unbound by default to avoid accidental
+        // execution. Power users can bind them via ~/.rip/keybindings.json.
 
         Self { bindings }
     }
@@ -151,6 +153,11 @@ fn parse_command(raw: &str) -> Option<Command> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "quit" => Some(Command::Quit),
         "submit" => Some(Command::Submit),
+        "closeoverlay" | "close_overlay" | "close" | "escape" | "esc" => {
+            Some(Command::CloseOverlay)
+        }
+        "toggleactivity" | "toggle_activity" | "activity" => Some(Command::ToggleActivity),
+        "toggletasks" | "toggle_tasks" | "tasks" => Some(Command::ToggleTasks),
         "toggledetailsmode" | "toggle_details" | "toggle_details_mode" => {
             Some(Command::ToggleDetailsMode)
         }

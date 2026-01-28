@@ -3,7 +3,7 @@ set -euo pipefail
 
 provider="both"
 openai_model="gpt-5-nano-2025-08-07"
-openrouter_model="mistralai/devstral-2512:free"
+openrouter_model="openai/gpt-oss-20b"
 include_parallel_case="1"
 
 usage() {
@@ -16,7 +16,7 @@ Requires OPENAI_API_KEY and/or OPENROUTER_API_KEY in the environment.
 Options:
   --provider <openai|openrouter|both>   Which provider(s) to run (default: both)
   --openai-model <id>                  OpenAI model id (default: gpt-5-nano-2025-08-07)
-  --openrouter-model <id>              OpenRouter model id (default: mistralai/devstral-2512:free)
+  --openrouter-model <id>              OpenRouter model id (default: openai/gpt-oss-20b)
   --skip-parallel-case                 Skip the parallel-tool-call scenario
   -h, --help                           Show help
 USAGE

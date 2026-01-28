@@ -1,6 +1,6 @@
 # RIP TUI Design Index
 
-Status: **Early Design** | Phase: 2 | Last updated: 2026-01-22
+Status: **Early Design** | Phase: 2 | Last updated: 2026-01-27
 
 ---
 
@@ -10,7 +10,7 @@ Status: **Early Design** | Phase: 2 | Last updated: 2026-01-22
 
 **Current implementation posture**: A baseline fullscreen terminal UI ships as the default `rip` UX (observability-first, frame-driven). Remote interactive runs are supported (`rip --server <url> [<prompt>]`), as well as session attach (`rip --server <url> --session <id>`). Phase 2 work is the richer interaction layer (threads/palette/editor/resume) on top of the same frames.
 
-**Why**: Provide real-time observability into agent behavior, natural-language interaction, and efficient keyboard-driven workflows for power users.
+**Why**: Provide real-time observability into agent behavior, natural-language interaction, and efficient keyboard-driven workflows — with a **Canvas-first** default that feels beautiful and semantic, and an **X-ray** “peek inside” view for full fidelity internals.
 
 **Core principles**:
 1. **Observability-first** — Users should always know what the agent is doing
@@ -18,7 +18,7 @@ Status: **Early Design** | Phase: 2 | Last updated: 2026-01-22
 3. **Surface parity** — Every TUI feature has CLI/headless/SDK equivalents
 4. **Build for change** — Capabilities will evolve; UI components must be modular
 
-**Primary screens**: Start → Live Session (main workspace) → Tool Detail / Artifacts / Tasks
+**Primary posture**: [Canvas + X-ray](07_canvas_and_xray.md). The default is a narrative Canvas with ambient chips; deep inspection is always available via explicit drill-down.
 
 **Key interactions**: `Ctrl+K` command palette, `j/k` navigation, `Tab` focus cycling, `?` help
 
@@ -58,6 +58,8 @@ The capability matrix is the source of truth. These designs visualize how capabi
 ---
 
 ## Screen Map
+
+These are **sketch-level** screen docs (useful for brainstorming), but **not canonical** for implementation. Canonical UX gates are the journey specs + golden snapshots.
 
 | Screen | Purpose | Primary Capabilities |
 |--------|---------|---------------------|
@@ -137,12 +139,13 @@ Complete mapping of capability IDs to TUI elements with phase and parity notes.
 - [Graceful Degradation](04_graceful_degradation.md) — How TUI features map to simpler surfaces
 - [Performance Considerations](05_performance_considerations.md) — What needs to feel fast, scale concerns
 - [Experience Review](06_experience_review.md) — What “wow” means for RIP, mobile/web/SSH constraints, and design gates
+- [Canvas + X-ray](07_canvas_and_xray.md) — canonical posture (default Canvas; “peek inside” X-ray)
 
-**Screens**
-- [Screens](screens/) — Individual screen specifications (12 screens)
+**Journeys (Canonical Gates)**
+- [Journeys](journeys/) — snapshot-backed journey specs (short, gated, canonical)
 
-**Journeys**
-- [Journeys](journeys/) — Experience Review journey specs (short, gated, snapshot-backed)
+**Screens (Sketches)**
+- [Screens](screens/) — exploratory screen writeups; do not implement directly (must be reconciled into journeys + snapshots)
 
 ---
 

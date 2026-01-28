@@ -1,5 +1,9 @@
 # Permissions
 
+Status: **Sketch** | Phase: 2
+
+This screen doc is conceptual. Canonical UX gates are the journey specs in `docs/02_architecture/tui/journeys/` plus [Canvas + X-ray](../07_canvas_and_xray.md).
+
 ## Purpose
 
 Request user approval for tool executions based on policy rules. Shows what will happen and allows approve/deny/edit decisions.

@@ -1,5 +1,9 @@
 # Thread Map
 
+Status: **Sketch** | Phase: 2
+
+This screen doc is conceptual. Canonical UX gates are the journey specs in `docs/02_architecture/tui/journeys/` plus [Canvas + X-ray](../07_canvas_and_xray.md).
+
 ## Purpose
 
 Visual graph showing thread relationships: branches, merges, and the conversation tree structure.

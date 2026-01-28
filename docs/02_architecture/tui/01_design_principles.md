@@ -61,6 +61,7 @@ RIP’s TUI should feel *obviously smarter than a chat log* while staying calm:
 - **Conversational-first** by default; drill into tools/diffs/artifacts only when needed
 - **Ambient signals** for background work (tools/tasks/subagents) using icons + restrained color
 - **Fast “what’s going on?” answers** at a glance, without reading code
+- The vibe can be **subtly magical / surreal** (beautiful, semantic abstractions; gentle motion), as long as the user stays oriented and every cue has a text fallback
 
 See: [Experience Review](06_experience_review.md) (defines “wow” gates + phone/SSH/web constraints).
 

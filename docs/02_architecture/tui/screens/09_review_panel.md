@@ -1,5 +1,9 @@
 # Review Panel
 
+Status: **Sketch** | Phase: 2
+
+This screen doc is conceptual. Canonical UX gates are the journey specs in `docs/02_architecture/tui/journeys/` plus [Canvas + X-ray](../07_canvas_and_xray.md).
+
 ## Purpose
 
 Batch review of all changes made during a session. Allows selective acceptance, rejection, or reversion of agent modifications before committing.

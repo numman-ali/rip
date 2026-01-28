@@ -1,12 +1,14 @@
 # Navigation Model
 
+Canonical postures are defined in [Canvas + X-ray](07_canvas_and_xray.md).
+
 ## Screen Hierarchy
 
 The TUI has three levels of UI:
 
 1. **Screens** — Full terminal views (Start, Live Session, Thread Browser)
-2. **Panels** — Regions within a screen (Timeline, Output, Inspector)
-3. **Overlays** — Modal layers on top of screens (Command Palette, Tool Detail)
+2. **Panels** — Optional pinned regions within a screen (Activity rail, Timeline, Inspector)
+3. **Overlays/Drawers** — Modal layers on top of screens (Command Palette, Activity drawer, Tool Detail)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -55,8 +57,8 @@ The TUI has three levels of UI:
                              ▼                                │
                  ┌───────────────────────┐                    │
                  │                       │◄───────────────────┘
-                 │    LIVE SESSION       │
-                 │    (primary view)     │
+                 │   LIVE SESSION        │
+                 │   (Canvas default)    │
                  │                       │
                  └───────────┬───────────┘
                              │
@@ -67,6 +69,7 @@ The TUI has three levels of UI:
 │  OVERLAYS   │      │   PANELS    │      │  EXPANDED   │
 │             │      │  (toggle)   │      │   VIEWS     │
 │ - Palette   │      │             │      │             │
+│ - Activity  │      │ - Activity  │      │ - X-ray     │
 │ - Tool Det. │      │ - Sidebar   │      │ - Tasks     │
 │ - Artifact  │      │ - Tasks     │      │ - Review    │
 │ - Perms     │      │ - Inspector │      │             │
@@ -106,8 +109,8 @@ The TUI has three levels of UI:
 | Action | Destination |
 |--------|-------------|
 | `Ctrl+K` | Command Palette overlay |
-| `Enter` on frame | Tool Detail overlay |
-| `Enter` on artifact | Artifact Viewer overlay |
+| `Enter` on event/chip | Detail overlay (tool/task/error/provider/context) |
+| `Enter` on artifact ref | Artifact Viewer overlay |
 | Permission required | Permission overlay |
 | `Ctrl+B` | Toggle sidebar panel |
 | `Ctrl+T` | Toggle/expand tasks panel |
@@ -128,7 +131,7 @@ The TUI has three levels of UI:
 
 ## Focus Model
 
-Within a screen, focus moves between panels:
+Within a screen, focus moves between panels when they are present/pinned. In the Canvas default, focus is usually just **Canvas ↔ Input**.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -159,20 +162,16 @@ Shift+Tab: reverse
 
 The TUI should adapt to terminal size:
 
-### Minimum (80x24)
-- Sidebar hidden by default
-- Inspector collapsed
-- Single-column layout
+### XS (60×20 → 79×23)
+- Canvas only; everything else via overlays/drawers.
 
-### Standard (120x40)
-- Full three-column layout
-- All panels visible
-- Comfortable spacing
+### S (80×24 → 99×30)
+- Canvas remains primary.
+- Activity (timeline/tasks/errors) via overlay/drawer by default.
 
-### Large (160x50+)
-- Wider panels
-- More visible content
-- Same structure
+### M (100×31+)
+- Canvas remains primary.
+- Optional pinned Activity rail and/or Inspector (X-ray) as a power-user preset.
 
 ### Considerations for Implementers
 - Detect terminal resize events

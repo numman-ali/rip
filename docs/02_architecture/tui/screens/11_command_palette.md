@@ -1,5 +1,9 @@
 # Command Palette
 
+Status: **Sketch** | Phase: 2
+
+This screen doc is conceptual. Canonical UX gates are the journey specs in `docs/02_architecture/tui/journeys/` plus [Canvas + X-ray](../07_canvas_and_xray.md).
+
 ## Purpose
 
 Quick access to all commands, actions, threads, and files via fuzzy search. The central navigation hub inspired by VS Code's Ctrl+P/Ctrl+K.

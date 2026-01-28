@@ -1,23 +1,23 @@
 ┌RIP───────────────────────────────────────────────────────────────────────────┐
-│ msg:clipboard: stored (OSC52 disabled) | session:s1  seq:6  TTFT:200ms  E2E:5│
+│ msg:clipboard: stored (OSC52 disabled) | view:canvas  session:s1  seq:6  TTFT│
 └──────────────────────────────────────────────────────────────────────────────┘
-┌Timeline──────────────────────┐┌Details───────────────────────────────────────┐
-│  seq   type        summary   ││ JSON │ Decoded                               │
-│  0     session_sta "hi"      ││{                                             │
-│  1     output_text "hello"   ││  "id": "e6",                                 │
-│  2     tool_starte bash      ││  "session_id": "s1",                         │
-│  3     tool_stdout "ok\n"    ││  "stream_kind": "session",                   │
-│  4     tool_ended  exit=0    ││  "stream_id": "s1",                          │
-│  5     provider_ev done      ││  "timestamp_ms": 1500,                       │
-│▸ 6     session_end "completed││  "seq": 6,                                   │
-│                              ││  "type": "session_ended",                    │
-│                              ││  "reason": "completed"                       │
-└──────────────────────────────┘└──────────────────────────────────────────────┘
-┌Output────────────────────────────────────────────────────────────────────────┐
+┌Canvas────────────────────────────────────────────────────────────────────────┐
+│You: hi                                                                       │
+│                                                                              │
 │hello                                                                         │
 │                                                                              │
 │                                                                              │
 │                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│chips:                                                                        │
 └──────────────────────────────────────────────────────────────────────────────┘
 ┌Input─────────────────────────────────────────────────────────────────────────┐
 │>                                                                             │

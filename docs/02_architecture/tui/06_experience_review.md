@@ -10,7 +10,9 @@ Status: **Design** | Phase: 2 | Last updated: 2026-01-22
 
 Most coding agents feel like: *chat transcript + occasional tool call/diff spam*.
 
-RIP should feel like: **conversational by default**, with **ambient awareness** of background work (tools/tasks/subagents/continuities), and **drill-down** into any detail on demand — without requiring users to “read the code” unless they want to.
+RIP should feel like: **conversational by default**, with **ambient awareness** of background work (tools/tasks/subagents/continuities), and **drill-down** into any detail on demand — without requiring users to “read the code” unless they want to. The presentation should feel **subtly magical / surreal** (beautiful, semantic, alive), while remaining calm and deterministic.
+
+Coding is the sharpest test case (filesystem + tools), but the UI must remain **domain-agnostic**: the same primitives should work for writing, planning, presentations, research, and operations.
 
 The TUI is important but secondary: it must not drive runtime behavior. It should render the canonical event stream and make control discoverable.
 
@@ -37,6 +39,10 @@ The TUI is important but secondary: it must not drive runtime behavior. It shoul
 5. **Continuity OS alignment**
    - “One chat forever” is the default mental model.
    - Runs/sessions are compute units; the continuity log is truth; provider cursors are cache.
+
+6. **Beauty by default**
+   - Default view: semantic summaries, clear iconography, restrained color, subtle motion.
+   - “Peel the layer back”: raw frames, payloads, artifacts, and provenance are always available.
 
 ---
 
@@ -101,4 +107,3 @@ For any Phase 2 TUI feature beyond simple wiring:
 3. **Parity check**: confirm information/action parity via `docs/02_architecture/tui/04_graceful_degradation.md`.
 4. **Performance check**: verify it stays smooth at 10k+ frames and large tool output (virtualization/bounds).
 5. **No hidden state**: everything reconstructable from frames + minimal UI-local layout preferences.
-

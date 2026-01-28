@@ -94,19 +94,13 @@ Next
 ## TUI: UX v1 experience review journeys (conversational-first + drill-down) [confirm spec]
 - Refs:
   - `docs/02_architecture/tui/06_experience_review.md`
+  - `docs/02_architecture/tui/07_canvas_and_xray.md`
   - `docs/02_architecture/tui/03_interaction_patterns.md`
   - `docs/02_architecture/tui/04_graceful_degradation.md`
-  - `docs/02_architecture/tui/screens/04_live_session.md`
-  - `docs/02_architecture/tui/screens/05_tool_detail.md`
-  - `docs/02_architecture/tui/screens/07_background_tasks.md`
-- Status (2026-01-26):
+- Status (2026-01-27):
   - Drafted journey docs: `docs/02_architecture/tui/journeys/01_follow_a_run.md`, `docs/02_architecture/tui/journeys/02_background_task_awareness.md`, `docs/02_architecture/tui/journeys/03_recover_from_stall_or_error.md`.
 - Ready:
-  - Write 2–3 journey docs (short) that exercise the Experience Review pillars:
-    - “follow a run” (output + tool drill-down),
-    - “background task awareness” (tasks list + attach),
-    - “recover from error / stall” (visibility + cancel/retry).
-  - Add ratatui golden snapshots at XS/S/M breakpoints for each journey.
+  - Add ratatui golden snapshots at XS/S/M breakpoints for each journey (deterministic fixtures + snapshot files).
   - Confirm parity for each journey: every action/info has a CLI/server/SDK equivalent or an approved gap with expiry.
 - Done:
   - Journeys feel calm and usable at phone/SSH sizes (XS/S), and remain smooth at 10k+ frames (bounded rendering).

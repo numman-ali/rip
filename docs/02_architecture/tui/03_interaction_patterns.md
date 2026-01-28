@@ -9,6 +9,34 @@
 
 ---
 
+## Phase 1 MVP (Implemented Today)
+
+The current fullscreen TUI is a minimal, frame-driven client. It intentionally implements only a
+small subset of the end-state keybinding philosophy.
+
+Global keys (implemented):
+
+| Key | Action |
+|-----|--------|
+| `Ctrl+C` | Quit |
+| `Ctrl+D` | Quit |
+| `Esc` | Close overlay (if any) |
+| `Ctrl+B` | Toggle Activity overlay |
+| `Ctrl+T` | Toggle tasks overlay |
+| `Enter` | Submit input when idle; open detail when a session is running |
+| `↑/↓` | Select previous/next frame |
+| `Tab` | Toggle inspector details mode (decoded vs JSON) |
+| `Ctrl+F` | Toggle auto-follow |
+| `Ctrl+R` | Toggle rendered ↔ raw output view |
+| `Alt+T` | Toggle theme |
+| `Ctrl+Y` | Copy selected output/frame |
+
+Notes:
+- Advanced control-plane actions (compaction, cursor rotation, etc.) are not bound by default to
+  avoid accidental execution; power users can bind them via `~/.rip/keybindings.json`.
+
+---
+
 ## Global Keybindings
 
 These work regardless of focus:
@@ -17,7 +45,7 @@ These work regardless of focus:
 |-----|--------|
 | `Ctrl+K` | Open command palette |
 | `Ctrl+P` | Quick file picker (insert @file) |
-| `Ctrl+B` | Toggle sidebar |
+| `Ctrl+B` | Toggle Activity (rail/drawer). At XS/S this is an overlay; at M it may pin as a side rail |
 | `Ctrl+T` | Toggle tasks panel |
 | `Ctrl+L` | Clear output |
 | `Ctrl+D` | Quit (with confirmation if session active) |

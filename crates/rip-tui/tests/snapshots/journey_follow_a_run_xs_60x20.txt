@@ -1,19 +1,19 @@
 ┌RIP───────────────────────────────────────────────────────┐
-│ view:canvas  session:s1  seq:6  TTFT:200ms  E2E:500ms  to│
+│ view:canvas  session:s1  seq:3  TTFT:200ms  E2E:-  tools:│
 └──────────────────────────────────────────────────────────┘
 ┌Canvas────────────────────────────────────────────────────┐
-│You: hi                                                   │
+│You: Add a slide outline for a product launch.            │
 │                                                          │
-│hello                                                     │
-│                                                          │
-│                                                          │
+│Got it. I'll draft a 5-slide outline, then refine it.     │
 │                                                          │
 │                                                          │
 │                                                          │
 │                                                          │
 │                                                          │
 │                                                          │
-│chips:                                                    │
+│                                                          │
+│                                                          │
+│chips: [⟳ bash]                                           │
 └──────────────────────────────────────────────────────────┘
 ┌Input─────────────────────────────────────────────────────┐
 │>                                                         │

@@ -1,5 +1,9 @@
 # Start Screen
 
+Status: **Sketch** | Phase: 2
+
+This screen doc is conceptual. Canonical UX gates are the journey specs in `docs/02_architecture/tui/journeys/` plus [Canvas + X-ray](../07_canvas_and_xray.md).
+
 ## Purpose
 
 The entry point when launching `rip tui`. Provides quick access to common actions and recent threads.

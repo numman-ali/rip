@@ -60,7 +60,7 @@ Provider shortcuts (local runs only)
 - Flags are ignored for `--server` runs; configure the server environment instead.
 Examples:
 - OpenAI: `OPENAI_API_KEY=... rip run "<task>" --provider openai --model gpt-5-nano-2025-08-07`
-- OpenRouter: `OPENROUTER_API_KEY=... rip run "<task>" --provider openrouter --model mistralai/devstral-2512:free --stateless-history`
+- OpenRouter: `OPENROUTER_API_KEY=... rip run "<task>" --provider openrouter --model openai/gpt-oss-20b --stateless-history`
 - Live sweep: `scripts/live-openresponses-sweep` (real APIs; runs a tool-sweep against OpenAI/OpenRouter).
 
 Notes

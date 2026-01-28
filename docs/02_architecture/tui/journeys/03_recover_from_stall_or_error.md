@@ -13,6 +13,8 @@ The run stops making progress, or fails. The user needs to:
 - inspect the exact failure context,
 - recover by cancelling, retrying, or continuing on the continuity.
 
+Primary feeling: **reassuring and precise** (errors are clear; next action is obvious).
+
 ---
 
 ## Preconditions
@@ -32,7 +34,7 @@ The run stops making progress, or fails. The user needs to:
    - or “no new frames for N seconds” (stall hint).
 3. UI surfaces this immediately:
    - status bar shows `⚠ error` or `⏸ stalled`,
-   - timeline selection jumps (or hints) to the most recent error-relevant frame.
+   - an error/stall chip/card is pinned in the Canvas and highlighted in the Activity rail/drawer (timeline/X-ray is optional).
 4. User drills down to see:
    - the error message,
    - the relevant raw payload (provider_event raw/data),
@@ -98,4 +100,3 @@ Documented in `docs/02_architecture/tui/03_interaction_patterns.md`. This journe
   - “stalled” hint derived from frame timestamps (no truth mutation).
 - Deterministic fixtures that simulate each case.
 - Performance check: error highlighting must not scan unbounded history (use bounded indexes/state).
-

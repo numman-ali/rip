@@ -64,6 +64,7 @@ impl OpenResponsesConfig {
 }
 
 pub const DEFAULT_MAX_TOOL_CALLS: u64 = 32;
+pub const DEFAULT_OPENROUTER_MODEL: &str = "openai/gpt-oss-20b";
 
 pub fn build_streaming_request(
     config: &OpenResponsesConfig,
@@ -123,7 +124,18 @@ fn base_streaming_builder(config: &OpenResponsesConfig) -> CreateResponseBuilder
     if let Some(model) = config.model.as_deref() {
         return builder.model(model.to_string());
     }
+    if is_openrouter_responses_endpoint(&config.endpoint) {
+        return builder.model(DEFAULT_OPENROUTER_MODEL.to_string());
+    }
     builder
+}
+
+fn is_openrouter_responses_endpoint(endpoint: &str) -> bool {
+    // NOTE: This is intentionally a strict-ish heuristic: we only apply this default to the
+    // canonical OpenRouter OpenAI-compatible Responses endpoint.
+    let raw = endpoint.trim();
+    raw == "https://openrouter.ai/api/v1/responses"
+        || raw == "https://openrouter.ai/api/v1/responses/"
 }
 
 pub(crate) fn parse_tool_choice_env(value: &str) -> Result<ToolChoiceParam, String> {
@@ -474,6 +486,24 @@ mod tests {
         assert_eq!(
             body.get("parallel_tool_calls").and_then(|v| v.as_bool()),
             Some(true)
+        );
+    }
+
+    #[test]
+    fn build_streaming_request_defaults_model_for_openrouter_when_unset() {
+        let config = OpenResponsesConfig {
+            endpoint: "https://openrouter.ai/api/v1/responses".to_string(),
+            api_key: None,
+            model: None,
+            tool_choice: ToolChoiceParam::auto(),
+            followup_user_message: None,
+            stateless_history: false,
+            parallel_tool_calls: false,
+        };
+        let payload = build_streaming_request(&config, "hi");
+        assert_eq!(
+            payload.body().get("model").and_then(|v| v.as_str()),
+            Some(DEFAULT_OPENROUTER_MODEL)
         );
     }
 

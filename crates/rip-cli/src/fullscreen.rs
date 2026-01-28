@@ -110,6 +110,18 @@ async fn run_fullscreen_tui_sse(
                             }
                         }
                     }
+                    UiAction::CloseOverlay => {
+                        state.close_overlay();
+                    }
+                    UiAction::ToggleActivity => {
+                        state.toggle_activity_overlay();
+                    }
+                    UiAction::ToggleTasks => {
+                        state.toggle_tasks_overlay();
+                    }
+                    UiAction::OpenSelectedDetail => {
+                        state.open_selected_detail();
+                    }
                     UiAction::CompactionCutPoints => {
                         if ui_mode == SseUiMode::Interactive {
                             let client = client.clone();
@@ -605,6 +617,10 @@ enum UiAction {
     None,
     Quit,
     Submit,
+    CloseOverlay,
+    ToggleActivity,
+    ToggleTasks,
+    OpenSelectedDetail,
     CopySelected,
     CompactionAuto,
     CompactionAutoSchedule,
@@ -677,11 +693,14 @@ fn handle_key_event(
             KeyCommand::Quit => UiAction::Quit,
             KeyCommand::Submit => {
                 if session_running {
-                    UiAction::None
+                    UiAction::OpenSelectedDetail
                 } else {
                     UiAction::Submit
                 }
             }
+            KeyCommand::CloseOverlay => UiAction::CloseOverlay,
+            KeyCommand::ToggleActivity => UiAction::ToggleActivity,
+            KeyCommand::ToggleTasks => UiAction::ToggleTasks,
             KeyCommand::ToggleDetailsMode => {
                 *mode = match mode {
                     RenderMode::Json => RenderMode::Decoded,
@@ -1081,7 +1100,7 @@ mod tests {
             true,
             &keymap,
         );
-        assert_eq!(action, UiAction::None);
+        assert_eq!(action, UiAction::OpenSelectedDetail);
 
         let action = handle_key_event(
             KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
@@ -1189,7 +1208,7 @@ mod tests {
 
         let previous_theme = state.theme;
         let action = handle_key_event(
-            KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL),
+            KeyEvent::new(KeyCode::Char('t'), KeyModifiers::ALT),
             &mut state,
             &mut mode,
             &mut input,

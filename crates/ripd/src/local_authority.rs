@@ -194,7 +194,12 @@ pub fn try_cleanup_stale_authority_files(
         Ok(None) => return Ok(false),
         Err(_) => return Ok(false),
     };
-    if lock.pid != expected_pid || lock.started_at_ms != expected_started_at_ms {
+    // We intentionally only key cleanup on PID. Older RIP versions wrote different started_at_ms
+    // values into lock.json vs meta.json (same PID), which can wedge local-first startup forever.
+    //
+    // Safety: callers only invoke cleanup after verifying the PID is dead and the endpoint is
+    // unreachable, so accepting started_at_ms drift does not risk deleting a live authority.
+    if lock.pid != expected_pid {
         return Ok(false);
     }
 
@@ -202,6 +207,7 @@ pub fn try_cleanup_stale_authority_files(
         "{}.stale-{}-{}-{}",
         lock_path.file_name().unwrap_or_default().to_string_lossy(),
         expected_pid,
+        // Keep started_at in the tombstone name for debugging even when it doesn't match.
         expected_started_at_ms,
         now_ms()
     ));
@@ -212,7 +218,7 @@ pub fn try_cleanup_stale_authority_files(
     }
 
     if let Ok(Some(meta)) = read_authority_meta(&data_dir) {
-        if meta.pid == expected_pid && meta.started_at_ms == expected_started_at_ms {
+        if meta.pid == expected_pid {
             let meta_tombstone = meta_path.with_file_name(format!(
                 "{}.stale-{}-{}-{}",
                 meta_path.file_name().unwrap_or_default().to_string_lossy(),
@@ -265,4 +271,81 @@ fn atomic_write_file(path: &Path, payload: &[u8]) -> std::io::Result<()> {
     let _ = fs::remove_file(path);
     fs::rename(tmp, path)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn cleanup_stale_authority_files_tolerates_started_at_mismatch() {
+        let dir = tempdir().expect("tmp");
+        let data_dir = dir.path().join("data");
+        std::fs::create_dir_all(authority_dir(&data_dir)).expect("authority dir");
+
+        let pid = 1234u32;
+        let lock_started_at_ms = 1_000u64;
+        let meta_started_at_ms = 1_021u64;
+
+        let lock = AuthorityLockRecord {
+            pid,
+            started_at_ms: lock_started_at_ms,
+            workspace_root: "/workspace".to_string(),
+        };
+        let meta = AuthorityMeta {
+            endpoint: "http://127.0.0.1:12345".to_string(),
+            pid,
+            started_at_ms: meta_started_at_ms,
+            workspace_root: "/workspace".to_string(),
+        };
+
+        std::fs::write(
+            authority_lock_path(&data_dir),
+            format!("{}\n", serde_json::to_string(&lock).unwrap()),
+        )
+        .expect("write lock");
+        std::fs::write(
+            authority_meta_path(&data_dir),
+            format!("{}\n", serde_json::to_string(&meta).unwrap()),
+        )
+        .expect("write meta");
+
+        let cleaned =
+            try_cleanup_stale_authority_files(&data_dir, pid, meta_started_at_ms).expect("cleanup");
+        assert!(cleaned, "expected stale cleanup to succeed");
+        assert!(
+            !authority_lock_path(&data_dir).exists(),
+            "lock should be removed"
+        );
+        assert!(
+            !authority_meta_path(&data_dir).exists(),
+            "meta should be removed"
+        );
+    }
+
+    #[test]
+    fn cleanup_stale_authority_files_requires_pid_match() {
+        let dir = tempdir().expect("tmp");
+        let data_dir = dir.path().join("data");
+        std::fs::create_dir_all(authority_dir(&data_dir)).expect("authority dir");
+
+        let lock = AuthorityLockRecord {
+            pid: 1234,
+            started_at_ms: 1_000,
+            workspace_root: "/workspace".to_string(),
+        };
+        std::fs::write(
+            authority_lock_path(&data_dir),
+            format!("{}\n", serde_json::to_string(&lock).unwrap()),
+        )
+        .expect("write lock");
+
+        let cleaned = try_cleanup_stale_authority_files(&data_dir, 9999, 1_000).expect("cleanup");
+        assert!(!cleaned, "cleanup should not run for different pid");
+        assert!(
+            authority_lock_path(&data_dir).exists(),
+            "lock should remain"
+        );
+    }
 }

@@ -10,7 +10,9 @@ Status: **Design** | Phase: 2 | Last updated: 2026-01-26
 
 The user starts a run, watches output, notices tool use, and drills into details (args/stdout/stderr/artifacts) only when needed.
 
-Primary feeling: **calm, readable, always oriented**.
+Primary feeling: **calm, subtly magical, always oriented**.
+
+Magic here means: the default surface reads like a story (human language + semantic summaries), while the full internals remain one key-press away (raw frames + artifacts).
 
 ---
 
@@ -25,7 +27,7 @@ Primary feeling: **calm, readable, always oriented**.
 
 1. User starts a run (`rip run "<prompt>"`) or attaches to a live session.
 2. UI shows streaming output (rendered view by default).
-3. A tool starts (e.g., `bash`, `apply_patch`), visible as an ambient signal (status + timeline).
+3. A tool starts (e.g., `bash`, `apply_patch`), visible as an ambient signal (status + chip/rail; timeline is optional).
 4. User drills down:
    - Opens tool detail for the selected tool event (overlay or inspector) to see args, exit status, and stdout/stderr preview.
    - If output is large, opens the artifact viewer (range fetch) instead of inlining.
@@ -37,14 +39,14 @@ Primary feeling: **calm, readable, always oriented**.
 
 These are directional wireframes; exact panel borders/labels can change as long as the journey gates hold.
 
-### XS (60×20 → 79×23): single column, drill-down via overlays
+### XS (60×20 → 79×23): Canvas only, drill-down via overlays
 
 ```
 ┌─ RIP ────────────────┐
 │ ● run 24  ⟳ tool 1   │
 ├──────────────────────┤
-│ Output (rendered)    │
-│ …streaming text…     │
+│ Canvas (rendered)    │
+│ …streaming story…    │
 │                      │
 │ [r] raw  [?] help    │
 │ [Enter] details      │
@@ -55,28 +57,30 @@ Drill-down:
 - `Enter` opens a detail overlay for the most recent/selected “interesting” event (tool/error/provider).
 - `Esc` returns.
 
-### S (80×24 → 99×30): timeline + output, inspector as overlay
+### S (80×24 → 99×30): Canvas + ambient chips; X-ray via overlays
 
 ```
 ┌──────── RIP ────────┐
 │ ● idle  TTFT 120ms  │
-├────────┬────────────┤
-│Timeline│ Output      │
-│…events │ …text…      │
-└────────┴────────────┘
+├─────────────────────┤
+│ Canvas (rendered)    │
+│ …streaming story…    │
+│                      │
+│ chips: [⟳ bash] [📄2] │
+└─────────────────────┘
 ```
 
-### M (100×31 → 139×45): 3 regions, inspector visible
+### M (100×31 → 139×45): Canvas + pinned Activity rail (optional); inspector via overlay or pinned
 
 ```
 ┌──────────── RIP ────────────┐
 │ ● streaming   tasks:1       │
-├───────┬─────────┬───────────┤
-│Sidebar│Timeline │ Inspector  │
-│(opt)  │         │           │
-├───────┴─────────┴───────────┤
-│ Output (rendered)           │
-└─────────────────────────────┘
+├───────────────┬─────────────┤
+│ Canvas         │ Activity     │
+│ (rendered)     │ ⟳ bash       │
+│ …story…        │ 📄 patch.diff │
+│                │ ⚙ context     │
+└───────────────┴─────────────┘
 ```
 
 ---
@@ -109,4 +113,3 @@ If a UI action is “navigation only”, it can be TUI-specific; if it triggers 
   - provider_event errors (invalid json or provider error)
   - output_text streaming (with truncation behavior)
 - Performance check: smooth at 10k+ frames; output rendering bounded.
-
