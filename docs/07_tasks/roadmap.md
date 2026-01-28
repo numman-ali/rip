@@ -97,11 +97,12 @@ Next
   - `docs/02_architecture/tui/07_canvas_and_xray.md`
   - `docs/02_architecture/tui/03_interaction_patterns.md`
   - `docs/02_architecture/tui/04_graceful_degradation.md`
-- Status (2026-01-27):
-  - Drafted journey docs: `docs/02_architecture/tui/journeys/01_follow_a_run.md`, `docs/02_architecture/tui/journeys/02_background_task_awareness.md`, `docs/02_architecture/tui/journeys/03_recover_from_stall_or_error.md`.
-- Ready:
-  - Add ratatui golden snapshots at XS/S/M breakpoints for each journey (deterministic fixtures + snapshot files).
-  - Confirm parity for each journey: every action/info has a CLI/server/SDK equivalent or an approved gap with expiry.
+- Status (2026-01-28):
+  - Implemented Canvas-first posture + X-ray escape hatch spec: `docs/02_architecture/tui/07_canvas_and_xray.md`.
+  - Implemented deterministic ratatui golden snapshots at XS/S/M for the 3 journeys under `crates/rip-tui/tests/snapshots/`.
+  - Implemented minimal interactive controls in the fullscreen TUI for the journeys:
+    - `Ctrl+B` Activity overlay, `Ctrl+T` Tasks overlay, `Enter` opens selected detail (or submits when idle), `Esc` closes overlays.
+  - `./scripts/check-fast` is green with the snapshots as CI gates.
 - Done:
   - Journeys feel calm and usable at phone/SSH sizes (XS/S), and remain smooth at 10k+ frames (bounded rendering).
   - Experience Review gates are satisfied for each journey (docs + snapshots + parity evidence).
