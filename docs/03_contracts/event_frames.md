@@ -184,6 +184,16 @@ Frame types
   - `raw`: string | null (raw `data:` payload, only when needed)
   - `errors`: string[] (schema/validation errors)
   - `response_errors`: string[] (ResponseResource validation errors)
+- `openresponses_request`
+  - Debug/observability frame. Emitted only when `RIP_OPENRESPONSES_DUMP_REQUEST=1`.
+  - `endpoint`: string
+  - `model`: string | null (best-effort from the request body `model` field)
+  - `request_index`: u64 (0-based per session)
+  - `kind`: string (best-effort label, e.g. `prompt`, `initial_items`, `followup`)
+  - `body_artifact_id`: string (artifact blob id under `.rip/artifacts/blobs/<id>`)
+  - `body_bytes`: u64 (bytes stored in the artifact blob; may be truncated)
+  - `total_bytes`: u64 (original JSON bytes length)
+  - `truncated`: bool
 - `checkpoint_created`
   - `checkpoint_id`: string (uuid)
   - `label`: string

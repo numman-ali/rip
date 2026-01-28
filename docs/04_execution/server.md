@@ -52,7 +52,9 @@ Provider config (OpenResponses, Phase 1)
 - Env vars:
   - `RIP_OPENRESPONSES_ENDPOINT` (example: `https://api.openai.com/v1/responses`)
   - `RIP_OPENRESPONSES_API_KEY` (optional; sent as `Authorization: Bearer ...`)
-  - `RIP_OPENRESPONSES_MODEL` (optional; if unset, the request omits `model`)
+  - `RIP_OPENRESPONSES_MODEL` (optional)
+    - If unset and the endpoint is OpenRouter Responses (`https://openrouter.ai/api/v1/responses`), RIP defaults to `openai/gpt-oss-20b`.
+    - Otherwise, the request omits `model` (provider may reject it).
   - `RIP_OPENRESPONSES_TOOL_CHOICE` (optional; default `auto`)
     - `auto` | `none` | `required`
     - `function:<tool_name>` (request a specific function tool)
@@ -60,6 +62,9 @@ Provider config (OpenResponses, Phase 1)
   - `RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE` (optional; if set, append this user message after tool outputs in follow-up requests for provider compatibility)
   - `RIP_OPENRESPONSES_STATELESS_HISTORY` (optional; if set, follow-ups resend full input history instead of using `previous_response_id`)
   - `RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS` (optional; if set, request parallel tool calls; execution remains sequential in Phase 1)
+  - Observability (opt-in; writes prompt/tool definitions into artifact blobs):
+    - `RIP_OPENRESPONSES_DUMP_REQUEST=1` emits `openresponses_request` frames and writes each request body to `.rip/artifacts/blobs/<artifact_id>`.
+    - `RIP_OPENRESPONSES_DUMP_REQUEST_MAX_BYTES` caps per-request bytes stored (default: 1,000,000).
 - If `RIP_OPENRESPONSES_ENDPOINT` is not set, ripd runs in stub mode (`output_text_delta: "ack: <input>"`).
 
 Other env vars

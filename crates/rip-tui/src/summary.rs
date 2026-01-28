@@ -31,6 +31,7 @@ pub fn event_type(event: &Event) -> &'static str {
         EventKind::ToolEnded { .. } => "tool_ended",
         EventKind::ToolFailed { .. } => "tool_failed",
         EventKind::ProviderEvent { .. } => "provider_event",
+        EventKind::OpenResponsesRequest { .. } => "openresponses_request",
         EventKind::CheckpointCreated { .. } => "checkpoint_created",
         EventKind::CheckpointRewound { .. } => "checkpoint_rewound",
         EventKind::CheckpointFailed { .. } => "checkpoint_failed",
@@ -233,6 +234,32 @@ pub fn event_summary(event: &Event) -> String {
                 }
             }
         },
+        EventKind::OpenResponsesRequest {
+            request_index,
+            model,
+            body_bytes,
+            total_bytes,
+            truncated,
+            ..
+        } => {
+            let model = model.as_deref().unwrap_or("<unset>");
+            if *truncated {
+                format!(
+                    "req={} model={} bytes={}/{} (truncated)",
+                    request_index,
+                    truncate(model, 40),
+                    body_bytes,
+                    total_bytes
+                )
+            } else {
+                format!(
+                    "req={} model={} bytes={}",
+                    request_index,
+                    truncate(model, 40),
+                    body_bytes
+                )
+            }
+        }
         EventKind::CheckpointCreated { label, .. } | EventKind::CheckpointRewound { label, .. } => {
             format!("{:?}", truncate(label, 64))
         }

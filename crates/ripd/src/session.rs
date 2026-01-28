@@ -1199,6 +1199,7 @@ async fn run_openresponses_agent_loop(
     let mut previous_response_id: Option<String> = None;
     let mut followup_tool_outputs: Option<Vec<ItemParam>> = None;
     let mut tool_call_count: u64 = 0;
+    let mut request_index: u64 = 0;
     let stateless_history = config.stateless_history;
     let tool_choice_enforcement = ToolChoiceEnforcement::from_tool_choice(&config.tool_choice);
     let mut initial_request_items = initial_items;
@@ -1219,9 +1220,12 @@ async fn run_openresponses_agent_loop(
             };
         }
 
-        let payload = if let Some(tool_outputs) = followup_tool_outputs.take() {
+        let (payload, request_kind) = if let Some(tool_outputs) = followup_tool_outputs.take() {
             if stateless_history {
-                build_streaming_followup_request(config, None, history_items.clone())
+                (
+                    build_streaming_followup_request(config, None, history_items.clone()),
+                    "followup_stateless_history",
+                )
             } else {
                 let Some(prev) = previous_response_id.as_deref() else {
                     return OpenResponsesLoopOutcome {
@@ -1229,27 +1233,40 @@ async fn run_openresponses_agent_loop(
                         last_response_id: previous_response_id,
                     };
                 };
-                build_streaming_followup_request(config, Some(prev), tool_outputs)
+                (
+                    build_streaming_followup_request(config, Some(prev), tool_outputs),
+                    "followup",
+                )
             }
         } else if let Some(items) = initial_request_items.take() {
-            build_streaming_request_items(config, items)
+            (
+                build_streaming_request_items(config, items),
+                "initial_items",
+            )
         } else if stateless_history {
-            build_streaming_request_items(config, history_items.clone())
+            (
+                build_streaming_request_items(config, history_items.clone()),
+                "stateless_history",
+            )
         } else {
-            build_streaming_request(config, prompt)
+            (build_streaming_request(config, prompt), "prompt")
         };
 
         let mut collector = ToolCallCollector::default();
-        let stream_result = stream_openresponses_request(
+        let stream_result = stream_openresponses_request(OpenResponsesStreamRequest {
             http,
             config,
+            workspace_root: continuities.workspace_root(),
             session_id,
             payload,
+            request_index,
+            request_kind,
             seq,
             sink,
-            &mut collector,
-        )
+            collector: &mut collector,
+        })
         .await;
+        request_index = request_index.saturating_add(1);
         if let Err(reason) = stream_result {
             return OpenResponsesLoopOutcome {
                 reason,
@@ -1345,51 +1362,78 @@ async fn run_openresponses_agent_loop(
     }
 }
 
-async fn stream_openresponses_request<'a>(
-    http: &reqwest::Client,
-    config: &OpenResponsesConfig,
-    session_id: &str,
+struct OpenResponsesStreamRequest<'a> {
+    http: &'a reqwest::Client,
+    config: &'a OpenResponsesConfig,
+    workspace_root: &'a Path,
+    session_id: &'a str,
     payload: CreateResponsePayload,
+    request_index: u64,
+    request_kind: &'a str,
     seq: &'a mut u64,
     sink: EventSink<'a>,
-    collector: &mut ToolCallCollector,
+    collector: &'a mut ToolCallCollector,
+}
+
+async fn stream_openresponses_request<'a>(
+    req: OpenResponsesStreamRequest<'a>,
 ) -> Result<(), String> {
-    let validation = if config.stateless_history {
+    let validation = if req.config.stateless_history {
         ValidationOptions::compat_missing_item_ids()
     } else {
         ValidationOptions::strict()
     };
 
-    if !payload.errors().is_empty() {
-        sink.emit(Event {
-            id: Uuid::new_v4().to_string(),
-            session_id: session_id.to_string(),
-            timestamp_ms: now_ms(),
-            seq: *seq,
-            kind: rip_kernel::EventKind::ProviderEvent {
-                provider: "openresponses".to_string(),
-                status: rip_kernel::ProviderEventStatus::InvalidJson,
-                event_name: None,
-                data: None,
-                raw: Some(payload.body().to_string()),
-                errors: payload.errors().to_vec(),
-                response_errors: Vec::new(),
-            },
-        })
-        .await;
-        *seq += 1;
+    if !req.payload.errors().is_empty() {
+        req.sink
+            .emit(Event {
+                id: Uuid::new_v4().to_string(),
+                session_id: req.session_id.to_string(),
+                timestamp_ms: now_ms(),
+                seq: *req.seq,
+                kind: rip_kernel::EventKind::ProviderEvent {
+                    provider: "openresponses".to_string(),
+                    status: rip_kernel::ProviderEventStatus::InvalidJson,
+                    event_name: None,
+                    data: None,
+                    raw: Some(req.payload.body().to_string()),
+                    errors: req.payload.errors().to_vec(),
+                    response_errors: Vec::new(),
+                },
+            })
+            .await;
+        *req.seq += 1;
         return Err("invalid_request".to_string());
     }
 
-    let mut request = http.post(&config.endpoint).json(payload.body());
-    if let Some(key) = config.api_key.as_deref() {
+    let request_dump_cfg = crate::openresponses_observability::request_dump_config_from_env();
+    if let Some(event) = crate::openresponses_observability::maybe_dump_openresponses_request(
+        request_dump_cfg,
+        crate::openresponses_observability::OpenResponsesRequestDumpInput {
+            workspace_root: req.workspace_root,
+            session_id: req.session_id,
+            timestamp_ms: now_ms(),
+            seq: *req.seq,
+            endpoint: &req.config.endpoint,
+            request_index: req.request_index,
+            kind: req.request_kind,
+            body: req.payload.body(),
+        },
+    )? {
+        req.sink.emit(event).await;
+        *req.seq += 1;
+    }
+
+    let mut request = req.http.post(&req.config.endpoint).json(req.payload.body());
+    if let Some(key) = req.config.api_key.as_deref() {
         request = request.bearer_auth(key);
     }
 
     let response = match request.send().await {
         Ok(response) => response,
         Err(err) => {
-            let mut pipe = OpenResponsesSsePipe::new(session_id, seq, sink, None, validation);
+            let mut pipe =
+                OpenResponsesSsePipe::new(req.session_id, req.seq, req.sink, None, validation);
             pipe.emit_transport_error(err.to_string()).await;
             return Err("provider_error".to_string());
         }
@@ -1398,14 +1442,21 @@ async fn stream_openresponses_request<'a>(
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        let mut pipe = OpenResponsesSsePipe::new(session_id, seq, sink, None, validation);
+        let mut pipe =
+            OpenResponsesSsePipe::new(req.session_id, req.seq, req.sink, None, validation);
         pipe.emit_transport_error(format!("provider http error: {status}: {body}"))
             .await;
         return Err("provider_error".to_string());
     }
 
     let mut utf8_buf = Vec::new();
-    let mut pipe = OpenResponsesSsePipe::new(session_id, seq, sink, Some(collector), validation);
+    let mut pipe = OpenResponsesSsePipe::new(
+        req.session_id,
+        req.seq,
+        req.sink,
+        Some(req.collector),
+        validation,
+    );
     let mut saw_done = false;
 
     let mut stream = response.bytes_stream();
@@ -1792,15 +1843,19 @@ mod tests {
         let payload = CreateResponsePayload::new(serde_json::json!({"input": {}}));
         let mut seq = 0;
         let mut collector = ToolCallCollector::default();
-        let err = stream_openresponses_request(
-            &reqwest::Client::new(),
-            &config,
-            "s1",
+        let http = reqwest::Client::new();
+        let err = stream_openresponses_request(OpenResponsesStreamRequest {
+            http: &http,
+            config: &config,
+            workspace_root: dir.path(),
+            session_id: "s1",
             payload,
-            &mut seq,
+            request_index: 0,
+            request_kind: "test",
+            seq: &mut seq,
             sink,
-            &mut collector,
-        )
+            collector: &mut collector,
+        })
         .await
         .unwrap_err();
         assert_eq!(err, "invalid_request");
@@ -1973,15 +2028,19 @@ mod tests {
         assert!(payload.errors().is_empty());
         let mut seq = 0;
         let mut collector = ToolCallCollector::default();
-        let err = stream_openresponses_request(
-            &reqwest::Client::new(),
-            &config,
-            "s1",
+        let http = reqwest::Client::new();
+        let err = stream_openresponses_request(OpenResponsesStreamRequest {
+            http: &http,
+            config: &config,
+            workspace_root: dir.path(),
+            session_id: "s1",
             payload,
-            &mut seq,
+            request_index: 0,
+            request_kind: "test",
+            seq: &mut seq,
             sink,
-            &mut collector,
-        )
+            collector: &mut collector,
+        })
         .await
         .unwrap_err();
         assert_eq!(err, "provider_error");
@@ -2034,15 +2093,19 @@ mod tests {
         assert!(payload.errors().is_empty());
         let mut seq = 0;
         let mut collector = ToolCallCollector::default();
-        let err = stream_openresponses_request(
-            &reqwest::Client::new(),
-            &config,
-            "s1",
+        let http = reqwest::Client::new();
+        let err = stream_openresponses_request(OpenResponsesStreamRequest {
+            http: &http,
+            config: &config,
+            workspace_root: dir.path(),
+            session_id: "s1",
             payload,
-            &mut seq,
+            request_index: 0,
+            request_kind: "test",
+            seq: &mut seq,
             sink,
-            &mut collector,
-        )
+            collector: &mut collector,
+        })
         .await
         .unwrap_err();
         assert_eq!(err, "provider_error");

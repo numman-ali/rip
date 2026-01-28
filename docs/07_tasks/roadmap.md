@@ -107,6 +107,21 @@ Next
   - Journeys feel calm and usable at phone/SSH sizes (XS/S), and remain smooth at 10k+ frames (bounded rendering).
   - Experience Review gates are satisfied for each journey (docs + snapshots + parity evidence).
 
+## Observability: OpenResponses request capture + latency debugging v0 [confirm spec]
+- Refs:
+  - `docs/03_contracts/event_frames.md` (`openresponses_request`)
+  - `docs/04_execution/server.md` (OpenResponses env vars)
+- Status (2026-01-28):
+  - Implemented: opt-in request capture via `RIP_OPENRESPONSES_DUMP_REQUEST=1` emitting `openresponses_request` frames.
+  - Implemented: request bodies are stored as artifact blobs under `.rip/artifacts/blobs/<artifact_id>` with truncation metadata.
+  - Implemented: TUI Activity overlay surfaces request summaries (via `event_summary`) and raw view includes the full frame.
+- Ready:
+  - Add provider timing breakdown frames (request start, first provider byte, first user-visible output) without breaking replay determinism.
+- Done:
+  - Operator can reproduce and diagnose “slow response” reports by:
+    - Capturing the exact OpenResponses request JSON (artifact ref + replayable frame).
+    - Comparing `timestamp_ms` deltas across `session_started`, `openresponses_request`, first `provider_event`, first `output_text_delta`, and `session_ended`.
+
 Later
 - SDK distribution: bundled binaries (npm) [needs work]
   - Context: PATH-first is the Phase 1 default (ADR-0017). Bundling is an operational/release surface that must be explicit and reviewed.

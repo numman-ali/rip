@@ -349,6 +349,17 @@ pub enum EventKind {
         tool_id: String,
         error: String,
     },
+    #[serde(rename = "openresponses_request")]
+    OpenResponsesRequest {
+        endpoint: String,
+        model: Option<String>,
+        request_index: u64,
+        kind: String,
+        body_artifact_id: String,
+        body_bytes: u64,
+        total_bytes: u64,
+        truncated: bool,
+    },
     ProviderEvent {
         provider: String,
         status: ProviderEventStatus,
@@ -586,6 +597,7 @@ impl Session {
             | EventKind::ContinuityBranched { .. }
             | EventKind::ContinuityHandoffCreated { .. } => (None, None),
             EventKind::ProviderEvent { .. }
+            | EventKind::OpenResponsesRequest { .. }
             | EventKind::ToolStarted { .. }
             | EventKind::ToolStdout { .. }
             | EventKind::ToolStderr { .. }
