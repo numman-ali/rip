@@ -11,6 +11,7 @@ use tokio::sync::broadcast;
 
 mod fullscreen;
 mod local_authority;
+mod metrics;
 mod tasks_watch;
 #[cfg(test)]
 mod test_env;
@@ -81,6 +82,7 @@ enum Commands {
 enum OutputView {
     Raw,
     Output,
+    Metrics,
 }
 
 #[derive(Default)]
@@ -93,6 +95,7 @@ struct OutputState {
     provider_errors: Vec<String>,
     provider_response_errors: Vec<String>,
     provider_invalid_json: Vec<String>,
+    metrics: metrics::RunMetrics,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -767,6 +770,7 @@ fn render_message(
 ) -> anyhow::Result<bool> {
     let frame: FrameEvent = serde_json::from_str(payload)
         .map_err(|err| anyhow::anyhow!("invalid event frame: {err}"))?;
+    state.metrics.observe(&frame);
     let should_stop = matches!(frame.kind, EventKind::SessionEnded { .. });
 
     match view {
@@ -854,6 +858,90 @@ fn render_message(
                 } else if !state.trailing_newline {
                     writeln!(out)?;
                 }
+            }
+            out.flush()?;
+        }
+        OutputView::Metrics => {
+            match &frame.kind {
+                EventKind::ToolFailed { error, .. } => state.tool_failed.push(error.clone()),
+                EventKind::ProviderEvent {
+                    status,
+                    errors,
+                    response_errors,
+                    raw,
+                    ..
+                } => {
+                    if !errors.is_empty() {
+                        state.provider_errors.extend(errors.iter().cloned());
+                    }
+                    if !response_errors.is_empty() {
+                        state
+                            .provider_response_errors
+                            .extend(response_errors.iter().cloned());
+                    }
+                    if *status == rip_kernel::ProviderEventStatus::InvalidJson {
+                        if let Some(raw) = raw.as_deref() {
+                            state.provider_invalid_json.push(raw.to_string());
+                        }
+                    }
+                }
+                _ => {}
+            }
+
+            if should_stop {
+                let mut metrics = state.metrics.to_json();
+                if let Value::Object(obj) = &mut metrics {
+                    obj.insert(
+                        "tool_failed".to_string(),
+                        Value::Array(
+                            state
+                                .tool_failed
+                                .iter()
+                                .cloned()
+                                .map(Value::String)
+                                .collect(),
+                        ),
+                    );
+                    obj.insert(
+                        "provider_errors".to_string(),
+                        Value::Array(
+                            state
+                                .provider_errors
+                                .iter()
+                                .cloned()
+                                .map(Value::String)
+                                .collect(),
+                        ),
+                    );
+                    obj.insert(
+                        "provider_response_errors".to_string(),
+                        Value::Array(
+                            state
+                                .provider_response_errors
+                                .iter()
+                                .cloned()
+                                .map(Value::String)
+                                .collect(),
+                        ),
+                    );
+                    obj.insert(
+                        "provider_invalid_json".to_string(),
+                        Value::Array(
+                            state
+                                .provider_invalid_json
+                                .iter()
+                                .cloned()
+                                .map(Value::String)
+                                .collect(),
+                        ),
+                    );
+                }
+                writeln!(
+                    out,
+                    "{}",
+                    serde_json::to_string(&metrics)
+                        .map_err(|err| anyhow::anyhow!("metrics json: {err}"))?
+                )?;
             }
             out.flush()?;
         }

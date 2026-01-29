@@ -50,6 +50,7 @@ Headless mode (draft)
 - rip run <task> --headless --view raw
 - emits newline-delimited JSON event frames
 - `--view output` prints human output: text deltas only (tool stdout/stderr emitted only if no model output)
+- `--view metrics` prints a single JSON summary object at `session_ended` (TTFT/E2E + OpenResponses timing breakdown when present)
 
 Provider shortcuts (local runs only)
 - `--provider openai|openrouter` selects the OpenResponses endpoint and API key env fallback.
