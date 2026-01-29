@@ -18,6 +18,7 @@ use reqwest_eventsource::{
 };
 use rip_kernel::Event as FrameEvent;
 use rip_tui::{render, RenderMode, TuiState};
+use serde_json::Value;
 use tokio::sync::mpsc;
 
 mod keymap;
@@ -36,6 +37,7 @@ async fn run_fullscreen_tui_sse(
     initial_prompt: Option<String>,
     mut stream: Option<EventSource>,
     ui_mode: SseUiMode,
+    openresponses_overrides: Option<Value>,
 ) -> anyhow::Result<()> {
     let mut stdout = io::stdout();
     enable_raw_mode()?;
@@ -54,7 +56,14 @@ async fn run_fullscreen_tui_sse(
     } = init_fullscreen_state(initial_prompt);
 
     if ui_mode == SseUiMode::Interactive && stream.is_none() && !input.trim().is_empty() {
-        match start_remote_session(client, &server, std::mem::take(&mut input)).await {
+        match start_remote_session(
+            client,
+            &server,
+            std::mem::take(&mut input),
+            openresponses_overrides.clone(),
+        )
+        .await
+        {
             Ok(next) => stream = Some(next),
             Err(err) => state.set_status_message(format!("start failed: {err}")),
         }
@@ -103,7 +112,14 @@ async fn run_fullscreen_tui_sse(
                                 state = TuiState::default();
                                 state.theme = theme;
                                 state.status_message = status_message;
-                                match start_remote_session(client, &server, prompt).await {
+                                match start_remote_session(
+                                    client,
+                                    &server,
+                                    prompt,
+                                    openresponses_overrides.clone(),
+                                )
+                                .await
+                                {
                                     Ok(next) => stream = Some(next),
                                     Err(err) => state.set_status_message(format!("start failed: {err}")),
                                 }
@@ -561,6 +577,7 @@ async fn run_fullscreen_tui_sse(
 pub async fn run_fullscreen_tui_remote(
     server: String,
     initial_prompt: Option<String>,
+    openresponses_overrides: Option<Value>,
 ) -> anyhow::Result<()> {
     let client = Client::new();
     run_fullscreen_tui_sse(
@@ -569,6 +586,7 @@ pub async fn run_fullscreen_tui_remote(
         initial_prompt,
         None,
         SseUiMode::Interactive,
+        openresponses_overrides,
     )
     .await
 }
@@ -582,6 +600,7 @@ pub async fn run_fullscreen_tui_attach(server: String, session_id: String) -> an
         None,
         Some(client.get(url).eventsource()?),
         SseUiMode::Attach,
+        None,
     )
     .await
 }
@@ -595,6 +614,7 @@ pub async fn run_fullscreen_tui_attach_task(server: String, task_id: String) -> 
         None,
         Some(client.get(url).eventsource()?),
         SseUiMode::Attach,
+        None,
     )
     .await
 }
@@ -603,11 +623,19 @@ async fn start_remote_session(
     client: &Client,
     server: &str,
     prompt: String,
+    openresponses_overrides: Option<Value>,
 ) -> anyhow::Result<EventSource> {
     let thread_id = crate::ensure_thread(client, server).await?;
-    let response =
-        crate::post_thread_message(client, server, &thread_id, &prompt, "user", "tui", None)
-            .await?;
+    let response = crate::post_thread_message(
+        client,
+        server,
+        &thread_id,
+        &prompt,
+        "user",
+        "tui",
+        openresponses_overrides,
+    )
+    .await?;
     let url = format!("{server}/sessions/{}/events", response.session_id);
     Ok(client.get(url).eventsource()?)
 }

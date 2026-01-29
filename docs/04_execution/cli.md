@@ -59,6 +59,7 @@ Provider shortcuts (local runs only)
 - `--parallel-tool-calls` sets `RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS=1` (request-only; execution remains sequential).
 - `--followup-user-message <text>` sets `RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE`.
 - Flags are ignored for `--server` runs; configure the server environment instead.
+- Local-first UX: when `RIP_OPENRESPONSES_ENDPOINT` is set in the *client* environment, local runs forward the OpenResponses settings as per-run `openresponses` overrides (posted to the local authority) so changing `RIP_OPENRESPONSES_MODEL`/flags does not require restarting the authority.
 Examples:
 - OpenAI: `OPENAI_API_KEY=... rip run "<task>" --provider openai --model gpt-5-nano-2025-08-07`
 - OpenRouter: `OPENROUTER_API_KEY=... rip run "<task>" --provider openrouter --model openai/gpt-oss-20b --stateless-history`

@@ -191,7 +191,9 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         None => match (cli.server, cli.session, cli.task) {
             (None, None, None) => {
                 let server = local_authority::ensure_local_authority().await?;
-                fullscreen::run_fullscreen_tui_remote(server, cli.prompt).await?;
+                let openresponses_overrides = openresponses_overrides_from_env();
+                fullscreen::run_fullscreen_tui_remote(server, cli.prompt, openresponses_overrides)
+                    .await?;
             }
             (Some(server), Some(session_id), None) => {
                 if let Some(prompt) = cli.prompt {
@@ -212,7 +214,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                 fullscreen::run_fullscreen_tui_attach_task(server, task_id).await?;
             }
             (Some(server), None, None) => {
-                fullscreen::run_fullscreen_tui_remote(server, cli.prompt).await?;
+                fullscreen::run_fullscreen_tui_remote(server, cli.prompt, None).await?;
             }
             (Some(_), Some(_), Some(_)) => anyhow::bail!("use exactly one of --session or --task"),
             (None, Some(_), _) | (None, _, Some(_)) => anyhow::bail!("missing --server"),
@@ -255,7 +257,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                     "followup_user_message": followup_user_message.clone(),
                 }))
             } else {
-                None
+                openresponses_overrides_from_env()
             };
             if has_openresponses_flags {
                 apply_openresponses_env(
@@ -529,6 +531,33 @@ fn apply_openresponses_env(
         Provider::Openrouter => "OPENROUTER_API_KEY",
     };
     anyhow::bail!("missing API key: set {missing_hint} or RIP_OPENRESPONSES_API_KEY")
+}
+
+fn openresponses_overrides_from_env() -> Option<Value> {
+    let endpoint = std::env::var("RIP_OPENRESPONSES_ENDPOINT").ok()?;
+    let model = std::env::var("RIP_OPENRESPONSES_MODEL").ok();
+    let followup_user_message = std::env::var("RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE").ok();
+
+    let stateless_history = parse_env_bool("RIP_OPENRESPONSES_STATELESS_HISTORY").unwrap_or(false);
+    let parallel_tool_calls =
+        parse_env_bool("RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS").unwrap_or(false);
+
+    Some(serde_json::json!({
+        "endpoint": endpoint,
+        "model": model,
+        "stateless_history": stateless_history,
+        "parallel_tool_calls": parallel_tool_calls,
+        "followup_user_message": followup_user_message,
+    }))
+}
+
+fn parse_env_bool(key: &str) -> Option<bool> {
+    std::env::var(key).ok().map(|value| {
+        matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        )
+    })
 }
 
 fn base64_encode(bytes: &[u8]) -> String {
@@ -1933,6 +1962,37 @@ mod tests {
             let err =
                 apply_openresponses_env(Provider::Openai, None, false, false, None).unwrap_err();
             assert!(err.to_string().contains("missing API key"));
+        });
+    }
+
+    #[test]
+    fn openresponses_overrides_from_env_none_without_endpoint() {
+        with_clean_env(|| {
+            assert!(openresponses_overrides_from_env().is_none());
+        });
+    }
+
+    #[test]
+    fn openresponses_overrides_from_env_reads_vars() {
+        with_clean_env(|| {
+            std::env::set_var(
+                "RIP_OPENRESPONSES_ENDPOINT",
+                "https://openrouter.ai/api/v1/responses",
+            );
+            std::env::set_var("RIP_OPENRESPONSES_MODEL", "openai/gpt-oss-20b");
+            std::env::set_var("RIP_OPENRESPONSES_STATELESS_HISTORY", "yes");
+            std::env::set_var("RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS", "true");
+            std::env::set_var("RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE", "continue");
+
+            let overrides = openresponses_overrides_from_env().expect("overrides");
+            let expected = serde_json::json!({
+                "endpoint": "https://openrouter.ai/api/v1/responses",
+                "model": "openai/gpt-oss-20b",
+                "stateless_history": true,
+                "parallel_tool_calls": true,
+                "followup_user_message": "continue",
+            });
+            assert_eq!(overrides, expected);
         });
     }
 
