@@ -49,6 +49,10 @@ Notes
 
 Provider config (OpenResponses, Phase 1)
 - If `RIP_OPENRESPONSES_ENDPOINT` is set, prompt inputs stream OpenResponses SSE and emit `provider_event` frames (plus derived `output_text_delta`).
+- For latency debugging, ripd also emits:
+  - `openresponses_request_started` (immediately before sending the request)
+  - `openresponses_response_headers` (after receiving HTTP headers)
+  - `openresponses_response_first_byte` (after receiving the first body bytes)
 - Env vars:
   - `RIP_OPENRESPONSES_ENDPOINT` (example: `https://api.openai.com/v1/responses`)
   - `RIP_OPENRESPONSES_API_KEY` (optional; sent as `Authorization: Bearer ...`)

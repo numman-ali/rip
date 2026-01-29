@@ -360,6 +360,24 @@ pub enum EventKind {
         total_bytes: u64,
         truncated: bool,
     },
+    #[serde(rename = "openresponses_request_started")]
+    OpenResponsesRequestStarted {
+        endpoint: String,
+        model: Option<String>,
+        request_index: u64,
+        kind: String,
+    },
+    #[serde(rename = "openresponses_response_headers")]
+    OpenResponsesResponseHeaders {
+        request_index: u64,
+        status: u16,
+        request_id: Option<String>,
+        content_type: Option<String>,
+    },
+    #[serde(rename = "openresponses_response_first_byte")]
+    OpenResponsesResponseFirstByte {
+        request_index: u64,
+    },
     ProviderEvent {
         provider: String,
         status: ProviderEventStatus,
@@ -598,6 +616,9 @@ impl Session {
             | EventKind::ContinuityHandoffCreated { .. } => (None, None),
             EventKind::ProviderEvent { .. }
             | EventKind::OpenResponsesRequest { .. }
+            | EventKind::OpenResponsesRequestStarted { .. }
+            | EventKind::OpenResponsesResponseHeaders { .. }
+            | EventKind::OpenResponsesResponseFirstByte { .. }
             | EventKind::ToolStarted { .. }
             | EventKind::ToolStdout { .. }
             | EventKind::ToolStderr { .. }

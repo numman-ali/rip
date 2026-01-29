@@ -194,6 +194,21 @@ Frame types
   - `body_bytes`: u64 (bytes stored in the artifact blob; may be truncated)
   - `total_bytes`: u64 (original JSON bytes length)
   - `truncated`: bool
+- `openresponses_request_started`
+  - Emitted immediately before ripd sends an OpenResponses HTTP request.
+  - `endpoint`: string
+  - `model`: string | null
+  - `request_index`: u64 (0-based per session)
+  - `kind`: string (best-effort label, e.g. `prompt`, `initial_items`, `followup`)
+- `openresponses_response_headers`
+  - Emitted when ripd receives response headers for the OpenResponses request (after the HTTP round-trip, before reading the body stream).
+  - `request_index`: u64
+  - `status`: u16 (HTTP status code)
+  - `request_id`: string | null (best-effort from `x-request-id`/`x-openai-request-id`)
+  - `content_type`: string | null
+- `openresponses_response_first_byte`
+  - Emitted when ripd receives the first body bytes for the OpenResponses request.
+  - `request_index`: u64
 - `checkpoint_created`
   - `checkpoint_id`: string (uuid)
   - `label`: string

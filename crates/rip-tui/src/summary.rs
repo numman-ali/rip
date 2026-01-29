@@ -32,6 +32,9 @@ pub fn event_type(event: &Event) -> &'static str {
         EventKind::ToolFailed { .. } => "tool_failed",
         EventKind::ProviderEvent { .. } => "provider_event",
         EventKind::OpenResponsesRequest { .. } => "openresponses_request",
+        EventKind::OpenResponsesRequestStarted { .. } => "openresponses_request_started",
+        EventKind::OpenResponsesResponseHeaders { .. } => "openresponses_response_headers",
+        EventKind::OpenResponsesResponseFirstByte { .. } => "openresponses_response_first_byte",
         EventKind::CheckpointCreated { .. } => "checkpoint_created",
         EventKind::CheckpointRewound { .. } => "checkpoint_rewound",
         EventKind::CheckpointFailed { .. } => "checkpoint_failed",
@@ -259,6 +262,34 @@ pub fn event_summary(event: &Event) -> String {
                     body_bytes
                 )
             }
+        }
+        EventKind::OpenResponsesRequestStarted {
+            request_index,
+            model,
+            ..
+        } => {
+            let model = model.as_deref().unwrap_or("<unset>");
+            format!(
+                "req={} model={} (started)",
+                request_index,
+                truncate(model, 40)
+            )
+        }
+        EventKind::OpenResponsesResponseHeaders {
+            request_index,
+            status,
+            request_id,
+            ..
+        } => {
+            let suffix = request_id
+                .as_deref()
+                .filter(|id| !id.is_empty())
+                .map(|id| format!(" id={}", truncate(id, 16)))
+                .unwrap_or_default();
+            format!("req={} status={}{}", request_index, status, suffix)
+        }
+        EventKind::OpenResponsesResponseFirstByte { request_index } => {
+            format!("req={} (first_byte)", request_index)
         }
         EventKind::CheckpointCreated { label, .. } | EventKind::CheckpointRewound { label, .. } => {
             format!("{:?}", truncate(label, 64))

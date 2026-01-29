@@ -517,10 +517,29 @@ fn render_activity_overlay(
         "tools / tasks / jobs / context / artifacts / errors",
     ));
     lines.push(Line::from(" "));
-    lines.extend(build_activity_lines(
-        state,
-        inner.height.saturating_sub(2) as usize,
-    ));
+
+    let mut remaining = inner.height.saturating_sub(2) as usize;
+    if state.openresponses_request_started_ms.is_some() {
+        let headers = state
+            .openresponses_headers_ms()
+            .map(|ms| format!("{ms}ms"))
+            .unwrap_or("-".to_string());
+        let first_byte = state
+            .openresponses_first_byte_ms()
+            .map(|ms| format!("{ms}ms"))
+            .unwrap_or("-".to_string());
+        let first_event = state
+            .openresponses_first_provider_event_ms()
+            .map(|ms| format!("{ms}ms"))
+            .unwrap_or("-".to_string());
+        lines.push(Line::from(format!(
+            "openresponses: headers={headers} first_byte={first_byte} first_event={first_event}"
+        )));
+        lines.push(Line::from(" "));
+        remaining = remaining.saturating_sub(2);
+    }
+
+    lines.extend(build_activity_lines(state, remaining));
     let widget = Paragraph::new(Text::from(lines))
         .wrap(Wrap { trim: false })
         .style(theme.chrome);

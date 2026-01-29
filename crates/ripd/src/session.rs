@@ -1424,6 +1424,28 @@ async fn stream_openresponses_request<'a>(
         *req.seq += 1;
     }
 
+    let model = req
+        .payload
+        .body()
+        .get("model")
+        .and_then(|value| value.as_str())
+        .map(|value| value.to_string());
+    req.sink
+        .emit(Event {
+            id: Uuid::new_v4().to_string(),
+            session_id: req.session_id.to_string(),
+            timestamp_ms: now_ms(),
+            seq: *req.seq,
+            kind: EventKind::OpenResponsesRequestStarted {
+                endpoint: req.config.endpoint.clone(),
+                model,
+                request_index: req.request_index,
+                kind: req.request_kind.to_string(),
+            },
+        })
+        .await;
+    *req.seq += 1;
+
     let mut request = req.http.post(&req.config.endpoint).json(req.payload.body());
     if let Some(key) = req.config.api_key.as_deref() {
         request = request.bearer_auth(key);
@@ -1439,8 +1461,35 @@ async fn stream_openresponses_request<'a>(
         }
     };
 
-    if !response.status().is_success() {
-        let status = response.status();
+    let status = response.status();
+    let request_id = response
+        .headers()
+        .get("x-request-id")
+        .or_else(|| response.headers().get("x-openai-request-id"))
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.to_string());
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.to_string());
+    req.sink
+        .emit(Event {
+            id: Uuid::new_v4().to_string(),
+            session_id: req.session_id.to_string(),
+            timestamp_ms: now_ms(),
+            seq: *req.seq,
+            kind: EventKind::OpenResponsesResponseHeaders {
+                request_index: req.request_index,
+                status: status.as_u16(),
+                request_id,
+                content_type,
+            },
+        })
+        .await;
+    *req.seq += 1;
+
+    if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
         let mut pipe =
             OpenResponsesSsePipe::new(req.session_id, req.seq, req.sink, None, validation);
@@ -1450,6 +1499,37 @@ async fn stream_openresponses_request<'a>(
     }
 
     let mut utf8_buf = Vec::new();
+    let mut stream = response.bytes_stream();
+    let Some(first) = stream.next().await else {
+        let mut pipe =
+            OpenResponsesSsePipe::new(req.session_id, req.seq, req.sink, None, validation);
+        pipe.emit_transport_error("provider stream ended before first byte".to_string())
+            .await;
+        return Err("provider_error".to_string());
+    };
+    let first_chunk = match first {
+        Ok(chunk) => chunk,
+        Err(err) => {
+            let mut pipe =
+                OpenResponsesSsePipe::new(req.session_id, req.seq, req.sink, None, validation);
+            pipe.emit_transport_error(err.to_string()).await;
+            return Err("provider_error".to_string());
+        }
+    };
+
+    req.sink
+        .emit(Event {
+            id: Uuid::new_v4().to_string(),
+            session_id: req.session_id.to_string(),
+            timestamp_ms: now_ms(),
+            seq: *req.seq,
+            kind: EventKind::OpenResponsesResponseFirstByte {
+                request_index: req.request_index,
+            },
+        })
+        .await;
+    *req.seq += 1;
+
     let mut pipe = OpenResponsesSsePipe::new(
         req.session_id,
         req.seq,
@@ -1457,10 +1537,11 @@ async fn stream_openresponses_request<'a>(
         Some(req.collector),
         validation,
     );
-    let mut saw_done = false;
-
-    let mut stream = response.bytes_stream();
-    while let Some(next) = stream.next().await {
+    let mut saw_done = pipe.push_bytes(&mut utf8_buf, &first_chunk).await;
+    while !saw_done {
+        let Some(next) = stream.next().await else {
+            break;
+        };
         let chunk = match next {
             Ok(chunk) => chunk,
             Err(err) => {
@@ -1469,9 +1550,6 @@ async fn stream_openresponses_request<'a>(
             }
         };
         saw_done = pipe.push_bytes(&mut utf8_buf, &chunk).await;
-        if saw_done {
-            break;
-        }
     }
 
     if !saw_done {
@@ -2045,8 +2123,12 @@ mod tests {
         .unwrap_err();
         assert_eq!(err, "provider_error");
         let events = buffer.lock().await;
-        assert_eq!(events.len(), 1);
-        match &events[0].kind {
+        assert_eq!(events.len(), 2);
+        assert!(matches!(
+            events[0].kind,
+            EventKind::OpenResponsesRequestStarted { .. }
+        ));
+        match &events[1].kind {
             EventKind::ProviderEvent { status, .. } => {
                 assert_eq!(*status, rip_kernel::ProviderEventStatus::InvalidJson);
             }
@@ -2110,8 +2192,18 @@ mod tests {
         .unwrap_err();
         assert_eq!(err, "provider_error");
         let events = buffer.lock().await;
-        assert_eq!(events.len(), 1);
-        match &events[0].kind {
+        assert_eq!(events.len(), 3);
+        assert!(matches!(
+            events[0].kind,
+            EventKind::OpenResponsesRequestStarted { .. }
+        ));
+        match &events[1].kind {
+            EventKind::OpenResponsesResponseHeaders { status, .. } => {
+                assert_eq!(*status, 400);
+            }
+            _ => panic!("expected openresponses_response_headers"),
+        }
+        match &events[2].kind {
             EventKind::ProviderEvent { status, raw, .. } => {
                 assert_eq!(*status, rip_kernel::ProviderEventStatus::InvalidJson);
                 assert!(raw.as_deref().unwrap_or("").contains("provider http error"));

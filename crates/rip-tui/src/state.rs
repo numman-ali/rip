@@ -147,6 +147,10 @@ pub struct TuiState {
     pub start_ms: Option<u64>,
     pub first_output_ms: Option<u64>,
     pub end_ms: Option<u64>,
+    pub openresponses_request_started_ms: Option<u64>,
+    pub openresponses_response_headers_ms: Option<u64>,
+    pub openresponses_response_first_byte_ms: Option<u64>,
+    pub openresponses_first_provider_event_ms: Option<u64>,
     pub output_text: String,
     pub output_truncated: bool,
     pub status_message: Option<String>,
@@ -183,6 +187,10 @@ impl TuiState {
             start_ms: None,
             first_output_ms: None,
             end_ms: None,
+            openresponses_request_started_ms: None,
+            openresponses_response_headers_ms: None,
+            openresponses_response_first_byte_ms: None,
+            openresponses_first_provider_event_ms: None,
             output_text: String::new(),
             output_truncated: false,
             status_message: None,
@@ -334,6 +342,21 @@ impl TuiState {
                     self.start_ms = Some(event.timestamp_ms);
                 }
             }
+            EventKind::OpenResponsesRequestStarted { .. } => {
+                if self.openresponses_request_started_ms.is_none() {
+                    self.openresponses_request_started_ms = Some(event.timestamp_ms);
+                }
+            }
+            EventKind::OpenResponsesResponseHeaders { .. } => {
+                if self.openresponses_response_headers_ms.is_none() {
+                    self.openresponses_response_headers_ms = Some(event.timestamp_ms);
+                }
+            }
+            EventKind::OpenResponsesResponseFirstByte { .. } => {
+                if self.openresponses_response_first_byte_ms.is_none() {
+                    self.openresponses_response_first_byte_ms = Some(event.timestamp_ms);
+                }
+            }
             EventKind::OutputTextDelta { delta } => {
                 if self.first_output_ms.is_none() {
                     self.first_output_ms = Some(event.timestamp_ms);
@@ -355,6 +378,13 @@ impl TuiState {
                     )
                 {
                     self.end_ms = Some(event.timestamp_ms);
+                }
+            }
+            EventKind::ProviderEvent { provider, .. } => {
+                if provider == "openresponses"
+                    && self.openresponses_first_provider_event_ms.is_none()
+                {
+                    self.openresponses_first_provider_event_ms = Some(event.timestamp_ms);
                 }
             }
             _ => {}
@@ -380,6 +410,27 @@ impl TuiState {
 
     pub fn e2e_ms(&self) -> Option<u64> {
         Some(self.end_ms?.saturating_sub(self.start_ms?))
+    }
+
+    pub fn openresponses_headers_ms(&self) -> Option<u64> {
+        Some(
+            self.openresponses_response_headers_ms?
+                .saturating_sub(self.openresponses_request_started_ms?),
+        )
+    }
+
+    pub fn openresponses_first_byte_ms(&self) -> Option<u64> {
+        Some(
+            self.openresponses_response_first_byte_ms?
+                .saturating_sub(self.openresponses_request_started_ms?),
+        )
+    }
+
+    pub fn openresponses_first_provider_event_ms(&self) -> Option<u64> {
+        Some(
+            self.openresponses_first_provider_event_ms?
+                .saturating_sub(self.openresponses_request_started_ms?),
+        )
     }
 
     fn push_output(&mut self, delta: &str) {
@@ -633,6 +684,11 @@ impl TuiState {
                 ..
             } => {
                 self.artifacts.insert(summary_artifact_id.clone());
+            }
+            EventKind::OpenResponsesRequest {
+                body_artifact_id, ..
+            } => {
+                self.artifacts.insert(body_artifact_id.clone());
             }
             _ => {}
         }
