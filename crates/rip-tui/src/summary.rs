@@ -223,20 +223,23 @@ pub fn event_summary(event: &Event) -> String {
             errors,
             response_errors,
             ..
-        } => match status {
-            ProviderEventStatus::Event => event_name.as_deref().unwrap_or("event").to_string(),
-            ProviderEventStatus::Done => "done".to_string(),
-            ProviderEventStatus::InvalidJson => {
-                if !errors.is_empty() || !response_errors.is_empty() {
-                    format!(
-                        "invalid_json ({})",
-                        errors.len().saturating_add(response_errors.len())
-                    )
-                } else {
-                    "invalid_json".to_string()
+        } => {
+            let error_count = errors.len().saturating_add(response_errors.len());
+            if error_count > 0 && *status != ProviderEventStatus::Done {
+                match status {
+                    ProviderEventStatus::InvalidJson => format!("invalid_json ({error_count})"),
+                    _ => format!("error ({error_count})"),
+                }
+            } else {
+                match status {
+                    ProviderEventStatus::Event => {
+                        event_name.as_deref().unwrap_or("event").to_string()
+                    }
+                    ProviderEventStatus::Done => "done".to_string(),
+                    ProviderEventStatus::InvalidJson => "invalid_json".to_string(),
                 }
             }
-        },
+        }
         EventKind::OpenResponsesRequest {
             request_index,
             model,

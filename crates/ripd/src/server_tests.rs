@@ -4222,9 +4222,17 @@ async fn prompt_openresponses_http_error_emits_provider_error() {
             if let Some(value) = extract_data_json(&message) {
                 match value.get("type").and_then(|value| value.as_str()) {
                     Some("provider_event") => {
-                        if value.get("status").and_then(|value| value.as_str())
-                            == Some("invalid_json")
-                        {
+                        let has_errors = value
+                            .get("errors")
+                            .and_then(|value| value.as_array())
+                            .map(|errors| !errors.is_empty())
+                            .unwrap_or(false);
+                        let has_response_errors = value
+                            .get("response_errors")
+                            .and_then(|value| value.as_array())
+                            .map(|errors| !errors.is_empty())
+                            .unwrap_or(false);
+                        if has_errors || has_response_errors {
                             saw_provider_error = true;
                         }
                     }
@@ -4244,7 +4252,7 @@ async fn prompt_openresponses_http_error_emits_provider_error() {
     .await
     .expect("timeout");
 
-    assert!(saw_provider_error, "expected provider_event invalid_json");
+    assert!(saw_provider_error, "expected provider_event with errors");
     assert!(saw_session_ended, "expected session_ended");
 }
 
@@ -4291,9 +4299,17 @@ async fn prompt_openresponses_connection_error_emits_provider_error() {
             if let Some(value) = extract_data_json(&message) {
                 match value.get("type").and_then(|value| value.as_str()) {
                     Some("provider_event") => {
-                        if value.get("status").and_then(|value| value.as_str())
-                            == Some("invalid_json")
-                        {
+                        let has_errors = value
+                            .get("errors")
+                            .and_then(|value| value.as_array())
+                            .map(|errors| !errors.is_empty())
+                            .unwrap_or(false);
+                        let has_response_errors = value
+                            .get("response_errors")
+                            .and_then(|value| value.as_array())
+                            .map(|errors| !errors.is_empty())
+                            .unwrap_or(false);
+                        if has_errors || has_response_errors {
                             saw_provider_error = true;
                         }
                     }
@@ -4313,6 +4329,6 @@ async fn prompt_openresponses_connection_error_emits_provider_error() {
     .await
     .expect("timeout");
 
-    assert!(saw_provider_error, "expected provider_event invalid_json");
+    assert!(saw_provider_error, "expected provider_event with errors");
     assert!(saw_session_ended, "expected session_ended");
 }

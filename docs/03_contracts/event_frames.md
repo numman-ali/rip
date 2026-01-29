@@ -182,7 +182,7 @@ Frame types
   - `event_name`: string | null (SSE `event:` value)
   - `data`: object | null (parsed Open Responses event payload)
   - `raw`: string | null (raw `data:` payload, only when needed)
-  - `errors`: string[] (schema/validation errors)
+  - `errors`: string[] (provider transport/HTTP errors and/or schema/validation errors)
   - `response_errors`: string[] (ResponseResource validation errors)
 - `openresponses_request`
   - Debug/observability frame. Emitted only when `RIP_OPENRESPONSES_DUMP_REQUEST=1`.

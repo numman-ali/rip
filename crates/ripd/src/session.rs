@@ -372,10 +372,10 @@ impl<'a> OpenResponsesSsePipe<'a> {
                 seq: *self.seq,
                 kind: rip_kernel::EventKind::ProviderEvent {
                     provider: "openresponses".to_string(),
-                    status: rip_kernel::ProviderEventStatus::InvalidJson,
+                    status: rip_kernel::ProviderEventStatus::Event,
                     event_name: None,
                     data: None,
-                    raw: Some(error.clone()),
+                    raw: None,
                     errors: vec![error],
                     response_errors: Vec::new(),
                 },
@@ -1393,7 +1393,7 @@ async fn stream_openresponses_request<'a>(
                 seq: *req.seq,
                 kind: rip_kernel::EventKind::ProviderEvent {
                     provider: "openresponses".to_string(),
-                    status: rip_kernel::ProviderEventStatus::InvalidJson,
+                    status: rip_kernel::ProviderEventStatus::Event,
                     event_name: None,
                     data: None,
                     raw: Some(req.payload.body().to_string()),
@@ -1941,7 +1941,7 @@ mod tests {
         assert_eq!(events.len(), 1);
         match &events[0].kind {
             EventKind::ProviderEvent { status, errors, .. } => {
-                assert_eq!(*status, rip_kernel::ProviderEventStatus::InvalidJson);
+                assert_eq!(*status, rip_kernel::ProviderEventStatus::Event);
                 assert!(!errors.is_empty());
             }
             _ => panic!("expected provider_event"),
@@ -2130,7 +2130,7 @@ mod tests {
         ));
         match &events[1].kind {
             EventKind::ProviderEvent { status, .. } => {
-                assert_eq!(*status, rip_kernel::ProviderEventStatus::InvalidJson);
+                assert_eq!(*status, rip_kernel::ProviderEventStatus::Event);
             }
             _ => panic!("expected provider_event"),
         }
@@ -2204,9 +2204,11 @@ mod tests {
             _ => panic!("expected openresponses_response_headers"),
         }
         match &events[2].kind {
-            EventKind::ProviderEvent { status, raw, .. } => {
-                assert_eq!(*status, rip_kernel::ProviderEventStatus::InvalidJson);
-                assert!(raw.as_deref().unwrap_or("").contains("provider http error"));
+            EventKind::ProviderEvent { status, errors, .. } => {
+                assert_eq!(*status, rip_kernel::ProviderEventStatus::Event);
+                assert!(errors
+                    .iter()
+                    .any(|error| error.contains("provider http error")));
             }
             _ => panic!("expected provider_event"),
         }
