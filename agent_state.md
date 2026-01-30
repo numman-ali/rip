@@ -75,7 +75,8 @@ Open risks / notes
 - Determinism: task output pumps retry EINTR (pipes + pty), fixing rare missing stderr in `tasks::tests::run_task_writes_stdout_and_stderr_logs`.
 - Docs: clarified surface parity “active surfaces” semantics and aligned TUI capability statuses/gaps with current shipped fullscreen UX.
 - OpenResponses: `tool_choice`/`allowed_tools` are now enforced for function tool execution (disallowed calls emit tool failure + `function_call_output.ok=false`).
-- TUI: clarified Canvas-first + X-ray posture; journeys are canonical gates; screen docs are explicitly sketches to avoid drift; golden snapshots + implementation remain Next (`docs/07_tasks/roadmap.md`).
+- TUI: Canvas-first + X-ray posture is now gated by deterministic ratatui golden snapshots for the 3 v0 journeys (`crates/rip-tui/tests/snapshots/`); `scripts/check-fast` enforces them.
+- Config: layered JSON/JSONC config foundations shipped (deep-merge) + `config.doctor` diagnostics to remove provider/model ambiguity (`docs/03_contracts/config.md`).
 
 Active priorities
 - Keep roadmap Now/Next aligned with the implementation work.
