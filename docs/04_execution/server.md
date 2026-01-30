@@ -48,12 +48,17 @@ Notes
   - Checkpoint rewind: `{"checkpoint":{"action":"rewind","id":"<checkpoint_id>"}}`
 
 Provider config (OpenResponses, Phase 1)
-- If `RIP_OPENRESPONSES_ENDPOINT` is set, prompt inputs stream OpenResponses SSE and emit `provider_event` frames (plus derived `output_text_delta`).
+- Preferred: configure providers/models via layered config files (`docs/03_contracts/config.md`) so the authority can resolve the active route deterministically at run boundaries (no restart required for config changes).
+- Diagnostics:
+  - `GET /config/doctor` (sanitized; no secrets)
+  - `rip config doctor` (local-first CLI adapter)
+- Compat: environment variables are still supported as overrides/fallbacks.
+- If a resolved OpenResponses endpoint is present (via config or env), prompt inputs stream OpenResponses SSE and emit `provider_event` frames (plus derived `output_text_delta`).
 - For latency debugging, ripd also emits:
   - `openresponses_request_started` (immediately before sending the request)
   - `openresponses_response_headers` (after receiving HTTP headers)
   - `openresponses_response_first_byte` (after receiving the first body bytes)
-- Env vars:
+- Env vars (compat; override file config when set in the authority process):
   - `RIP_OPENRESPONSES_ENDPOINT` (example: `https://api.openai.com/v1/responses`)
   - `RIP_OPENRESPONSES_API_KEY` (optional; sent as `Authorization: Bearer ...`)
   - `RIP_OPENRESPONSES_MODEL` (optional)

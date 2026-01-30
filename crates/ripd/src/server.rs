@@ -71,10 +71,15 @@ pub(crate) struct ThreadPostMessagePayload {
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub(crate) struct ThreadOpenResponsesOverrides {
-    pub(crate) endpoint: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) endpoint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) model: Option<String>,
-    pub(crate) stateless_history: bool,
-    pub(crate) parallel_tool_calls: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) stateless_history: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) parallel_tool_calls: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) followup_user_message: Option<String>,
 }
 
@@ -147,6 +152,40 @@ pub(crate) struct ThreadCompactionCheckpointResponse {
 #[derive(Debug, Deserialize, ToSchema)]
 struct InputPayload {
     input: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+struct ConfigDoctorResponse {
+    sources: Vec<ConfigDoctorSource>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    openresponses: Option<ConfigDoctorOpenResponses>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+struct ConfigDoctorSource {
+    path: String,
+    status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+struct ConfigDoctorOpenResponses {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    provider_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    route: Option<String>,
+    endpoint: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    model: Option<String>,
+    has_api_key: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    api_key_source: Option<String>,
+    headers: Vec<String>,
+    stateless_history: bool,
+    parallel_tool_calls: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    followup_user_message: Option<String>,
 }
 
 #[derive(OpenApi)]
@@ -395,6 +434,7 @@ pub(crate) fn build_app_with_workspace_root_and_provider_and_task_policy(
 
 pub(crate) fn build_openapi_router() -> (Router<AppState>, String) {
     let (router, api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
+        .routes(routes!(config_doctor))
         .routes(routes!(create_session))
         .routes(routes!(send_input))
         .routes(routes!(stream_events))
@@ -649,17 +689,32 @@ async fn thread_post_message(
 
     let actor_id = actor_id.unwrap_or_else(|| "user".to_string());
     let origin = origin.unwrap_or_else(|| "server".to_string());
-    let openresponses_override = openresponses.map(|cfg| OpenResponsesConfig {
-        endpoint: cfg.endpoint.clone(),
-        api_key: openresponses_api_key_for_endpoint(&cfg.endpoint),
-        model: cfg.model.clone(),
+
+    let store = state.engine.continuities();
+    let (resolved_openresponses, _loaded) = crate::config::resolve_openresponses_config(
+        store.workspace_root(),
+        crate::config::OpenResponsesOverrideInput {
+            endpoint: openresponses.as_ref().and_then(|cfg| cfg.endpoint.clone()),
+            model: openresponses.as_ref().and_then(|cfg| cfg.model.clone()),
+            stateless_history: openresponses.as_ref().and_then(|cfg| cfg.stateless_history),
+            parallel_tool_calls: openresponses
+                .as_ref()
+                .and_then(|cfg| cfg.parallel_tool_calls),
+            followup_user_message: openresponses
+                .as_ref()
+                .and_then(|cfg| cfg.followup_user_message.clone()),
+        },
+    );
+    let openresponses_override = resolved_openresponses.map(|cfg| OpenResponsesConfig {
+        endpoint: cfg.endpoint,
+        api_key: cfg.api_key,
+        model: cfg.model,
+        headers: cfg.headers,
         tool_choice: ToolChoiceParam::auto(),
-        followup_user_message: cfg.followup_user_message.clone(),
+        followup_user_message: cfg.followup_user_message,
         stateless_history: cfg.stateless_history,
         parallel_tool_calls: cfg.parallel_tool_calls,
     });
-
-    let store = state.engine.continuities();
     let message_id = match store.append_message(
         &thread_id,
         actor_id.clone(),
@@ -1553,6 +1608,57 @@ async fn task_signal(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/config/doctor",
+    responses(
+        (status = 200, description = "Resolved configuration summary", body = ConfigDoctorResponse)
+    )
+)]
+async fn config_doctor(State(state): State<AppState>) -> impl IntoResponse {
+    let store = state.engine.continuities();
+    let (resolved_openresponses, loaded) = crate::config::resolve_openresponses_config(
+        store.workspace_root(),
+        crate::config::OpenResponsesOverrideInput::default(),
+    );
+
+    let sources = loaded
+        .sources
+        .into_iter()
+        .map(|source| ConfigDoctorSource {
+            path: source.path,
+            status: source.status,
+            error: source.error,
+        })
+        .collect();
+
+    let openresponses = resolved_openresponses.map(|cfg| ConfigDoctorOpenResponses {
+        provider_id: cfg.provider_id,
+        route: cfg.route,
+        endpoint: cfg.endpoint,
+        model: cfg.model,
+        has_api_key: cfg
+            .api_key
+            .as_deref()
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false),
+        api_key_source: cfg.api_key_source,
+        headers: cfg.headers.into_iter().map(|(name, _)| name).collect(),
+        stateless_history: cfg.stateless_history,
+        parallel_tool_calls: cfg.parallel_tool_calls,
+        followup_user_message: cfg.followup_user_message,
+    });
+
+    (
+        StatusCode::OK,
+        Json(ConfigDoctorResponse {
+            sources,
+            openresponses,
+        }),
+    )
+        .into_response()
+}
+
 async fn openapi_spec(State(state): State<AppState>) -> impl IntoResponse {
     (
         StatusCode::OK,
@@ -1585,23 +1691,6 @@ fn allow_pty_tasks_from_env() -> bool {
         value.trim().to_ascii_lowercase().as_str(),
         "1" | "true" | "yes" | "on"
     )
-}
-
-fn openresponses_api_key_for_endpoint(endpoint: &str) -> Option<String> {
-    if let Ok(value) = std::env::var("RIP_OPENRESPONSES_API_KEY") {
-        if !value.trim().is_empty() {
-            return Some(value);
-        }
-    }
-
-    if endpoint.contains("api.openai.com") || endpoint.contains("openai.com") {
-        return std::env::var("OPENAI_API_KEY").ok();
-    }
-    if endpoint.contains("openrouter.ai") {
-        return std::env::var("OPENROUTER_API_KEY").ok();
-    }
-
-    None
 }
 
 #[cfg(not(test))]

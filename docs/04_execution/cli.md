@@ -46,6 +46,10 @@ Thread commands (local or remote)
 - Add `--server <url>` after `threads` to target a remote server: `rip threads --server <url> ...`
 - Note: when using `--summary-markdown`, RIP also writes an artifact-backed handoff bundle and records it in `continuity_handoff_created.summary_artifact_id` (`docs/03_contracts/handoff_context_bundle.md`).
 
+Config commands (local or remote)
+- `rip config doctor` (sanitized resolved config summary; no secrets)
+- Add `--server <url>` after `config` to target a remote server: `rip config --server <url> doctor`
+
 Headless mode (draft)
 - rip run <task> --headless --view raw
 - emits newline-delimited JSON event frames
@@ -53,6 +57,7 @@ Headless mode (draft)
 - `--view metrics` prints a single JSON summary object at `session_ended` (TTFT/E2E + OpenResponses timing breakdown when present)
 
 Provider shortcuts (local runs only)
+- Preferred: configure providers/models once via layered config (`docs/03_contracts/config.md`), then use `rip config doctor` to confirm the authority’s effective route (provider/model/auth presence) with zero ambiguity.
 - `--provider openai|openrouter` selects the OpenResponses endpoint and API key env fallback.
 - `--model <id>` overrides `RIP_OPENRESPONSES_MODEL`.
 - `--stateless-history` enables stateless followups (`RIP_OPENRESPONSES_STATELESS_HISTORY=1`).

@@ -76,6 +76,13 @@ enum Commands {
         #[command(subcommand)]
         command: threads::ThreadsCommand,
     },
+    Config {
+        /// Server base URL for remote mode. If omitted, auto-start/auto-attach the local authority.
+        #[arg(long)]
+        server: Option<String>,
+        #[command(subcommand)]
+        command: ConfigCommand,
+    },
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum, PartialEq, Eq)]
@@ -167,6 +174,11 @@ enum TaskCommand {
     },
 }
 
+#[derive(Subcommand)]
+enum ConfigCommand {
+    Doctor,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 enum TaskStream {
     Stdout,
@@ -249,13 +261,25 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                     Provider::Openai => "https://api.openai.com/v1/responses",
                     Provider::Openrouter => "https://openrouter.ai/api/v1/responses",
                 };
-                Some(serde_json::json!({
-                    "endpoint": endpoint,
-                    "model": model.clone(),
-                    "stateless_history": stateless_history,
-                    "parallel_tool_calls": parallel_tool_calls,
-                    "followup_user_message": followup_user_message.clone(),
-                }))
+                let mut obj = serde_json::Map::new();
+                obj.insert("endpoint".to_string(), Value::String(endpoint.to_string()));
+                if let Some(model) = model.clone() {
+                    if !model.trim().is_empty() {
+                        obj.insert("model".to_string(), Value::String(model));
+                    }
+                }
+                if stateless_history {
+                    obj.insert("stateless_history".to_string(), Value::Bool(true));
+                }
+                if parallel_tool_calls {
+                    obj.insert("parallel_tool_calls".to_string(), Value::Bool(true));
+                }
+                if let Some(message) = followup_user_message.clone() {
+                    if !message.trim().is_empty() {
+                        obj.insert("followup_user_message".to_string(), Value::String(message));
+                    }
+                }
+                Some(Value::Object(obj))
             } else {
                 openresponses_overrides_from_env()
             };
@@ -483,6 +507,27 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         Some(Commands::Threads { server, command }) => {
             threads::run_threads(server, command).await?;
         }
+        Some(Commands::Config { server, command }) => {
+            let server = match server {
+                Some(server) => server,
+                None => local_authority::ensure_local_authority().await?,
+            };
+
+            match command {
+                ConfigCommand::Doctor => {
+                    let url = format!("{server}/config/doctor");
+                    let client = Client::new();
+                    let response = client.get(url).send().await?;
+                    let status = response.status();
+                    if !status.is_success() {
+                        let body = response.text().await.unwrap_or_default();
+                        anyhow::bail!("config doctor failed: {status}: {body}");
+                    }
+                    let value: Value = response.json().await?;
+                    println!("{}", serde_json::to_string_pretty(&value)?);
+                }
+            }
+        }
     }
 
     Ok(())
@@ -534,21 +579,43 @@ fn apply_openresponses_env(
 }
 
 fn openresponses_overrides_from_env() -> Option<Value> {
-    let endpoint = std::env::var("RIP_OPENRESPONSES_ENDPOINT").ok()?;
-    let model = std::env::var("RIP_OPENRESPONSES_MODEL").ok();
-    let followup_user_message = std::env::var("RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE").ok();
+    let endpoint = std::env::var("RIP_OPENRESPONSES_ENDPOINT")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())?;
 
-    let stateless_history = parse_env_bool("RIP_OPENRESPONSES_STATELESS_HISTORY").unwrap_or(false);
-    let parallel_tool_calls =
-        parse_env_bool("RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS").unwrap_or(false);
+    let mut obj = serde_json::Map::new();
+    obj.insert("endpoint".to_string(), Value::String(endpoint));
 
-    Some(serde_json::json!({
-        "endpoint": endpoint,
-        "model": model,
-        "stateless_history": stateless_history,
-        "parallel_tool_calls": parallel_tool_calls,
-        "followup_user_message": followup_user_message,
-    }))
+    if let Ok(value) = std::env::var("RIP_OPENRESPONSES_MODEL") {
+        let trimmed = value.trim().to_string();
+        if !trimmed.is_empty() {
+            obj.insert("model".to_string(), Value::String(trimmed));
+        }
+    }
+
+    if let Some(stateless_history) = parse_env_bool("RIP_OPENRESPONSES_STATELESS_HISTORY") {
+        obj.insert(
+            "stateless_history".to_string(),
+            Value::Bool(stateless_history),
+        );
+    }
+
+    if let Some(parallel_tool_calls) = parse_env_bool("RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS") {
+        obj.insert(
+            "parallel_tool_calls".to_string(),
+            Value::Bool(parallel_tool_calls),
+        );
+    }
+
+    if let Ok(value) = std::env::var("RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE") {
+        let trimmed = value.trim().to_string();
+        if !trimmed.is_empty() {
+            obj.insert("followup_user_message".to_string(), Value::String(trimmed));
+        }
+    }
+
+    Some(Value::Object(obj))
 }
 
 fn parse_env_bool(key: &str) -> Option<bool> {
@@ -1401,6 +1468,7 @@ mod tests {
             Some(Commands::Serve) => panic!("expected run"),
             Some(Commands::Tasks { .. }) => panic!("expected run"),
             Some(Commands::Threads { .. }) => panic!("expected run"),
+            Some(Commands::Config { .. }) => panic!("expected run"),
             None => panic!("expected run"),
         }
     }
@@ -1426,6 +1494,7 @@ mod tests {
             Some(Commands::Serve) => panic!("expected run"),
             Some(Commands::Tasks { .. }) => panic!("expected run"),
             Some(Commands::Threads { .. }) => panic!("expected run"),
+            Some(Commands::Config { .. }) => panic!("expected run"),
             None => panic!("expected run"),
         }
     }
@@ -1467,6 +1536,7 @@ mod tests {
             Some(Commands::Serve) => panic!("expected run"),
             Some(Commands::Tasks { .. }) => panic!("expected run"),
             Some(Commands::Threads { .. }) => panic!("expected run"),
+            Some(Commands::Config { .. }) => panic!("expected run"),
             None => panic!("expected run"),
         }
     }
@@ -1485,6 +1555,7 @@ mod tests {
             Some(Commands::Serve) => panic!("expected run"),
             Some(Commands::Tasks { .. }) => panic!("expected run"),
             Some(Commands::Threads { .. }) => panic!("expected run"),
+            Some(Commands::Config { .. }) => panic!("expected run"),
             None => panic!("expected run"),
         }
     }
@@ -1740,6 +1811,7 @@ mod tests {
             Some(Commands::Serve) => panic!("expected run"),
             Some(Commands::Tasks { .. }) => panic!("expected run"),
             Some(Commands::Threads { .. }) => panic!("expected run"),
+            Some(Commands::Config { .. }) => panic!("expected run"),
             None => panic!("expected run"),
         }
     }
@@ -1756,6 +1828,7 @@ mod tests {
             Some(Commands::Run { .. }) => panic!("expected serve"),
             Some(Commands::Tasks { .. }) => panic!("expected serve"),
             Some(Commands::Threads { .. }) => panic!("expected serve"),
+            Some(Commands::Config { .. }) => panic!("expected serve"),
             None => panic!("expected serve"),
         }
     }

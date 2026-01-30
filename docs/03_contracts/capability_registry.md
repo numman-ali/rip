@@ -86,6 +86,7 @@ Notes
 ## Configuration & Policy
 | id | v | phase | cli_i | cli_h | server | sdk | tui | mcp | intent |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| config.doctor | v1 | P1 | planned | supported | supported | planned | planned | planned | Inspect resolved config (providers/models/auth presence) with source provenance (no secrets). |
 | config.scopes | v1 | P2 | planned | planned | planned | planned | planned | planned | Layered settings scopes with precedence. |
 | config.merge | v1 | P2 | planned | planned | planned | planned | planned | planned | Non-destructive config merging. |
 | config.json_schema | v1 | P2 | planned | planned | planned | planned | planned | planned | JSON/JSONC config + schema validation. |

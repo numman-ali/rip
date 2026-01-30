@@ -71,6 +71,20 @@
       "expires_on": "2026-03-01"
     },
     {
+      "capability_id": "config.doctor",
+      "surface": "sdk",
+      "owner": "sdk",
+      "reason": "SDK does not yet expose the config doctor surface; use server (`GET /config/doctor`) or `rip config doctor`.",
+      "expires_on": "2026-03-01"
+    },
+    {
+      "capability_id": "config.doctor",
+      "surface": "tui",
+      "owner": "tui",
+      "reason": "Fullscreen TUI does not yet expose a first-class config doctor view; use server (`GET /config/doctor`) or `rip config doctor`.",
+      "expires_on": "2026-03-01"
+    },
+    {
       "capability_id": "execution.json_stream",
       "surface": "tui",
       "owner": "tui",

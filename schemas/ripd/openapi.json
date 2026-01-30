@@ -9,6 +9,23 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/config/doctor": {
+      "get": {
+        "operationId": "config_doctor",
+        "responses": {
+          "200": {
+            "description": "Resolved configuration summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigDoctorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/sessions": {
       "post": {
         "operationId": "create_session",
@@ -1624,6 +1641,111 @@
           }
         }
       },
+      "ConfigDoctorOpenResponses": {
+        "type": "object",
+        "required": [
+          "endpoint",
+          "has_api_key",
+          "headers",
+          "stateless_history",
+          "parallel_tool_calls"
+        ],
+        "properties": {
+          "api_key_source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "followup_user_message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "has_api_key": {
+            "type": "boolean"
+          },
+          "headers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parallel_tool_calls": {
+            "type": "boolean"
+          },
+          "provider_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "route": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stateless_history": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ConfigDoctorResponse": {
+        "type": "object",
+        "required": [
+          "sources"
+        ],
+        "properties": {
+          "openresponses": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ConfigDoctorOpenResponses"
+              }
+            ]
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConfigDoctorSource"
+            }
+          }
+        }
+      },
+      "ConfigDoctorSource": {
+        "type": "object",
+        "required": [
+          "path",
+          "status"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
       "ContextSelectionStatusCheckpointV1": {
         "type": "object",
         "required": [
@@ -2444,14 +2566,12 @@
       },
       "ThreadOpenResponsesOverrides": {
         "type": "object",
-        "required": [
-          "endpoint",
-          "stateless_history",
-          "parallel_tool_calls"
-        ],
         "properties": {
           "endpoint": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "followup_user_message": {
             "type": [
@@ -2466,10 +2586,16 @@
             ]
           },
           "parallel_tool_calls": {
-            "type": "boolean"
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "stateless_history": {
-            "type": "boolean"
+            "type": [
+              "boolean",
+              "null"
+            ]
           }
         }
       },

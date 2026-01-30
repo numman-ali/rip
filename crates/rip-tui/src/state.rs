@@ -151,6 +151,8 @@ pub struct TuiState {
     pub openresponses_response_headers_ms: Option<u64>,
     pub openresponses_response_first_byte_ms: Option<u64>,
     pub openresponses_first_provider_event_ms: Option<u64>,
+    pub openresponses_endpoint: Option<String>,
+    pub openresponses_model: Option<String>,
     pub output_text: String,
     pub output_truncated: bool,
     pub status_message: Option<String>,
@@ -191,6 +193,8 @@ impl TuiState {
             openresponses_response_headers_ms: None,
             openresponses_response_first_byte_ms: None,
             openresponses_first_provider_event_ms: None,
+            openresponses_endpoint: None,
+            openresponses_model: None,
             output_text: String::new(),
             output_truncated: false,
             status_message: None,
@@ -342,10 +346,14 @@ impl TuiState {
                     self.start_ms = Some(event.timestamp_ms);
                 }
             }
-            EventKind::OpenResponsesRequestStarted { .. } => {
+            EventKind::OpenResponsesRequestStarted {
+                endpoint, model, ..
+            } => {
                 if self.openresponses_request_started_ms.is_none() {
                     self.openresponses_request_started_ms = Some(event.timestamp_ms);
                 }
+                self.openresponses_endpoint = Some(endpoint.clone());
+                self.openresponses_model = model.clone();
             }
             EventKind::OpenResponsesResponseHeaders { .. } => {
                 if self.openresponses_response_headers_ms.is_none() {

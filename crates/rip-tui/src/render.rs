@@ -83,11 +83,32 @@ fn render_status_bar(frame: &mut Frame<'_>, state: &TuiState, theme: &ThemeStyle
     let artifact_count = state.artifacts.len();
     let stalled = state.is_stalled(5_000);
     let error = state.has_error();
+    let llm = state
+        .openresponses_endpoint
+        .as_deref()
+        .map(|endpoint| {
+            if endpoint.contains("openrouter.ai") {
+                "openrouter"
+            } else if endpoint.contains("api.openai.com") || endpoint.contains("openai.com") {
+                "openai"
+            } else {
+                "openresponses"
+            }
+        })
+        .map(|provider| match state.openresponses_model.as_deref() {
+            Some(model) if !model.trim().is_empty() => format!("{provider}:{model}"),
+            _ => provider.to_string(),
+        });
 
     let mut line = String::new();
     if let Some(msg) = state.status_message.as_deref() {
         line.push_str(" msg:");
         line.push_str(msg);
+        line.push_str(" |");
+    }
+    if let Some(llm) = llm.as_deref() {
+        line.push_str(" llm:");
+        line.push_str(llm);
         line.push_str(" |");
     }
     line.push_str(&format!(

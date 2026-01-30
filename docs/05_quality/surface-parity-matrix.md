@@ -44,6 +44,7 @@ Generated from docs/03_contracts/capability_registry.md.
 | context.refs.file | planned | planned | planned | planned | planned | planned |
 | context.refs.thread | planned | planned | planned | planned | planned | planned |
 | context.refs.artifact | planned | planned | planned | planned | planned | planned |
+| config.doctor | planned | supported | supported | planned | planned | planned |
 | config.scopes | planned | planned | planned | planned | planned | planned |
 | config.merge | planned | planned | planned | planned | planned | planned |
 | config.json_schema | planned | planned | planned | planned | planned | planned |

@@ -1450,6 +1450,9 @@ async fn stream_openresponses_request<'a>(
     if let Some(key) = req.config.api_key.as_deref() {
         request = request.bearer_auth(key);
     }
+    for (name, value) in &req.config.headers {
+        request = request.header(name, value);
+    }
 
     let response = match request.send().await {
         Ok(response) => response,
@@ -1913,6 +1916,7 @@ mod tests {
             endpoint: "http://example.test/v1/responses".to_string(),
             api_key: None,
             model: None,
+            headers: Vec::new(),
             tool_choice: ToolChoiceParam::auto(),
             followup_user_message: None,
             stateless_history: false,
@@ -2097,6 +2101,7 @@ mod tests {
             endpoint: "http://127.0.0.1:0/v1/responses".to_string(),
             api_key: None,
             model: Some("fixture-model".to_string()),
+            headers: Vec::new(),
             tool_choice: ToolChoiceParam::auto(),
             followup_user_message: None,
             stateless_history: false,
@@ -2166,6 +2171,7 @@ mod tests {
             endpoint: format!("http://{addr}/v1/responses"),
             api_key: None,
             model: Some("fixture-model".to_string()),
+            headers: Vec::new(),
             tool_choice: ToolChoiceParam::auto(),
             followup_user_message: None,
             stateless_history: false,
@@ -2288,6 +2294,7 @@ data: [DONE]\n\n";
             endpoint: format!("http://{addr}/v1/responses"),
             api_key: None,
             model: Some("fixture-model".to_string()),
+            headers: Vec::new(),
             tool_choice: ToolChoiceParam::auto(),
             followup_user_message: None,
             stateless_history: true,
@@ -2412,6 +2419,7 @@ data: [DONE]\n\n";
             endpoint: format!("http://{addr}/v1/responses"),
             api_key: None,
             model: Some("fixture-model".to_string()),
+            headers: Vec::new(),
             tool_choice: ToolChoiceParam::none(),
             followup_user_message: None,
             stateless_history: true,
@@ -2525,6 +2533,7 @@ data: [DONE]\n\n";
             endpoint: format!("http://{addr}/v1/responses"),
             api_key: None,
             model: Some("fixture-model".to_string()),
+            headers: Vec::new(),
             tool_choice: ToolChoiceParam::auto(),
             followup_user_message: None,
             stateless_history: false,
@@ -2667,6 +2676,7 @@ data: [DONE]\n\n";
             endpoint: format!("http://{addr}/v1/responses"),
             api_key: None,
             model: Some("fixture-model".to_string()),
+            headers: Vec::new(),
             tool_choice,
             followup_user_message: None,
             stateless_history: true,
@@ -2797,6 +2807,7 @@ data: [DONE]\n\n";
             endpoint: format!("http://{addr}/v1/responses"),
             api_key: None,
             model: Some("fixture-model".to_string()),
+            headers: Vec::new(),
             tool_choice: ToolChoiceParam::auto(),
             followup_user_message: None,
             stateless_history: false,

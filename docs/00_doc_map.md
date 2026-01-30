@@ -64,6 +64,7 @@ Doc index (authoritative docs only)
 | OpenResponses coverage | `docs/03_contracts/openresponses_coverage.md` | Exhaustive OpenResponses spec/schema coverage + ownership. |
 | OpenResponses capability map | `docs/03_contracts/openresponses_capability_map.md` | Feature groups → internal capability ids. |
 | OpenResponses traceability | `docs/03_contracts/openresponses_traceability.md` | Upstream snapshot + sync/diff procedure. |
+| config (v1) | `docs/03_contracts/config.md` | Where configuration lives, how it merges, and how providers/models are selected. |
 | model routing (Phase 2) | `docs/03_contracts/modules/phase-2/01_model_routing.md` | Model switching, routing policies, catalogs, determinism. |
 | extension host (Phase 2) | `docs/03_contracts/modules/phase-2/02_extension_host.md` | Plugin/extension system contract and determinism rules. |
 | tool tasks (Phase 2) | `docs/03_contracts/modules/phase-2/03_tool_tasks.md` | Background tools + artifact-backed outputs + replay requirements. |

@@ -244,6 +244,7 @@ Open questions
 - (empty)
 
 Done (recent)
+- 2026-01-30: Config foundations v0: layered JSON/JSONC config (`~/.rip/config.jsonc`, `RIP_CONFIG`, `rip.jsonc`) + deep-merge; authority resolves provider/model/auth at run boundaries; added `GET /config/doctor` + `rip config doctor` (sanitized; no secrets).
 - 2026-01-26: TUI interaction foundations shipped (theme switching, keybindings, rendered↔raw toggle, clipboard copy/paste fallbacks); this is baseline plumbing, not the final UX.
 - 2026-01-26: Local authority v0.3 lifecycle hardening: `rip serve` self-heals stale `authority/lock.json` on startup (no-client recovery) and handles SIGTERM/SIGINT with best-effort `lock.json`/`meta.json` cleanup; deterministic restart+recovery integration test added.
 - 2026-01-25: Provider cursor cache truth logging (ADR-0015): `continuity_provider_cursor_updated` frame + `thread.provider_cursor.{status,rotate}` parity (cli_h/tui/server/sdk) + OpenResponses run cursor capture.
