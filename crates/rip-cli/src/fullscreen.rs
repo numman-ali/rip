@@ -1418,7 +1418,7 @@ mod tests {
     use tokio::time::timeout;
 
     fn seed_state() -> TuiState {
-        let mut state = TuiState::new(100, 1024);
+        let mut state = TuiState::new(100);
         state.update(FrameEvent {
             id: "e0".to_string(),
             session_id: "s1".to_string(),

@@ -7,7 +7,6 @@ use crate::canvas::CanvasModel;
 use crate::{FrameStore, OverlayStack};
 
 const DEFAULT_MAX_FRAMES: usize = 10_000;
-const DEFAULT_MAX_OUTPUT_BYTES: usize = 1_000_000;
 const DEFAULT_MAX_PREVIEW_BYTES: usize = 8_192;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -274,17 +273,17 @@ pub struct TuiState {
     pub openresponses_model: Option<String>,
     pub preferred_openresponses_endpoint: Option<String>,
     pub preferred_openresponses_model: Option<String>,
-    pub output_text: String,
-    /// Structured canvas model (Phase B.2 — renderer source of truth).
-    /// `output_text` is still populated from agent deltas for parity with
-    /// legacy tests; the renderer no longer reads it.
+    /// Structured canvas model — the sole source of truth for agent
+    /// text, tool cards, notices, and everything else the renderer
+    /// walks. Streaming deltas flow through the per-AgentTurn
+    /// `StreamCollector` (B.5), so there is no string shadow of the
+    /// transcript — the canvas IS the transcript.
     pub canvas: CanvasModel,
     /// Focus ring over canvas messages (Phase B.4). Drives the `▎` accent
     /// rule on cards, `⏎`-expand on `ToolCard`/`TaskCard`, and the `x`
     /// route into the per-item X-ray overlay. `None` means "focus is on
     /// the input editor, nothing on the canvas is selected."
     pub focused_message_id: Option<String>,
-    pub output_truncated: bool,
     pub pending_prompt: Option<String>,
     pub awaiting_response: bool,
     pub status_message: Option<String>,
@@ -296,18 +295,17 @@ pub struct TuiState {
     pub context: Option<ContextSummary>,
     pub last_error_seq: Option<u64>,
     pub last_event_ms: Option<u64>,
-    max_output_bytes: usize,
     max_preview_bytes: usize,
 }
 
 impl Default for TuiState {
     fn default() -> Self {
-        Self::new(DEFAULT_MAX_FRAMES, DEFAULT_MAX_OUTPUT_BYTES)
+        Self::new(DEFAULT_MAX_FRAMES)
     }
 }
 
 impl TuiState {
-    pub fn new(max_frames: usize, max_output_bytes: usize) -> Self {
+    pub fn new(max_frames: usize) -> Self {
         Self {
             frames: FrameStore::new(max_frames),
             selected_seq: None,
@@ -331,10 +329,8 @@ impl TuiState {
             openresponses_model: None,
             preferred_openresponses_endpoint: None,
             preferred_openresponses_model: None,
-            output_text: String::new(),
             canvas: CanvasModel::new(),
             focused_message_id: None,
-            output_truncated: false,
             pending_prompt: None,
             awaiting_response: false,
             status_message: None,
@@ -346,7 +342,6 @@ impl TuiState {
             context: None,
             last_error_seq: None,
             last_event_ms: None,
-            max_output_bytes: max_output_bytes.max(1),
             max_preview_bytes: DEFAULT_MAX_PREVIEW_BYTES,
         }
     }
@@ -440,6 +435,40 @@ impl TuiState {
             palette.selected = 0;
             palette.clamp_selected();
         }
+    }
+
+    /// Flatten the canvas's agent-facing text (stable paragraphs + the
+    /// in-flight streaming tail) into a single string. Used by the X-ray
+    /// "Rendered" pane; no other code should need this — the canvas is
+    /// the canonical transcript and normal rendering walks messages
+    /// directly.
+    pub fn rendered_agent_text(&self) -> String {
+        use crate::canvas::{Block, CanvasMessage};
+        let mut out = String::new();
+        for message in &self.canvas.messages {
+            let CanvasMessage::AgentTurn {
+                blocks,
+                streaming_tail,
+                ..
+            } = message
+            else {
+                continue;
+            };
+            for block in blocks {
+                if let Block::Paragraph(cached) = block {
+                    for line in &cached.text.lines {
+                        for span in &line.spans {
+                            out.push_str(&span.content);
+                        }
+                        out.push('\n');
+                    }
+                }
+            }
+            if !streaming_tail.is_empty() {
+                out.push_str(streaming_tail);
+            }
+        }
+        out
     }
 
     pub fn palette_query(&self) -> Option<&str> {
@@ -552,7 +581,6 @@ impl TuiState {
         self.openresponses_first_provider_event_ms = None;
         self.openresponses_endpoint = None;
         self.openresponses_model = None;
-        self.output_truncated = false;
         self.pending_prompt = None;
         self.awaiting_response = false;
         self.status_message = None;
@@ -565,7 +593,6 @@ impl TuiState {
         self.last_error_seq = None;
         self.last_event_ms = None;
         self.canvas.clear();
-        self.output_text.clear();
         self.focused_message_id = None;
     }
 
@@ -583,7 +610,6 @@ impl TuiState {
         self.openresponses_first_provider_event_ms = None;
         self.openresponses_endpoint = None;
         self.openresponses_model = None;
-        self.output_truncated = false;
         self.pending_prompt = None;
         self.awaiting_response = false;
         self.status_message = None;
@@ -745,8 +771,7 @@ impl TuiState {
                 }
                 self.awaiting_response = true;
                 // `canvas.ingest` below handles both sides (pending prompt
-                // skipped vs. implied UserTurn materialized from the frame);
-                // the old `output_text` / `prompt_ranges` path is gone.
+                // skipped vs. implied UserTurn materialized from the frame).
                 if self.pending_prompt.is_some() {
                     self.pending_prompt = None;
                 }
@@ -781,13 +806,14 @@ impl TuiState {
                     self.openresponses_response_first_byte_ms = Some(event.timestamp_ms);
                 }
             }
-            EventKind::OutputTextDelta { delta } => {
+            EventKind::OutputTextDelta { delta: _ } => {
                 if self.first_output_ms.is_none() {
                     self.first_output_ms = Some(event.timestamp_ms);
                 }
                 self.awaiting_response = false;
                 self.clear_status_message();
-                self.push_output(delta);
+                // Canvas ingest owns the delta → StreamCollector → AgentTurn
+                // plumbing (B.5); derived-state layer only tracks timings.
             }
             EventKind::SessionEnded { .. } => {
                 if self.end_ms.is_none() {
@@ -873,25 +899,6 @@ impl TuiState {
             self.openresponses_first_provider_event_ms?
                 .saturating_sub(self.openresponses_request_started_ms?),
         )
-    }
-
-    fn push_output(&mut self, delta: &str) {
-        if delta.is_empty() {
-            return;
-        }
-
-        self.output_text.push_str(delta);
-        if self.output_text.len() <= self.max_output_bytes {
-            return;
-        }
-
-        self.output_truncated = true;
-        let keep = self.max_output_bytes / 2;
-        let mut start = self.output_text.len().saturating_sub(keep);
-        while start < self.output_text.len() && !self.output_text.is_char_boundary(start) {
-            start += 1;
-        }
-        self.output_text = self.output_text[start..].to_string();
     }
 
     fn ingest_derived_state(&mut self, event: &Event) {
@@ -1251,7 +1258,7 @@ mod tests {
 
     #[test]
     fn computes_ttft_and_e2e() {
-        let mut state = TuiState::new(100, 1024);
+        let mut state = TuiState::new(100);
         state.update(event(
             0,
             1000,
@@ -1279,7 +1286,7 @@ mod tests {
 
     #[test]
     fn update_respects_selected_seq_when_auto_follow_disabled() {
-        let mut state = TuiState::new(100, 1024);
+        let mut state = TuiState::new(100);
         state.auto_follow = false;
         state.selected_seq = Some(0);
         state.update(event(
@@ -1294,7 +1301,7 @@ mod tests {
 
     #[test]
     fn update_sets_session_id_once() {
-        let mut state = TuiState::new(100, 1024);
+        let mut state = TuiState::new(100);
         state.update(event(
             0,
             1000,
@@ -1315,39 +1322,10 @@ mod tests {
     }
 
     #[test]
-    fn push_output_truncates_and_flags() {
-        let mut state = TuiState::new(100, 8);
-        state.update(event(
-            0,
-            1000,
-            EventKind::OutputTextDelta {
-                delta: "abcdefghijk".to_string(),
-            },
-        ));
-        assert!(state.output_truncated);
-        assert!(state.output_text.len() <= 8);
-    }
-
-    #[test]
-    fn push_output_ignores_empty_delta() {
-        let mut state = TuiState::new(100, 1024);
-        state.output_text = "keep".to_string();
-        state.update(event(
-            0,
-            1000,
-            EventKind::OutputTextDelta {
-                delta: "".to_string(),
-            },
-        ));
-        assert_eq!(state.output_text, "keep");
-    }
-
-    #[test]
     fn begin_pending_turn_pushes_user_turn_and_resets_run_state() {
         use crate::canvas::CanvasMessage;
 
-        let mut state = TuiState::new(100, 1024);
-        state.output_text = "Hi there".to_string();
+        let mut state = TuiState::new(100);
         state.session_id = Some("old-session".to_string());
         state.continuity_id = Some("thread-1".to_string());
         state.selected_seq = Some(9);
@@ -1395,7 +1373,7 @@ mod tests {
     fn focus_ring_walks_focusable_messages_and_toggles_expand_on_cards() {
         use crate::canvas::{Block, CachedText, CanvasMessage, ToolCardStatus};
 
-        let mut state = TuiState::new(100, 1024);
+        let mut state = TuiState::new(100);
         // Build an ambient canvas that resembles a mid-conversation state:
         // user → agent → tool card → job notice (non-focusable) → system notice.
         state.canvas.push_user_turn("user", "tui", "hello", 100);
@@ -1407,6 +1385,7 @@ mod tests {
             actor_id: "agent".into(),
             model: None,
             blocks: Vec::new(),
+            streaming_tail: String::new(),
             streaming: false,
             started_at_ms: 0,
             ended_at_ms: None,
@@ -1476,16 +1455,23 @@ mod tests {
 
     #[test]
     fn set_continuity_id_updates_state() {
-        let mut state = TuiState::new(100, 1024);
+        let mut state = TuiState::new(100);
         state.set_continuity_id("thread-2");
         assert_eq!(state.continuity_id.as_deref(), Some("thread-2"));
     }
 
     #[test]
     fn session_started_does_not_duplicate_pending_prompt() {
-        let mut state = TuiState::new(100, 1024);
+        use crate::canvas::CanvasMessage;
+
+        let mut state = TuiState::new(100);
         state.begin_pending_turn("hello");
-        let before = state.output_text.clone();
+        let user_turns_before = state
+            .canvas
+            .messages
+            .iter()
+            .filter(|m| matches!(m, CanvasMessage::UserTurn { .. }))
+            .count();
 
         state.update(event(
             0,
@@ -1495,7 +1481,13 @@ mod tests {
             },
         ));
 
-        assert_eq!(state.output_text, before);
+        let user_turns_after = state
+            .canvas
+            .messages
+            .iter()
+            .filter(|m| matches!(m, CanvasMessage::UserTurn { .. }))
+            .count();
+        assert_eq!(user_turns_before, user_turns_after);
         assert_eq!(state.pending_prompt, None);
         assert!(state.awaiting_response);
     }
@@ -1681,7 +1673,7 @@ mod tests {
 
     #[test]
     fn update_tracks_timings_derived_state_and_artifacts() {
-        let mut state = TuiState::new(100, 1024);
+        let mut state = TuiState::new(100);
         let a1 = artifact('a');
         let a2 = artifact('b');
         let a3 = artifact('c');
@@ -1972,14 +1964,33 @@ mod tests {
         assert_eq!(state.last_error_seq, Some(17));
         // The canvas model holds the UserTurn (materialized from
         // `SessionStarted.input` since no `begin_pending_turn` fired) and
-        // agent-facing text deltas still land in `output_text`.
+        // agent-facing text deltas feed into the current AgentTurn via
+        // the StreamCollector (B.5).
+        use crate::canvas::{Block, CachedText, CanvasMessage};
         let has_user_turn = state
             .canvas
             .messages
             .iter()
-            .any(|m| matches!(m, crate::canvas::CanvasMessage::UserTurn { .. }));
+            .any(|m| matches!(m, CanvasMessage::UserTurn { .. }));
         assert!(has_user_turn);
-        assert!(state.output_text.contains("world"));
+        let agent_has_world = state.canvas.messages.iter().any(|m| match m {
+            CanvasMessage::AgentTurn {
+                blocks,
+                streaming_tail,
+                ..
+            } => {
+                streaming_tail.contains("world")
+                    || blocks.iter().any(|b| match b {
+                        Block::Paragraph(CachedText { text, .. }) => text
+                            .lines
+                            .iter()
+                            .any(|l| l.spans.iter().any(|s| s.content.contains("world"))),
+                        _ => false,
+                    })
+            }
+            _ => false,
+        });
+        assert!(agent_has_world);
 
         let tool1 = state.tools.get("tool-1").expect("tool-1");
         assert_eq!(tool1.stdout_preview, "stdout");

@@ -155,6 +155,11 @@ pub enum CanvasMessage {
         actor_id: String,
         model: Option<String>,
         blocks: Vec<Block>,
+        /// Transient in-flight text held by the StreamCollector (B.5).
+        /// The renderer shows this beneath `blocks` while streaming;
+        /// `SessionEnded` flushes it into a final `Block::Paragraph`.
+        /// Populated only while `streaming == true`.
+        streaming_tail: String,
         streaming: bool,
         started_at_ms: u64,
         ended_at_ms: Option<u64>,

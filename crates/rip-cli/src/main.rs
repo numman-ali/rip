@@ -1937,7 +1937,7 @@ mod tests {
         let url = format!("{}/sessions/abc/events", server.base_url());
         let mut stream = client.get(url).eventsource().expect("eventsource");
 
-        let mut state = TuiState::new(10_000, 1_000_000);
+        let mut state = TuiState::new(10_000);
         while let Some(next) = stream.next().await {
             match next {
                 Ok(Event::Open) => {}

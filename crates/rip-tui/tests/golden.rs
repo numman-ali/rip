@@ -17,7 +17,7 @@ fn event(seq: u64, timestamp_ms: u64, kind: EventKind) -> Event {
 }
 
 fn basic_state() -> TuiState {
-    let mut state = TuiState::new(10_000, 1_000_000);
+    let mut state = TuiState::new(10_000);
     state.update(event(
         0,
         1000,
@@ -86,7 +86,7 @@ fn basic_state() -> TuiState {
 const ART1: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 fn follow_run_state_mid_tool() -> TuiState {
-    let mut state = TuiState::new(10_000, 1_000_000);
+    let mut state = TuiState::new(10_000);
     state.update(event(
         0,
         1000,
@@ -141,7 +141,7 @@ fn follow_run_state_tool_detail() -> TuiState {
 }
 
 fn background_tasks_state() -> TuiState {
-    let mut state = TuiState::new(10_000, 1_000_000);
+    let mut state = TuiState::new(10_000);
     state.update(event(
         0,
         1000,
@@ -261,7 +261,7 @@ fn background_tasks_state() -> TuiState {
 }
 
 fn recover_error_provider_state() -> TuiState {
-    let mut state = TuiState::new(10_000, 1_000_000);
+    let mut state = TuiState::new(10_000);
     state.update(event(
         0,
         1000,
@@ -465,7 +465,7 @@ fn journey_recover_error_m_120x40_stalled() {
 /// start of turn 3. This exercises B.3's contract: ambient state
 /// (frames, tools, tasks, jobs, context, canvas) persists across turns.
 fn multi_turn_continuity_state() -> TuiState {
-    let mut state = TuiState::new(10_000, 1_000_000);
+    let mut state = TuiState::new(10_000);
     state.set_continuity_id("thread-1");
 
     // --- Turn 1 ---

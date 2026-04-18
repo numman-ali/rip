@@ -68,13 +68,13 @@ mod tests {
 
     #[test]
     fn render_handles_empty_state_small_width() {
-        let state = TuiState::new(100, 1024);
+        let state = TuiState::new(100);
         render_once(&state, RenderMode::Json, 60);
     }
 
     #[test]
-    fn render_handles_decoded_mode_and_truncated_output() {
-        let mut state = TuiState::new(100, 16);
+    fn render_handles_decoded_mode_and_streaming_output() {
+        let mut state = TuiState::new(100);
         state.update(event(
             0,
             EventKind::SessionStarted {
@@ -87,13 +87,11 @@ mod tests {
                 delta: "hello".to_string(),
             },
         ));
-        state.output_truncated = true;
-        state.output_text = "partial".to_string();
         render_once(&state, RenderMode::Decoded, 100);
     }
 
     fn seed_overlay_state() -> TuiState {
-        let mut state = TuiState::new(100, 1024);
+        let mut state = TuiState::new(100);
         state.update(event(
             0,
             EventKind::SessionStarted {

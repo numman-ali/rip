@@ -20,12 +20,13 @@ use rip_kernel::{Event, EventKind, ProviderEventStatus, ToolTaskStatus};
 use serde_json::Value;
 
 use super::model::*;
+use super::stream_collector::StreamCollector;
 use super::CanvasModel;
 
 pub(super) fn apply(canvas: &mut CanvasModel, event: &Event) {
     match &event.kind {
         EventKind::SessionStarted { input } => on_session_started(canvas, event, input),
-        EventKind::OutputTextDelta { delta } => append_agent_paragraph(canvas, delta),
+        EventKind::OutputTextDelta { delta } => append_agent_delta(canvas, delta),
         EventKind::SessionEnded { .. } => finalize_agent_turn(canvas, event.timestamp_ms),
         EventKind::ToolStarted {
             tool_id,
@@ -226,46 +227,66 @@ fn on_session_started(canvas: &mut CanvasModel, event: &Event, input: &str) {
         actor_id: "agent".to_string(),
         model: None,
         blocks: Vec::new(),
+        streaming_tail: String::new(),
         streaming: true,
         started_at_ms: event.timestamp_ms,
         ended_at_ms: None,
     });
 }
 
-fn append_agent_paragraph(canvas: &mut CanvasModel, delta: &str) {
+/// Feed a streaming delta through the collector and promote any
+/// completed paragraphs (B.5). Tail text lives on the message itself
+/// — we rebuild the collector from it each call since a single
+/// `CanvasMessage` can't own an enum-variant-scoped collector without
+/// significant API churn, and the rebuild is O(tail) in the worst case.
+fn append_agent_delta(canvas: &mut CanvasModel, delta: &str) {
     if delta.is_empty() {
         return;
     }
-    // B.1: each delta becomes its own paragraph block. B.5 replaces this
-    // with `StreamCollector` which assembles stable blocks + a transient
-    // tail. The renderer in B.2 joins them for display.
     for message in canvas.messages.iter_mut().rev() {
-        if let CanvasMessage::AgentTurn {
-            blocks, streaming, ..
+        let CanvasMessage::AgentTurn {
+            blocks,
+            streaming,
+            streaming_tail,
+            ..
         } = message
-        {
-            if *streaming {
-                blocks.push(Block::Paragraph(CachedText::plain(delta)));
-                return;
-            }
+        else {
+            continue;
+        };
+        if !*streaming {
+            continue;
         }
+        let mut collector = StreamCollector::from_tail(std::mem::take(streaming_tail));
+        let step = collector.push(delta);
+        blocks.extend(step.new_stable);
+        *streaming_tail = collector.into_tail();
+        return;
     }
 }
 
 fn finalize_agent_turn(canvas: &mut CanvasModel, now_ms: u64) {
     for message in canvas.messages.iter_mut().rev() {
-        if let CanvasMessage::AgentTurn {
+        let CanvasMessage::AgentTurn {
             streaming,
+            streaming_tail,
             ended_at_ms,
+            blocks,
             ..
         } = message
-        {
-            if *streaming {
-                *streaming = false;
-                *ended_at_ms = Some(now_ms);
-                return;
-            }
+        else {
+            continue;
+        };
+        if !*streaming {
+            continue;
         }
+        let mut collector = StreamCollector::from_tail(std::mem::take(streaming_tail));
+        if let Some(last) = collector.finalize() {
+            blocks.push(last);
+        }
+        *streaming_tail = String::new();
+        *streaming = false;
+        *ended_at_ms = Some(now_ms);
+        return;
     }
 }
 

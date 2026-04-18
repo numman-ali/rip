@@ -148,14 +148,10 @@ pub(super) fn selected_event_decoded(state: &TuiState) -> Text<'static> {
 }
 
 fn render_output(frame: &mut Frame<'_>, state: &TuiState, theme: &ThemeStyles, area: Rect) {
-    let (mut title, content_text) = match state.output_view {
-        OutputViewMode::Rendered => ("Output".to_string(), state.output_text.clone()),
+    let (title, content_text) = match state.output_view {
+        OutputViewMode::Rendered => ("Output".to_string(), state.rendered_agent_text()),
         OutputViewMode::Raw => ("Raw".to_string(), selected_event_json(state).to_string()),
     };
-
-    if state.output_truncated && state.output_view == OutputViewMode::Rendered {
-        title.push_str(" (truncated)");
-    }
 
     let block = Block::default()
         .borders(Borders::ALL)

@@ -6,8 +6,10 @@
 
 mod ingest;
 pub mod model;
+mod stream_collector;
 
 pub use model::*;
+pub use stream_collector::{CollectorStep, StreamCollector};
 
 use rip_kernel::Event;
 

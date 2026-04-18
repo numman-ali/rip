@@ -522,8 +522,22 @@ fn message_body_lines(message: &CanvasMessage, theme: &ThemeStyles) -> Vec<Line<
             let text = paragraph_source(blocks);
             style_block_lines(&text, theme.prompt)
         }
-        CanvasMessage::AgentTurn { blocks, .. } => {
-            let text = paragraph_source(blocks);
+        CanvasMessage::AgentTurn {
+            blocks,
+            streaming_tail,
+            ..
+        } => {
+            // Stable blocks + the in-flight tail. The StreamCollector holds
+            // text that hasn't crossed a paragraph boundary yet; we still
+            // render it so the user sees deltas the instant they arrive
+            // (B.5). A trailing newline joins tail onto blocks cleanly.
+            let mut text = paragraph_source(blocks);
+            if !streaming_tail.is_empty() {
+                if !text.is_empty() && !text.ends_with('\n') {
+                    text.push('\n');
+                }
+                text.push_str(streaming_tail);
+            }
             if text.is_empty() {
                 Vec::new()
             } else {
