@@ -175,17 +175,31 @@ struct ConfigDoctorOpenResponses {
     provider_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     route: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    effective_route: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    route_source: Option<String>,
     endpoint: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    endpoint_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    model_source: Option<String>,
     has_api_key: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     api_key_source: Option<String>,
     headers: Vec<String>,
     stateless_history: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    stateless_history_source: Option<String>,
     parallel_tool_calls: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    parallel_tool_calls_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     followup_user_message: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    followup_user_message_source: Option<String>,
 }
 
 #[derive(OpenApi)]
@@ -1635,8 +1649,12 @@ async fn config_doctor(State(state): State<AppState>) -> impl IntoResponse {
     let openresponses = resolved_openresponses.map(|cfg| ConfigDoctorOpenResponses {
         provider_id: cfg.provider_id,
         route: cfg.route,
+        effective_route: cfg.effective_route,
+        route_source: cfg.route_source,
         endpoint: cfg.endpoint,
+        endpoint_source: cfg.endpoint_source,
         model: cfg.model,
+        model_source: cfg.model_source,
         has_api_key: cfg
             .api_key
             .as_deref()
@@ -1645,8 +1663,11 @@ async fn config_doctor(State(state): State<AppState>) -> impl IntoResponse {
         api_key_source: cfg.api_key_source,
         headers: cfg.headers.into_iter().map(|(name, _)| name).collect(),
         stateless_history: cfg.stateless_history,
+        stateless_history_source: cfg.stateless_history_source,
         parallel_tool_calls: cfg.parallel_tool_calls,
+        parallel_tool_calls_source: cfg.parallel_tool_calls_source,
         followup_user_message: cfg.followup_user_message,
+        followup_user_message_source: cfg.followup_user_message_source,
     });
 
     (

@@ -40,6 +40,12 @@ pub struct ProviderConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_key: Option<ApiKeySource>,
 
+    /// Optional provider-scoped defaults for OpenResponses behavior.
+    ///
+    /// This overlays the global `openresponses` defaults.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub openresponses: Option<OpenResponsesDefaultsOverlay>,
+
     #[serde(default)]
     pub headers: BTreeMap<String, String>,
 
@@ -128,6 +134,19 @@ pub struct OpenResponsesDefaults {
     pub followup_user_message: Option<String>,
 }
 
+/// An overlay for OpenResponses defaults where fields are optional.
+///
+/// This allows layered config merges to selectively override only some fields.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct OpenResponsesDefaultsOverlay {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stateless_history: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parallel_tool_calls: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub followup_user_message: Option<String>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct OpenResponsesOverrideInput {
     pub endpoint: Option<String>,
@@ -141,14 +160,21 @@ pub struct OpenResponsesOverrideInput {
 pub struct OpenResponsesResolvedConfig {
     pub provider_id: Option<String>,
     pub route: Option<String>,
+    pub route_source: Option<String>,
+    pub effective_route: Option<String>,
     pub endpoint: String,
+    pub endpoint_source: Option<String>,
     pub model: Option<String>,
+    pub model_source: Option<String>,
     pub headers: Vec<(String, String)>,
     pub api_key: Option<String>,
     pub api_key_source: Option<String>,
     pub stateless_history: bool,
+    pub stateless_history_source: Option<String>,
     pub parallel_tool_calls: bool,
+    pub parallel_tool_calls_source: Option<String>,
     pub followup_user_message: Option<String>,
+    pub followup_user_message_source: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -247,11 +273,17 @@ pub fn resolve_openresponses_config(
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
 
-    let default_route = config
+    let (default_route, route_source) = match config
         .roles
         .get("primary")
         .and_then(|route| route.to_route_string())
-        .or_else(|| config.model.clone());
+    {
+        Some(route) => (Some(route), Some("config:roles.primary".to_string())),
+        None => match config.model.clone() {
+            Some(route) => (Some(route), Some("config:model".to_string())),
+            None => (None, None),
+        },
+    };
 
     let parsed_route = default_route
         .as_deref()
@@ -265,23 +297,40 @@ pub fn resolve_openresponses_config(
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
 
-    let endpoint = overrides
+    let override_endpoint = overrides
         .endpoint
         .clone()
-        .or(env_endpoint)
-        .or(default_endpoint);
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+
+    let (endpoint, endpoint_source) = match (override_endpoint, env_endpoint, default_endpoint) {
+        (Some(endpoint), _, _) => (Some(endpoint), Some("override:endpoint".to_string())),
+        (None, Some(endpoint), _) => (
+            Some(endpoint),
+            Some("env:RIP_OPENRESPONSES_ENDPOINT".to_string()),
+        ),
+        (None, None, Some(endpoint)) => {
+            let source = parsed_route
+                .as_ref()
+                .map(|route| format!("config:provider.{}.endpoint", route.provider_id));
+            (Some(endpoint), source)
+        }
+        (None, None, None) => (None, None),
+    };
     let Some(endpoint) = endpoint else {
         return (None, loaded);
     };
 
-    let provider_match = if let Some(route) = parsed_route.as_ref() {
-        config
-            .provider
-            .get(&route.provider_id)
-            .map(|provider| (route.provider_id.clone(), provider))
-    } else {
-        find_provider_by_endpoint(config, &endpoint)
-    };
+    // Prefer mapping the effective endpoint to a configured provider. This ensures per-run
+    // endpoint overrides still pick up the matching provider's headers/api-key/defaults.
+    let provider_match =
+        find_provider_by_endpoint(config, &endpoint).or_else(|| match parsed_route.as_ref() {
+            Some(route) => config
+                .provider
+                .get(&route.provider_id)
+                .map(|provider| (route.provider_id.clone(), provider)),
+            None => None,
+        });
 
     let (provider_id, provider_cfg) = match provider_match {
         Some((id, cfg)) => (Some(id), Some(cfg)),
@@ -313,49 +362,128 @@ pub fn resolve_openresponses_config(
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
 
-    let model = overrides.model.clone().or(env_model).or_else(|| {
-        parsed_route
-            .as_ref()
-            .map(|route| route.model_id.clone())
-            .filter(|value| !value.trim().is_empty())
-    });
+    let override_model = overrides
+        .model
+        .clone()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let (model, model_source) = match (override_model, env_model) {
+        (Some(model), _) => (Some(model), Some("override:model".to_string())),
+        (None, Some(model)) => (Some(model), Some("env:RIP_OPENRESPONSES_MODEL".to_string())),
+        (None, None) => {
+            let model = parsed_route
+                .as_ref()
+                .map(|route| route.model_id.clone())
+                .filter(|value| !value.trim().is_empty());
+            (model, route_source.clone())
+        }
+    };
 
     let mut defaults = config.openresponses.clone().unwrap_or_default();
+    let mut stateless_history_source = Some(
+        config
+            .openresponses
+            .as_ref()
+            .map(|_| "config:openresponses.stateless_history".to_string())
+            .unwrap_or_else(|| "default:stateless_history=false".to_string()),
+    );
+    let mut parallel_tool_calls_source = Some(
+        config
+            .openresponses
+            .as_ref()
+            .map(|_| "config:openresponses.parallel_tool_calls".to_string())
+            .unwrap_or_else(|| "default:parallel_tool_calls=false".to_string()),
+    );
+    let mut followup_user_message_source = Some(
+        config
+            .openresponses
+            .as_ref()
+            .and_then(|cfg| cfg.followup_user_message.as_ref())
+            .map(|_| "config:openresponses.followup_user_message".to_string())
+            .unwrap_or_else(|| "default:followup_user_message=none".to_string()),
+    );
+
+    if let (Some(provider_id), Some(provider_cfg)) = (provider_id.as_deref(), provider_cfg) {
+        if let Some(overlay) = provider_cfg.openresponses.as_ref() {
+            if let Some(value) = overlay.stateless_history {
+                defaults.stateless_history = value;
+                stateless_history_source = Some(format!(
+                    "config:provider.{provider_id}.openresponses.stateless_history"
+                ));
+            }
+            if let Some(value) = overlay.parallel_tool_calls {
+                defaults.parallel_tool_calls = value;
+                parallel_tool_calls_source = Some(format!(
+                    "config:provider.{provider_id}.openresponses.parallel_tool_calls"
+                ));
+            }
+            if overlay.followup_user_message.is_some() {
+                defaults.followup_user_message =
+                    overlay.followup_user_message.as_ref().and_then(|value| {
+                        let trimmed = value.trim().to_string();
+                        (!trimmed.is_empty()).then_some(trimmed)
+                    });
+                followup_user_message_source = Some(format!(
+                    "config:provider.{provider_id}.openresponses.followup_user_message"
+                ));
+            }
+        }
+    }
+
     if let Some(stateless) = parse_env_bool("RIP_OPENRESPONSES_STATELESS_HISTORY") {
         defaults.stateless_history = stateless;
+        stateless_history_source = Some("env:RIP_OPENRESPONSES_STATELESS_HISTORY".to_string());
     }
     if let Some(parallel) = parse_env_bool("RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS") {
         defaults.parallel_tool_calls = parallel;
+        parallel_tool_calls_source = Some("env:RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS".to_string());
     }
     if let Some(value) = env_var("RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE") {
         let trimmed = value.trim().to_string();
         if !trimmed.is_empty() {
             defaults.followup_user_message = Some(trimmed);
+            followup_user_message_source =
+                Some("env:RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE".to_string());
         }
     }
 
     if let Some(stateless_history) = overrides.stateless_history {
         defaults.stateless_history = stateless_history;
+        stateless_history_source = Some("override:stateless_history".to_string());
     }
     if let Some(parallel_tool_calls) = overrides.parallel_tool_calls {
         defaults.parallel_tool_calls = parallel_tool_calls;
+        parallel_tool_calls_source = Some("override:parallel_tool_calls".to_string());
     }
     if overrides.followup_user_message.is_some() {
         defaults.followup_user_message = overrides.followup_user_message.clone();
+        followup_user_message_source = Some("override:followup_user_message".to_string());
     }
+
+    let effective_route = match (provider_id.as_deref(), model.as_deref()) {
+        (Some(provider_id), Some(model)) => Some(format!("{provider_id}/{model}")),
+        _ => None,
+    };
 
     (
         Some(OpenResponsesResolvedConfig {
             provider_id: provider_id.clone(),
             route: default_route,
+            route_source,
+            effective_route,
             endpoint,
+            endpoint_source,
             model,
+            model_source,
             headers,
             api_key,
             api_key_source,
             stateless_history: defaults.stateless_history,
+            stateless_history_source,
             parallel_tool_calls: defaults.parallel_tool_calls,
+            parallel_tool_calls_source,
             followup_user_message: defaults.followup_user_message,
+            followup_user_message_source,
         }),
         loaded,
     )
@@ -447,12 +575,23 @@ fn find_provider_by_endpoint<'a>(
     config: &'a RipConfig,
     endpoint: &str,
 ) -> Option<(String, &'a ProviderConfig)> {
-    let endpoint = endpoint.trim();
+    let endpoint = normalize_endpoint(endpoint);
     config
         .provider
         .iter()
-        .find(|(_id, provider)| provider.endpoint.as_deref().map(|v| v.trim()) == Some(endpoint))
+        .find(|(_id, provider)| {
+            provider
+                .endpoint
+                .as_deref()
+                .map(normalize_endpoint)
+                .as_deref()
+                == Some(endpoint.as_str())
+        })
         .map(|(id, provider)| (id.clone(), provider))
+}
+
+fn normalize_endpoint(raw: &str) -> String {
+    raw.trim().trim_end_matches('/').to_string()
 }
 
 fn resolve_api_key_from_env(endpoint: &str) -> (Option<String>, Option<String>) {
@@ -644,6 +783,7 @@ fn merge_json_value(target: &mut Value, overlay: &Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn strip_jsonc_comments_preserves_strings() {
@@ -687,5 +827,145 @@ mod tests {
         assert_eq!(parsed.provider_id, "openrouter");
         assert_eq!(parsed.model_id, "openai/gpt-oss-20b");
         assert_eq!(parsed.variant.as_deref(), Some("fast"));
+    }
+
+    #[test]
+    fn resolve_openresponses_config_prefers_provider_matched_by_endpoint_and_overlays_defaults() {
+        let dir = std::env::temp_dir().join(format!("ripd-config-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".git")).expect("git dir");
+
+        fs::write(
+            dir.join("rip.jsonc"),
+            r#"
+            {
+              "provider": {
+                "openrouter": {
+                  "endpoint": "https://openrouter.ai/api/v1/responses",
+                  "headers": { "x-provider": "openrouter" },
+                  "openresponses": { "stateless_history": true }
+                },
+                "openai": {
+                  "endpoint": "https://api.openai.com/v1/responses",
+                  "headers": { "x-provider": "openai" },
+                  "openresponses": { "stateless_history": false }
+                }
+              },
+              "model": "openrouter/openai/gpt-oss-20b",
+              "openresponses": { "parallel_tool_calls": true }
+            }
+            "#,
+        )
+        .expect("write config");
+
+        // Default route selects openrouter provider config.
+        let (resolved, _loaded) =
+            resolve_openresponses_config(&dir, OpenResponsesOverrideInput::default());
+        let resolved = resolved.expect("resolved");
+        assert_eq!(resolved.provider_id.as_deref(), Some("openrouter"));
+        assert_eq!(
+            resolved.endpoint,
+            "https://openrouter.ai/api/v1/responses".to_string()
+        );
+        assert!(resolved.parallel_tool_calls);
+        assert!(resolved.stateless_history);
+        assert!(resolved
+            .headers
+            .iter()
+            .any(|(k, v)| k == "x-provider" && v == "openrouter"));
+
+        // Explicit endpoint override selects the matching provider config (even if the default
+        // route provider_id differs).
+        let (resolved, _loaded) = resolve_openresponses_config(
+            &dir,
+            OpenResponsesOverrideInput {
+                endpoint: Some("https://api.openai.com/v1/responses/".to_string()),
+                ..OpenResponsesOverrideInput::default()
+            },
+        );
+        let resolved = resolved.expect("resolved");
+        assert_eq!(resolved.provider_id.as_deref(), Some("openai"));
+        assert_eq!(
+            resolved.endpoint,
+            "https://api.openai.com/v1/responses/".to_string()
+        );
+        assert!(resolved.parallel_tool_calls);
+        assert!(!resolved.stateless_history);
+        assert!(resolved
+            .headers
+            .iter()
+            .any(|(k, v)| k == "x-provider" && v == "openai"));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_openresponses_config_tracks_effective_route_and_field_sources() {
+        let dir = std::env::temp_dir().join(format!("ripd-config-sources-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".git")).expect("git dir");
+
+        fs::write(
+            dir.join("rip.jsonc"),
+            r#"
+            {
+              "provider": {
+                "openrouter": {
+                  "endpoint": "https://openrouter.ai/api/v1/responses"
+                },
+                "openai": {
+                  "endpoint": "https://api.openai.com/v1/responses",
+                  "openresponses": {
+                    "stateless_history": true,
+                    "followup_user_message": "compat"
+                  }
+                }
+              },
+              "model": "openrouter/openai/gpt-oss-20b",
+              "openresponses": { "parallel_tool_calls": true }
+            }
+            "#,
+        )
+        .expect("write config");
+
+        let (resolved, _loaded) = resolve_openresponses_config(
+            &dir,
+            OpenResponsesOverrideInput {
+                endpoint: Some("https://api.openai.com/v1/responses".to_string()),
+                model: Some("gpt-5-nano-2025-08-07".to_string()),
+                parallel_tool_calls: Some(false),
+                ..OpenResponsesOverrideInput::default()
+            },
+        );
+        let resolved = resolved.expect("resolved");
+
+        assert_eq!(
+            resolved.route.as_deref(),
+            Some("openrouter/openai/gpt-oss-20b")
+        );
+        assert_eq!(resolved.route_source.as_deref(), Some("config:model"));
+        assert_eq!(
+            resolved.effective_route.as_deref(),
+            Some("openai/gpt-5-nano-2025-08-07")
+        );
+        assert_eq!(
+            resolved.endpoint_source.as_deref(),
+            Some("override:endpoint")
+        );
+        assert_eq!(resolved.model_source.as_deref(), Some("override:model"));
+        assert_eq!(
+            resolved.stateless_history_source.as_deref(),
+            Some("config:provider.openai.openresponses.stateless_history")
+        );
+        assert_eq!(
+            resolved.parallel_tool_calls_source.as_deref(),
+            Some("override:parallel_tool_calls")
+        );
+        assert_eq!(
+            resolved.followup_user_message_source.as_deref(),
+            Some("config:provider.openai.openresponses.followup_user_message")
+        );
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }

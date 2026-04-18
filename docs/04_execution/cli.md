@@ -47,7 +47,7 @@ Thread commands (local or remote)
 - Note: when using `--summary-markdown`, RIP also writes an artifact-backed handoff bundle and records it in `continuity_handoff_created.summary_artifact_id` (`docs/03_contracts/handoff_context_bundle.md`).
 
 Config commands (local or remote)
-- `rip config doctor` (sanitized resolved config summary; no secrets)
+- `rip config doctor` (sanitized resolved config summary; no secrets; includes effective route + per-field sources)
 - Add `--server <url>` after `config` to target a remote server: `rip config --server <url> doctor`
 
 Headless mode (draft)
@@ -56,15 +56,15 @@ Headless mode (draft)
 - `--view output` prints human output: text deltas only (tool stdout/stderr emitted only if no model output)
 - `--view metrics` prints a single JSON summary object at `session_ended` (TTFT/E2E + OpenResponses timing breakdown when present)
 
-Provider shortcuts (local runs only)
+OpenResponses overrides (`rip run` flags)
 - Preferred: configure providers/models once via layered config (`docs/03_contracts/config.md`), then use `rip config doctor` to confirm the authority’s effective route (provider/model/auth presence) with zero ambiguity.
-- `--provider openai|openrouter` selects the OpenResponses endpoint and API key env fallback.
-- `--model <id>` overrides `RIP_OPENRESPONSES_MODEL`.
-- `--stateless-history` enables stateless followups (`RIP_OPENRESPONSES_STATELESS_HISTORY=1`).
-- `--parallel-tool-calls` sets `RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS=1` (request-only; execution remains sequential).
-- `--followup-user-message <text>` sets `RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE`.
-- Flags are ignored for `--server` runs; configure the server environment instead.
-- Local-first UX: when `RIP_OPENRESPONSES_ENDPOINT` is set in the *client* environment, local runs forward the OpenResponses settings as per-run `openresponses` overrides (posted to the local authority) so changing `RIP_OPENRESPONSES_MODEL`/flags does not require restarting the authority.
+- `--provider openai|openrouter` sets a per-run OpenResponses `endpoint` override (canonical vendor endpoints).
+- `--model <id>` sets a per-run OpenResponses `model` override.
+- `--stateless-history` sets per-run `stateless_history=true`.
+- `--parallel-tool-calls` sets per-run `parallel_tool_calls=true` (request-only; execution remains sequential).
+- `--followup-user-message <text>` sets per-run `followup_user_message`.
+- Flags work in both local mode and `--server <url>` mode (sent as per-message `openresponses` overrides).
+- Local-only compat: when `RIP_OPENRESPONSES_ENDPOINT` is set in the *client* environment, local runs forward the env OpenResponses settings as per-run overrides (posted to the local authority) so changing `RIP_OPENRESPONSES_MODEL`/flags does not require restarting the authority.
 Examples:
 - OpenAI: `OPENAI_API_KEY=... rip run "<task>" --provider openai --model gpt-5-nano-2025-08-07`
 - OpenRouter: `OPENROUTER_API_KEY=... rip run "<task>" --provider openrouter --model openai/gpt-oss-20b --stateless-history`

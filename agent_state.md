@@ -1,6 +1,6 @@
 # Agent State (Working Log)
 
-Last updated: 2026-01-26
+Last updated: 2026-04-18
 
 How to use
 - Update this file whenever focus shifts, before ending a work session, and when blocked.
@@ -13,6 +13,7 @@ Current focus
 - Default local execution: `rip` (TUI), `rip run`, `rip threads`, and `rip tasks` auto-start/auto-attach to a local authority for the store; `--server <url>` preserves explicit remote runs; `rip serve` stays the control plane.
 - Decision locked (ADR-0019): one store requires a single authority for truth writes; indexes are rebuildable caches; hybrid retrieval is a compiler stage and must be truth-logged by reference.
 - TUI UX is explicitly “conversational-first + drill-down”: ambient background signals (tools/tasks/agents), responsive layouts (phone/SSH/web terminals), and an experience review gate are tracked in `docs/02_architecture/tui/06_experience_review.md`.
+- Config UX is still partial: layered config + doctor exist, but mutating config commands (`init`/`set`/`get`) are not shipped yet.
 - OpenResponses provider compatibility: stateless history mode + tool schema strict=false; fix provider_errors without dropping raw fidelity.
 - Output view: human-friendly aggregation (no tool arg deltas), aligned with Codex exec expectations.
 - Background tool tasks are implemented (`pipes` + policy-gated `pty`) with deterministic replay fixtures.
@@ -70,6 +71,7 @@ Reorientation (read in order after compaction)
 Open risks / notes
 - Tests no longer write `./data` under the repo (ripd export test uses temp dirs).
 - Note: local runs still default to `./data` unless `RIP_DATA_DIR` is set.
+- Quality gate: `scripts/check-fast` and `scripts/check-sdk-ts` are green, but full `scripts/check` is currently blocked by workspace-wide `cargo llvm-cov` totals below the 90% floor (latest local run: 83.73% lines / 83.20% regions / 84.74% functions).
 - Perf: context compiler hot path avoids global `events.jsonl` scans when caches exist (snapshot-first session aggregation + per-continuity sidecar replay); avoids full continuity stream loads for `recent_messages_v1` both for latest-message run starts (tail-read continuity v1), non-tail anchors (seekable window reads v1.1), high tool-event density between messages (messages+runs sidecar v1.2), and long-thread compaction selection (compaction checkpoint index sidecar v1.3) with hierarchical summary refs.
 - Perf: prompt cache friendliness requires deterministic tool ordering + stable instruction blocks + append-only context changes within a run (`docs/03_contracts/modules/phase-1/02_provider_adapters.md`, `https://openai.com/index/unrolling-the-codex-agent-loop/`).
 - Determinism: task output pumps retry EINTR (pipes + pty), fixing rare missing stderr in `tasks::tests::run_task_writes_stdout_and_stderr_logs`.
@@ -77,6 +79,7 @@ Open risks / notes
 - OpenResponses: `tool_choice`/`allowed_tools` are now enforced for function tool execution (disallowed calls emit tool failure + `function_call_output.ok=false`).
 - TUI: Canvas-first + X-ray posture is now gated by deterministic ratatui golden snapshots for the 3 v0 journeys (`crates/rip-tui/tests/snapshots/`); `scripts/check-fast` enforces them.
 - Config: layered JSON/JSONC config foundations shipped (deep-merge) + `config.doctor` diagnostics to remove provider/model ambiguity (`docs/03_contracts/config.md`).
+- Config: provider-scoped OpenResponses defaults now overlay global defaults; `config.doctor` reports effective route + per-field provenance; `rip run --server` forwards per-run OpenResponses overrides the same way local runs do.
 
 Active priorities
 - Keep roadmap Now/Next aligned with the implementation work.

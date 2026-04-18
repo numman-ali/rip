@@ -49,8 +49,9 @@ Notes
 
 Provider config (OpenResponses, Phase 1)
 - Preferred: configure providers/models via layered config files (`docs/03_contracts/config.md`) so the authority can resolve the active route deterministically at run boundaries (no restart required for config changes).
+- Provider entries may also define provider-scoped OpenResponses defaults; these overlay the global `openresponses` block and are visible in config diagnostics.
 - Diagnostics:
-  - `GET /config/doctor` (sanitized; no secrets)
+  - `GET /config/doctor` (sanitized; no secrets; includes effective route + field provenance)
   - `rip config doctor` (local-first CLI adapter)
 - Compat: environment variables are still supported as overrides/fallbacks.
 - If a resolved OpenResponses endpoint is present (via config or env), prompt inputs stream OpenResponses SSE and emit `provider_event` frames (plus derived `output_text_delta`).

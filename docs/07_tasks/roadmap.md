@@ -14,6 +14,20 @@ How to use
 
 Now
 
+## Quality gate: restore workspace `scripts/check` coverage compliance [needs work]
+- Refs:
+  - `scripts/check`
+  - `docs/05_quality/tests.md`
+  - `agent_state.md`
+- Status (2026-04-18):
+  - Functional validation is green: `scripts/check-fast` passes, `scripts/check-sdk-ts` passes, and the full test/doc-test suite is green.
+  - Blocking issue: the final `cargo llvm-cov` step in `scripts/check` fails the enforced 90% floors. Latest local run ended at 83.73% lines / 83.20% regions / 84.74% functions.
+  - Largest shortfalls are concentrated in TUI/UI-adjacent modules and observability/control-plane support files rather than the current config cleanup slice.
+- Ready:
+  - Decide whether to restore the 90% bar with targeted tests, or ratchet the threshold intentionally with a recorded decision.
+- Done:
+  - `scripts/check` completes locally without coverage-gate failure, and roadmap/agent state no longer claim a green gate unless it is true.
+
 ## Continuities (Threads): one chat forever (resume/branch, cursor rotation, multi-actor) [needs work]
 - Refs:
   - `docs/02_architecture/continuity_os.md`
@@ -74,7 +88,7 @@ Now
   - Implemented: `pty` tasks (policy-gated via `RIP_TASKS_ALLOW_PTY`) + stdin/resize/signal + `stream=pty` log tailing.
   - Implemented: deterministic replay fixtures for `pipes` exit/cancel + PTY control ordering + artifact refs.
   - Implemented: CLI watch (`rip tasks watch`; local-first with optional `--server`) for list/select/tail/cancel (minimal key support; no PTY attach).
-  - Cleared: `scripts/check` passes (including llvm-cov thresholds >= 90%).
+  - Note: task/task-SDK slices remain test-covered, but workspace-wide `scripts/check` is currently blocked by the global llvm-cov gate tracked in the roadmap Now section above.
   - Parity note (operator gate): task entities are exposed via the control plane; local-first CLI/TUI auto-start/attach to a per-store local authority by default, but there is no pure in-process (no control plane) task registry surface yet.
 - Spec snapshot:
   - Background work is a **task entity** (`task_id`) with its own event stream; Phase 1 session invariant remains (one session == one run).
@@ -87,7 +101,6 @@ Now
   - `tool.task_*` capabilities are exposed via server + SDK; CLI/TUI can list, stream, and control tasks.
   - Replay fixtures cover: spawn->output->exit, spawn->cancel, PTY stdin/resize/signal, and artifact refs.
   - Bench budgets cover task overhead (registry + per-delta emit) and do not regress TTFT/loop latency.
-  - `scripts/check` passes (including llvm-cov thresholds).
 
 Next
 
@@ -244,6 +257,7 @@ Open questions
 - (empty)
 
 Done (recent)
+- 2026-04-18: Config follow-through: provider-scoped OpenResponses defaults now overlay global defaults, `GET /config/doctor` / `rip config doctor` report effective route + per-field provenance, and `rip run --server <url>` forwards per-run OpenResponses overrides instead of requiring server-only config changes.
 - 2026-01-30: Config foundations v0: layered JSON/JSONC config (`~/.rip/config.jsonc`, `RIP_CONFIG`, `rip.jsonc`) + deep-merge; authority resolves provider/model/auth at run boundaries; added `GET /config/doctor` + `rip config doctor` (sanitized; no secrets).
 - 2026-01-26: TUI interaction foundations shipped (theme switching, keybindings, rendered↔raw toggle, clipboard copy/paste fallbacks); this is baseline plumbing, not the final UX.
 - 2026-01-26: Local authority v0.3 lifecycle hardening: `rip serve` self-heals stale `authority/lock.json` on startup (no-client recovery) and handles SIGTERM/SIGINT with best-effort `lock.json`/`meta.json` cleanup; deterministic restart+recovery integration test added.

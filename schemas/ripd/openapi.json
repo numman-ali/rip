@@ -1657,10 +1657,28 @@
               "null"
             ]
           },
+          "effective_route": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "endpoint": {
             "type": "string"
           },
+          "endpoint_source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "followup_user_message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "followup_user_message_source": {
             "type": [
               "string",
               "null"
@@ -1681,8 +1699,20 @@
               "null"
             ]
           },
+          "model_source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "parallel_tool_calls": {
             "type": "boolean"
+          },
+          "parallel_tool_calls_source": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "provider_id": {
             "type": [
@@ -1696,8 +1726,20 @@
               "null"
             ]
           },
+          "route_source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "stateless_history": {
             "type": "boolean"
+          },
+          "stateless_history_source": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },

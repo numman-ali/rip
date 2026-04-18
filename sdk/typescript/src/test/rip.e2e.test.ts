@@ -48,6 +48,41 @@ async function cleanupDataDir(dataDir: string): Promise<void> {
   await rm(dataDir, { recursive: true, force: true });
 }
 
+const LOCAL_TEST_UNSET_ENV = [
+  "RIP_CONFIG",
+  "RIP_OPENRESPONSES_ENDPOINT",
+  "RIP_OPENRESPONSES_API_KEY",
+  "RIP_OPENRESPONSES_MODEL",
+  "RIP_OPENRESPONSES_TOOL_CHOICE",
+  "RIP_OPENRESPONSES_STATELESS_HISTORY",
+  "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
+  "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
+] as const;
+
+function buildLocalExecOptions(repoRoot: string, dataDir: string, workspaceRoot: string) {
+  return {
+    cwd: repoRoot,
+    env: {
+      RIP_DATA_DIR: dataDir,
+      RIP_WORKSPACE_ROOT: workspaceRoot,
+      RIP_CONFIG_HOME: path.join(dataDir, "config-home"),
+    },
+    unsetEnv: LOCAL_TEST_UNSET_ENV,
+  };
+}
+
+function buildServerEnv(dataDir: string, workspaceRoot: string, extraEnv: Record<string, string> = {}): NodeJS.ProcessEnv {
+  const env = { ...process.env, ...extraEnv };
+  env.RIP_DATA_DIR = dataDir;
+  env.RIP_WORKSPACE_ROOT = workspaceRoot;
+  env.RIP_CONFIG_HOME = path.join(dataDir, "config-home");
+  env.RIP_SERVER_ADDR = "127.0.0.1:0";
+  for (const key of LOCAL_TEST_UNSET_ENV) {
+    delete env[key];
+  }
+  return env;
+}
+
 type AuthorityMeta = { endpoint?: unknown; pid?: unknown };
 
 async function waitForAuthorityEndpoint(
@@ -174,25 +209,11 @@ test("Rip SDK runs `rip` locally and parses JSONL frames", async () => {
   const repoRoot = repoRootFromSdkCwd();
   const ripPath = ripExecutablePath(repoRoot);
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-e2e-"));
+  const opts = buildLocalExecOptions(repoRoot, dataDir, path.join(repoRoot, "fixtures", "repo_small"));
 
   try {
     const rip = new Rip({ executablePath: ripPath });
-    const turn = await rip.run("hello", {
-      cwd: repoRoot,
-      env: {
-        RIP_DATA_DIR: dataDir,
-        RIP_WORKSPACE_ROOT: path.join(repoRoot, "fixtures", "repo_small"),
-      },
-      unsetEnv: [
-        "RIP_OPENRESPONSES_ENDPOINT",
-        "RIP_OPENRESPONSES_API_KEY",
-        "RIP_OPENRESPONSES_MODEL",
-        "RIP_OPENRESPONSES_TOOL_CHOICE",
-        "RIP_OPENRESPONSES_STATELESS_HISTORY",
-        "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
-        "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
-      ],
-    });
+    const turn = await rip.run("hello", opts);
 
     assert.equal(turn.exitCode, 0);
     assert.equal(turn.finalOutput, "ack: hello");
@@ -208,23 +229,7 @@ test("Rip SDK exposes continuity-first thread.* via `rip threads`", async () => 
   const repoRoot = repoRootFromSdkCwd();
   const ripPath = ripExecutablePath(repoRoot);
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-threads-"));
-
-  const opts = {
-    cwd: repoRoot,
-    env: {
-      RIP_DATA_DIR: dataDir,
-      RIP_WORKSPACE_ROOT: path.join(repoRoot, "fixtures", "repo_small"),
-    },
-    unsetEnv: [
-      "RIP_OPENRESPONSES_ENDPOINT",
-      "RIP_OPENRESPONSES_API_KEY",
-      "RIP_OPENRESPONSES_MODEL",
-      "RIP_OPENRESPONSES_TOOL_CHOICE",
-      "RIP_OPENRESPONSES_STATELESS_HISTORY",
-      "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
-      "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
-    ],
-  } as const;
+  const opts = buildLocalExecOptions(repoRoot, dataDir, path.join(repoRoot, "fixtures", "repo_small"));
 
   try {
     const rip = new Rip({ executablePath: ripPath });
@@ -288,23 +293,7 @@ test("Rip SDK exposes compaction checkpoints via `rip threads`", async () => {
   const ripPath = ripExecutablePath(repoRoot);
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-compaction-"));
   const workspaceDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-workspace-"));
-
-  const opts = {
-    cwd: repoRoot,
-    env: {
-      RIP_DATA_DIR: dataDir,
-      RIP_WORKSPACE_ROOT: workspaceDir,
-    },
-    unsetEnv: [
-      "RIP_OPENRESPONSES_ENDPOINT",
-      "RIP_OPENRESPONSES_API_KEY",
-      "RIP_OPENRESPONSES_MODEL",
-      "RIP_OPENRESPONSES_TOOL_CHOICE",
-      "RIP_OPENRESPONSES_STATELESS_HISTORY",
-      "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
-      "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
-    ],
-  } as const;
+  const opts = buildLocalExecOptions(repoRoot, dataDir, workspaceDir);
 
   try {
     const rip = new Rip({ executablePath: ripPath });
@@ -330,23 +319,7 @@ test("Rip SDK exposes compaction status via `rip threads`", async () => {
   const ripPath = ripExecutablePath(repoRoot);
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-compaction-status-"));
   const workspaceDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-workspace-"));
-
-  const opts = {
-    cwd: repoRoot,
-    env: {
-      RIP_DATA_DIR: dataDir,
-      RIP_WORKSPACE_ROOT: workspaceDir,
-    },
-    unsetEnv: [
-      "RIP_OPENRESPONSES_ENDPOINT",
-      "RIP_OPENRESPONSES_API_KEY",
-      "RIP_OPENRESPONSES_MODEL",
-      "RIP_OPENRESPONSES_TOOL_CHOICE",
-      "RIP_OPENRESPONSES_STATELESS_HISTORY",
-      "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
-      "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
-    ],
-  } as const;
+  const opts = buildLocalExecOptions(repoRoot, dataDir, workspaceDir);
 
   try {
     const rip = new Rip({ executablePath: ripPath });
@@ -369,23 +342,7 @@ test("Rip SDK exposes task.* locally without server", async () => {
   const repoRoot = repoRootFromSdkCwd();
   const ripPath = ripExecutablePath(repoRoot);
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-tasks-"));
-
-  const opts = {
-    cwd: repoRoot,
-    env: {
-      RIP_DATA_DIR: dataDir,
-      RIP_WORKSPACE_ROOT: path.join(repoRoot, "fixtures", "repo_small"),
-    },
-    unsetEnv: [
-      "RIP_OPENRESPONSES_ENDPOINT",
-      "RIP_OPENRESPONSES_API_KEY",
-      "RIP_OPENRESPONSES_MODEL",
-      "RIP_OPENRESPONSES_TOOL_CHOICE",
-      "RIP_OPENRESPONSES_STATELESS_HISTORY",
-      "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
-      "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
-    ],
-  } as const;
+  const opts = buildLocalExecOptions(repoRoot, dataDir, path.join(repoRoot, "fixtures", "repo_small"));
 
   try {
     const rip = new Rip({ executablePath: ripPath });
@@ -421,23 +378,7 @@ test("Rip SDK streams task events locally without server", async () => {
   const repoRoot = repoRootFromSdkCwd();
   const ripPath = ripExecutablePath(repoRoot);
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-task-events-"));
-
-  const opts = {
-    cwd: repoRoot,
-    env: {
-      RIP_DATA_DIR: dataDir,
-      RIP_WORKSPACE_ROOT: path.join(repoRoot, "fixtures", "repo_small"),
-    },
-    unsetEnv: [
-      "RIP_OPENRESPONSES_ENDPOINT",
-      "RIP_OPENRESPONSES_API_KEY",
-      "RIP_OPENRESPONSES_MODEL",
-      "RIP_OPENRESPONSES_TOOL_CHOICE",
-      "RIP_OPENRESPONSES_STATELESS_HISTORY",
-      "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
-      "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
-    ],
-  } as const;
+  const opts = buildLocalExecOptions(repoRoot, dataDir, path.join(repoRoot, "fixtures", "repo_small"));
 
   try {
     const rip = new Rip({ executablePath: ripPath });
@@ -478,21 +419,7 @@ test("Rip SDK runs sessions over HTTP transport with a real rip serve (ends on s
   const ripPath = ripExecutablePath(repoRoot);
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-http-session-"));
 
-  const env = { ...process.env };
-  env.RIP_DATA_DIR = dataDir;
-  env.RIP_WORKSPACE_ROOT = path.join(repoRoot, "fixtures", "repo_small");
-  env.RIP_SERVER_ADDR = "127.0.0.1:0";
-  for (const key of [
-    "RIP_OPENRESPONSES_ENDPOINT",
-    "RIP_OPENRESPONSES_API_KEY",
-    "RIP_OPENRESPONSES_MODEL",
-    "RIP_OPENRESPONSES_TOOL_CHOICE",
-    "RIP_OPENRESPONSES_STATELESS_HISTORY",
-    "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
-    "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
-  ]) {
-    delete env[key];
-  }
+  const env = buildServerEnv(dataDir, path.join(repoRoot, "fixtures", "repo_small"));
 
   let server: SpawnedRipServer | null = null;
   const controller = new AbortController();
@@ -522,21 +449,7 @@ test("Rip SDK streams thread events over HTTP transport with maxEvents terminati
   const ripPath = ripExecutablePath(repoRoot);
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-http-thread-events-"));
 
-  const env = { ...process.env };
-  env.RIP_DATA_DIR = dataDir;
-  env.RIP_WORKSPACE_ROOT = path.join(repoRoot, "fixtures", "repo_small");
-  env.RIP_SERVER_ADDR = "127.0.0.1:0";
-  for (const key of [
-    "RIP_OPENRESPONSES_ENDPOINT",
-    "RIP_OPENRESPONSES_API_KEY",
-    "RIP_OPENRESPONSES_MODEL",
-    "RIP_OPENRESPONSES_TOOL_CHOICE",
-    "RIP_OPENRESPONSES_STATELESS_HISTORY",
-    "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
-    "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
-  ]) {
-    delete env[key];
-  }
+  const env = buildServerEnv(dataDir, path.join(repoRoot, "fixtures", "repo_small"));
 
   let server: SpawnedRipServer | null = null;
   const controller = new AbortController();
@@ -574,21 +487,7 @@ test("Rip SDK branches/handoffs threads over HTTP transport and streams branch/h
   const ripPath = ripExecutablePath(repoRoot);
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-http-thread-branch-handoff-"));
 
-  const env = { ...process.env };
-  env.RIP_DATA_DIR = dataDir;
-  env.RIP_WORKSPACE_ROOT = path.join(repoRoot, "fixtures", "repo_small");
-  env.RIP_SERVER_ADDR = "127.0.0.1:0";
-  for (const key of [
-    "RIP_OPENRESPONSES_ENDPOINT",
-    "RIP_OPENRESPONSES_API_KEY",
-    "RIP_OPENRESPONSES_MODEL",
-    "RIP_OPENRESPONSES_TOOL_CHOICE",
-    "RIP_OPENRESPONSES_STATELESS_HISTORY",
-    "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
-    "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
-  ]) {
-    delete env[key];
-  }
+  const env = buildServerEnv(dataDir, path.join(repoRoot, "fixtures", "repo_small"));
 
   let server: SpawnedRipServer | null = null;
   const controller = new AbortController();
@@ -654,21 +553,7 @@ test("Rip SDK exercises thread.* JSON endpoints over HTTP transport with a real 
   const ripPath = ripExecutablePath(repoRoot);
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-http-thread-json-"));
 
-  const env = { ...process.env };
-  env.RIP_DATA_DIR = dataDir;
-  env.RIP_WORKSPACE_ROOT = path.join(repoRoot, "fixtures", "repo_small");
-  env.RIP_SERVER_ADDR = "127.0.0.1:0";
-  for (const key of [
-    "RIP_OPENRESPONSES_ENDPOINT",
-    "RIP_OPENRESPONSES_API_KEY",
-    "RIP_OPENRESPONSES_MODEL",
-    "RIP_OPENRESPONSES_TOOL_CHOICE",
-    "RIP_OPENRESPONSES_STATELESS_HISTORY",
-    "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
-    "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
-  ]) {
-    delete env[key];
-  }
+  const env = buildServerEnv(dataDir, path.join(repoRoot, "fixtures", "repo_small"));
 
   let server: SpawnedRipServer | null = null;
   const controller = new AbortController();
@@ -784,21 +669,7 @@ test("Rip SDK exercises task.* JSON endpoints over HTTP transport with a real ri
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-http-task-json-"));
   const workspaceDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-http-task-json-workspace-"));
 
-  const env = { ...process.env };
-  env.RIP_DATA_DIR = dataDir;
-  env.RIP_WORKSPACE_ROOT = workspaceDir;
-  env.RIP_SERVER_ADDR = "127.0.0.1:0";
-  for (const key of [
-    "RIP_OPENRESPONSES_ENDPOINT",
-    "RIP_OPENRESPONSES_API_KEY",
-    "RIP_OPENRESPONSES_MODEL",
-    "RIP_OPENRESPONSES_TOOL_CHOICE",
-    "RIP_OPENRESPONSES_STATELESS_HISTORY",
-    "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
-    "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
-  ]) {
-    delete env[key];
-  }
+  const env = buildServerEnv(dataDir, workspaceDir);
 
   let server: SpawnedRipServer | null = null;
   const controller = new AbortController();
@@ -863,22 +734,7 @@ test("Rip SDK exercises PTY task control endpoints over HTTP transport when RIP_
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-http-task-pty-"));
   const workspaceDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-http-task-pty-workspace-"));
 
-  const env = { ...process.env };
-  env.RIP_DATA_DIR = dataDir;
-  env.RIP_WORKSPACE_ROOT = workspaceDir;
-  env.RIP_SERVER_ADDR = "127.0.0.1:0";
-  env.RIP_TASKS_ALLOW_PTY = "1";
-  for (const key of [
-    "RIP_OPENRESPONSES_ENDPOINT",
-    "RIP_OPENRESPONSES_API_KEY",
-    "RIP_OPENRESPONSES_MODEL",
-    "RIP_OPENRESPONSES_TOOL_CHOICE",
-    "RIP_OPENRESPONSES_STATELESS_HISTORY",
-    "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
-    "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
-  ]) {
-    delete env[key];
-  }
+  const env = buildServerEnv(dataDir, workspaceDir, { RIP_TASKS_ALLOW_PTY: "1" });
 
   let server: SpawnedRipServer | null = null;
   const controller = new AbortController();
@@ -972,21 +828,7 @@ test("Rip SDK streams task events over HTTP transport until terminal status", as
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-http-task-events-"));
   const workspaceDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-http-workspace-"));
 
-  const env = { ...process.env };
-  env.RIP_DATA_DIR = dataDir;
-  env.RIP_WORKSPACE_ROOT = workspaceDir;
-  env.RIP_SERVER_ADDR = "127.0.0.1:0";
-  for (const key of [
-    "RIP_OPENRESPONSES_ENDPOINT",
-    "RIP_OPENRESPONSES_API_KEY",
-    "RIP_OPENRESPONSES_MODEL",
-    "RIP_OPENRESPONSES_TOOL_CHOICE",
-    "RIP_OPENRESPONSES_STATELESS_HISTORY",
-    "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
-    "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
-  ]) {
-    delete env[key];
-  }
+  const env = buildServerEnv(dataDir, workspaceDir);
 
   let server: SpawnedRipServer | null = null;
 

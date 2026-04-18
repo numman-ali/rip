@@ -29,11 +29,18 @@ Config shape (v1)
       "headers": {
         "HTTP-Referer": "https://example.com",
         "X-Title": "rip"
+      },
+      // Provider-scoped OpenResponses defaults (optional; overlays the global defaults).
+      "openresponses": {
+        "stateless_history": true
       }
     },
     "openai": {
       "endpoint": "https://api.openai.com/v1/responses",
-      "api_key": { "env": "OPENAI_API_KEY" }
+      "api_key": { "env": "OPENAI_API_KEY" },
+      "openresponses": {
+        "stateless_history": false
+      }
     }
   },
 
@@ -47,7 +54,6 @@ Config shape (v1)
 
   // Default OpenResponses behavior (optional).
   "openresponses": {
-    "stateless_history": true,
     "parallel_tool_calls": false
   }
 }
@@ -67,4 +73,7 @@ Secrets posture
 Diagnostics
 - Server: `GET /config/doctor` returns a sanitized config resolution summary.
 - CLI: `rip config doctor` prints the same summary (local-first by default).
-
+- Doctor reports both the configured route and the effective route:
+  - `route`: the default route chosen from config (`roles.primary` or `model`)
+  - `effective_route`: the provider/model actually used after endpoint/model overrides are applied
+- Doctor also reports per-field provenance where relevant (`*_source`), so it is obvious whether endpoint/model/OpenResponses defaults came from config, env compat, or per-run overrides.

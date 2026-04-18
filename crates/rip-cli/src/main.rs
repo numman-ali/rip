@@ -247,22 +247,15 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                 || stateless_history
                 || parallel_tool_calls
                 || followup_user_message.is_some();
-            if server.is_some() && has_openresponses_flags {
-                anyhow::bail!(
-                    "openresponses flags are only supported for local runs; configure the server instead"
-                );
-            }
-
             let openresponses_overrides = if has_openresponses_flags {
-                let provider = provider.ok_or_else(|| {
-                    anyhow::anyhow!("--provider is required when using openresponses flags")
-                })?;
-                let endpoint = match provider {
-                    Provider::Openai => "https://api.openai.com/v1/responses",
-                    Provider::Openrouter => "https://openrouter.ai/api/v1/responses",
-                };
                 let mut obj = serde_json::Map::new();
-                obj.insert("endpoint".to_string(), Value::String(endpoint.to_string()));
+                if let Some(provider) = provider {
+                    let endpoint = match provider {
+                        Provider::Openai => "https://api.openai.com/v1/responses",
+                        Provider::Openrouter => "https://openrouter.ai/api/v1/responses",
+                    };
+                    obj.insert("endpoint".to_string(), Value::String(endpoint.to_string()));
+                }
                 if let Some(model) = model.clone() {
                     if !model.trim().is_empty() {
                         obj.insert("model".to_string(), Value::String(model));
@@ -280,23 +273,18 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                     }
                 }
                 Some(Value::Object(obj))
-            } else {
+            } else if server.is_none() {
+                // Local-only compat: allow env changes in the client to be forwarded as per-run
+                // overrides so the authority does not need restarting.
                 openresponses_overrides_from_env()
+            } else {
+                None
             };
-            if has_openresponses_flags {
-                apply_openresponses_env(
-                    provider.expect("validated above"),
-                    model.clone(),
-                    stateless_history,
-                    parallel_tool_calls,
-                    followup_user_message.clone(),
-                )?;
-            }
             if let Some(server) = server {
                 if headless {
-                    run_headless_remote(prompt, server, view, None).await?;
+                    run_headless_remote(prompt, server, view, openresponses_overrides).await?;
                 } else {
-                    run_interactive_remote(prompt, server, view, None).await?;
+                    run_interactive_remote(prompt, server, view, openresponses_overrides).await?;
                 }
             } else {
                 #[cfg(test)]
@@ -531,51 +519,6 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-fn apply_openresponses_env(
-    provider: Provider,
-    model: Option<String>,
-    stateless_history: bool,
-    parallel_tool_calls: bool,
-    followup_user_message: Option<String>,
-) -> anyhow::Result<()> {
-    let endpoint = match provider {
-        Provider::Openai => "https://api.openai.com/v1/responses",
-        Provider::Openrouter => "https://openrouter.ai/api/v1/responses",
-    };
-    std::env::set_var("RIP_OPENRESPONSES_ENDPOINT", endpoint);
-
-    if let Some(model) = model {
-        std::env::set_var("RIP_OPENRESPONSES_MODEL", model);
-    }
-
-    if stateless_history {
-        std::env::set_var("RIP_OPENRESPONSES_STATELESS_HISTORY", "1");
-    }
-    if parallel_tool_calls {
-        std::env::set_var("RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS", "1");
-    }
-
-    if let Some(message) = followup_user_message {
-        std::env::set_var("RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE", message);
-    }
-
-    let provider_key = match provider {
-        Provider::Openai => std::env::var("OPENAI_API_KEY").ok(),
-        Provider::Openrouter => std::env::var("OPENROUTER_API_KEY").ok(),
-    };
-    let api_key = provider_key.or_else(|| std::env::var("RIP_OPENRESPONSES_API_KEY").ok());
-    if let Some(api_key) = api_key {
-        std::env::set_var("RIP_OPENRESPONSES_API_KEY", api_key);
-        return Ok(());
-    }
-
-    let missing_hint = match provider {
-        Provider::Openai => "OPENAI_API_KEY",
-        Provider::Openrouter => "OPENROUTER_API_KEY",
-    };
-    anyhow::bail!("missing API key: set {missing_hint} or RIP_OPENRESPONSES_API_KEY")
 }
 
 fn openresponses_overrides_from_env() -> Option<Value> {
@@ -1404,7 +1347,29 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn run_rejects_openresponses_flags_with_server() {
+    async fn run_accepts_openresponses_flags_with_server() {
+        let server = MockServer::start();
+        let _ensure = server.mock(|when, then| {
+            when.method(POST).path("/threads/ensure");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"thread_id":"t1"}"#);
+        });
+        let _post = server.mock(|when, then| {
+            when.method(POST)
+                .path("/threads/t1/messages")
+                .json_body_partial(r#"{"openresponses":{"endpoint":"https://api.openai.com/v1/responses","model":"gpt-5-nano-2025-08-07","stateless_history":true,"parallel_tool_calls":true,"followup_user_message":"compat"}}"#);
+            then.status(202)
+                .header("content-type", "application/json")
+                .body(r#"{"thread_id":"t1","message_id":"m1","session_id":"abc"}"#);
+        });
+        let _events = server.mock(|when, then| {
+            when.method(GET).path("/sessions/abc/events");
+            then.status(200)
+                .header("content-type", "text/event-stream")
+                .body(format!("data: {}\n\n", session_started_frame()));
+        });
+
         let cli = Cli {
             prompt: None,
             server: None,
@@ -1412,24 +1377,44 @@ mod tests {
             task: None,
             command: Some(Commands::Run {
                 prompt: "hello".to_string(),
-                server: Some("http://local".to_string()),
+                server: Some(server.base_url()),
                 provider: Some(Provider::Openai),
-                model: None,
-                stateless_history: false,
-                parallel_tool_calls: false,
-                followup_user_message: None,
+                model: Some("gpt-5-nano-2025-08-07".to_string()),
+                stateless_history: true,
+                parallel_tool_calls: true,
+                followup_user_message: Some("compat".to_string()),
                 headless: true,
-                view: OutputView::Output,
+                view: OutputView::Raw,
             }),
         };
-        let err = run(cli).await.unwrap_err();
-        assert!(err
-            .to_string()
-            .contains("openresponses flags are only supported for local runs"));
+        let result = run(cli).await;
+        assert!(result.is_ok());
     }
 
     #[tokio::test]
-    async fn run_requires_provider_when_openresponses_flags_set() {
+    async fn run_allows_model_override_without_provider() {
+        let server = MockServer::start();
+        let _ensure = server.mock(|when, then| {
+            when.method(POST).path("/threads/ensure");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"thread_id":"t1"}"#);
+        });
+        let _post = server.mock(|when, then| {
+            when.method(POST)
+                .path("/threads/t1/messages")
+                .json_body_partial(r#"{"openresponses":{"model":"gpt-5-nano-2025-08-07"}}"#);
+            then.status(202)
+                .header("content-type", "application/json")
+                .body(r#"{"thread_id":"t1","message_id":"m1","session_id":"abc"}"#);
+        });
+        let _events = server.mock(|when, then| {
+            when.method(GET).path("/sessions/abc/events");
+            then.status(200)
+                .header("content-type", "text/event-stream")
+                .body(format!("data: {}\n\n", session_started_frame()));
+        });
+
         let cli = Cli {
             prompt: None,
             server: None,
@@ -1437,20 +1422,18 @@ mod tests {
             task: None,
             command: Some(Commands::Run {
                 prompt: "hello".to_string(),
-                server: None,
+                server: Some(server.base_url()),
                 provider: None,
                 model: Some("gpt-5-nano-2025-08-07".to_string()),
                 stateless_history: false,
                 parallel_tool_calls: false,
                 followup_user_message: None,
                 headless: true,
-                view: OutputView::Output,
+                view: OutputView::Raw,
             }),
         };
-        let err = run(cli).await.unwrap_err();
-        assert!(err
-            .to_string()
-            .contains("--provider is required when using openresponses flags"));
+        let result = run(cli).await;
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -1952,90 +1935,6 @@ mod tests {
         let mut buffer = Vec::new();
         let result = stream_events_with_writer(&mut stream, OutputView::Raw, &mut buffer).await;
         assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_openresponses_env_sets_openai_vars() {
-        with_clean_env(|| {
-            std::env::set_var("OPENAI_API_KEY", "test-openai");
-            apply_openresponses_env(
-                Provider::Openai,
-                Some("gpt-5-nano-2025-08-07".to_string()),
-                true,
-                true,
-                Some("continue".to_string()),
-            )
-            .expect("env");
-
-            assert_eq!(
-                std::env::var("RIP_OPENRESPONSES_ENDPOINT").ok().as_deref(),
-                Some("https://api.openai.com/v1/responses")
-            );
-            assert_eq!(
-                std::env::var("RIP_OPENRESPONSES_MODEL").ok().as_deref(),
-                Some("gpt-5-nano-2025-08-07")
-            );
-            assert_eq!(
-                std::env::var("RIP_OPENRESPONSES_STATELESS_HISTORY")
-                    .ok()
-                    .as_deref(),
-                Some("1")
-            );
-            assert_eq!(
-                std::env::var("RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS")
-                    .ok()
-                    .as_deref(),
-                Some("1")
-            );
-            assert_eq!(
-                std::env::var("RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE")
-                    .ok()
-                    .as_deref(),
-                Some("continue")
-            );
-            assert_eq!(
-                std::env::var("RIP_OPENRESPONSES_API_KEY").ok().as_deref(),
-                Some("test-openai")
-            );
-        });
-    }
-
-    #[test]
-    fn apply_openresponses_env_sets_openrouter_vars() {
-        with_clean_env(|| {
-            std::env::set_var("OPENROUTER_API_KEY", "test-openrouter");
-            apply_openresponses_env(Provider::Openrouter, None, false, false, None).expect("env");
-
-            assert_eq!(
-                std::env::var("RIP_OPENRESPONSES_ENDPOINT").ok().as_deref(),
-                Some("https://openrouter.ai/api/v1/responses")
-            );
-            assert_eq!(
-                std::env::var("RIP_OPENRESPONSES_API_KEY").ok().as_deref(),
-                Some("test-openrouter")
-            );
-        });
-    }
-
-    #[test]
-    fn apply_openresponses_env_uses_fallback_key() {
-        with_clean_env(|| {
-            std::env::set_var("RIP_OPENRESPONSES_API_KEY", "fallback");
-            apply_openresponses_env(Provider::Openai, None, false, false, None).expect("env");
-            assert_eq!(
-                std::env::var("RIP_OPENRESPONSES_API_KEY").ok().as_deref(),
-                Some("fallback")
-            );
-        });
-    }
-
-    #[test]
-    fn apply_openresponses_env_missing_key_errors() {
-        with_clean_env(|| {
-            let err =
-                apply_openresponses_env(Provider::Openai, None, false, false, None).unwrap_err();
-            assert!(err.to_string().contains("missing API key"));
-        });
     }
 
     #[test]
