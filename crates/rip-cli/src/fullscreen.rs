@@ -21,7 +21,13 @@ use reqwest_eventsource::{
     Error as EventSourceError, Event as SseEvent, EventSource, RequestBuilderExt,
 };
 use rip_kernel::Event as FrameEvent;
-use rip_tui::{render, PaletteEntry, PaletteMode, RenderMode, TuiState};
+use rip_tui::palette::modes::models::{
+    infer_provider_id_from_endpoint, push_route_from_string, upsert_model_route,
+};
+use rip_tui::{
+    render, ModelRoute, ModelsMode, PaletteMode, PaletteSource, RenderMode, ResolvedModelRoute,
+    TuiState,
+};
 use serde_json::Value;
 use tokio::sync::mpsc;
 
@@ -35,106 +41,13 @@ enum SseUiMode {
     Attach,
 }
 
-#[derive(Debug, Clone)]
-struct ModelRouteRecord {
-    route: String,
-    provider_id: String,
-    model_id: String,
-    endpoint: String,
-    label: Option<String>,
-    variants: usize,
-    sources: Vec<String>,
-}
-
-#[derive(Debug, Clone, Default)]
-struct ModelPaletteCatalog {
-    routes: Vec<ModelRouteRecord>,
-    provider_endpoints: BTreeMap<String, String>,
-    current_route: Option<String>,
-    current_endpoint: Option<String>,
-    current_model: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ResolvedModelSelection {
-    route: String,
-    endpoint: String,
-    model: String,
-}
-
-impl ModelPaletteCatalog {
-    fn build_entries(&self) -> Vec<PaletteEntry> {
-        let mut routes = self.routes.clone();
-        let current = self.current_route.as_deref();
-        routes.sort_by(|a, b| {
-            let a_current = current == Some(a.route.as_str());
-            let b_current = current == Some(b.route.as_str());
-            b_current
-                .cmp(&a_current)
-                .then_with(|| a.provider_id.cmp(&b.provider_id))
-                .then_with(|| a.model_id.cmp(&b.model_id))
-        });
-
-        routes
-            .into_iter()
-            .map(|record| {
-                let mut chips = Vec::new();
-                if current == Some(record.route.as_str()) {
-                    chips.push("current".to_string());
-                }
-                for source in &record.sources {
-                    if let Some(chip) = source_chip(source) {
-                        if !chips.iter().any(|value| value == chip) {
-                            chips.push(chip.to_string());
-                        }
-                    }
-                }
-                if record.variants > 0 {
-                    chips.push(format!("variants:{}", record.variants));
-                }
-                PaletteEntry {
-                    value: record.route.clone(),
-                    title: record.route,
-                    subtitle: record.label,
-                    chips,
-                }
-            })
-            .collect()
-    }
-
-    fn resolve_selection(&self, selection: &str) -> Result<ResolvedModelSelection, String> {
-        if let Some(record) = self.routes.iter().find(|record| record.route == selection) {
-            return Ok(ResolvedModelSelection {
-                route: record.route.clone(),
-                endpoint: record.endpoint.clone(),
-                model: record.model_id.clone(),
-            });
-        }
-
-        let Some((provider_id, model_id)) = parse_model_route(selection) else {
-            return Err("model route must look like provider/model_id".to_string());
-        };
-        let endpoint = self
-            .provider_endpoints
-            .get(&provider_id)
-            .cloned()
-            .or_else(|| default_endpoint_for_provider(&provider_id))
-            .ok_or_else(|| format!("provider '{provider_id}' is not configured"))?;
-        Ok(ResolvedModelSelection {
-            route: selection.trim().to_string(),
-            endpoint,
-            model: model_id,
-        })
-    }
-}
-
-fn load_model_palette_catalog(openresponses_overrides: Option<&Value>) -> ModelPaletteCatalog {
+fn load_model_palette_catalog(openresponses_overrides: Option<&Value>) -> ModelsMode {
     let workspace_root = crate::local_authority::default_workspace_root();
     let (resolved, loaded) = ripd::resolve_openresponses_config(
         &workspace_root,
         openresponses_override_input_from_json(openresponses_overrides),
     );
-    let mut routes_by_value = BTreeMap::<String, ModelRouteRecord>::new();
+    let mut routes_by_value = BTreeMap::<String, ModelRoute>::new();
     let mut provider_endpoints = BTreeMap::<String, String>::new();
 
     for (provider_id, provider_cfg) in &loaded.config.provider {
@@ -232,15 +145,15 @@ fn load_model_palette_catalog(openresponses_overrides: Option<&Value>) -> ModelP
         }
     }
 
-    ModelPaletteCatalog {
-        routes: routes_by_value.into_values().collect(),
+    ModelsMode::new(
+        routes_by_value.into_values().collect(),
         provider_endpoints,
-        current_route: resolved
+        resolved
             .as_ref()
             .and_then(|cfg| cfg.effective_route.clone()),
-        current_endpoint: resolved.as_ref().map(|cfg| cfg.endpoint.clone()),
-        current_model: resolved.and_then(|cfg| cfg.model),
-    }
+        resolved.as_ref().map(|cfg| cfg.endpoint.clone()),
+        resolved.and_then(|cfg| cfg.model),
+    )
 }
 
 fn openresponses_override_input_from_json(
@@ -272,124 +185,27 @@ fn openresponses_override_input_from_json(
     }
 }
 
-fn parse_model_route(raw: &str) -> Option<(String, String)> {
-    let trimmed = raw.trim();
-    let (provider_id, model_id) = trimmed.split_once('/')?;
-    let provider_id = provider_id.trim();
-    let model_id = model_id.trim();
-    if provider_id.is_empty() || model_id.is_empty() {
-        return None;
-    }
-    Some((provider_id.to_string(), model_id.to_string()))
-}
-
-fn default_endpoint_for_provider(provider_id: &str) -> Option<String> {
-    match provider_id {
-        "openai" => Some("https://api.openai.com/v1/responses".to_string()),
-        "openrouter" => Some("https://openrouter.ai/api/v1/responses".to_string()),
-        _ => None,
-    }
-}
-
-fn infer_provider_id_from_endpoint(endpoint: &str) -> Option<String> {
-    if endpoint.contains("openrouter.ai") {
-        Some("openrouter".to_string())
-    } else if endpoint.contains("api.openai.com") || endpoint.contains("openai.com") {
-        Some("openai".to_string())
-    } else {
-        None
-    }
-}
-
-fn push_route_from_string(
-    routes_by_value: &mut BTreeMap<String, ModelRouteRecord>,
-    provider_endpoints: &BTreeMap<String, String>,
-    raw_route: &str,
-    source: &str,
-) {
-    let Some((provider_id, model_id)) = parse_model_route(raw_route) else {
-        return;
-    };
-    let Some(endpoint) = provider_endpoints
-        .get(&provider_id)
-        .cloned()
-        .or_else(|| default_endpoint_for_provider(&provider_id))
-    else {
-        return;
-    };
-
-    upsert_model_route(
-        routes_by_value,
-        &provider_id,
-        &model_id,
-        &endpoint,
-        None,
-        0,
-        source,
-    );
-}
-
-fn upsert_model_route(
-    routes_by_value: &mut BTreeMap<String, ModelRouteRecord>,
-    provider_id: &str,
-    model_id: &str,
-    endpoint: &str,
-    label: Option<String>,
-    variants: usize,
-    source: &str,
-) {
-    let route = format!("{provider_id}/{model_id}");
-    let record = routes_by_value
-        .entry(route.clone())
-        .or_insert_with(|| ModelRouteRecord {
-            route: route.clone(),
-            provider_id: provider_id.to_string(),
-            model_id: model_id.to_string(),
-            endpoint: endpoint.to_string(),
-            label: None,
-            variants: 0,
-            sources: Vec::new(),
-        });
-    if record.label.is_none() && label.is_some() {
-        record.label = label;
-    }
-    record.variants = record.variants.max(variants);
-    if !record.sources.iter().any(|value| value == source) {
-        record.sources.push(source.to_string());
-    }
-}
-
-fn source_chip(source: &str) -> Option<&'static str> {
-    match source {
-        "catalog" => Some("catalog"),
-        "config:model" => Some("default"),
-        "config:roles.primary" => Some("primary"),
-        "config:small_model" => Some("small"),
-        "current" => None,
-        _ if source.starts_with("config:roles.") => Some("role"),
-        _ => None,
-    }
-}
-
-fn open_model_palette(state: &mut TuiState, catalog: &ModelPaletteCatalog) {
+fn open_model_palette(state: &mut TuiState, catalog: &ModelsMode) {
+    let empty_message = catalog.empty_state().to_string();
+    let custom_prompt = catalog.allow_custom().unwrap_or("").to_string();
     state.open_palette(
         PaletteMode::Model,
-        catalog.build_entries(),
-        "No configured model routes. Type provider/model_id to use a custom route.",
-        true,
-        "Use typed route",
+        catalog.entries(),
+        empty_message,
+        catalog.allow_custom().is_some(),
+        custom_prompt,
     );
 }
 
 fn apply_model_palette_selection(
     state: &mut TuiState,
     overrides: &mut Option<Value>,
-    catalog: &mut ModelPaletteCatalog,
+    catalog: &mut ModelsMode,
 ) -> Result<(), String> {
     let Some(selection) = state.palette_selected_value() else {
         return Err("palette: no model selected".to_string());
     };
-    let resolved = catalog.resolve_selection(&selection)?;
+    let resolved: ResolvedModelRoute = catalog.resolve_selection(&selection)?;
     let mut map = match overrides.take() {
         Some(Value::Object(map)) => map,
         _ => serde_json::Map::new(),
@@ -400,9 +216,7 @@ fn apply_model_palette_selection(
     );
     map.insert("model".to_string(), Value::String(resolved.model.clone()));
     *overrides = Some(Value::Object(map));
-    catalog.current_route = Some(resolved.route.clone());
-    catalog.current_endpoint = Some(resolved.endpoint.clone());
-    catalog.current_model = Some(resolved.model.clone());
+    catalog.record_resolution(&resolved);
     state.set_preferred_openresponses_target(Some(resolved.endpoint), Some(resolved.model));
     state.close_overlay();
     state.set_status_message(format!("next model: {}", resolved.route));
@@ -1535,6 +1349,7 @@ mod tests {
     use httpmock::Method::GET;
     use httpmock::MockServer;
     use rip_kernel::{EventKind, ProviderEventStatus};
+    use rip_tui::palette::modes::models::{default_endpoint_for_provider, parse_model_route};
     use std::ffi::OsString;
     use tokio::time::timeout;
 
@@ -1804,8 +1619,8 @@ mod tests {
             "Use typed route",
         );
 
-        let mut catalog = ModelPaletteCatalog {
-            routes: vec![ModelRouteRecord {
+        let mut catalog = ModelsMode::new(
+            vec![ModelRoute {
                 route: "openrouter/openai/gpt-oss-20b".to_string(),
                 provider_id: "openrouter".to_string(),
                 model_id: "openai/gpt-oss-20b".to_string(),
@@ -1814,14 +1629,14 @@ mod tests {
                 variants: 0,
                 sources: vec!["catalog".to_string()],
             }],
-            provider_endpoints: BTreeMap::from([(
+            BTreeMap::from([(
                 "openrouter".to_string(),
                 "https://openrouter.ai/api/v1/responses".to_string(),
             )]),
-            current_route: None,
-            current_endpoint: None,
-            current_model: None,
-        };
+            None,
+            None,
+            None,
+        );
         let mut overrides = Some(serde_json::json!({
             "parallel_tool_calls": true
         }));
@@ -2104,7 +1919,7 @@ mod tests {
             Some("openrouter/nvidia/nemotron-3-nano-30b-a3b:free")
         );
         let values = catalog
-            .build_entries()
+            .entries()
             .into_iter()
             .map(|entry| entry.value)
             .collect::<Vec<_>>();
@@ -2114,88 +1929,7 @@ mod tests {
     }
 
     #[test]
-    fn model_palette_catalog_build_entries_marks_current_and_sorts_first() {
-        let catalog = ModelPaletteCatalog {
-            routes: vec![
-                ModelRouteRecord {
-                    route: "openai/gpt-5-nano".to_string(),
-                    provider_id: "openai".to_string(),
-                    model_id: "gpt-5-nano".to_string(),
-                    endpoint: "https://api.openai.com/v1/responses".to_string(),
-                    label: Some("GPT-5 Nano".to_string()),
-                    variants: 0,
-                    sources: vec!["catalog".to_string()],
-                },
-                ModelRouteRecord {
-                    route: "openrouter/openai/gpt-oss-20b".to_string(),
-                    provider_id: "openrouter".to_string(),
-                    model_id: "openai/gpt-oss-20b".to_string(),
-                    endpoint: "https://openrouter.ai/api/v1/responses".to_string(),
-                    label: Some("OSS 20B".to_string()),
-                    variants: 2,
-                    sources: vec!["catalog".to_string(), "config:model".to_string()],
-                },
-            ],
-            provider_endpoints: BTreeMap::new(),
-            current_route: Some("openrouter/openai/gpt-oss-20b".to_string()),
-            current_endpoint: Some("https://openrouter.ai/api/v1/responses".to_string()),
-            current_model: Some("openai/gpt-oss-20b".to_string()),
-        };
-
-        let entries = catalog.build_entries();
-        assert_eq!(entries[0].value, "openrouter/openai/gpt-oss-20b");
-        assert_eq!(entries[0].subtitle.as_deref(), Some("OSS 20B"));
-        assert!(entries[0].chips.iter().any(|chip| chip == "current"));
-        assert!(entries[0].chips.iter().any(|chip| chip == "catalog"));
-        assert!(entries[0].chips.iter().any(|chip| chip == "default"));
-        assert!(entries[0].chips.iter().any(|chip| chip == "variants:2"));
-    }
-
-    #[test]
-    fn model_palette_resolution_supports_known_and_typed_routes() {
-        let catalog = ModelPaletteCatalog {
-            routes: vec![ModelRouteRecord {
-                route: "openrouter/openai/gpt-oss-20b".to_string(),
-                provider_id: "openrouter".to_string(),
-                model_id: "openai/gpt-oss-20b".to_string(),
-                endpoint: "https://openrouter.ai/api/v1/responses".to_string(),
-                label: None,
-                variants: 0,
-                sources: vec!["catalog".to_string()],
-            }],
-            provider_endpoints: BTreeMap::from([
-                (
-                    "openrouter".to_string(),
-                    "https://openrouter.ai/api/v1/responses".to_string(),
-                ),
-                (
-                    "openai".to_string(),
-                    "https://api.openai.com/v1/responses".to_string(),
-                ),
-            ]),
-            current_route: None,
-            current_endpoint: None,
-            current_model: None,
-        };
-
-        let known = catalog
-            .resolve_selection("openrouter/openai/gpt-oss-20b")
-            .expect("known");
-        assert_eq!(known.endpoint, "https://openrouter.ai/api/v1/responses");
-        assert_eq!(known.model, "openai/gpt-oss-20b");
-
-        let typed = catalog
-            .resolve_selection("openai/gpt-5-nano")
-            .expect("typed");
-        assert_eq!(typed.route, "openai/gpt-5-nano");
-        assert_eq!(typed.endpoint, "https://api.openai.com/v1/responses");
-        assert_eq!(typed.model, "gpt-5-nano");
-
-        assert!(catalog.resolve_selection("missing-provider/model").is_err());
-    }
-
-    #[test]
-    fn model_palette_helper_functions_cover_route_and_override_paths() {
+    fn model_palette_helper_functions_cover_override_paths() {
         assert_eq!(
             parse_model_route(" openrouter / model-x "),
             Some(("openrouter".to_string(), "model-x".to_string()))
@@ -2265,20 +1999,14 @@ mod tests {
             .sources
             .iter()
             .any(|source| source == "config:roles.primary"));
-
-        assert_eq!(source_chip("catalog"), Some("catalog"));
-        assert_eq!(source_chip("config:model"), Some("default"));
-        assert_eq!(source_chip("config:roles.primary"), Some("primary"));
-        assert_eq!(source_chip("config:roles.review"), Some("role"));
-        assert_eq!(source_chip("current"), None);
     }
 
     #[test]
     fn open_model_palette_uses_catalog_entries_and_mouse_scroll_moves_selection() {
         let mut state = seed_state();
-        let catalog = ModelPaletteCatalog {
-            routes: vec![
-                ModelRouteRecord {
+        let catalog = ModelsMode::new(
+            vec![
+                ModelRoute {
                     route: "openrouter/openai/gpt-oss-20b".to_string(),
                     provider_id: "openrouter".to_string(),
                     model_id: "openai/gpt-oss-20b".to_string(),
@@ -2287,7 +2015,7 @@ mod tests {
                     variants: 0,
                     sources: vec!["catalog".to_string()],
                 },
-                ModelRouteRecord {
+                ModelRoute {
                     route: "openai/gpt-5-nano".to_string(),
                     provider_id: "openai".to_string(),
                     model_id: "gpt-5-nano".to_string(),
@@ -2297,11 +2025,11 @@ mod tests {
                     sources: vec!["catalog".to_string()],
                 },
             ],
-            provider_endpoints: BTreeMap::new(),
-            current_route: Some("openrouter/openai/gpt-oss-20b".to_string()),
-            current_endpoint: Some("https://openrouter.ai/api/v1/responses".to_string()),
-            current_model: Some("openai/gpt-oss-20b".to_string()),
-        };
+            BTreeMap::new(),
+            Some("openrouter/openai/gpt-oss-20b".to_string()),
+            Some("https://openrouter.ai/api/v1/responses".to_string()),
+            Some("openai/gpt-oss-20b".to_string()),
+        );
 
         open_model_palette(&mut state, &catalog);
         assert!(state.is_palette_open());
