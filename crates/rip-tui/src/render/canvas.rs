@@ -465,6 +465,161 @@ fn block_as_lines(block: &CanvasBlock) -> Vec<Line<'static>> {
     }
 }
 
+/// Render a block tree as styled lines. This is the B.6 entry point
+/// the AgentTurn body uses. Each block type picks an appropriate
+/// presentation — headings get a bold leading hash, lists indent and
+/// prefix bullets / numbers, block quotes prefix `│ `, code fences
+/// render dimmed (theme work refines per-token syntax later), and
+/// thematic breaks draw a muted rule.
+fn render_blocks(blocks: &[CanvasBlock], base: Style) -> Vec<Line<'static>> {
+    let mut out = Vec::new();
+    for block in blocks {
+        render_block_into(block, base, 0, &mut out);
+    }
+    out
+}
+
+fn render_block_into(
+    block: &CanvasBlock,
+    base: Style,
+    indent: usize,
+    out: &mut Vec<Line<'static>>,
+) {
+    let pad = " ".repeat(indent);
+    match block {
+        CanvasBlock::Paragraph(cached) | CanvasBlock::Markdown(cached) => {
+            for line in &cached.text.lines {
+                out.push(prefixed_line(&pad, line, base));
+            }
+        }
+        CanvasBlock::Heading { level, text } => {
+            // ATX-style leading hashes keep the heading legible even
+            // without styling (NO_COLOR / 16-color fallbacks) while
+            // still feeling restrained. Body renders bold.
+            let hashes = "#".repeat((*level as usize).clamp(1, 6));
+            let heading_style = base.add_modifier(Modifier::BOLD);
+            for (i, line) in text.text.lines.iter().enumerate() {
+                let prefix = if i == 0 {
+                    format!("{pad}{hashes} ")
+                } else {
+                    format!("{pad}{}", " ".repeat(hashes.chars().count() + 1))
+                };
+                out.push(prefixed_line(&prefix, line, heading_style));
+            }
+        }
+        CanvasBlock::CodeFence { lang, text } => {
+            // Top rule doubles as the language label; dimmed so it
+            // reads as chrome rather than content.
+            let label = match lang {
+                Some(l) if !l.is_empty() => format!("```{l}"),
+                _ => "```".to_string(),
+            };
+            out.push(Line::from(Span::styled(
+                format!("{pad}{label}"),
+                muted_style(),
+            )));
+            for line in &text.text.lines {
+                out.push(prefixed_line(&pad, line, base));
+            }
+            out.push(Line::from(Span::styled(format!("{pad}```"), muted_style())));
+        }
+        CanvasBlock::BlockQuote(inner) => {
+            // `│ ` gutter on every line. We render the child blocks
+            // into a temporary buffer and then rewrite their prefix
+            // so nested headings/lists keep working.
+            let mut inner_lines = Vec::new();
+            for child in inner {
+                render_block_into(child, base, 0, &mut inner_lines);
+            }
+            for mut line in inner_lines {
+                let mut spans = Vec::with_capacity(line.spans.len() + 1);
+                spans.push(Span::styled(format!("{pad}│ "), muted_style()));
+                spans.append(&mut line.spans);
+                out.push(Line::from(spans));
+            }
+        }
+        CanvasBlock::List { ordered, items } => {
+            for (idx, item) in items.iter().enumerate() {
+                let marker = if *ordered {
+                    format!("{}. ", idx + 1)
+                } else {
+                    "• ".to_string()
+                };
+                let item_indent = indent + marker.chars().count();
+                let mut item_lines = Vec::new();
+                for (bi, block) in item.iter().enumerate() {
+                    render_block_into(block, base, 0, &mut item_lines);
+                    // Blank line between blocks inside the same
+                    // item — skipped for the last block so lists
+                    // stay compact.
+                    if bi + 1 < item.len() {
+                        item_lines.push(Line::default());
+                    }
+                }
+                for (li, line) in item_lines.into_iter().enumerate() {
+                    let prefix = if li == 0 {
+                        format!("{pad}{marker}")
+                    } else {
+                        " ".repeat(item_indent)
+                    };
+                    let prefix_style = if li == 0 { muted_style() } else { base };
+                    let mut spans = Vec::with_capacity(line.spans.len() + 1);
+                    spans.push(Span::styled(prefix, prefix_style));
+                    for span in line.spans {
+                        spans.push(span);
+                    }
+                    out.push(Line::from(spans));
+                }
+            }
+        }
+        CanvasBlock::Thematic => {
+            out.push(Line::from(Span::styled(
+                format!("{pad}────"),
+                muted_style(),
+            )));
+        }
+        CanvasBlock::ArtifactChip { artifact_id, .. } => {
+            let short: String = artifact_id.chars().take(8).collect();
+            out.push(Line::from(Span::styled(
+                format!("{pad}⧉ {short}"),
+                muted_style(),
+            )));
+        }
+        CanvasBlock::ToolArgsJson(cached)
+        | CanvasBlock::ToolStdout(cached)
+        | CanvasBlock::ToolStderr(cached) => {
+            // Tool-card bodies use these; AgentTurn bodies won't
+            // normally see them, but keep the match exhaustive.
+            for line in &cached.text.lines {
+                out.push(prefixed_line(&pad, line, base));
+            }
+        }
+    }
+}
+
+fn prefixed_line(prefix: &str, line: &Line<'_>, style: Style) -> Line<'static> {
+    let mut spans = Vec::with_capacity(line.spans.len() + 1);
+    if !prefix.is_empty() {
+        spans.push(Span::raw(prefix.to_string()));
+    }
+    for span in &line.spans {
+        // Paint spans that haven't picked up any style with the
+        // caller's base; pre-styled spans (future B.7 syntect tokens)
+        // pass through untouched.
+        let content = span.content.clone().into_owned();
+        let merged = if span.style == Style::default() {
+            style
+        } else {
+            span.style
+        };
+        spans.push(Span::styled(content, merged));
+    }
+    if spans.is_empty() {
+        spans.push(Span::styled(String::new(), style));
+    }
+    Line::from(spans)
+}
+
 fn blocks_filter_lines(
     blocks: &[CanvasBlock],
     keep: impl Fn(&CanvasBlock) -> bool,
@@ -527,22 +682,18 @@ fn message_body_lines(message: &CanvasMessage, theme: &ThemeStyles) -> Vec<Line<
             streaming_tail,
             ..
         } => {
-            // Stable blocks + the in-flight tail. The StreamCollector holds
-            // text that hasn't crossed a paragraph boundary yet; we still
-            // render it so the user sees deltas the instant they arrive
-            // (B.5). A trailing newline joins tail onto blocks cleanly.
-            let mut text = paragraph_source(blocks);
+            // Stable blocks → structured markdown rendering (B.6).
+            // In-flight tail → plain text shown beneath; it hasn't
+            // crossed a block boundary yet so we can't parse it
+            // safely. Once the boundary arrives the collector hands
+            // it off as real blocks.
+            let mut lines = render_blocks(blocks, theme.chrome);
             if !streaming_tail.is_empty() {
-                if !text.is_empty() && !text.ends_with('\n') {
-                    text.push('\n');
+                for segment in streaming_tail.split('\n') {
+                    lines.push(Line::from(Span::styled(segment.to_string(), theme.chrome)));
                 }
-                text.push_str(streaming_tail);
             }
-            if text.is_empty() {
-                Vec::new()
-            } else {
-                style_block_lines(&text, theme.chrome)
-            }
+            lines
         }
         CanvasMessage::JobNotice {
             job_kind, status, ..

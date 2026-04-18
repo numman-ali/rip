@@ -280,9 +280,7 @@ fn finalize_agent_turn(canvas: &mut CanvasModel, now_ms: u64) {
             continue;
         }
         let mut collector = StreamCollector::from_tail(std::mem::take(streaming_tail));
-        if let Some(last) = collector.finalize() {
-            blocks.push(last);
-        }
+        blocks.extend(collector.finalize());
         *streaming_tail = String::new();
         *streaming = false;
         *ended_at_ms = Some(now_ms);

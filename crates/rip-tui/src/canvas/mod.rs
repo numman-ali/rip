@@ -5,9 +5,11 @@
 //! B.2 deletes the string path.
 
 mod ingest;
+pub mod markdown;
 pub mod model;
 mod stream_collector;
 
+pub use markdown::parse_blocks;
 pub use model::*;
 pub use stream_collector::{CollectorStep, StreamCollector};
 

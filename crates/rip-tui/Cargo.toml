@@ -8,3 +8,4 @@ rip-kernel = { path = "../rip-kernel" }
 ratatui = "0.30"
 serde_json = "1.0"
 supports-color = "3.0"
+pulldown-cmark = { version = "0.13", default-features = false }

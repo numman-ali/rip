@@ -579,6 +579,57 @@ fn journey_tool_card_expand_s_80x24_focused_expanded() {
     );
 }
 
+fn markdown_rendering_state() -> TuiState {
+    // B.6: a single-turn stream that exercises each supported markdown
+    // primitive so the snapshot locks in how headings / lists / quotes
+    // / code fences / thematic breaks render side-by-side.
+    let mut state = TuiState::new(10_000);
+    state.update(event(
+        0,
+        1000,
+        EventKind::SessionStarted {
+            input: "Summarize the deploy plan in markdown.".to_string(),
+        },
+    ));
+    state.update(event(
+        1,
+        1200,
+        EventKind::OutputTextDelta {
+            delta: "## Deploy plan\n\nSteps in order:\n\n\
+                    1. Cut a release branch\n\
+                    2. Run smoke tests\n\
+                    3. Flip the feature flag\n\n\
+                    > Rollback is one flag flip.\n\n\
+                    ```sh\nrip deploy --env=prod\n```\n\n\
+                    ---\n\n\
+                    See the [runbook](https://example.com/runbook) for details.\n"
+                .to_string(),
+        },
+    ));
+    state.update(event(
+        2,
+        1400,
+        EventKind::SessionEnded {
+            reason: "completed".to_string(),
+        },
+    ));
+    state
+}
+
+#[test]
+fn journey_markdown_rendering_s_80x24() {
+    let state = markdown_rendering_state();
+    let rendered = render_to_string(80, 24, &state, RenderMode::Json);
+    assert_snapshot("journey_markdown_rendering_s_80x24.txt", rendered);
+}
+
+#[test]
+fn journey_markdown_rendering_m_120x40() {
+    let state = markdown_rendering_state();
+    let rendered = render_to_string(120, 40, &state, RenderMode::Json);
+    assert_snapshot("journey_markdown_rendering_m_120x40.txt", rendered);
+}
+
 #[test]
 fn journey_multi_turn_continuity_s_80x24_ambient_persists() {
     let state = multi_turn_continuity_state();
