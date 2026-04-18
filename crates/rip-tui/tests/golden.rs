@@ -134,9 +134,9 @@ fn follow_run_state_tool_detail() -> TuiState {
             artifacts: Some(serde_json::json!({"stdout_artifact_id": ART1})),
         },
     ));
-    state.overlay = Overlay::ToolDetail {
+    state.set_overlay(Overlay::ToolDetail {
         tool_id: "t1".to_string(),
-    };
+    });
     state
 }
 
@@ -282,7 +282,7 @@ fn recover_error_provider_state() -> TuiState {
             response_errors: vec![],
         },
     ));
-    state.overlay = Overlay::ErrorDetail { seq: 1 };
+    state.set_overlay(Overlay::ErrorDetail { seq: 1 });
     state
 }
 
@@ -296,13 +296,13 @@ fn recover_error_tool_failed_state() -> TuiState {
             error: "permission denied".to_string(),
         },
     ));
-    state.overlay = Overlay::ErrorDetail { seq: 2 };
+    state.set_overlay(Overlay::ErrorDetail { seq: 2 });
     state
 }
 
 fn recover_stalled_state() -> TuiState {
     let mut state = recover_error_provider_state();
-    state.overlay = Overlay::StallDetail;
+    state.set_overlay(Overlay::StallDetail);
     state.set_now_ms(20_000);
     state
 }
@@ -394,7 +394,7 @@ fn journey_follow_a_run_xs_60x20() {
 #[test]
 fn journey_follow_a_run_s_80x24_activity() {
     let mut state = follow_run_state_mid_tool();
-    state.overlay = Overlay::Activity;
+    state.set_overlay(Overlay::Activity);
     let rendered = render_to_string(80, 24, &state, RenderMode::Json);
     assert_snapshot("journey_follow_a_run_s_80x24_activity.txt", rendered);
 }
@@ -410,7 +410,7 @@ fn journey_follow_a_run_m_120x40_tool_detail() {
 #[test]
 fn journey_background_tasks_xs_60x20_tasks() {
     let mut state = background_tasks_state();
-    state.overlay = Overlay::TaskList;
+    state.set_overlay(Overlay::TaskList);
     let rendered = render_to_string(60, 20, &state, RenderMode::Json);
     assert_snapshot("journey_background_tasks_xs_60x20_tasks.txt", rendered);
 }
@@ -418,9 +418,9 @@ fn journey_background_tasks_xs_60x20_tasks() {
 #[test]
 fn journey_background_tasks_s_80x24_task_detail() {
     let mut state = background_tasks_state();
-    state.overlay = Overlay::TaskDetail {
+    state.set_overlay(Overlay::TaskDetail {
         task_id: "tsk_a".to_string(),
-    };
+    });
     let rendered = render_to_string(80, 24, &state, RenderMode::Json);
     assert_snapshot("journey_background_tasks_s_80x24_task_detail.txt", rendered);
 }
@@ -429,9 +429,9 @@ fn journey_background_tasks_s_80x24_task_detail() {
 fn journey_background_tasks_m_120x40_task_detail() {
     let mut state = background_tasks_state();
     state.activity_pinned = true;
-    state.overlay = Overlay::TaskDetail {
+    state.set_overlay(Overlay::TaskDetail {
         task_id: "tsk_b".to_string(),
-    };
+    });
     let rendered = render_to_string(120, 40, &state, RenderMode::Json);
     assert_snapshot(
         "journey_background_tasks_m_120x40_task_detail.txt",

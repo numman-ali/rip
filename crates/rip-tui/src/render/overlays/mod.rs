@@ -21,7 +21,7 @@ pub(super) fn render_overlay(
     mode: RenderMode,
 ) {
     let body = overlay_body_area(frame.area(), state.output_view);
-    match &state.overlay {
+    match state.overlay() {
         Overlay::None => {}
         Overlay::Activity => activity::render_activity_overlay(frame, state, theme, body),
         Overlay::Palette(_) => {

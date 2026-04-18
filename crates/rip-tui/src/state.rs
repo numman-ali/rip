@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use rip_kernel::{Event, EventKind, ProviderEventStatus, ToolTaskExecutionMode, ToolTaskStatus};
 use serde_json::Value;
 
-use crate::FrameStore;
+use crate::{FrameStore, OverlayStack};
 
 const DEFAULT_MAX_FRAMES: usize = 10_000;
 const DEFAULT_MAX_OUTPUT_BYTES: usize = 1_000_000;
@@ -257,7 +257,7 @@ pub struct TuiState {
     pub canvas_scroll_from_bottom: u16,
     pub output_view: OutputViewMode,
     pub theme: ThemeId,
-    pub overlay: Overlay,
+    overlay_stack: OverlayStack,
     pub activity_pinned: bool,
     pub now_ms: Option<u64>,
     pub continuity_id: Option<String>,
@@ -306,7 +306,7 @@ impl TuiState {
             canvas_scroll_from_bottom: 0,
             output_view: OutputViewMode::Rendered,
             theme: ThemeId::DefaultDark,
-            overlay: Overlay::None,
+            overlay_stack: OverlayStack::new(),
             activity_pinned: false,
             now_ms: None,
             continuity_id: None,
@@ -349,22 +349,44 @@ impl TuiState {
         self.theme.toggle();
     }
 
+    pub fn overlay(&self) -> &Overlay {
+        self.overlay_stack.top()
+    }
+
+    pub fn set_overlay(&mut self, overlay: Overlay) {
+        self.overlay_stack.set(overlay);
+    }
+
+    pub fn push_overlay(&mut self, overlay: Overlay) {
+        self.overlay_stack.push(overlay);
+    }
+
+    pub fn pop_overlay(&mut self) -> Option<Overlay> {
+        self.overlay_stack.pop()
+    }
+
+    pub fn overlay_stack(&self) -> &OverlayStack {
+        &self.overlay_stack
+    }
+
     pub fn close_overlay(&mut self) {
-        self.overlay = Overlay::None;
+        self.overlay_stack.clear();
     }
 
     pub fn toggle_activity_overlay(&mut self) {
-        self.overlay = match &self.overlay {
+        let next = match self.overlay_stack.top() {
             Overlay::Activity => Overlay::None,
             _ => Overlay::Activity,
         };
+        self.overlay_stack.set(next);
     }
 
     pub fn toggle_tasks_overlay(&mut self) {
-        self.overlay = match &self.overlay {
+        let next = match self.overlay_stack.top() {
             Overlay::TaskList => Overlay::None,
             _ => Overlay::TaskList,
         };
+        self.overlay_stack.set(next);
     }
 
     pub fn open_palette(
@@ -375,27 +397,27 @@ impl TuiState {
         allow_custom_value: bool,
         custom_prompt: impl Into<String>,
     ) {
-        self.overlay = Overlay::Palette(PaletteState::new(
+        self.overlay_stack.set(Overlay::Palette(PaletteState::new(
             mode,
             entries,
             empty_message.into(),
             allow_custom_value,
             custom_prompt.into(),
-        ));
+        )));
     }
 
     pub fn is_palette_open(&self) -> bool {
-        matches!(self.overlay, Overlay::Palette(_))
+        matches!(self.overlay_stack.top(), Overlay::Palette(_))
     }
 
     pub fn palette_move_selection(&mut self, delta: i32) {
-        if let Overlay::Palette(palette) = &mut self.overlay {
+        if let Some(Overlay::Palette(palette)) = self.overlay_stack.top_mut() {
             palette.move_selection(delta);
         }
     }
 
     pub fn palette_push_char(&mut self, ch: char) {
-        if let Overlay::Palette(palette) = &mut self.overlay {
+        if let Some(Overlay::Palette(palette)) = self.overlay_stack.top_mut() {
             palette.query.push(ch);
             palette.selected = 0;
             palette.clamp_selected();
@@ -403,7 +425,7 @@ impl TuiState {
     }
 
     pub fn palette_backspace(&mut self) {
-        if let Overlay::Palette(palette) = &mut self.overlay {
+        if let Some(Overlay::Palette(palette)) = self.overlay_stack.top_mut() {
             palette.query.pop();
             palette.selected = 0;
             palette.clamp_selected();
@@ -411,14 +433,14 @@ impl TuiState {
     }
 
     pub fn palette_query(&self) -> Option<&str> {
-        match &self.overlay {
+        match self.overlay_stack.top() {
             Overlay::Palette(palette) => Some(palette.query.as_str()),
             _ => None,
         }
     }
 
     pub fn palette_selected_value(&self) -> Option<String> {
-        match &self.overlay {
+        match self.overlay_stack.top() {
             Overlay::Palette(palette) => palette
                 .selected_entry()
                 .map(|entry| entry.value.clone())
@@ -439,10 +461,11 @@ impl TuiState {
     pub fn open_selected_detail(&mut self) {
         // Prefer the most recent error, regardless of selection.
         if let Some(seq) = self.last_error_seq {
-            self.overlay = match &self.overlay {
+            let next = match self.overlay_stack.top() {
                 Overlay::ErrorDetail { seq: current } if *current == seq => Overlay::None,
                 _ => Overlay::ErrorDetail { seq },
             };
+            self.overlay_stack.set(next);
             return;
         }
 
@@ -468,7 +491,7 @@ impl TuiState {
             _ => Overlay::None,
         };
 
-        self.overlay = match (&self.overlay, next) {
+        let combined = match (self.overlay_stack.top(), next) {
             (Overlay::ToolDetail { tool_id: a }, Overlay::ToolDetail { tool_id: b }) if a == &b => {
                 Overlay::None
             }
@@ -477,6 +500,7 @@ impl TuiState {
             }
             (_, next) => next,
         };
+        self.overlay_stack.set(combined);
     }
 
     pub fn set_status_message(&mut self, message: impl Into<String>) {
@@ -500,7 +524,7 @@ impl TuiState {
         self.selected_seq = None;
         self.auto_follow = true;
         self.canvas_scroll_from_bottom = 0;
-        self.overlay = Overlay::None;
+        self.overlay_stack.clear();
         self.now_ms = None;
         self.session_id = None;
         self.start_ms = None;
@@ -1326,14 +1350,14 @@ mod tests {
         assert_eq!(state.theme.as_str(), "default-light");
 
         state.toggle_activity_overlay();
-        assert_eq!(state.overlay, Overlay::Activity);
+        assert_eq!(state.overlay(), &Overlay::Activity);
         state.toggle_activity_overlay();
-        assert_eq!(state.overlay, Overlay::None);
+        assert_eq!(state.overlay(), &Overlay::None);
 
         state.toggle_tasks_overlay();
-        assert_eq!(state.overlay, Overlay::TaskList);
+        assert_eq!(state.overlay(), &Overlay::TaskList);
         state.close_overlay();
-        assert_eq!(state.overlay, Overlay::None);
+        assert_eq!(state.overlay(), &Overlay::None);
 
         state.set_status_message("watching");
         state.set_now_ms(2_000);
@@ -1446,36 +1470,36 @@ mod tests {
 
         state.last_error_seq = Some(99);
         state.open_selected_detail();
-        assert_eq!(state.overlay, Overlay::ErrorDetail { seq: 99 });
+        assert_eq!(state.overlay(), &Overlay::ErrorDetail { seq: 99 });
         state.open_selected_detail();
-        assert_eq!(state.overlay, Overlay::None);
+        assert_eq!(state.overlay(), &Overlay::None);
 
         state.last_error_seq = None;
         state.selected_seq = Some(0);
         state.open_selected_detail();
         assert_eq!(
-            state.overlay,
-            Overlay::ToolDetail {
+            state.overlay(),
+            &Overlay::ToolDetail {
                 tool_id: "tool-1".to_string()
             }
         );
         state.open_selected_detail();
-        assert_eq!(state.overlay, Overlay::None);
+        assert_eq!(state.overlay(), &Overlay::None);
 
         state.selected_seq = Some(1);
         state.open_selected_detail();
         assert_eq!(
-            state.overlay,
-            Overlay::TaskDetail {
+            state.overlay(),
+            &Overlay::TaskDetail {
                 task_id: "task-1".to_string()
             }
         );
         state.open_selected_detail();
-        assert_eq!(state.overlay, Overlay::None);
+        assert_eq!(state.overlay(), &Overlay::None);
 
         state.selected_seq = Some(2);
         state.open_selected_detail();
-        assert_eq!(state.overlay, Overlay::None);
+        assert_eq!(state.overlay(), &Overlay::None);
     }
 
     #[test]

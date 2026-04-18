@@ -26,7 +26,7 @@ pub fn render(frame: &mut Frame<'_>, state: &TuiState, mode: RenderMode, input: 
         OutputViewMode::Raw => self::xray::render_xray_screen(frame, state, &theme, mode, input),
     }
 
-    if state.overlay != Overlay::None {
+    if state.overlay() != &Overlay::None {
         self::overlays::render_overlay(frame, state, &theme, mode);
     }
 }
@@ -347,21 +347,21 @@ mod tests {
             Overlay::ErrorDetail { seq: 4 },
             Overlay::StallDetail,
         ] {
-            state.overlay = overlay;
+            state.set_overlay(overlay);
             render_once(&state, RenderMode::Decoded, 120);
         }
 
-        state.overlay = Overlay::ToolDetail {
+        state.set_overlay(Overlay::ToolDetail {
             tool_id: "missing".to_string(),
-        };
+        });
         render_once(&state, RenderMode::Json, 120);
 
-        state.overlay = Overlay::TaskDetail {
+        state.set_overlay(Overlay::TaskDetail {
             task_id: "missing".to_string(),
-        };
+        });
         render_once(&state, RenderMode::Json, 120);
 
-        state.overlay = Overlay::ErrorDetail { seq: 999 };
+        state.set_overlay(Overlay::ErrorDetail { seq: 999 });
         render_once(&state, RenderMode::Json, 120);
     }
 }

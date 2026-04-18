@@ -14,7 +14,7 @@ pub(super) fn render_palette_overlay(
     theme: &ThemeStyles,
     area: Rect,
 ) {
-    let Overlay::Palette(palette) = &state.overlay else {
+    let Overlay::Palette(palette) = state.overlay() else {
         return;
     };
 
