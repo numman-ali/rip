@@ -109,7 +109,7 @@ Next
   - `docs/07_tasks/tui_revamp.md` (canonical execution plan for this revamp; Parts 1–17)
   - `docs/02_architecture/continuity_os.md`
   - `docs/03_contracts/capability_registry.md`
-  - `docs/02_architecture/tui/` (all files scheduled for deletion in Phase A.5; replaced by `00_design.md` in Phase D.8)
+  - `docs/02_architecture/tui/` (old files deleted in Phase A.5; replaced by `00_design.md` in Phase D.8)
 - Status (2026-04-18):
   - Plan drafted; execution begins at Phase A.0 (bump to Ratatui 0.30 + crossterm 0.29). Targets 35 sequenced commits across A (foundations + framework bump), B (structured canvas + markdown + tool cards), C (borderless chrome + palette engine + multi-line editor + in-UI error recovery), D (polish + skill refresh).
   - Locked as surface-only: every TUI action maps to a supported capability in `docs/03_contracts/capability_registry.md`; entries with no backing capability ship *[deferred]* (visible-but-disabled), not as local hacks. Full backing matrix in Part 17 of the plan.
@@ -125,39 +125,11 @@ Next
   - Ambient state persists across turns (`reset_session_state` deleted from `begin_pending_turn`).
   - 90 new snapshots across xs/s/m × graphite/ink/nocolor × 10 journeys, gated by `scripts/check-fast`.
 
-## TUI: UX v1 experience review journeys (conversational-first + drill-down) [confirm spec]
-- Refs:
-  - `docs/02_architecture/tui/06_experience_review.md`
-  - `docs/02_architecture/tui/07_canvas_and_xray.md`
-  - `docs/02_architecture/tui/03_interaction_patterns.md`
-  - `docs/02_architecture/tui/04_graceful_degradation.md`
-- Status (2026-04-18):
-  - Implemented Canvas-first posture + X-ray escape hatch spec: `docs/02_architecture/tui/07_canvas_and_xray.md`.
-  - Implemented deterministic ratatui golden snapshots at XS/S/M for the 3 journeys under `crates/rip-tui/tests/snapshots/`.
-  - Implemented minimal interactive controls in the fullscreen TUI for the journeys:
-    - `Ctrl+B` Activity overlay, `Ctrl+T` Tasks overlay, `Enter` opens selected detail (or submits when idle), `Esc` closes overlays.
-  - Implemented TUI Confidence v1 initial pass:
-    - the visible Canvas transcript persists across turns instead of resetting on submit
-    - submit shows an optimistic pending-turn state before the remote session request completes
-    - the status bar now surfaces OpenResponses timing breakdowns (`hdr` / `fb` / `evt` / `TTFT` / `E2E`)
-    - Canvas scrollback is available via `PageUp` / `PageDown` and mouse-wheel events
-    - user prompts now have a subtle visual distinction from agent output
-    - the input chrome now shows a visible key hint
-    - chips/status now show recent completed tool usage, not just currently-running tools
-    - provider warning frames no longer incorrectly pin the global error chip when the provider status is `Done`
-    - provider-error drill-downs now surface a concrete `rip threads events <continuity_id>` breadcrumb for log-based debugging
-  - Implemented palette foundation v0.1:
-    - `Ctrl-K` opens a generic palette overlay state model intended to scale into command, navigation, model, session, and option menus
-    - model selection is the first shipped palette mode
-    - the model picker is config-backed for now, with typed `provider/model_id` fallback for uncatalogued routes
-    - applying a model updates per-turn OpenResponses overrides inside the TUI session instead of mutating global config
-    - the status bar reuses the preferred endpoint/model so the selected target remains visible before the next request starts
-  - `./scripts/check-fast` is green with the snapshots as CI gates.
-- Remaining:
-  - standardize the workspace mental model further: broaden the palette into command/navigation/sessions/options, add stronger live tool/task visibility, smooth the streaming presentation, and give the UI a more intentional visual system than the current minimal terminal chrome.
-- Done:
-  - Journeys feel calm and usable at phone/SSH sizes (XS/S), and remain smooth at 10k+ frames (bounded rendering).
-  - Experience Review gates are satisfied for each journey (docs + snapshots + parity evidence).
+## TUI: UX v1 experience review journeys (conversational-first + drill-down) — superseded
+- Status (2026-04-18): **superseded by the TUI comprehensive revamp** (see "TUI: Comprehensive revamp (Phase A–D)" above).
+  - The UX v1 pass delivered the Canvas-first posture, X-ray escape hatch, 3 XS/S/M golden journeys, initial TUI confidence (scrollback, key hints, optimistic pending turn, preserved transcript), and palette foundation v0.1 (Models mode) — all green under `./scripts/check-fast`.
+  - The "Remaining" item (broaden palette + visual system + streaming presentation) is folded into the revamp's Phase C (chrome + palette engine + input + error recovery).
+  - The `docs/02_architecture/tui/` doc set that framed this work was deleted in Phase A.5; the revamp ships a single replacement `docs/02_architecture/tui/00_design.md` at Phase D.8.
 
 ## Observability: OpenResponses request capture + latency debugging v0 [confirm spec]
 - Refs:
