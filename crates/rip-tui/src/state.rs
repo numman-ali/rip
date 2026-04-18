@@ -275,10 +275,9 @@ pub struct TuiState {
     pub preferred_openresponses_endpoint: Option<String>,
     pub preferred_openresponses_model: Option<String>,
     pub output_text: String,
-    prompt_ranges: Vec<(usize, usize)>,
-    /// Structured canvas model (Phase B.1). B.1 keeps this populated
-    /// alongside `output_text`; B.2 deletes the string path and drives the
-    /// renderer from `canvas.messages` instead.
+    /// Structured canvas model (Phase B.2 — renderer source of truth).
+    /// `output_text` is still populated from agent deltas for parity with
+    /// legacy tests; the renderer no longer reads it.
     pub canvas: CanvasModel,
     pub output_truncated: bool,
     pub pending_prompt: Option<String>,
@@ -328,7 +327,6 @@ impl TuiState {
             preferred_openresponses_endpoint: None,
             preferred_openresponses_model: None,
             output_text: String::new(),
-            prompt_ranges: Vec::new(),
             canvas: CanvasModel::new(),
             output_truncated: false,
             pending_prompt: None,
@@ -517,10 +515,6 @@ impl TuiState {
         self.continuity_id = Some(continuity_id.into());
     }
 
-    pub fn prompt_ranges(&self) -> &[(usize, usize)] {
-        &self.prompt_ranges
-    }
-
     pub fn clear_status_message(&mut self) {
         self.status_message = None;
     }
@@ -567,7 +561,6 @@ impl TuiState {
         }
 
         self.reset_session_state();
-        self.push_user_prompt(prompt);
         let submitted_at_ms = self.now_ms.unwrap_or(0);
         self.canvas
             .push_user_turn("user", "tui", prompt, submitted_at_ms);
@@ -638,15 +631,16 @@ impl TuiState {
         }
 
         match &event.kind {
-            EventKind::SessionStarted { input } => {
+            EventKind::SessionStarted { input: _ } => {
                 if self.start_ms.is_none() {
                     self.start_ms = Some(event.timestamp_ms);
                 }
                 self.awaiting_response = true;
+                // `canvas.ingest` below handles both sides (pending prompt
+                // skipped vs. implied UserTurn materialized from the frame);
+                // the old `output_text` / `prompt_ranges` path is gone.
                 if self.pending_prompt.is_some() {
                     self.pending_prompt = None;
-                } else {
-                    self.push_user_prompt(input);
                 }
             }
             EventKind::ToolTaskSpawned { .. } => {
@@ -790,44 +784,6 @@ impl TuiState {
             start += 1;
         }
         self.output_text = self.output_text[start..].to_string();
-        self.shift_prompt_ranges(start);
-    }
-
-    fn push_user_prompt(&mut self, input: &str) {
-        if input.trim().is_empty() {
-            return;
-        }
-        // Canvas should stay conversational-first; we always show the prompt that started this run.
-        if !self.output_text.is_empty() && !self.output_text.ends_with("\n\n") {
-            self.push_output("\n\n");
-        }
-        let start = self.output_text.len();
-        self.push_output("You: ");
-        self.push_output(input);
-        let end = self.output_text.len();
-        self.prompt_ranges.push((start, end));
-        self.push_output("\n\n");
-    }
-
-    fn shift_prompt_ranges(&mut self, removed_prefix: usize) {
-        if removed_prefix == 0 || self.prompt_ranges.is_empty() {
-            return;
-        }
-
-        self.prompt_ranges = self
-            .prompt_ranges
-            .iter()
-            .filter_map(|(start, end)| {
-                if *end <= removed_prefix {
-                    None
-                } else {
-                    Some((
-                        start.saturating_sub(removed_prefix),
-                        end.saturating_sub(removed_prefix),
-                    ))
-                }
-            })
-            .collect();
     }
 
     fn ingest_derived_state(&mut self, event: &Event) {
@@ -1260,7 +1216,9 @@ mod tests {
     }
 
     #[test]
-    fn begin_pending_turn_preserves_story_and_resets_run_state() {
+    fn begin_pending_turn_pushes_user_turn_and_resets_run_state() {
+        use crate::canvas::CanvasMessage;
+
         let mut state = TuiState::new(100, 1024);
         state.output_text = "Hi there".to_string();
         state.session_id = Some("old-session".to_string());
@@ -1294,9 +1252,16 @@ mod tests {
         assert!(state.awaiting_response);
         assert_eq!(state.pending_prompt.as_deref(), Some("next step"));
         assert_eq!(state.status_message.as_deref(), Some("sending..."));
-        assert_eq!(state.prompt_ranges.len(), 1);
-        assert!(state.output_text.contains("Hi there"));
-        assert!(state.output_text.contains("You: next step"));
+        // The canvas is reset during B.2 (B.3 removes that so ambient state
+        // persists across turns); the just-submitted prompt is the sole
+        // message left on the canvas.
+        assert_eq!(state.canvas.messages.len(), 1);
+        match &state.canvas.messages[0] {
+            CanvasMessage::UserTurn { blocks, .. } => {
+                assert!(!blocks.is_empty());
+            }
+            other => panic!("expected UserTurn, got {other:?}"),
+        }
     }
 
     #[test]
@@ -1304,18 +1269,6 @@ mod tests {
         let mut state = TuiState::new(100, 1024);
         state.set_continuity_id("thread-2");
         assert_eq!(state.continuity_id.as_deref(), Some("thread-2"));
-    }
-
-    #[test]
-    fn prompt_ranges_drop_when_truncation_discards_prompt_prefix() {
-        let mut state = TuiState::new(100, 10);
-        state.push_user_prompt("ab");
-        assert_eq!(state.prompt_ranges, vec![(0, 7)]);
-
-        state.push_output("\n0123456789");
-
-        assert!(state.output_truncated);
-        assert!(state.prompt_ranges.is_empty());
     }
 
     #[test]
@@ -1807,7 +1760,15 @@ mod tests {
         assert_eq!(state.selected_seq, Some(23));
         assert!(state.has_error());
         assert_eq!(state.last_error_seq, Some(17));
-        assert!(state.output_text.contains("You: hello"));
+        // The canvas model holds the UserTurn (materialized from
+        // `SessionStarted.input` since no `begin_pending_turn` fired) and
+        // agent-facing text deltas still land in `output_text`.
+        let has_user_turn = state
+            .canvas
+            .messages
+            .iter()
+            .any(|m| matches!(m, crate::canvas::CanvasMessage::UserTurn { .. }));
+        assert!(has_user_turn);
         assert!(state.output_text.contains("world"));
 
         let tool1 = state.tools.get("tool-1").expect("tool-1");

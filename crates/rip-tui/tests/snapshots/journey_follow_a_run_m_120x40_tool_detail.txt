@@ -2,12 +2,12 @@
 │ view:canvas  session:s1  seq:4  hdr:-  fb:-  evt:-  TTFT:200ms  E2E:-  tools:0/1  tasks:0/0  jobs:0/0  arts:1  stalle│
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌Canvas────────────────────────────────────────────────────────────────────────────────┐┌Activity──────────────────────┐
-│You: Add a slide outline for a product launch.                                        ││✓ tool bash                   │
+│›  Add a slide outline for a product launch.                                          ││✓ tool bash                   │
 │                                                                                      ││📄  artifacts 1                │
-│Got it. I'l┌Tool Detail: t1───────────────────────────────────────────────────────────────────────────────┐           │
+│◎  Got it. ┌Tool Detail: t1───────────────────────────────────────────────────────────────────────────────┐           │
 │           │tool: bash                                                                                    │           │
 │           │status: ended exit=0 (100ms)                                                                  │           │
-│           │                                                                                              │           │
+│⟡  bash · ✓│                                                                                              │           │
 │           │args:                                                                                         │           │
 │           │{                                                                                             │           │
 │           │  "command": "ls"                                                                             │           │
