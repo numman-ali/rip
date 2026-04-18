@@ -7,6 +7,7 @@ mod canvas;
 mod input;
 mod overlays;
 mod status_bar;
+mod syntax;
 mod theme;
 mod util;
 mod xray;

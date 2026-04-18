@@ -97,15 +97,29 @@ pub(super) fn build_canvas_text(
 
     let card_width = card_width_for(width);
     let focused = state.focused_message_id.as_deref();
+    let ctx = RenderCtx {
+        theme_id: state.theme,
+        styles: theme,
+    };
 
     let mut lines: Vec<Line<'static>> = Vec::new();
     for (idx, message) in state.canvas.messages.iter().enumerate() {
         if idx > 0 {
             lines.push(Line::default());
         }
-        append_message(&mut lines, message, theme, focused, card_width);
+        append_message(&mut lines, message, &ctx, focused, card_width);
     }
     Text::from(lines)
+}
+
+/// Small bundle of styling + theme-id for the block renderer. The
+/// theme id is only needed by the `CodeFence` path (syntect theme
+/// selection); keeping it in a context struct means we don't have
+/// to change every helper signature.
+#[derive(Clone, Copy)]
+struct RenderCtx<'a> {
+    theme_id: crate::ThemeId,
+    styles: &'a ThemeStyles,
 }
 
 /// Card chrome occupies the canvas width minus the 3-col gutter (and
@@ -149,17 +163,17 @@ fn focus_accent() -> Style {
 fn append_message(
     lines: &mut Vec<Line<'static>>,
     message: &CanvasMessage,
-    theme: &ThemeStyles,
+    ctx: &RenderCtx<'_>,
     focused: Option<&str>,
     card_width: usize,
 ) {
     let focused = focused == Some(message.message_id());
     match message {
         CanvasMessage::ToolCard { .. } | CanvasMessage::TaskCard { .. } => {
-            append_card_message(lines, message, theme, focused, card_width);
+            append_card_message(lines, message, ctx.styles, focused, card_width);
         }
         _ => {
-            append_simple_message(lines, message, theme, focused);
+            append_simple_message(lines, message, ctx, focused);
         }
     }
 }
@@ -168,11 +182,11 @@ fn append_message(
 fn append_simple_message(
     lines: &mut Vec<Line<'static>>,
     message: &CanvasMessage,
-    theme: &ThemeStyles,
+    ctx: &RenderCtx<'_>,
     focused: bool,
 ) {
-    let (glyph, glyph_style) = message_glyph(message, theme);
-    let body_lines = message_body_lines(message, theme);
+    let (glyph, glyph_style) = message_glyph(message, ctx.styles);
+    let body_lines = message_body_lines(message, ctx);
 
     for (row, body_line) in body_lines.into_iter().enumerate() {
         let mut line = Line::default();
@@ -469,12 +483,13 @@ fn block_as_lines(block: &CanvasBlock) -> Vec<Line<'static>> {
 /// the AgentTurn body uses. Each block type picks an appropriate
 /// presentation — headings get a bold leading hash, lists indent and
 /// prefix bullets / numbers, block quotes prefix `│ `, code fences
-/// render dimmed (theme work refines per-token syntax later), and
+/// run through syntect (B.7) for per-token highlighting, and
 /// thematic breaks draw a muted rule.
-fn render_blocks(blocks: &[CanvasBlock], base: Style) -> Vec<Line<'static>> {
+fn render_blocks(blocks: &[CanvasBlock], ctx: &RenderCtx<'_>) -> Vec<Line<'static>> {
+    let base = ctx.styles.chrome;
     let mut out = Vec::new();
     for block in blocks {
-        render_block_into(block, base, 0, &mut out);
+        render_block_into(block, base, 0, ctx, &mut out);
     }
     out
 }
@@ -483,6 +498,7 @@ fn render_block_into(
     block: &CanvasBlock,
     base: Style,
     indent: usize,
+    ctx: &RenderCtx<'_>,
     out: &mut Vec<Line<'static>>,
 ) {
     let pad = " ".repeat(indent);
@@ -518,8 +534,15 @@ fn render_block_into(
                 format!("{pad}{label}"),
                 muted_style(),
             )));
-            for line in &text.text.lines {
-                out.push(prefixed_line(&pad, line, base));
+            // Syntect highlighting (B.7). The parser stored the raw
+            // source as `CachedText` lines — flatten back to a string
+            // so syntect can scan it as one body; we re-emit one
+            // `Line` per source line with per-token spans.
+            let source = cached_source(text);
+            let highlighted =
+                super::syntax::highlight_fence(&source, lang.as_deref(), ctx.theme_id, ctx.styles);
+            for line in highlighted {
+                out.push(prefixed_line(&pad, &line, base));
             }
             out.push(Line::from(Span::styled(format!("{pad}```"), muted_style())));
         }
@@ -529,7 +552,7 @@ fn render_block_into(
             // so nested headings/lists keep working.
             let mut inner_lines = Vec::new();
             for child in inner {
-                render_block_into(child, base, 0, &mut inner_lines);
+                render_block_into(child, base, 0, ctx, &mut inner_lines);
             }
             for mut line in inner_lines {
                 let mut spans = Vec::with_capacity(line.spans.len() + 1);
@@ -548,7 +571,7 @@ fn render_block_into(
                 let item_indent = indent + marker.chars().count();
                 let mut item_lines = Vec::new();
                 for (bi, block) in item.iter().enumerate() {
-                    render_block_into(block, base, 0, &mut item_lines);
+                    render_block_into(block, base, 0, ctx, &mut item_lines);
                     // Blank line between blocks inside the same
                     // item — skipped for the last block so lists
                     // stay compact.
@@ -671,7 +694,8 @@ fn message_glyph(message: &CanvasMessage, theme: &ThemeStyles) -> (&'static str,
     }
 }
 
-fn message_body_lines(message: &CanvasMessage, theme: &ThemeStyles) -> Vec<Line<'static>> {
+fn message_body_lines(message: &CanvasMessage, ctx: &RenderCtx<'_>) -> Vec<Line<'static>> {
+    let theme = ctx.styles;
     match message {
         CanvasMessage::UserTurn { blocks, .. } => {
             let text = paragraph_source(blocks);
@@ -683,11 +707,12 @@ fn message_body_lines(message: &CanvasMessage, theme: &ThemeStyles) -> Vec<Line<
             ..
         } => {
             // Stable blocks → structured markdown rendering (B.6).
-            // In-flight tail → plain text shown beneath; it hasn't
-            // crossed a block boundary yet so we can't parse it
-            // safely. Once the boundary arrives the collector hands
+            // Code fences pass through syntect (B.7) for per-token
+            // highlighting. In-flight tail → plain text shown beneath;
+            // it hasn't crossed a block boundary yet so we can't parse
+            // it safely. Once the boundary arrives the collector hands
             // it off as real blocks.
-            let mut lines = render_blocks(blocks, theme.chrome);
+            let mut lines = render_blocks(blocks, ctx);
             if !streaming_tail.is_empty() {
                 for segment in streaming_tail.split('\n') {
                     lines.push(Line::from(Span::styled(segment.to_string(), theme.chrome)));
