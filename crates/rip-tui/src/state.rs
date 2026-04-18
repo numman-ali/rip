@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use rip_kernel::{Event, EventKind, ProviderEventStatus, ToolTaskExecutionMode, ToolTaskStatus};
 use serde_json::Value;
 
+use crate::canvas::CanvasModel;
 use crate::{FrameStore, OverlayStack};
 
 const DEFAULT_MAX_FRAMES: usize = 10_000;
@@ -275,6 +276,10 @@ pub struct TuiState {
     pub preferred_openresponses_model: Option<String>,
     pub output_text: String,
     prompt_ranges: Vec<(usize, usize)>,
+    /// Structured canvas model (Phase B.1). B.1 keeps this populated
+    /// alongside `output_text`; B.2 deletes the string path and drives the
+    /// renderer from `canvas.messages` instead.
+    pub canvas: CanvasModel,
     pub output_truncated: bool,
     pub pending_prompt: Option<String>,
     pub awaiting_response: bool,
@@ -324,6 +329,7 @@ impl TuiState {
             preferred_openresponses_model: None,
             output_text: String::new(),
             prompt_ranges: Vec::new(),
+            canvas: CanvasModel::new(),
             output_truncated: false,
             pending_prompt: None,
             awaiting_response: false,
@@ -548,6 +554,10 @@ impl TuiState {
         self.context = None;
         self.last_error_seq = None;
         self.last_event_ms = None;
+        // B.1: keep the structured canvas aligned with the string canvas;
+        // B.3 removes this call from `begin_pending_turn` so ambient state
+        // (tools / tasks / jobs / canvas / frames) persists across turns.
+        self.canvas.clear();
     }
 
     pub fn begin_pending_turn(&mut self, input: &str) {
@@ -558,6 +568,9 @@ impl TuiState {
 
         self.reset_session_state();
         self.push_user_prompt(prompt);
+        let submitted_at_ms = self.now_ms.unwrap_or(0);
+        self.canvas
+            .push_user_turn("user", "tui", prompt, submitted_at_ms);
         self.pending_prompt = Some(prompt.to_string());
         self.awaiting_response = true;
         self.set_status_message("sending...");
@@ -717,6 +730,7 @@ impl TuiState {
         }
 
         self.ingest_derived_state(&event);
+        self.canvas.ingest(&event);
 
         let seq = event.seq;
         self.frames.push(event);
