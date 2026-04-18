@@ -1,6 +1,6 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Text};
+use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Row, Table, TableState, Tabs, Wrap};
 use ratatui::Frame;
 use serde_json::Value;
@@ -32,6 +32,8 @@ struct ThemeStyles {
     header: Style,
     highlight: Style,
     accent: Style,
+    prompt: Style,
+    prompt_label: Style,
 }
 
 impl ThemeStyles {
@@ -47,6 +49,11 @@ impl ThemeStyles {
                     .bg(Color::Cyan)
                     .add_modifier(Modifier::BOLD),
                 accent: Style::default().fg(Color::LightBlue),
+                prompt: Style::default().fg(Color::White).bg(Color::Rgb(23, 34, 48)),
+                prompt_label: Style::default()
+                    .fg(Color::Cyan)
+                    .bg(Color::Rgb(23, 34, 48))
+                    .add_modifier(Modifier::BOLD),
             },
             ThemeId::DefaultLight => Self {
                 chrome: Style::default().fg(Color::Black),
@@ -58,6 +65,13 @@ impl ThemeStyles {
                     .bg(Color::LightBlue)
                     .add_modifier(Modifier::BOLD),
                 accent: Style::default().fg(Color::Blue),
+                prompt: Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Rgb(228, 236, 242)),
+                prompt_label: Style::default()
+                    .fg(Color::Blue)
+                    .bg(Color::Rgb(228, 236, 242))
+                    .add_modifier(Modifier::BOLD),
             },
         }
     }
@@ -94,9 +108,15 @@ fn render_status_bar(frame: &mut Frame<'_>, state: &TuiState, theme: &ThemeStyle
     let headers = fmt_ms(state.openresponses_headers_ms());
     let first_byte = fmt_ms(state.openresponses_first_byte_ms());
     let provider_event = fmt_ms(state.openresponses_first_provider_event_ms());
-    let llm = state
+    let endpoint = state
         .openresponses_endpoint
         .as_deref()
+        .or(state.preferred_openresponses_endpoint.as_deref());
+    let model = state
+        .openresponses_model
+        .as_deref()
+        .or(state.preferred_openresponses_model.as_deref());
+    let llm = endpoint
         .map(|endpoint| {
             if endpoint.contains("openrouter.ai") {
                 "openrouter"
@@ -106,7 +126,7 @@ fn render_status_bar(frame: &mut Frame<'_>, state: &TuiState, theme: &ThemeStyle
                 "openresponses"
             }
         })
-        .map(|provider| match state.openresponses_model.as_deref() {
+        .map(|provider| match model {
             Some(model) if !model.trim().is_empty() => format!("{provider}:{model}"),
             _ => provider.to_string(),
         });
@@ -177,12 +197,7 @@ fn render_canvas(frame: &mut Frame<'_>, state: &TuiState, theme: &ThemeStyles, a
         .constraints([Constraint::Min(1), Constraint::Length(1)])
         .split(inner);
 
-    let story = if state.output_text.is_empty() {
-        "<no output yet>".to_string()
-    } else {
-        state.output_text.clone()
-    };
-    let widget = Paragraph::new(Text::from(story))
+    let widget = Paragraph::new(build_canvas_text(state, theme))
         .wrap(Wrap { trim: false })
         .scroll(canvas_scroll_offset(state, panes[0], &state.output_text))
         .style(theme.chrome);
@@ -364,9 +379,86 @@ fn build_chips_line(state: &TuiState, max_width: usize) -> String {
     out
 }
 
+fn build_canvas_text(state: &TuiState, theme: &ThemeStyles) -> Text<'static> {
+    if state.output_text.is_empty() {
+        return Text::from("<no output yet>");
+    }
+
+    build_styled_canvas_text(&state.output_text, state.prompt_ranges(), theme)
+}
+
+fn build_styled_canvas_text(
+    text: &str,
+    prompt_ranges: &[(usize, usize)],
+    theme: &ThemeStyles,
+) -> Text<'static> {
+    let mut lines = vec![Line::default()];
+    let mut cursor = 0usize;
+
+    for &(start, end) in prompt_ranges {
+        if start > cursor {
+            push_text_segment(&mut lines, &text[cursor..start], theme.chrome);
+        }
+        if end > start {
+            push_prompt_segment(&mut lines, &text[start..end], theme);
+        }
+        cursor = end;
+    }
+
+    if cursor < text.len() {
+        push_text_segment(&mut lines, &text[cursor..], theme.chrome);
+    }
+
+    Text::from(lines)
+}
+
+fn push_prompt_segment(lines: &mut Vec<Line<'static>>, segment: &str, theme: &ThemeStyles) {
+    for piece in segment.split_inclusive('\n') {
+        let trailing_newline = piece.ends_with('\n');
+        let content = piece.strip_suffix('\n').unwrap_or(piece);
+        if let Some(rest) = content.strip_prefix("You: ") {
+            push_span(lines, "You: ".to_string(), theme.prompt_label);
+            if !rest.is_empty() {
+                push_span(lines, rest.to_string(), theme.prompt);
+            }
+        } else if !content.is_empty() {
+            push_span(lines, content.to_string(), theme.prompt);
+        }
+
+        if trailing_newline {
+            lines.push(Line::default());
+        }
+    }
+}
+
+fn push_text_segment(lines: &mut Vec<Line<'static>>, segment: &str, style: Style) {
+    for piece in segment.split_inclusive('\n') {
+        let trailing_newline = piece.ends_with('\n');
+        let content = piece.strip_suffix('\n').unwrap_or(piece);
+        if !content.is_empty() {
+            push_span(lines, content.to_string(), style);
+        }
+
+        if trailing_newline {
+            lines.push(Line::default());
+        }
+    }
+}
+
+fn push_span(lines: &mut Vec<Line<'static>>, content: String, style: Style) {
+    if lines.is_empty() {
+        lines.push(Line::default());
+    }
+    lines
+        .last_mut()
+        .expect("line")
+        .spans
+        .push(Span::styled(content, style));
+}
+
 fn build_help_line(max_width: usize) -> String {
     truncate(
-        "Enter send  Ctrl-B activity  Ctrl-R xray  PgUp/PgDn scroll",
+        "Enter send  Ctrl-K palette  Wheel/Pg scroll  Ctrl-B activity  Ctrl-R xray",
         max_width,
     )
 }
@@ -579,6 +671,9 @@ fn render_overlay(frame: &mut Frame<'_>, state: &TuiState, theme: &ThemeStyles, 
     match &state.overlay {
         Overlay::None => {}
         Overlay::Activity => render_activity_overlay(frame, state, theme, body),
+        Overlay::Palette(_) => {
+            render_palette_overlay(frame, state, theme, overlay_modal_area(body))
+        }
         Overlay::TaskList => render_task_list_overlay(frame, state, theme, body),
         Overlay::ToolDetail { tool_id } => {
             render_tool_detail_overlay(frame, state, theme, overlay_modal_area(body), tool_id, mode)
@@ -591,6 +686,132 @@ fn render_overlay(frame: &mut Frame<'_>, state: &TuiState, theme: &ThemeStyles, 
         }
         Overlay::StallDetail => render_stall_overlay(frame, state, theme, overlay_modal_area(body)),
     }
+}
+
+fn render_palette_overlay(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    theme: &ThemeStyles,
+    area: Rect,
+) {
+    let Overlay::Palette(palette) = &state.overlay else {
+        return;
+    };
+
+    frame.render_widget(Clear, area);
+    let title = format!("Palette · {}", palette.mode.label());
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .style(theme.chrome);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let sections = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(3),
+            Constraint::Min(3),
+            Constraint::Length(2),
+        ])
+        .split(inner);
+
+    let tabs = Tabs::new(vec![Line::from(palette.mode.label())])
+        .select(0)
+        .highlight_style(theme.highlight)
+        .style(theme.chrome);
+    frame.render_widget(tabs, sections[0]);
+
+    let query_text = if palette.query.trim().is_empty() {
+        "> type to filter".to_string()
+    } else {
+        format!("> {}", palette.query)
+    };
+    let query = Paragraph::new(query_text).style(theme.accent).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("Filter")
+            .style(theme.chrome),
+    );
+    frame.render_widget(query, sections[1]);
+
+    let filtered = palette.filtered_indices();
+    let visible_rows = sections[2].height.max(1) as usize;
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    if filtered.is_empty() {
+        if let Some(custom) = palette.custom_candidate() {
+            lines.push(Line::from(vec![
+                Span::styled("› ", theme.highlight),
+                Span::styled(
+                    truncate(
+                        &format!("{}: {}", palette.custom_prompt, custom),
+                        sections[2].width.saturating_sub(4) as usize,
+                    ),
+                    theme.highlight,
+                ),
+            ]));
+        } else {
+            lines.push(Line::from(truncate(
+                &palette.empty_message,
+                sections[2].width.saturating_sub(2) as usize,
+            )));
+        }
+    } else {
+        let start = palette
+            .selected
+            .saturating_sub(visible_rows.saturating_sub(1) / 2)
+            .min(filtered.len().saturating_sub(visible_rows));
+        let end = (start + visible_rows).min(filtered.len());
+        for (visible_idx, entry_idx) in filtered[start..end].iter().enumerate() {
+            let entry = &palette.entries[*entry_idx];
+            let selected = start + visible_idx == palette.selected;
+            let mut line = entry.title.clone();
+            if let Some(subtitle) = entry.subtitle.as_deref().filter(|value| !value.is_empty()) {
+                line.push_str("  ");
+                line.push_str(subtitle);
+            }
+            if !entry.chips.is_empty() {
+                line.push_str("  ");
+                for (idx, chip) in entry.chips.iter().enumerate() {
+                    if idx > 0 {
+                        line.push(' ');
+                    }
+                    line.push('[');
+                    line.push_str(chip);
+                    line.push(']');
+                }
+            }
+            let style = if selected {
+                theme.highlight
+            } else {
+                theme.chrome
+            };
+            let prefix = if selected { "› " } else { "  " };
+            lines.push(Line::from(vec![
+                Span::styled(prefix, style),
+                Span::styled(
+                    truncate(&line, sections[2].width.saturating_sub(4) as usize),
+                    style,
+                ),
+            ]));
+        }
+    }
+
+    frame.render_widget(
+        Paragraph::new(Text::from(lines))
+            .wrap(Wrap { trim: false })
+            .style(theme.chrome),
+        sections[2],
+    );
+
+    let footer = Paragraph::new(Text::from(vec![
+        Line::from("Enter apply  Esc close  Type to filter"),
+        Line::from("Ctrl-K reopens model switching for future palette modes"),
+    ]))
+    .style(theme.chrome)
+    .wrap(Wrap { trim: false });
+    frame.render_widget(footer, sections[3]);
 }
 
 fn overlay_body_area(area: Rect, view: OutputViewMode) -> Rect {
@@ -945,6 +1166,20 @@ fn render_error_overlay(
                     lines.push(Line::from(truncate(line, 120)));
                 }
             }
+            lines.push(Line::from(" "));
+            if let Some(continuity_id) = state.continuity_id.as_deref() {
+                lines.push(Line::from(format!(
+                    "inspect: {}",
+                    truncate(
+                        &format!("rip threads events {continuity_id} --max-events 200"),
+                        120
+                    )
+                )));
+            }
+            if let Some(session_id) = state.session_id.as_deref() {
+                lines.push(Line::from(format!("session: {}", truncate(session_id, 40))));
+            }
+            lines.push(Line::from("tip: Ctrl-R switches to X-ray/raw frame view"));
         }
         _ => {}
     }
@@ -1213,6 +1448,18 @@ mod tests {
     }
 
     #[test]
+    fn build_canvas_text_styles_user_turns() {
+        let mut state = TuiState::default();
+        state.begin_pending_turn("hello\nsecond line");
+        let theme = ThemeStyles::for_theme(ThemeId::DefaultDark);
+        let text = build_canvas_text(&state, &theme);
+
+        assert_eq!(text.lines[0].spans[0].style, theme.prompt_label);
+        assert_eq!(text.lines[0].spans[1].style, theme.prompt);
+        assert_eq!(text.lines[1].spans[0].style, theme.prompt);
+    }
+
+    #[test]
     fn wrapped_line_count_and_help_line_have_small_screen_fallbacks() {
         assert_eq!(wrapped_line_count("", 10), 1);
         assert_eq!(wrapped_line_count("hello", 10), 1);
@@ -1263,6 +1510,26 @@ mod tests {
 
         for overlay in [
             Overlay::Activity,
+            Overlay::Palette(crate::PaletteState::new(
+                crate::PaletteMode::Model,
+                vec![
+                    crate::PaletteEntry {
+                        value: "openrouter/openai/gpt-oss-20b".to_string(),
+                        title: "openrouter/openai/gpt-oss-20b".to_string(),
+                        subtitle: Some("OpenRouter".to_string()),
+                        chips: vec!["current".to_string()],
+                    },
+                    crate::PaletteEntry {
+                        value: "openai/gpt-5-nano-2025-08-07".to_string(),
+                        title: "openai/gpt-5-nano-2025-08-07".to_string(),
+                        subtitle: None,
+                        chips: vec![],
+                    },
+                ],
+                "No models".to_string(),
+                true,
+                "Use typed route".to_string(),
+            )),
             Overlay::TaskList,
             Overlay::ToolDetail {
                 tool_id: "tool-1".to_string(),

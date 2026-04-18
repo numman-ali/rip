@@ -1,10 +1,14 @@
+use std::collections::BTreeMap;
 use std::future;
 use std::io;
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crossterm::event::{Event as TermEvent, EventStream, KeyCode, KeyEvent};
+use crossterm::event::{
+    DisableMouseCapture, EnableMouseCapture, Event as TermEvent, EventStream, KeyCode, KeyEvent,
+    MouseEvent, MouseEventKind,
+};
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
@@ -17,7 +21,7 @@ use reqwest_eventsource::{
     Error as EventSourceError, Event as SseEvent, EventSource, RequestBuilderExt,
 };
 use rip_kernel::Event as FrameEvent;
-use rip_tui::{render, RenderMode, TuiState};
+use rip_tui::{render, PaletteEntry, PaletteMode, RenderMode, TuiState};
 use serde_json::Value;
 use tokio::sync::mpsc;
 
@@ -31,6 +35,380 @@ enum SseUiMode {
     Attach,
 }
 
+#[derive(Debug, Clone)]
+struct ModelRouteRecord {
+    route: String,
+    provider_id: String,
+    model_id: String,
+    endpoint: String,
+    label: Option<String>,
+    variants: usize,
+    sources: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ModelPaletteCatalog {
+    routes: Vec<ModelRouteRecord>,
+    provider_endpoints: BTreeMap<String, String>,
+    current_route: Option<String>,
+    current_endpoint: Option<String>,
+    current_model: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResolvedModelSelection {
+    route: String,
+    endpoint: String,
+    model: String,
+}
+
+impl ModelPaletteCatalog {
+    fn build_entries(&self) -> Vec<PaletteEntry> {
+        let mut routes = self.routes.clone();
+        let current = self.current_route.as_deref();
+        routes.sort_by(|a, b| {
+            let a_current = current == Some(a.route.as_str());
+            let b_current = current == Some(b.route.as_str());
+            b_current
+                .cmp(&a_current)
+                .then_with(|| a.provider_id.cmp(&b.provider_id))
+                .then_with(|| a.model_id.cmp(&b.model_id))
+        });
+
+        routes
+            .into_iter()
+            .map(|record| {
+                let mut chips = Vec::new();
+                if current == Some(record.route.as_str()) {
+                    chips.push("current".to_string());
+                }
+                for source in &record.sources {
+                    if let Some(chip) = source_chip(source) {
+                        if !chips.iter().any(|value| value == chip) {
+                            chips.push(chip.to_string());
+                        }
+                    }
+                }
+                if record.variants > 0 {
+                    chips.push(format!("variants:{}", record.variants));
+                }
+                PaletteEntry {
+                    value: record.route.clone(),
+                    title: record.route,
+                    subtitle: record.label,
+                    chips,
+                }
+            })
+            .collect()
+    }
+
+    fn resolve_selection(&self, selection: &str) -> Result<ResolvedModelSelection, String> {
+        if let Some(record) = self.routes.iter().find(|record| record.route == selection) {
+            return Ok(ResolvedModelSelection {
+                route: record.route.clone(),
+                endpoint: record.endpoint.clone(),
+                model: record.model_id.clone(),
+            });
+        }
+
+        let Some((provider_id, model_id)) = parse_model_route(selection) else {
+            return Err("model route must look like provider/model_id".to_string());
+        };
+        let endpoint = self
+            .provider_endpoints
+            .get(&provider_id)
+            .cloned()
+            .or_else(|| default_endpoint_for_provider(&provider_id))
+            .ok_or_else(|| format!("provider '{provider_id}' is not configured"))?;
+        Ok(ResolvedModelSelection {
+            route: selection.trim().to_string(),
+            endpoint,
+            model: model_id,
+        })
+    }
+}
+
+fn load_model_palette_catalog(openresponses_overrides: Option<&Value>) -> ModelPaletteCatalog {
+    let workspace_root = crate::local_authority::default_workspace_root();
+    let (resolved, loaded) = ripd::resolve_openresponses_config(
+        &workspace_root,
+        openresponses_override_input_from_json(openresponses_overrides),
+    );
+    let mut routes_by_value = BTreeMap::<String, ModelRouteRecord>::new();
+    let mut provider_endpoints = BTreeMap::<String, String>::new();
+
+    for (provider_id, provider_cfg) in &loaded.config.provider {
+        let endpoint = provider_cfg
+            .endpoint
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string());
+        if let Some(endpoint) = endpoint.clone() {
+            provider_endpoints.insert(provider_id.clone(), endpoint.clone());
+        }
+
+        if let Some(endpoint) = endpoint {
+            for (model_id, model_cfg) in &provider_cfg.models {
+                upsert_model_route(
+                    &mut routes_by_value,
+                    provider_id,
+                    model_id,
+                    &endpoint,
+                    model_cfg.label.clone(),
+                    model_cfg.variants.len(),
+                    "catalog",
+                );
+            }
+        }
+    }
+
+    if let Some(route) = loaded.config.model.as_deref() {
+        push_route_from_string(
+            &mut routes_by_value,
+            &provider_endpoints,
+            route,
+            "config:model",
+        );
+    }
+    if let Some(route) = loaded
+        .config
+        .roles
+        .get("primary")
+        .and_then(|route| route.to_route_string())
+    {
+        push_route_from_string(
+            &mut routes_by_value,
+            &provider_endpoints,
+            &route,
+            "config:roles.primary",
+        );
+    }
+    for (role, route) in &loaded.config.roles {
+        if role == "primary" {
+            continue;
+        }
+        if let Some(route) = route.to_route_string() {
+            push_route_from_string(
+                &mut routes_by_value,
+                &provider_endpoints,
+                &route,
+                &format!("config:roles.{role}"),
+            );
+        }
+    }
+    if let Some(route) = loaded.config.small_model.as_deref() {
+        push_route_from_string(
+            &mut routes_by_value,
+            &provider_endpoints,
+            route,
+            "config:small_model",
+        );
+    }
+
+    if let Some(resolved) = resolved.as_ref() {
+        if let (Some(route), Some(endpoint), Some(model)) = (
+            resolved.effective_route.as_deref(),
+            Some(resolved.endpoint.as_str()),
+            resolved.model.as_deref(),
+        ) {
+            let provider_id = resolved
+                .provider_id
+                .clone()
+                .or_else(|| infer_provider_id_from_endpoint(endpoint))
+                .unwrap_or_else(|| "openresponses".to_string());
+            upsert_model_route(
+                &mut routes_by_value,
+                &provider_id,
+                model,
+                endpoint,
+                None,
+                0,
+                "current",
+            );
+            if !routes_by_value.contains_key(route) {
+                push_route_from_string(&mut routes_by_value, &provider_endpoints, route, "current");
+            }
+        }
+    }
+
+    ModelPaletteCatalog {
+        routes: routes_by_value.into_values().collect(),
+        provider_endpoints,
+        current_route: resolved
+            .as_ref()
+            .and_then(|cfg| cfg.effective_route.clone()),
+        current_endpoint: resolved.as_ref().map(|cfg| cfg.endpoint.clone()),
+        current_model: resolved.and_then(|cfg| cfg.model),
+    }
+}
+
+fn openresponses_override_input_from_json(
+    value: Option<&Value>,
+) -> ripd::OpenResponsesOverrideInput {
+    let Some(Value::Object(obj)) = value else {
+        return ripd::OpenResponsesOverrideInput::default();
+    };
+
+    ripd::OpenResponsesOverrideInput {
+        endpoint: obj
+            .get("endpoint")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string()),
+        model: obj
+            .get("model")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string()),
+        stateless_history: obj
+            .get("stateless_history")
+            .and_then(|value| value.as_bool()),
+        parallel_tool_calls: obj
+            .get("parallel_tool_calls")
+            .and_then(|value| value.as_bool()),
+        followup_user_message: obj
+            .get("followup_user_message")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string()),
+    }
+}
+
+fn parse_model_route(raw: &str) -> Option<(String, String)> {
+    let trimmed = raw.trim();
+    let (provider_id, model_id) = trimmed.split_once('/')?;
+    let provider_id = provider_id.trim();
+    let model_id = model_id.trim();
+    if provider_id.is_empty() || model_id.is_empty() {
+        return None;
+    }
+    Some((provider_id.to_string(), model_id.to_string()))
+}
+
+fn default_endpoint_for_provider(provider_id: &str) -> Option<String> {
+    match provider_id {
+        "openai" => Some("https://api.openai.com/v1/responses".to_string()),
+        "openrouter" => Some("https://openrouter.ai/api/v1/responses".to_string()),
+        _ => None,
+    }
+}
+
+fn infer_provider_id_from_endpoint(endpoint: &str) -> Option<String> {
+    if endpoint.contains("openrouter.ai") {
+        Some("openrouter".to_string())
+    } else if endpoint.contains("api.openai.com") || endpoint.contains("openai.com") {
+        Some("openai".to_string())
+    } else {
+        None
+    }
+}
+
+fn push_route_from_string(
+    routes_by_value: &mut BTreeMap<String, ModelRouteRecord>,
+    provider_endpoints: &BTreeMap<String, String>,
+    raw_route: &str,
+    source: &str,
+) {
+    let Some((provider_id, model_id)) = parse_model_route(raw_route) else {
+        return;
+    };
+    let Some(endpoint) = provider_endpoints
+        .get(&provider_id)
+        .cloned()
+        .or_else(|| default_endpoint_for_provider(&provider_id))
+    else {
+        return;
+    };
+
+    upsert_model_route(
+        routes_by_value,
+        &provider_id,
+        &model_id,
+        &endpoint,
+        None,
+        0,
+        source,
+    );
+}
+
+fn upsert_model_route(
+    routes_by_value: &mut BTreeMap<String, ModelRouteRecord>,
+    provider_id: &str,
+    model_id: &str,
+    endpoint: &str,
+    label: Option<String>,
+    variants: usize,
+    source: &str,
+) {
+    let route = format!("{provider_id}/{model_id}");
+    let record = routes_by_value
+        .entry(route.clone())
+        .or_insert_with(|| ModelRouteRecord {
+            route: route.clone(),
+            provider_id: provider_id.to_string(),
+            model_id: model_id.to_string(),
+            endpoint: endpoint.to_string(),
+            label: None,
+            variants: 0,
+            sources: Vec::new(),
+        });
+    if record.label.is_none() && label.is_some() {
+        record.label = label;
+    }
+    record.variants = record.variants.max(variants);
+    if !record.sources.iter().any(|value| value == source) {
+        record.sources.push(source.to_string());
+    }
+}
+
+fn source_chip(source: &str) -> Option<&'static str> {
+    match source {
+        "catalog" => Some("catalog"),
+        "config:model" => Some("default"),
+        "config:roles.primary" => Some("primary"),
+        "config:small_model" => Some("small"),
+        "current" => None,
+        _ if source.starts_with("config:roles.") => Some("role"),
+        _ => None,
+    }
+}
+
+fn open_model_palette(state: &mut TuiState, catalog: &ModelPaletteCatalog) {
+    state.open_palette(
+        PaletteMode::Model,
+        catalog.build_entries(),
+        "No configured model routes. Type provider/model_id to use a custom route.",
+        true,
+        "Use typed route",
+    );
+}
+
+fn apply_model_palette_selection(
+    state: &mut TuiState,
+    overrides: &mut Option<Value>,
+    catalog: &mut ModelPaletteCatalog,
+) -> Result<(), String> {
+    let Some(selection) = state.palette_selected_value() else {
+        return Err("palette: no model selected".to_string());
+    };
+    let resolved = catalog.resolve_selection(&selection)?;
+    let mut map = match overrides.take() {
+        Some(Value::Object(map)) => map,
+        _ => serde_json::Map::new(),
+    };
+    map.insert(
+        "endpoint".to_string(),
+        Value::String(resolved.endpoint.clone()),
+    );
+    map.insert("model".to_string(), Value::String(resolved.model.clone()));
+    *overrides = Some(Value::Object(map));
+    catalog.current_route = Some(resolved.route.clone());
+    catalog.current_endpoint = Some(resolved.endpoint.clone());
+    catalog.current_model = Some(resolved.model.clone());
+    state.set_preferred_openresponses_target(Some(resolved.endpoint), Some(resolved.model));
+    state.close_overlay();
+    state.set_status_message(format!("next model: {}", resolved.route));
+    Ok(())
+}
+
 async fn run_fullscreen_tui_sse(
     client: &Client,
     server: String,
@@ -42,6 +420,7 @@ async fn run_fullscreen_tui_sse(
     let mut stdout = io::stdout();
     enable_raw_mode()?;
     stdout.execute(EnterAlternateScreen)?;
+    stdout.execute(EnableMouseCapture)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout))?;
 
     let mut guard = TerminalGuard::active();
@@ -54,13 +433,22 @@ async fn run_fullscreen_tui_sse(
         mut input,
         keymap,
     } = init_fullscreen_state(initial_prompt);
+    let mut current_overrides = openresponses_overrides;
+    let mut model_catalog = load_model_palette_catalog(current_overrides.as_ref());
+    state.set_preferred_openresponses_target(
+        model_catalog.current_endpoint.clone(),
+        model_catalog.current_model.clone(),
+    );
 
     if ui_mode == SseUiMode::Interactive && stream.is_none() && !input.trim().is_empty() {
         let prompt = std::mem::take(&mut input);
         state.begin_pending_turn(&prompt);
         terminal.draw(|f| render(f, &state, mode, &input))?;
-        match start_remote_session(client, &server, prompt, openresponses_overrides.clone()).await {
-            Ok(next) => stream = Some(next),
+        match start_remote_session(client, &server, prompt, current_overrides.clone()).await {
+            Ok(next) => {
+                state.set_continuity_id(next.thread_id);
+                stream = Some(next.stream);
+            }
             Err(err) => {
                 state.awaiting_response = false;
                 state.set_status_message(format!("start failed: {err}"));
@@ -113,11 +501,14 @@ async fn run_fullscreen_tui_sse(
                                     client,
                                     &server,
                                     prompt,
-                                    openresponses_overrides.clone(),
+                                    current_overrides.clone(),
                                 )
                                 .await
                                 {
-                                    Ok(next) => stream = Some(next),
+                                    Ok(next) => {
+                                        state.set_continuity_id(next.thread_id);
+                                        stream = Some(next.stream);
+                                    }
                                     Err(err) => {
                                         state.awaiting_response = false;
                                         state.set_status_message(format!("start failed: {err}"));
@@ -128,6 +519,20 @@ async fn run_fullscreen_tui_sse(
                     }
                     UiAction::CloseOverlay => {
                         state.close_overlay();
+                    }
+                    UiAction::TogglePalette => {
+                        if ui_mode == SseUiMode::Interactive {
+                            open_model_palette(&mut state, &model_catalog);
+                        }
+                    }
+                    UiAction::ApplyPalette => {
+                        if let Err(err) = apply_model_palette_selection(
+                            &mut state,
+                            &mut current_overrides,
+                            &mut model_catalog,
+                        ) {
+                            state.set_status_message(err);
+                        }
                     }
                     UiAction::ToggleActivity => {
                         state.toggle_activity_overlay();
@@ -649,12 +1054,17 @@ pub async fn run_fullscreen_tui_attach_task(server: String, task_id: String) -> 
     .await
 }
 
+struct StartedRemoteSession {
+    thread_id: String,
+    stream: EventSource,
+}
+
 async fn start_remote_session(
     client: &Client,
     server: &str,
     prompt: String,
     openresponses_overrides: Option<Value>,
-) -> anyhow::Result<EventSource> {
+) -> anyhow::Result<StartedRemoteSession> {
     let thread_id = crate::ensure_thread(client, server).await?;
     let response = crate::post_thread_message(
         client,
@@ -667,7 +1077,10 @@ async fn start_remote_session(
     )
     .await?;
     let url = format!("{server}/sessions/{}/events", response.session_id);
-    Ok(client.get(url).eventsource()?)
+    Ok(StartedRemoteSession {
+        thread_id,
+        stream: client.get(url).eventsource()?,
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -676,6 +1089,8 @@ enum UiAction {
     Quit,
     Submit,
     CloseOverlay,
+    TogglePalette,
+    ApplyPalette,
     ToggleActivity,
     ToggleTasks,
     OpenSelectedDetail,
@@ -735,7 +1150,46 @@ fn handle_term_event(
 ) -> UiAction {
     match event {
         TermEvent::Key(key) => handle_key_event(key, state, mode, input, session_running, keymap),
+        TermEvent::Mouse(mouse) => handle_mouse_event(mouse, state),
         TermEvent::Resize(_, _) => UiAction::None,
+        _ => UiAction::None,
+    }
+}
+
+fn handle_mouse_event(mouse: MouseEvent, state: &mut TuiState) -> UiAction {
+    if state.is_palette_open() {
+        match mouse.kind {
+            MouseEventKind::ScrollUp => {
+                state.palette_move_selection(-1);
+                return UiAction::None;
+            }
+            MouseEventKind::ScrollDown => {
+                state.palette_move_selection(1);
+                return UiAction::None;
+            }
+            _ => {}
+        }
+    }
+
+    match mouse.kind {
+        MouseEventKind::ScrollUp => {
+            if state.output_view == rip_tui::OutputViewMode::Rendered {
+                UiAction::ScrollCanvasUp
+            } else {
+                state.auto_follow = false;
+                move_selected(state, -6);
+                UiAction::None
+            }
+        }
+        MouseEventKind::ScrollDown => {
+            if state.output_view == rip_tui::OutputViewMode::Rendered {
+                UiAction::ScrollCanvasDown
+            } else {
+                state.auto_follow = false;
+                move_selected(state, 6);
+                UiAction::None
+            }
+        }
         _ => UiAction::None,
     }
 }
@@ -748,6 +1202,49 @@ fn handle_key_event(
     session_running: bool,
     keymap: &Keymap,
 ) -> UiAction {
+    if state.is_palette_open() {
+        if let Some(cmd) = keymap.command_for(key) {
+            return match cmd {
+                KeyCommand::Quit => UiAction::Quit,
+                KeyCommand::Submit => UiAction::ApplyPalette,
+                KeyCommand::CloseOverlay | KeyCommand::TogglePalette => UiAction::CloseOverlay,
+                KeyCommand::SelectPrev => {
+                    state.palette_move_selection(-1);
+                    UiAction::None
+                }
+                KeyCommand::SelectNext => {
+                    state.palette_move_selection(1);
+                    UiAction::None
+                }
+                KeyCommand::ScrollCanvasUp => {
+                    state.palette_move_selection(-5);
+                    UiAction::None
+                }
+                KeyCommand::ScrollCanvasDown => {
+                    state.palette_move_selection(5);
+                    UiAction::None
+                }
+                KeyCommand::ToggleTheme => {
+                    state.toggle_theme();
+                    UiAction::None
+                }
+                _ => UiAction::None,
+            };
+        }
+
+        return match key.code {
+            KeyCode::Backspace => {
+                state.palette_backspace();
+                UiAction::None
+            }
+            KeyCode::Char(ch) => {
+                state.palette_push_char(ch);
+                UiAction::None
+            }
+            _ => UiAction::None,
+        };
+    }
+
     if let Some(cmd) = keymap.command_for(key) {
         return match cmd {
             KeyCommand::Quit => UiAction::Quit,
@@ -759,6 +1256,7 @@ fn handle_key_event(
                 }
             }
             KeyCommand::CloseOverlay => UiAction::CloseOverlay,
+            KeyCommand::TogglePalette => UiAction::TogglePalette,
             KeyCommand::ToggleActivity => UiAction::ToggleActivity,
             KeyCommand::ToggleTasks => UiAction::ToggleTasks,
             KeyCommand::ToggleDetailsMode => {
@@ -864,6 +1362,7 @@ impl TerminalGuard {
         self.active = false;
 
         disable_raw_mode()?;
+        terminal.backend_mut().execute(DisableMouseCapture)?;
         terminal.backend_mut().execute(LeaveAlternateScreen)?;
         terminal.show_cursor()?;
         Ok(())
@@ -877,6 +1376,7 @@ impl Drop for TerminalGuard {
         }
         let _ = disable_raw_mode();
         let mut stdout = io::stdout();
+        let _ = execute!(stdout, DisableMouseCapture);
         let _ = execute!(stdout, LeaveAlternateScreen);
     }
 }
@@ -1031,7 +1531,7 @@ fn base64_encode(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
     use crate::test_env;
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
     use httpmock::Method::GET;
     use httpmock::MockServer;
     use rip_kernel::{EventKind, ProviderEventStatus};
@@ -1186,6 +1686,79 @@ mod tests {
     }
 
     #[test]
+    fn handle_key_event_routes_palette_input_and_selection() {
+        let keymap = Keymap::default();
+        let mut state = seed_state();
+        state.open_palette(
+            rip_tui::PaletteMode::Model,
+            vec![
+                rip_tui::PaletteEntry {
+                    value: "openrouter/openai/gpt-oss-20b".to_string(),
+                    title: "openrouter/openai/gpt-oss-20b".to_string(),
+                    subtitle: Some("OpenRouter".to_string()),
+                    chips: vec!["current".to_string()],
+                },
+                rip_tui::PaletteEntry {
+                    value: "openai/gpt-5-nano-2025-08-07".to_string(),
+                    title: "openai/gpt-5-nano-2025-08-07".to_string(),
+                    subtitle: Some("OpenAI".to_string()),
+                    chips: vec![],
+                },
+            ],
+            "No models",
+            true,
+            "Use typed route",
+        );
+        let mut mode = RenderMode::Json;
+        let mut input = String::new();
+
+        let action = handle_key_event(
+            KeyEvent::new(KeyCode::Char('n'), KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            true,
+            &keymap,
+        );
+        assert_eq!(action, UiAction::None);
+        assert_eq!(state.palette_query(), Some("n"));
+
+        let action = handle_key_event(
+            KeyEvent::new(KeyCode::Down, KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            true,
+            &keymap,
+        );
+        assert_eq!(action, UiAction::None);
+        assert_eq!(
+            state.palette_selected_value().as_deref(),
+            Some("openai/gpt-5-nano-2025-08-07")
+        );
+
+        let action = handle_key_event(
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            true,
+            &keymap,
+        );
+        assert_eq!(action, UiAction::ApplyPalette);
+
+        let action = handle_key_event(
+            KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL),
+            &mut state,
+            &mut mode,
+            &mut input,
+            true,
+            &keymap,
+        );
+        assert_eq!(action, UiAction::CloseOverlay);
+    }
+
+    #[test]
     fn handle_key_event_inserts_text_when_idle() {
         let keymap = Keymap::default();
         let mut state = seed_state();
@@ -1213,6 +1786,74 @@ mod tests {
         );
         assert_eq!(action, UiAction::None);
         assert_eq!(input, "");
+    }
+
+    #[test]
+    fn apply_model_palette_selection_updates_overrides_and_preferred_target() {
+        let mut state = seed_state();
+        state.open_palette(
+            rip_tui::PaletteMode::Model,
+            vec![rip_tui::PaletteEntry {
+                value: "openrouter/openai/gpt-oss-20b".to_string(),
+                title: "openrouter/openai/gpt-oss-20b".to_string(),
+                subtitle: None,
+                chips: vec![],
+            }],
+            "No models",
+            true,
+            "Use typed route",
+        );
+
+        let mut catalog = ModelPaletteCatalog {
+            routes: vec![ModelRouteRecord {
+                route: "openrouter/openai/gpt-oss-20b".to_string(),
+                provider_id: "openrouter".to_string(),
+                model_id: "openai/gpt-oss-20b".to_string(),
+                endpoint: "https://openrouter.ai/api/v1/responses".to_string(),
+                label: None,
+                variants: 0,
+                sources: vec!["catalog".to_string()],
+            }],
+            provider_endpoints: BTreeMap::from([(
+                "openrouter".to_string(),
+                "https://openrouter.ai/api/v1/responses".to_string(),
+            )]),
+            current_route: None,
+            current_endpoint: None,
+            current_model: None,
+        };
+        let mut overrides = Some(serde_json::json!({
+            "parallel_tool_calls": true
+        }));
+
+        apply_model_palette_selection(&mut state, &mut overrides, &mut catalog).expect("apply");
+
+        assert_eq!(state.palette_query(), None);
+        assert_eq!(
+            state.preferred_openresponses_endpoint.as_deref(),
+            Some("https://openrouter.ai/api/v1/responses")
+        );
+        assert_eq!(
+            state.preferred_openresponses_model.as_deref(),
+            Some("openai/gpt-oss-20b")
+        );
+        assert_eq!(
+            overrides,
+            Some(serde_json::json!({
+                "parallel_tool_calls": true,
+                "endpoint": "https://openrouter.ai/api/v1/responses",
+                "model": "openai/gpt-oss-20b"
+            }))
+        );
+        assert_eq!(
+            catalog.current_route.as_deref(),
+            Some("openrouter/openai/gpt-oss-20b")
+        );
+        assert_eq!(
+            catalog.current_endpoint.as_deref(),
+            Some("https://openrouter.ai/api/v1/responses")
+        );
+        assert_eq!(catalog.current_model.as_deref(), Some("openai/gpt-oss-20b"));
     }
 
     #[test]
@@ -1247,6 +1888,28 @@ mod tests {
             &keymap,
         );
         assert_eq!(action, UiAction::Submit);
+    }
+
+    #[test]
+    fn handle_term_event_routes_mouse_scroll() {
+        let keymap = Keymap::default();
+        let mut state = seed_state();
+        let mut mode = RenderMode::Json;
+        let mut input = String::new();
+        let action = handle_term_event(
+            TermEvent::Mouse(MouseEvent {
+                kind: MouseEventKind::ScrollUp,
+                column: 0,
+                row: 0,
+                modifiers: KeyModifiers::empty(),
+            }),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(action, UiAction::ScrollCanvasUp);
     }
 
     #[test]
@@ -1389,6 +2052,278 @@ mod tests {
 
         std::fs::write(&theme_path, "{").expect("theme");
         assert!(load_theme().is_err());
+    }
+
+    #[test]
+    fn load_model_palette_catalog_reads_config_and_current_override() {
+        let _lock = test_env::lock_env();
+        let temp_root =
+            std::env::temp_dir().join(format!("rip_model_palette_test_{}", std::process::id()));
+        let workspace_dir = temp_root.join("workspace");
+        std::fs::create_dir_all(&workspace_dir).expect("workspace");
+        std::fs::create_dir_all(&temp_root).expect("config dir");
+        std::fs::write(
+            temp_root.join("config.jsonc"),
+            r#"{
+  "provider": {
+    "openrouter": {
+      "endpoint": "https://openrouter.ai/api/v1/responses",
+      "models": {
+        "openai/gpt-oss-20b": { "label": "OSS 20B" }
+      }
+    },
+    "openai": {
+      "endpoint": "https://api.openai.com/v1/responses",
+      "models": {
+        "gpt-5-nano-2025-08-07": { "label": "GPT-5 Nano" }
+      }
+    }
+  },
+  "model": "openrouter/openai/gpt-oss-20b"
+}"#,
+        )
+        .expect("config");
+
+        let _config_home = set_env("RIP_CONFIG_HOME", temp_root.as_os_str());
+        let _workspace = set_env("RIP_WORKSPACE_ROOT", workspace_dir.as_os_str());
+        let _clear_custom = remove_env("RIP_CONFIG");
+        let _clear_endpoint = remove_env("RIP_OPENRESPONSES_ENDPOINT");
+        let _clear_model = remove_env("RIP_OPENRESPONSES_MODEL");
+        let _clear_stateful = remove_env("RIP_OPENRESPONSES_STATELESS_HISTORY");
+        let _clear_parallel = remove_env("RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS");
+        let _clear_followup = remove_env("RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE");
+
+        let overrides = serde_json::json!({
+            "endpoint": "https://openrouter.ai/api/v1/responses",
+            "model": "nvidia/nemotron-3-nano-30b-a3b:free"
+        });
+        let catalog = load_model_palette_catalog(Some(&overrides));
+
+        assert_eq!(
+            catalog.current_route.as_deref(),
+            Some("openrouter/nvidia/nemotron-3-nano-30b-a3b:free")
+        );
+        let values = catalog
+            .build_entries()
+            .into_iter()
+            .map(|entry| entry.value)
+            .collect::<Vec<_>>();
+        assert!(values.contains(&"openrouter/openai/gpt-oss-20b".to_string()));
+        assert!(values.contains(&"openai/gpt-5-nano-2025-08-07".to_string()));
+        assert!(values.contains(&"openrouter/nvidia/nemotron-3-nano-30b-a3b:free".to_string()));
+    }
+
+    #[test]
+    fn model_palette_catalog_build_entries_marks_current_and_sorts_first() {
+        let catalog = ModelPaletteCatalog {
+            routes: vec![
+                ModelRouteRecord {
+                    route: "openai/gpt-5-nano".to_string(),
+                    provider_id: "openai".to_string(),
+                    model_id: "gpt-5-nano".to_string(),
+                    endpoint: "https://api.openai.com/v1/responses".to_string(),
+                    label: Some("GPT-5 Nano".to_string()),
+                    variants: 0,
+                    sources: vec!["catalog".to_string()],
+                },
+                ModelRouteRecord {
+                    route: "openrouter/openai/gpt-oss-20b".to_string(),
+                    provider_id: "openrouter".to_string(),
+                    model_id: "openai/gpt-oss-20b".to_string(),
+                    endpoint: "https://openrouter.ai/api/v1/responses".to_string(),
+                    label: Some("OSS 20B".to_string()),
+                    variants: 2,
+                    sources: vec!["catalog".to_string(), "config:model".to_string()],
+                },
+            ],
+            provider_endpoints: BTreeMap::new(),
+            current_route: Some("openrouter/openai/gpt-oss-20b".to_string()),
+            current_endpoint: Some("https://openrouter.ai/api/v1/responses".to_string()),
+            current_model: Some("openai/gpt-oss-20b".to_string()),
+        };
+
+        let entries = catalog.build_entries();
+        assert_eq!(entries[0].value, "openrouter/openai/gpt-oss-20b");
+        assert_eq!(entries[0].subtitle.as_deref(), Some("OSS 20B"));
+        assert!(entries[0].chips.iter().any(|chip| chip == "current"));
+        assert!(entries[0].chips.iter().any(|chip| chip == "catalog"));
+        assert!(entries[0].chips.iter().any(|chip| chip == "default"));
+        assert!(entries[0].chips.iter().any(|chip| chip == "variants:2"));
+    }
+
+    #[test]
+    fn model_palette_resolution_supports_known_and_typed_routes() {
+        let catalog = ModelPaletteCatalog {
+            routes: vec![ModelRouteRecord {
+                route: "openrouter/openai/gpt-oss-20b".to_string(),
+                provider_id: "openrouter".to_string(),
+                model_id: "openai/gpt-oss-20b".to_string(),
+                endpoint: "https://openrouter.ai/api/v1/responses".to_string(),
+                label: None,
+                variants: 0,
+                sources: vec!["catalog".to_string()],
+            }],
+            provider_endpoints: BTreeMap::from([
+                (
+                    "openrouter".to_string(),
+                    "https://openrouter.ai/api/v1/responses".to_string(),
+                ),
+                (
+                    "openai".to_string(),
+                    "https://api.openai.com/v1/responses".to_string(),
+                ),
+            ]),
+            current_route: None,
+            current_endpoint: None,
+            current_model: None,
+        };
+
+        let known = catalog
+            .resolve_selection("openrouter/openai/gpt-oss-20b")
+            .expect("known");
+        assert_eq!(known.endpoint, "https://openrouter.ai/api/v1/responses");
+        assert_eq!(known.model, "openai/gpt-oss-20b");
+
+        let typed = catalog
+            .resolve_selection("openai/gpt-5-nano")
+            .expect("typed");
+        assert_eq!(typed.route, "openai/gpt-5-nano");
+        assert_eq!(typed.endpoint, "https://api.openai.com/v1/responses");
+        assert_eq!(typed.model, "gpt-5-nano");
+
+        assert!(catalog.resolve_selection("missing-provider/model").is_err());
+    }
+
+    #[test]
+    fn model_palette_helper_functions_cover_route_and_override_paths() {
+        assert_eq!(
+            parse_model_route(" openrouter / model-x "),
+            Some(("openrouter".to_string(), "model-x".to_string()))
+        );
+        assert_eq!(parse_model_route("openrouter"), None);
+        assert_eq!(
+            default_endpoint_for_provider("openrouter").as_deref(),
+            Some("https://openrouter.ai/api/v1/responses")
+        );
+        assert_eq!(default_endpoint_for_provider("missing"), None);
+        assert_eq!(
+            infer_provider_id_from_endpoint("https://openrouter.ai/api/v1/responses").as_deref(),
+            Some("openrouter")
+        );
+        assert_eq!(
+            infer_provider_id_from_endpoint("https://api.openai.com/v1/responses").as_deref(),
+            Some("openai")
+        );
+        assert_eq!(infer_provider_id_from_endpoint("https://example.com"), None);
+
+        let overrides = openresponses_override_input_from_json(Some(&serde_json::json!({
+            "endpoint": "https://openrouter.ai/api/v1/responses",
+            "model": "openai/gpt-oss-20b",
+            "stateless_history": true,
+            "parallel_tool_calls": false,
+            "followup_user_message": "keep going"
+        })));
+        assert_eq!(
+            overrides.endpoint.as_deref(),
+            Some("https://openrouter.ai/api/v1/responses")
+        );
+        assert_eq!(overrides.model.as_deref(), Some("openai/gpt-oss-20b"));
+        assert_eq!(overrides.stateless_history, Some(true));
+        assert_eq!(overrides.parallel_tool_calls, Some(false));
+        assert_eq!(
+            overrides.followup_user_message.as_deref(),
+            Some("keep going")
+        );
+
+        let mut routes = BTreeMap::new();
+        let provider_endpoints = BTreeMap::from([(
+            "openrouter".to_string(),
+            "https://openrouter.ai/api/v1/responses".to_string(),
+        )]);
+        push_route_from_string(
+            &mut routes,
+            &provider_endpoints,
+            "openrouter/openai/gpt-oss-20b",
+            "config:model",
+        );
+        upsert_model_route(
+            &mut routes,
+            "openrouter",
+            "openai/gpt-oss-20b",
+            "https://openrouter.ai/api/v1/responses",
+            Some("OSS 20B".to_string()),
+            3,
+            "config:roles.primary",
+        );
+        let record = routes
+            .get("openrouter/openai/gpt-oss-20b")
+            .expect("route present");
+        assert_eq!(record.label.as_deref(), Some("OSS 20B"));
+        assert_eq!(record.variants, 3);
+        assert!(record.sources.iter().any(|source| source == "config:model"));
+        assert!(record
+            .sources
+            .iter()
+            .any(|source| source == "config:roles.primary"));
+
+        assert_eq!(source_chip("catalog"), Some("catalog"));
+        assert_eq!(source_chip("config:model"), Some("default"));
+        assert_eq!(source_chip("config:roles.primary"), Some("primary"));
+        assert_eq!(source_chip("config:roles.review"), Some("role"));
+        assert_eq!(source_chip("current"), None);
+    }
+
+    #[test]
+    fn open_model_palette_uses_catalog_entries_and_mouse_scroll_moves_selection() {
+        let mut state = seed_state();
+        let catalog = ModelPaletteCatalog {
+            routes: vec![
+                ModelRouteRecord {
+                    route: "openrouter/openai/gpt-oss-20b".to_string(),
+                    provider_id: "openrouter".to_string(),
+                    model_id: "openai/gpt-oss-20b".to_string(),
+                    endpoint: "https://openrouter.ai/api/v1/responses".to_string(),
+                    label: Some("OSS 20B".to_string()),
+                    variants: 0,
+                    sources: vec!["catalog".to_string()],
+                },
+                ModelRouteRecord {
+                    route: "openai/gpt-5-nano".to_string(),
+                    provider_id: "openai".to_string(),
+                    model_id: "gpt-5-nano".to_string(),
+                    endpoint: "https://api.openai.com/v1/responses".to_string(),
+                    label: Some("GPT-5 Nano".to_string()),
+                    variants: 0,
+                    sources: vec!["catalog".to_string()],
+                },
+            ],
+            provider_endpoints: BTreeMap::new(),
+            current_route: Some("openrouter/openai/gpt-oss-20b".to_string()),
+            current_endpoint: Some("https://openrouter.ai/api/v1/responses".to_string()),
+            current_model: Some("openai/gpt-oss-20b".to_string()),
+        };
+
+        open_model_palette(&mut state, &catalog);
+        assert!(state.is_palette_open());
+        assert_eq!(
+            state.palette_selected_value().as_deref(),
+            Some("openrouter/openai/gpt-oss-20b")
+        );
+
+        let action = handle_mouse_event(
+            MouseEvent {
+                kind: MouseEventKind::ScrollDown,
+                column: 0,
+                row: 0,
+                modifiers: KeyModifiers::empty(),
+            },
+            &mut state,
+        );
+        assert_eq!(action, UiAction::None);
+        assert_eq!(
+            state.palette_selected_value().as_deref(),
+            Some("openai/gpt-5-nano")
+        );
     }
 
     #[test]

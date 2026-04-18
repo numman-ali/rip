@@ -19,6 +19,6 @@
 │                                                                              │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
-┌Input  Enter send  Ctrl-B activity  Ctrl-R xray  PgUp/PgDn scroll─────────────┐
+┌Input  Enter send  Ctrl-K palette  Wheel/Pg scroll  Ctrl-B activity  Ctrl-…───┐
 │>                                                                             │
 └──────────────────────────────────────────────────────────────────────────────┘

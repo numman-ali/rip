@@ -9,6 +9,7 @@ pub enum Command {
     Quit,
     Submit,
     CloseOverlay,
+    TogglePalette,
     ToggleActivity,
     ToggleTasks,
     ToggleDetailsMode,
@@ -43,6 +44,7 @@ impl Keymap {
         bindings.insert("C-d".to_string(), Command::Quit);
         bindings.insert("Enter".to_string(), Command::Submit);
         bindings.insert("Esc".to_string(), Command::CloseOverlay);
+        bindings.insert("C-k".to_string(), Command::TogglePalette);
 
         // View
         bindings.insert("Tab".to_string(), Command::ToggleDetailsMode);
@@ -159,6 +161,9 @@ fn parse_command(raw: &str) -> Option<Command> {
         "submit" => Some(Command::Submit),
         "closeoverlay" | "close_overlay" | "close" | "escape" | "esc" => {
             Some(Command::CloseOverlay)
+        }
+        "togglepalette" | "toggle_palette" | "palette" | "commandpalette" | "command_palette" => {
+            Some(Command::TogglePalette)
         }
         "toggleactivity" | "toggle_activity" | "activity" => Some(Command::ToggleActivity),
         "toggletasks" | "toggle_tasks" | "tasks" => Some(Command::ToggleTasks),

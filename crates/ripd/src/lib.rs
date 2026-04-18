@@ -19,6 +19,10 @@ mod session;
 mod tasks;
 mod workspace_lock;
 
+pub use config::{
+    load_effective_config, resolve_openresponses_config, LoadedConfig, ModelConfig,
+    OpenResponsesOverrideInput, OpenResponsesResolvedConfig, ProviderConfig, RipConfig,
+};
 pub use continuities::{
     CompactionAutoResultCheckpointV1, CompactionAutoScheduleV1Request,
     CompactionAutoScheduleV1Response, CompactionAutoV1Request, CompactionAutoV1Response,

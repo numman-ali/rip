@@ -13,11 +13,127 @@ const DEFAULT_MAX_PREVIEW_BYTES: usize = 8_192;
 pub enum Overlay {
     None,
     Activity,
+    Palette(PaletteState),
     ToolDetail { tool_id: String },
     TaskList,
     TaskDetail { task_id: String },
     ErrorDetail { seq: u64 },
     StallDetail,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaletteMode {
+    Command,
+    Navigation,
+    Model,
+    Session,
+    Option,
+}
+
+impl PaletteMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Command => "Command",
+            Self::Navigation => "Navigation",
+            Self::Model => "Models",
+            Self::Session => "Sessions",
+            Self::Option => "Options",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaletteEntry {
+    pub value: String,
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub chips: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaletteState {
+    pub mode: PaletteMode,
+    pub query: String,
+    pub selected: usize,
+    pub entries: Vec<PaletteEntry>,
+    pub empty_message: String,
+    pub allow_custom_value: bool,
+    pub custom_prompt: String,
+}
+
+impl PaletteState {
+    pub fn new(
+        mode: PaletteMode,
+        entries: Vec<PaletteEntry>,
+        empty_message: String,
+        allow_custom_value: bool,
+        custom_prompt: String,
+    ) -> Self {
+        Self {
+            mode,
+            query: String::new(),
+            selected: 0,
+            entries,
+            empty_message,
+            allow_custom_value,
+            custom_prompt,
+        }
+    }
+
+    pub fn filtered_indices(&self) -> Vec<usize> {
+        let query = self.query.trim();
+        if query.is_empty() {
+            return (0..self.entries.len()).collect();
+        }
+
+        let terms = query
+            .split_whitespace()
+            .map(|term| term.to_ascii_lowercase())
+            .collect::<Vec<_>>();
+
+        self.entries
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, entry)| entry_matches(entry, &terms).then_some(idx))
+            .collect()
+    }
+
+    pub fn selected_entry(&self) -> Option<&PaletteEntry> {
+        let indices = self.filtered_indices();
+        let idx = *indices.get(self.selected)?;
+        self.entries.get(idx)
+    }
+
+    pub fn custom_candidate(&self) -> Option<&str> {
+        let query = self.query.trim();
+        if !self.allow_custom_value || query.is_empty() {
+            return None;
+        }
+        self.filtered_indices().is_empty().then_some(query)
+    }
+
+    fn clamp_selected(&mut self) {
+        let len = self.filtered_indices().len();
+        if len == 0 {
+            self.selected = 0;
+        } else if self.selected >= len {
+            self.selected = len - 1;
+        }
+    }
+
+    fn move_selection(&mut self, delta: i32) {
+        let len = self.filtered_indices().len();
+        if len == 0 {
+            self.selected = 0;
+            return;
+        }
+
+        if delta < 0 {
+            self.selected = self.selected.saturating_sub(delta.unsigned_abs() as usize);
+        } else {
+            self.selected = self.selected.saturating_add(delta as usize).min(len - 1);
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -144,6 +260,7 @@ pub struct TuiState {
     pub overlay: Overlay,
     pub activity_pinned: bool,
     pub now_ms: Option<u64>,
+    pub continuity_id: Option<String>,
     pub session_id: Option<String>,
     pub start_ms: Option<u64>,
     pub first_output_ms: Option<u64>,
@@ -154,7 +271,10 @@ pub struct TuiState {
     pub openresponses_first_provider_event_ms: Option<u64>,
     pub openresponses_endpoint: Option<String>,
     pub openresponses_model: Option<String>,
+    pub preferred_openresponses_endpoint: Option<String>,
+    pub preferred_openresponses_model: Option<String>,
     pub output_text: String,
+    prompt_ranges: Vec<(usize, usize)>,
     pub output_truncated: bool,
     pub pending_prompt: Option<String>,
     pub awaiting_response: bool,
@@ -189,6 +309,7 @@ impl TuiState {
             overlay: Overlay::None,
             activity_pinned: false,
             now_ms: None,
+            continuity_id: None,
             session_id: None,
             start_ms: None,
             first_output_ms: None,
@@ -199,7 +320,10 @@ impl TuiState {
             openresponses_first_provider_event_ms: None,
             openresponses_endpoint: None,
             openresponses_model: None,
+            preferred_openresponses_endpoint: None,
+            preferred_openresponses_model: None,
             output_text: String::new(),
+            prompt_ranges: Vec::new(),
             output_truncated: false,
             pending_prompt: None,
             awaiting_response: false,
@@ -241,6 +365,75 @@ impl TuiState {
             Overlay::TaskList => Overlay::None,
             _ => Overlay::TaskList,
         };
+    }
+
+    pub fn open_palette(
+        &mut self,
+        mode: PaletteMode,
+        entries: Vec<PaletteEntry>,
+        empty_message: impl Into<String>,
+        allow_custom_value: bool,
+        custom_prompt: impl Into<String>,
+    ) {
+        self.overlay = Overlay::Palette(PaletteState::new(
+            mode,
+            entries,
+            empty_message.into(),
+            allow_custom_value,
+            custom_prompt.into(),
+        ));
+    }
+
+    pub fn is_palette_open(&self) -> bool {
+        matches!(self.overlay, Overlay::Palette(_))
+    }
+
+    pub fn palette_move_selection(&mut self, delta: i32) {
+        if let Overlay::Palette(palette) = &mut self.overlay {
+            palette.move_selection(delta);
+        }
+    }
+
+    pub fn palette_push_char(&mut self, ch: char) {
+        if let Overlay::Palette(palette) = &mut self.overlay {
+            palette.query.push(ch);
+            palette.selected = 0;
+            palette.clamp_selected();
+        }
+    }
+
+    pub fn palette_backspace(&mut self) {
+        if let Overlay::Palette(palette) = &mut self.overlay {
+            palette.query.pop();
+            palette.selected = 0;
+            palette.clamp_selected();
+        }
+    }
+
+    pub fn palette_query(&self) -> Option<&str> {
+        match &self.overlay {
+            Overlay::Palette(palette) => Some(palette.query.as_str()),
+            _ => None,
+        }
+    }
+
+    pub fn palette_selected_value(&self) -> Option<String> {
+        match &self.overlay {
+            Overlay::Palette(palette) => palette
+                .selected_entry()
+                .map(|entry| entry.value.clone())
+                .or_else(|| palette.custom_candidate().map(ToOwned::to_owned)),
+            _ => None,
+        }
+    }
+
+    pub fn set_preferred_openresponses_target(
+        &mut self,
+        endpoint: Option<String>,
+        model: Option<String>,
+    ) {
+        self.preferred_openresponses_endpoint = endpoint.filter(|value| !value.trim().is_empty());
+        self.preferred_openresponses_model = model.filter(|value| !value.trim().is_empty());
     }
 
     pub fn open_selected_detail(&mut self) {
@@ -288,6 +481,14 @@ impl TuiState {
 
     pub fn set_status_message(&mut self, message: impl Into<String>) {
         self.status_message = Some(message.into());
+    }
+
+    pub fn set_continuity_id(&mut self, continuity_id: impl Into<String>) {
+        self.continuity_id = Some(continuity_id.into());
+    }
+
+    pub fn prompt_ranges(&self) -> &[(usize, usize)] {
+        &self.prompt_ranges
     }
 
     pub fn clear_status_message(&mut self) {
@@ -551,6 +752,7 @@ impl TuiState {
             start += 1;
         }
         self.output_text = self.output_text[start..].to_string();
+        self.shift_prompt_ranges(start);
     }
 
     fn push_user_prompt(&mut self, input: &str) {
@@ -561,9 +763,33 @@ impl TuiState {
         if !self.output_text.is_empty() && !self.output_text.ends_with("\n\n") {
             self.push_output("\n\n");
         }
+        let start = self.output_text.len();
         self.push_output("You: ");
         self.push_output(input);
+        let end = self.output_text.len();
+        self.prompt_ranges.push((start, end));
         self.push_output("\n\n");
+    }
+
+    fn shift_prompt_ranges(&mut self, removed_prefix: usize) {
+        if removed_prefix == 0 || self.prompt_ranges.is_empty() {
+            return;
+        }
+
+        self.prompt_ranges = self
+            .prompt_ranges
+            .iter()
+            .filter_map(|(start, end)| {
+                if *end <= removed_prefix {
+                    None
+                } else {
+                    Some((
+                        start.saturating_sub(removed_prefix),
+                        end.saturating_sub(removed_prefix),
+                    ))
+                }
+            })
+            .collect();
     }
 
     fn ingest_derived_state(&mut self, event: &Event) {
@@ -799,6 +1025,24 @@ impl TuiState {
     }
 }
 
+fn entry_matches(entry: &PaletteEntry, terms: &[String]) -> bool {
+    let mut haystack = String::new();
+    haystack.push_str(&entry.value);
+    haystack.push('\n');
+    haystack.push_str(&entry.title);
+    if let Some(subtitle) = entry.subtitle.as_deref() {
+        haystack.push('\n');
+        haystack.push_str(subtitle);
+    }
+    for chip in &entry.chips {
+        haystack.push('\n');
+        haystack.push_str(chip);
+    }
+
+    let haystack = haystack.to_ascii_lowercase();
+    terms.iter().all(|term| haystack.contains(term))
+}
+
 fn is_error_event(kind: &EventKind) -> bool {
     match kind {
         EventKind::ToolFailed { .. } => true,
@@ -982,6 +1226,7 @@ mod tests {
         let mut state = TuiState::new(100, 1024);
         state.output_text = "Hi there".to_string();
         state.session_id = Some("old-session".to_string());
+        state.continuity_id = Some("thread-1".to_string());
         state.selected_seq = Some(9);
         state.last_error_seq = Some(9);
         state.canvas_scroll_from_bottom = 4;
@@ -1003,6 +1248,7 @@ mod tests {
         state.begin_pending_turn("next step");
 
         assert_eq!(state.session_id, None);
+        assert_eq!(state.continuity_id.as_deref(), Some("thread-1"));
         assert_eq!(state.selected_seq, None);
         assert_eq!(state.last_error_seq, None);
         assert_eq!(state.canvas_scroll_from_bottom, 0);
@@ -1010,8 +1256,28 @@ mod tests {
         assert!(state.awaiting_response);
         assert_eq!(state.pending_prompt.as_deref(), Some("next step"));
         assert_eq!(state.status_message.as_deref(), Some("sending..."));
+        assert_eq!(state.prompt_ranges.len(), 1);
         assert!(state.output_text.contains("Hi there"));
         assert!(state.output_text.contains("You: next step"));
+    }
+
+    #[test]
+    fn set_continuity_id_updates_state() {
+        let mut state = TuiState::new(100, 1024);
+        state.set_continuity_id("thread-2");
+        assert_eq!(state.continuity_id.as_deref(), Some("thread-2"));
+    }
+
+    #[test]
+    fn prompt_ranges_drop_when_truncation_discards_prompt_prefix() {
+        let mut state = TuiState::new(100, 10);
+        state.push_user_prompt("ab");
+        assert_eq!(state.prompt_ranges, vec![(0, 7)]);
+
+        state.push_output("\n0123456789");
+
+        assert!(state.output_truncated);
+        assert!(state.prompt_ranges.is_empty());
     }
 
     #[test]
@@ -1075,6 +1341,72 @@ mod tests {
         state.last_event_ms = Some(1_500);
         assert!(state.is_stalled(400));
         assert!(!state.is_stalled(600));
+    }
+
+    #[test]
+    fn palette_helpers_filter_select_and_allow_custom_routes() {
+        let mut state = TuiState::default();
+        state.open_palette(
+            PaletteMode::Model,
+            vec![
+                PaletteEntry {
+                    value: "openrouter/openai/gpt-oss-20b".to_string(),
+                    title: "openrouter/openai/gpt-oss-20b".to_string(),
+                    subtitle: Some("OpenRouter".to_string()),
+                    chips: vec!["current".to_string()],
+                },
+                PaletteEntry {
+                    value: "openai/gpt-5-nano-2025-08-07".to_string(),
+                    title: "openai/gpt-5-nano-2025-08-07".to_string(),
+                    subtitle: Some("OpenAI".to_string()),
+                    chips: vec![],
+                },
+            ],
+            "no models",
+            true,
+            "Use typed route",
+        );
+        assert!(state.is_palette_open());
+        assert_eq!(
+            state.palette_selected_value().as_deref(),
+            Some("openrouter/openai/gpt-oss-20b")
+        );
+
+        state.palette_move_selection(1);
+        assert_eq!(
+            state.palette_selected_value().as_deref(),
+            Some("openai/gpt-5-nano-2025-08-07")
+        );
+
+        state.palette_push_char('n');
+        state.palette_push_char('a');
+        state.palette_push_char('n');
+        state.palette_push_char('o');
+        assert_eq!(state.palette_query(), Some("nano"));
+        assert_eq!(
+            state.palette_selected_value().as_deref(),
+            Some("openai/gpt-5-nano-2025-08-07")
+        );
+
+        for _ in 0..4 {
+            state.palette_backspace();
+        }
+        state.palette_push_char('c');
+        state.palette_push_char('u');
+        state.palette_push_char('s');
+        state.palette_push_char('t');
+        state.palette_push_char('o');
+        state.palette_push_char('m');
+        state.palette_push_char('/');
+        state.palette_push_char('m');
+        state.palette_push_char('o');
+        state.palette_push_char('d');
+        state.palette_push_char('e');
+        state.palette_push_char('l');
+        assert_eq!(
+            state.palette_selected_value().as_deref(),
+            Some("custom/model")
+        );
     }
 
     #[test]

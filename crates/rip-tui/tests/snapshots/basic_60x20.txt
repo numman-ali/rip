@@ -15,6 +15,6 @@
 │                                                          │
 │chips: [✓ bash]                                           │
 └──────────────────────────────────────────────────────────┘
-┌Input  Enter send  Ctrl-B activity  Ctrl-R xray  PgUp/…───┐
+┌Input  Enter send  Ctrl-K palette  Wheel/Pg scroll  Ct…───┐
 │>                                                         │
 └──────────────────────────────────────────────────────────┘

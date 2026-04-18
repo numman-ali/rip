@@ -104,6 +104,27 @@ Now
 
 Next
 
+## TUI: Comprehensive revamp (Phase A–D) — Graphite/Ink, palette-first, multi-actor canvas [needs work]
+- Refs:
+  - `docs/07_tasks/tui_revamp.md` (canonical execution plan for this revamp; Parts 1–17)
+  - `docs/02_architecture/continuity_os.md`
+  - `docs/03_contracts/capability_registry.md`
+  - `docs/02_architecture/tui/` (all files scheduled for deletion in Phase A.5; replaced by `00_design.md` in Phase D.8)
+- Status (2026-04-18):
+  - Plan drafted; execution begins at Phase A.0 (bump to Ratatui 0.30 + crossterm 0.29). Targets 35 sequenced commits across A (foundations + framework bump), B (structured canvas + markdown + tool cards), C (borderless chrome + palette engine + multi-line editor + in-UI error recovery), D (polish + skill refresh).
+  - Locked as surface-only: every TUI action maps to a supported capability in `docs/03_contracts/capability_registry.md`; entries with no backing capability ship *[deferred]* (visible-but-disabled), not as local hacks. Full backing matrix in Part 17 of the plan.
+  - Multi-actor from day one: `UserTurn.actor_id` + `AgentTurn.role` are required. Canvas enum extends to `JobNotice` (rides `ContinuityJobSpawned/Ended` with kernel-assigned `job_kind` — no new frame kinds invented) and `ExtensionPanel` (declared but deferred until `extension.ui` P2 ships).
+  - Modular cognition: retrieval, reviewer, memory, summarizer all surface via `JobNotice` when their kernel jobs ship; the TUI holds no strategy.
+- Ready:
+  - Framework bump commit (A.0) — no user-visible change; mechanical port.
+  - Subsequent phases each commit directly to `main` with `scripts/check-fast` green and hooks running.
+- Done criteria (per Part 14 of `tui_revamp.md`):
+  - Borderless chrome with 3-col gutter + typographic rhythm; no bordered status bar / canvas / input.
+  - Palette with five modes reachable via `⌘K/M/G/T` + `/` prefix; Command exposes ≥36 active entries.
+  - In-UI provider error recovery (Retry / Rotate / Switch / X-ray / Dismiss) through existing capabilities.
+  - Ambient state persists across turns (`reset_session_state` deleted from `begin_pending_turn`).
+  - 90 new snapshots across xs/s/m × graphite/ink/nocolor × 10 journeys, gated by `scripts/check-fast`.
+
 ## TUI: UX v1 experience review journeys (conversational-first + drill-down) [confirm spec]
 - Refs:
   - `docs/02_architecture/tui/06_experience_review.md`
@@ -119,13 +140,21 @@ Next
     - the visible Canvas transcript persists across turns instead of resetting on submit
     - submit shows an optimistic pending-turn state before the remote session request completes
     - the status bar now surfaces OpenResponses timing breakdowns (`hdr` / `fb` / `evt` / `TTFT` / `E2E`)
-    - Canvas scrollback is available via `PageUp` / `PageDown`
+    - Canvas scrollback is available via `PageUp` / `PageDown` and mouse-wheel events
+    - user prompts now have a subtle visual distinction from agent output
     - the input chrome now shows a visible key hint
     - chips/status now show recent completed tool usage, not just currently-running tools
     - provider warning frames no longer incorrectly pin the global error chip when the provider status is `Done`
+    - provider-error drill-downs now surface a concrete `rip threads events <continuity_id>` breadcrumb for log-based debugging
+  - Implemented palette foundation v0.1:
+    - `Ctrl-K` opens a generic palette overlay state model intended to scale into command, navigation, model, session, and option menus
+    - model selection is the first shipped palette mode
+    - the model picker is config-backed for now, with typed `provider/model_id` fallback for uncatalogued routes
+    - applying a model updates per-turn OpenResponses overrides inside the TUI session instead of mutating global config
+    - the status bar reuses the preferred endpoint/model so the selected target remains visible before the next request starts
   - `./scripts/check-fast` is green with the snapshots as CI gates.
 - Remaining:
-  - standardize the workspace mental model further: command palette/menu, stronger live tool/task visibility, smoother streaming, and a more intentional visual system than the current minimal terminal chrome.
+  - standardize the workspace mental model further: broaden the palette into command/navigation/sessions/options, add stronger live tool/task visibility, smooth the streaming presentation, and give the UI a more intentional visual system than the current minimal terminal chrome.
 - Done:
   - Journeys feel calm and usable at phone/SSH sizes (XS/S), and remain smooth at 10k+ frames (bounded rendering).
   - Experience Review gates are satisfied for each journey (docs + snapshots + parity evidence).
@@ -170,6 +199,7 @@ Later
     - Surfaces can explicitly attach to an authority and/or replica and explain the posture to users.
 - Context: hybrid retrieval + memory indexes (text + vector + rerank) [needs work]
   - Context: “one chat forever” needs both compaction (narrative) and retrieval (specific recall) at 1M+ events; retrieval must be truth-logged by reference (ADR-0019).
+  - Posture: new cognition strategies (RLM/retrieval/rerank/reviewer/subagent memory helpers) should land as compiler stages + background jobs + optional extensions/skills over continuity truth, not as hidden mutable state.
   - Refs:
     - `docs/06_decisions/ADR-0019-continuity-authority-and-index-stores.md`
     - `docs/03_contracts/modules/phase-2/05_context_compiler.md`
@@ -186,12 +216,28 @@ Later
   - Done:
     - Parallel tool calls are supported behind an explicit capability flag and are replayable (ordering + concurrency recorded).
     - Background responses are supported via task entities (spawn/poll/stream) with deterministic event framing.
+- OpenResponses: spec sync hardening + validation freshness [confirm spec]
+  - Context: the current architecture is right, but the sync/update path is too easy to use incorrectly. `scripts/update-openresponses-types` currently refreshes the bundled OpenAPI and a derived event-type list, while the runtime also depends on vendored split components, split paths, inventory artifacts, fixtures, and committed traceability metadata.
+  - Defer until: the current TUI revamp lands, to avoid overlapping doc/runtime churn while workspace/UI changes are in flight.
+  - Ready:
+    - Add one authoritative sync entrypoint that refreshes `schemas/openresponses/openapi.json`, `split_components.json`, `paths_responses.json`, `streaming_event_types.json`, `schema_inventory.json`, `streaming_event_type_map.json`, fixtures, and `docs/03_contracts/openresponses_traceability.md` from a single upstream snapshot.
+    - Update docs so the “standard sync” instructions and provider-adapter contract no longer imply that `scripts/update-openresponses-types` alone is sufficient for full coverage.
+    - Re-check the remaining hand-validated seams (`ItemParam`, tool/choice oneOf handling) and either move them closer to schema-driven validation or document the exception explicitly.
+  - Done:
+    - A single documented sync command refreshes the full vendored OpenResponses snapshot deterministically.
+    - Live provider validation no longer flags known-good upstream payloads due to stale vendored schemas.
+    - Traceability docs always name the exact upstream commit used for the vendored snapshot.
 - Models & providers: multi-provider + routing + catalogs (Phase 2) [needs work]
   - Refs: `docs/03_contracts/modules/phase-2/01_model_routing.md`, `docs/03_contracts/capability_registry.md`, `docs/02_architecture/capability_matrix.md`, `docs/03_contracts/event_frames.md`
+  - Status (2026-04-18):
+    - Fullscreen TUI now has a session-local model selector overlay (`Ctrl-K`) backed by the layered RIP config catalog plus typed custom route fallback.
+    - Current implementation applies the selected route as the next-turn OpenResponses override (`endpoint` + `model`) without rewriting project/global config.
+    - This is intentionally a first step toward a broader workspace menu system, not the final provider-management surface.
   - Ready: OpenResponses boundary stable; routing decisions can be logged as event frames
   - Done: multi-provider configs + versioned model catalogs; per-turn `{provider_id, model_id}` switching; routing policy (advisory/authoritative) with replayable recorded decisions
 - Extensions: plugin host (WASM-first + out-of-process services) (Phase 2) [confirm spec]
   - Refs: `docs/03_contracts/modules/phase-2/02_extension_host.md`, `docs/06_decisions/ADR-0004-plugin-architecture.md`, `docs/03_contracts/capability_registry.md`, `docs/03_contracts/event_frames.md`
+  - Posture: keep durable control surfaces in core; use extensions for modular strategies, renderers, and advisory/authoritative interceptors that still emit replayable frames.
   - Ready:
     - Define plugin manifest + host interface versioning.
     - Define canonical UI request/response frames (surface-agnostic; UI renders, headless streams).
@@ -253,7 +299,7 @@ Capability coverage map (index)
 - Search/index & memory [needs work] - Phase 3.
 
 Doc/impl gaps
-- TUI surface has design docs + an MVP-0 renderer crate (`rip-tui`) and can attach to a live server stream; richer interactions (threads/palette/editor/resume) remain Phase 2.
+- TUI surface has design docs + a live fullscreen renderer crate (`rip-tui`) with a shipped palette foundation and model selector, but richer interactions (threads/session history, broader palette modes, editor/resume, stronger workspace chrome) remain Phase 2.
 - MCP surface is documented but deferred to Phase 2 (`rip-mcp`).
 - MCP live tool discovery: when we honor `tools/list_changed`, treat toolset changes as run boundaries to preserve prompt caching and replay determinism (`docs/03_contracts/modules/phase-1/02_provider_adapters.md`, `https://openai.com/index/unrolling-the-codex-agent-loop/`).
 - Bench harness includes TTFT + end-to-end loop benchmarks; budgets are intentionally conservative (ratchet over time).

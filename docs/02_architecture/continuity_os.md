@@ -41,6 +41,33 @@ Parallelism (foreground vs "subconscious" work)
   - Background workers: summarization, indexing, pruning, cost accounting, audits, etc.
 - Side-effecting actions (tool calls that modify the workspace) must be **scheduled/serialized** and logged to preserve determinism.
 
+Strategy layering (how future "agent cognition" fits)
+- RIP should support new reasoning/memory/retrieval approaches **without** changing the continuity truth model each time.
+- The layering rule is:
+  - **Core capabilities** own durable truth, lineage, replay semantics, and surface parity.
+    - Examples: `thread.*`, `session.*`, `context.compile`, `compaction.*`, permissions, branch/handoff, explicit refs.
+  - **Background jobs / subagents** generate candidate artifacts and decisions.
+    - Examples: summaries, retrieval indexes, ranked recalls, review notes, routing advice, audits.
+  - **Context compilation** is the gate that decides what enters the next run.
+    - Inclusion must be logged by reference; jobs do not silently mutate memory.
+  - **Policy profiles / modes** decide how much autonomy is enabled.
+    - Examples: safe/manual, nightly maintenance, full-auto experimentation.
+  - **Extensions / skills / commands** package strategies and workflows.
+    - They may advise, intercept, or propose context/tool/routing changes, but they still emit structured frames and stay within policy.
+
+What this means in practice
+- A new retrieval or "RLM memory" approach should usually land as:
+  - a compiler stage,
+  - one or more background jobs that build artifacts/caches,
+  - and optionally an extension/skill that exposes controls or strategy selection.
+- A new UX affordance like "by the way", "scratch thought", or "ask another agent" should usually map to:
+  - an ephemeral run,
+  - a side continuity / branch,
+  - or an explicit capability invocation,
+  rather than hidden text injected into the main thread.
+- A feature becomes a **built-in core capability** when it changes durable behavior the whole system must understand and expose across surfaces.
+- A feature stays a **plugin/strategy** when it can vary independently while still producing replayable artifacts/frames.
+
 Cross-continuity memory ("Infinity")
 - Cross-project/global memory is represented as continuity truth + artifacts, not hidden mutable state:
   - Background jobs write immutable artifacts (summaries/indexes/notes) and append events referencing them (ADR-0012).

@@ -28,6 +28,21 @@ Non-goals (initial)
 - Extension-managed network access without explicit policy profiles.
 - Unlogged side effects.
 
+Classification rule (core vs extension vs policy)
+- Use this rule before introducing a new capability or plugin:
+  - **Core capability** when the behavior changes durable truth, lineage, replay semantics, or must exist across all active surfaces.
+    - Examples: branching/handoff, context compilation decisions, compaction checkpoints, session control, explicit thread refs.
+  - **Extension / hook / strategy module** when the behavior can vary while still producing replayable artifacts/frames.
+    - Examples: retrieval pipelines, rerankers, summary generators, routing advisors, reviewer agents, custom tool renderers.
+  - **Policy profile / mode** when the main question is how much autonomy, trust, or permission the system should grant.
+    - Examples: safe/manual mode, nightly maintenance mode, full-auto experimentation.
+  - **Skill / command** when the behavior is primarily an operator-facing packaged workflow.
+    - Examples: "run nightly memory refresh", "open scratch branch", "audit recent sessions", "try alternate routing strategy".
+- Default bias:
+  - keep the truth model and control surfaces in core,
+  - keep experimental cognition strategies modular,
+  - keep autonomy level explicit in policy.
+
 Architecture (hybrid)
 
 1) WASM extensions (default)

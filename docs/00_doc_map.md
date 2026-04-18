@@ -54,6 +54,7 @@ Doc index (authoritative docs only)
 | north star | `docs/01_north_star.md` | What we’re building and why. |
 | continuity OS | `docs/02_architecture/continuity_os.md` | What “one chat forever” means and how we keep it replayable + provider-agnostic. |
 | roadmap | `docs/07_tasks/roadmap.md` | What’s next and what “done” means. |
+| TUI revamp plan | `docs/07_tasks/tui_revamp.md` | Canonical execution plan for the TUI revamp (Phases A–D, capability backing matrix). |
 | capabilities | `docs/03_contracts/capabilities.md` | What a capability contract contains. |
 | capability registry | `docs/03_contracts/capability_registry.md` | Full capability id list + surface statuses. |
 | capability matrix | `docs/02_architecture/capability_matrix.md` | Phases + hook points by capability group. |
