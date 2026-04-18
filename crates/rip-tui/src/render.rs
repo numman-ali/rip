@@ -31,25 +31,33 @@ struct ThemeStyles {
     chrome: Style,
     header: Style,
     highlight: Style,
+    accent: Style,
 }
 
 impl ThemeStyles {
     fn for_theme(theme: ThemeId) -> Self {
         match theme {
             ThemeId::DefaultDark => Self {
-                chrome: Style::default().fg(Color::White),
-                header: Style::default().add_modifier(Modifier::BOLD),
-                highlight: Style::default().add_modifier(Modifier::REVERSED),
+                chrome: Style::default().fg(Color::Gray),
+                header: Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+                highlight: Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+                accent: Style::default().fg(Color::LightBlue),
             },
             ThemeId::DefaultLight => Self {
                 chrome: Style::default().fg(Color::Black),
                 header: Style::default()
-                    .fg(Color::Black)
+                    .fg(Color::Blue)
                     .add_modifier(Modifier::BOLD),
                 highlight: Style::default()
                     .fg(Color::Black)
-                    .bg(Color::White)
+                    .bg(Color::LightBlue)
                     .add_modifier(Modifier::BOLD),
+                accent: Style::default().fg(Color::Blue),
             },
         }
     }
@@ -83,6 +91,9 @@ fn render_status_bar(frame: &mut Frame<'_>, state: &TuiState, theme: &ThemeStyle
     let artifact_count = state.artifacts.len();
     let stalled = state.is_stalled(5_000);
     let error = state.has_error();
+    let headers = fmt_ms(state.openresponses_headers_ms());
+    let first_byte = fmt_ms(state.openresponses_first_byte_ms());
+    let provider_event = fmt_ms(state.openresponses_first_provider_event_ms());
     let llm = state
         .openresponses_endpoint
         .as_deref()
@@ -112,11 +123,16 @@ fn render_status_bar(frame: &mut Frame<'_>, state: &TuiState, theme: &ThemeStyle
         line.push_str(" |");
     }
     line.push_str(&format!(
-        " view:{view}  session:{session}  seq:{last_seq}  TTFT:{ttft}  E2E:{e2e}  tools:{tool_count}  tasks:{task_count}  jobs:{job_count}  arts:{artifact_count}  stalled:{stalled}  error:{error}  theme:{theme_name}"
+        " view:{view}  session:{session}  seq:{last_seq}  hdr:{headers}  fb:{first_byte}  evt:{provider_event}  TTFT:{ttft}  E2E:{e2e}  tools:{tool_count}/{}  tasks:{task_count}/{}  jobs:{job_count}/{}  arts:{artifact_count}  stalled:{stalled}  error:{error}  theme:{theme_name}",
+        state.tools.len(),
+        state.tasks.len(),
+        state.jobs.len()
     ));
-    let widget = Paragraph::new(Line::from(line))
-        .style(theme.chrome)
-        .block(Block::default().borders(Borders::ALL).title("RIP"));
+    let widget = Paragraph::new(Line::from(line)).style(theme.chrome).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(Line::from("RIP").style(theme.header)),
+    );
     frame.render_widget(widget, area);
 }
 
@@ -151,7 +167,7 @@ fn render_canvas_body(frame: &mut Frame<'_>, state: &TuiState, theme: &ThemeStyl
 fn render_canvas(frame: &mut Frame<'_>, state: &TuiState, theme: &ThemeStyles, area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
-        .title("Canvas")
+        .title(Line::from("Canvas").style(theme.header))
         .style(theme.chrome);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -168,6 +184,7 @@ fn render_canvas(frame: &mut Frame<'_>, state: &TuiState, theme: &ThemeStyles, a
     };
     let widget = Paragraph::new(Text::from(story))
         .wrap(Wrap { trim: false })
+        .scroll(canvas_scroll_offset(state, panes[0], &state.output_text))
         .style(theme.chrome);
     frame.render_widget(widget, panes[0]);
 
@@ -179,7 +196,7 @@ fn render_canvas(frame: &mut Frame<'_>, state: &TuiState, theme: &ThemeStyles, a
 fn render_activity_rail(frame: &mut Frame<'_>, state: &TuiState, theme: &ThemeStyles, area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
-        .title("Activity")
+        .title(Line::from("Activity").style(theme.header))
         .style(theme.chrome);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -193,6 +210,10 @@ fn render_activity_rail(frame: &mut Frame<'_>, state: &TuiState, theme: &ThemeSt
 
 fn build_activity_lines(state: &TuiState, max_lines: usize) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::new();
+
+    if state.awaiting_response {
+        lines.push(Line::from("◔ waiting for response"));
+    }
 
     if state.has_error() {
         if let Some(seq) = state.last_error_seq {
@@ -209,6 +230,22 @@ fn build_activity_lines(state: &TuiState, max_lines: usize) -> Vec<Line<'static>
     for tool in state.tools.values() {
         if matches!(tool.status, crate::ToolStatus::Running) {
             lines.push(Line::from(format!("⟳ tool {}", tool.name)));
+        }
+    }
+
+    if !state.tools.is_empty()
+        && !state
+            .tools
+            .values()
+            .any(|tool| matches!(tool.status, crate::ToolStatus::Running))
+    {
+        if let Some(tool) = state.tools.values().max_by_key(|tool| tool.started_seq) {
+            let label = match &tool.status {
+                crate::ToolStatus::Ended { .. } => "✓",
+                crate::ToolStatus::Failed { .. } => "✕",
+                crate::ToolStatus::Running => "⟳",
+            };
+            lines.push(Line::from(format!("{label} tool {}", tool.name)));
         }
     }
 
@@ -254,6 +291,17 @@ fn build_activity_lines(state: &TuiState, max_lines: usize) -> Vec<Line<'static>
 fn build_chips_line(state: &TuiState, max_width: usize) -> String {
     let mut chips: Vec<String> = Vec::new();
 
+    if state.awaiting_response {
+        let waiting = if state.openresponses_first_provider_event_ms.is_some() {
+            "working"
+        } else if state.openresponses_request_started_ms.is_some() {
+            "waiting"
+        } else {
+            "sending"
+        };
+        chips.push(format!("[◔ {waiting}]"));
+    }
+
     let running_tools: Vec<&str> = state.running_tool_ids().collect();
     if !running_tools.is_empty() {
         let name = state
@@ -265,16 +313,27 @@ fn build_chips_line(state: &TuiState, max_width: usize) -> String {
         if running_tools.len() > 1 {
             chips.push(format!("[+{}]", running_tools.len() - 1));
         }
+    } else if let Some(tool) = state.tools.values().max_by_key(|tool| tool.started_seq) {
+        let chip = match &tool.status {
+            crate::ToolStatus::Ended { .. } => format!("[✓ {}]", tool.name),
+            crate::ToolStatus::Failed { .. } => format!("[✕ {}]", tool.name),
+            crate::ToolStatus::Running => format!("[⟳ {}]", tool.name),
+        };
+        chips.push(chip);
     }
 
     let running_tasks = state.running_task_ids().count();
     if running_tasks > 0 {
-        chips.push(format!("[tasks:{running_tasks}]"));
+        chips.push(format!("[tasks:{running_tasks}/{}]", state.tasks.len()));
+    } else if !state.tasks.is_empty() {
+        chips.push(format!("[tasks:{}]", state.tasks.len()));
     }
 
     let running_jobs = state.running_job_ids().count();
     if running_jobs > 0 {
-        chips.push(format!("[jobs:{running_jobs}]"));
+        chips.push(format!("[jobs:{running_jobs}/{}]", state.jobs.len()));
+    } else if !state.jobs.is_empty() {
+        chips.push(format!("[jobs:{}]", state.jobs.len()));
     }
 
     if let Some(ctx) = state.context.as_ref() {
@@ -299,11 +358,46 @@ fn build_chips_line(state: &TuiState, max_width: usize) -> String {
 
     let mut out = String::from("chips: ");
     out.push_str(&chips.join(" "));
-    if out.len() > max_width {
-        out.truncate(max_width.saturating_sub(1));
-        out.push('…');
+    if out.chars().count() > max_width {
+        out = truncate(&out, max_width);
     }
     out
+}
+
+fn build_help_line(max_width: usize) -> String {
+    truncate(
+        "Enter send  Ctrl-B activity  Ctrl-R xray  PgUp/PgDn scroll",
+        max_width,
+    )
+}
+
+fn fmt_ms(value: Option<u64>) -> String {
+    value
+        .map(|ms| format!("{ms}ms"))
+        .unwrap_or_else(|| "-".to_string())
+}
+
+fn canvas_scroll_offset(state: &TuiState, area: Rect, text: &str) -> (u16, u16) {
+    let width = area.width.max(1) as usize;
+    let height = area.height.max(1) as usize;
+    let total_lines = wrapped_line_count(text, width);
+    let max_scroll = total_lines.saturating_sub(height);
+    let scroll = max_scroll.saturating_sub(state.canvas_scroll_from_bottom as usize);
+    (scroll.min(u16::MAX as usize) as u16, 0)
+}
+
+fn wrapped_line_count(text: &str, width: usize) -> usize {
+    let width = width.max(1);
+    let mut total = 0usize;
+    for line in text.split('\n') {
+        let char_count = line.chars().count();
+        total += if char_count == 0 {
+            1
+        } else {
+            ((char_count - 1) / width) + 1
+        };
+    }
+    total.max(1)
 }
 
 fn render_xray_screen(
@@ -368,7 +462,11 @@ fn render_timeline(frame: &mut Frame<'_>, state: &TuiState, theme: &ThemeStyles,
         ],
     )
     .header(header)
-    .block(Block::default().borders(Borders::ALL).title("Timeline"))
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(Line::from("Timeline").style(theme.header)),
+    )
     .row_highlight_style(theme.highlight)
     .highlight_symbol("▸ ");
 
@@ -390,7 +488,7 @@ fn render_details(
 ) {
     let block = Block::default()
         .borders(Borders::ALL)
-        .title("Details")
+        .title(Line::from("Details").style(theme.header))
         .style(theme.chrome);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -437,33 +535,42 @@ fn selected_event_decoded(state: &TuiState) -> Text<'static> {
 }
 
 fn render_output(frame: &mut Frame<'_>, state: &TuiState, theme: &ThemeStyles, area: Rect) {
-    let (mut title, content) = match state.output_view {
-        OutputViewMode::Rendered => ("Output".to_string(), Text::from(state.output_text.as_str())),
-        OutputViewMode::Raw => ("Raw".to_string(), selected_event_json(state)),
+    let (mut title, content_text) = match state.output_view {
+        OutputViewMode::Rendered => ("Output".to_string(), state.output_text.clone()),
+        OutputViewMode::Raw => ("Raw".to_string(), selected_event_json(state).to_string()),
     };
 
     if state.output_truncated && state.output_view == OutputViewMode::Rendered {
         title.push_str(" (truncated)");
     }
 
-    let widget = Paragraph::new(content)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(title)
-                .style(theme.chrome),
-        )
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(Line::from(title).style(theme.header))
+        .style(theme.chrome);
+    let inner = block.inner(area);
+    let mut widget = Paragraph::new(Text::from(content_text.clone()))
+        .block(block)
         .wrap(Wrap { trim: false });
+    if state.output_view == OutputViewMode::Rendered {
+        widget = widget.scroll(canvas_scroll_offset(state, inner, &content_text));
+    }
     frame.render_widget(widget, area);
 }
 
 fn render_input(frame: &mut Frame<'_>, theme: &ThemeStyles, area: Rect, input: &str) {
-    let widget = Paragraph::new(format!("> {input}")).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title("Input")
-            .style(theme.chrome),
+    let title = format!(
+        "Input  {}",
+        build_help_line(area.width.saturating_sub(12) as usize)
     );
+    let widget = Paragraph::new(format!("> {input}"))
+        .style(theme.accent)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(Line::from(title).style(theme.header))
+                .style(theme.chrome),
+        );
     frame.render_widget(widget, area);
 }
 
@@ -878,10 +985,17 @@ fn render_stall_overlay(frame: &mut Frame<'_>, state: &TuiState, theme: &ThemeSt
 }
 
 fn truncate(input: &str, max_len: usize) -> String {
+    if max_len == 0 {
+        return String::new();
+    }
     if input.chars().count() <= max_len {
         return input.to_string();
     }
-    input.chars().take(max_len).collect::<String>() + "…"
+    input
+        .chars()
+        .take(max_len.saturating_sub(1))
+        .collect::<String>()
+        + "…"
 }
 
 #[cfg(test)]
@@ -1089,13 +1203,21 @@ mod tests {
 
         let chips = build_chips_line(&state, 120);
         assert!(chips.contains("[⟳ write]"));
-        assert!(chips.contains("[tasks:1]"));
-        assert!(chips.contains("[jobs:1]"));
+        assert!(chips.contains("[tasks:1/1]"));
+        assert!(chips.contains("[jobs:1/1]"));
         assert!(chips.contains("[⚙ ctx:compiled]"));
         assert!(chips.contains("[⚠ error]"));
 
         let truncated = build_chips_line(&state, 12);
         assert!(truncated.ends_with('…'));
+    }
+
+    #[test]
+    fn wrapped_line_count_and_help_line_have_small_screen_fallbacks() {
+        assert_eq!(wrapped_line_count("", 10), 1);
+        assert_eq!(wrapped_line_count("hello", 10), 1);
+        assert_eq!(wrapped_line_count("hello world", 5), 3);
+        assert_eq!(build_help_line(8), "Enter s…");
     }
 
     #[test]

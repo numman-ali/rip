@@ -18,6 +18,8 @@ pub enum Command {
     CopySelected,
     SelectPrev,
     SelectNext,
+    ScrollCanvasUp,
+    ScrollCanvasDown,
     CompactionAuto,
     CompactionAutoSchedule,
     CompactionCutPoints,
@@ -52,6 +54,8 @@ impl Keymap {
         bindings.insert("C-t".to_string(), Command::ToggleTasks);
         bindings.insert("M-t".to_string(), Command::ToggleTheme);
         bindings.insert("C-y".to_string(), Command::CopySelected);
+        bindings.insert("PageUp".to_string(), Command::ScrollCanvasUp);
+        bindings.insert("PageDown".to_string(), Command::ScrollCanvasDown);
         // Advanced control-plane actions are intentionally unbound by default to avoid accidental
         // execution. Power users can bind them via ~/.rip/keybindings.json.
 
@@ -168,6 +172,12 @@ fn parse_command(raw: &str) -> Option<Command> {
         "copyselected" | "copy_selected" | "copy" => Some(Command::CopySelected),
         "selectprev" | "select_prev" | "up" => Some(Command::SelectPrev),
         "selectnext" | "select_next" | "down" => Some(Command::SelectNext),
+        "scrollcanvasup" | "scroll_canvas_up" | "canvasup" | "canvas_up" | "pageup" => {
+            Some(Command::ScrollCanvasUp)
+        }
+        "scrollcanvasdown" | "scroll_canvas_down" | "canvasdown" | "canvas_down" | "pagedown" => {
+            Some(Command::ScrollCanvasDown)
+        }
         "compactionauto" | "compaction_auto" | "compaction-auto" => Some(Command::CompactionAuto),
         "compactionautoschedule"
         | "compaction_auto_schedule"
@@ -328,6 +338,7 @@ mod tests {
         assert_eq!(parse_command("toggle_raw"), Some(Command::ToggleOutputView));
         assert_eq!(parse_command("copy"), Some(Command::CopySelected));
         assert_eq!(parse_command("down"), Some(Command::SelectNext));
+        assert_eq!(parse_command("pageup"), Some(Command::ScrollCanvasUp));
         assert!(parse_command("nope").is_none());
     }
 

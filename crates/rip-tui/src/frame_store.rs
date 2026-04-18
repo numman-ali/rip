@@ -47,6 +47,11 @@ impl FrameStore {
         self.frames.push_back(event);
     }
 
+    pub fn clear(&mut self) {
+        self.base_seq = 0;
+        self.frames.clear();
+    }
+
     pub fn get_by_seq(&self, seq: u64) -> Option<&Event> {
         let idx = self.index_of_seq(seq)?;
         self.frames.get(idx)

@@ -2,7 +2,7 @@ use std::future;
 use std::io;
 use std::io::Write;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crossterm::event::{Event as TermEvent, EventStream, KeyCode, KeyEvent};
 use crossterm::terminal::{
@@ -56,16 +56,15 @@ async fn run_fullscreen_tui_sse(
     } = init_fullscreen_state(initial_prompt);
 
     if ui_mode == SseUiMode::Interactive && stream.is_none() && !input.trim().is_empty() {
-        match start_remote_session(
-            client,
-            &server,
-            std::mem::take(&mut input),
-            openresponses_overrides.clone(),
-        )
-        .await
-        {
+        let prompt = std::mem::take(&mut input);
+        state.begin_pending_turn(&prompt);
+        terminal.draw(|f| render(f, &state, mode, &input))?;
+        match start_remote_session(client, &server, prompt, openresponses_overrides.clone()).await {
             Ok(next) => stream = Some(next),
-            Err(err) => state.set_status_message(format!("start failed: {err}")),
+            Err(err) => {
+                state.awaiting_response = false;
+                state.set_status_message(format!("start failed: {err}"));
+            }
         }
     }
 
@@ -75,6 +74,7 @@ async fn run_fullscreen_tui_sse(
     let (status_tx, mut status_rx) = mpsc::channel::<String>(16);
 
     loop {
+        state.set_now_ms(current_time_ms());
         if dirty {
             terminal.draw(|f| render(f, &state, mode, &input))?;
             dirty = false;
@@ -107,11 +107,8 @@ async fn run_fullscreen_tui_sse(
                             let prompt = input.trim().to_string();
                             if !prompt.is_empty() {
                                 input.clear();
-                                let theme = state.theme;
-                                let status_message = state.status_message.clone();
-                                state = TuiState::default();
-                                state.theme = theme;
-                                state.status_message = status_message;
+                                state.begin_pending_turn(&prompt);
+                                terminal.draw(|f| render(f, &state, mode, &input))?;
                                 match start_remote_session(
                                     client,
                                     &server,
@@ -121,7 +118,10 @@ async fn run_fullscreen_tui_sse(
                                 .await
                                 {
                                     Ok(next) => stream = Some(next),
-                                    Err(err) => state.set_status_message(format!("start failed: {err}")),
+                                    Err(err) => {
+                                        state.awaiting_response = false;
+                                        state.set_status_message(format!("start failed: {err}"));
+                                    }
                                 }
                             }
                         }
@@ -538,6 +538,22 @@ async fn run_fullscreen_tui_sse(
                     UiAction::CopySelected => {
                         copy_selected(&mut terminal, &mut state)?;
                     }
+                    UiAction::ScrollCanvasUp => {
+                        if state.output_view == rip_tui::OutputViewMode::Rendered {
+                            state.scroll_canvas_up(4);
+                        } else {
+                            state.auto_follow = false;
+                            move_selected(&mut state, -8);
+                        }
+                    }
+                    UiAction::ScrollCanvasDown => {
+                        if state.output_view == rip_tui::OutputViewMode::Rendered {
+                            state.scroll_canvas_down(4);
+                        } else {
+                            state.auto_follow = false;
+                            move_selected(&mut state, 8);
+                        }
+                    }
                 };
 
                 dirty = true;
@@ -559,9 +575,15 @@ async fn run_fullscreen_tui_sse(
                         }
                     }
                     Err(EventSourceError::StreamEnded) => {
+                        state.awaiting_response = false;
+                        if state.status_message.is_none() {
+                            state.set_status_message("stream ended");
+                        }
                         stream.take();
                     }
-                    Err(_) => {
+                    Err(err) => {
+                        state.awaiting_response = false;
+                        state.set_status_message(format!("stream error: {err}"));
                         stream.take();
                     }
                 }
@@ -572,6 +594,14 @@ async fn run_fullscreen_tui_sse(
 
     guard.deactivate(&mut terminal)?;
     Ok(())
+}
+
+fn current_time_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .min(u128::from(u64::MAX)) as u64
 }
 
 pub async fn run_fullscreen_tui_remote(
@@ -657,6 +687,8 @@ enum UiAction {
     ProviderCursorStatus,
     ProviderCursorRotate,
     ContextSelectionStatus,
+    ScrollCanvasUp,
+    ScrollCanvasDown,
 }
 
 struct InitState {
@@ -766,6 +798,8 @@ fn handle_key_event(
             KeyCommand::ProviderCursorStatus => UiAction::ProviderCursorStatus,
             KeyCommand::ProviderCursorRotate => UiAction::ProviderCursorRotate,
             KeyCommand::ContextSelectionStatus => UiAction::ContextSelectionStatus,
+            KeyCommand::ScrollCanvasUp => UiAction::ScrollCanvasUp,
+            KeyCommand::ScrollCanvasDown => UiAction::ScrollCanvasDown,
         };
     }
 
@@ -1139,6 +1173,16 @@ mod tests {
             &keymap,
         );
         assert_eq!(action, UiAction::Submit);
+
+        let action = handle_key_event(
+            KeyEvent::new(KeyCode::PageUp, KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            true,
+            &keymap,
+        );
+        assert_eq!(action, UiAction::ScrollCanvasUp);
     }
 
     #[test]

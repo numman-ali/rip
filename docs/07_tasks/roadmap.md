@@ -21,7 +21,7 @@ Now
   - `agent_state.md`
 - Status (2026-04-18):
   - Functional validation is green: `scripts/check-fast`, `scripts/check-sdk-ts`, and full `scripts/check` all pass locally again.
-  - Workspace coverage is back above the enforced floors. Latest local run ended at 91.74% lines / 90.77% regions / 90.06% functions.
+  - Workspace coverage is back above the enforced floors. Latest local run ended at 91.66% lines / 90.67% regions / 90.02% functions.
   - Restored by adding focused coverage in `ripd`, `rip-cli`, `rip-tui`, `rip-tools`, and `rip-kernel`, including local-first CLI integration tests and direct/source-level probes for stubborn helper paths.
 - Ready:
   - Keep the gate green as follow-on work lands; treat any drop below the enforced floors as a regression.
@@ -110,12 +110,22 @@ Next
   - `docs/02_architecture/tui/07_canvas_and_xray.md`
   - `docs/02_architecture/tui/03_interaction_patterns.md`
   - `docs/02_architecture/tui/04_graceful_degradation.md`
-- Status (2026-01-28):
+- Status (2026-04-18):
   - Implemented Canvas-first posture + X-ray escape hatch spec: `docs/02_architecture/tui/07_canvas_and_xray.md`.
   - Implemented deterministic ratatui golden snapshots at XS/S/M for the 3 journeys under `crates/rip-tui/tests/snapshots/`.
   - Implemented minimal interactive controls in the fullscreen TUI for the journeys:
     - `Ctrl+B` Activity overlay, `Ctrl+T` Tasks overlay, `Enter` opens selected detail (or submits when idle), `Esc` closes overlays.
+  - Implemented TUI Confidence v1 initial pass:
+    - the visible Canvas transcript persists across turns instead of resetting on submit
+    - submit shows an optimistic pending-turn state before the remote session request completes
+    - the status bar now surfaces OpenResponses timing breakdowns (`hdr` / `fb` / `evt` / `TTFT` / `E2E`)
+    - Canvas scrollback is available via `PageUp` / `PageDown`
+    - the input chrome now shows a visible key hint
+    - chips/status now show recent completed tool usage, not just currently-running tools
+    - provider warning frames no longer incorrectly pin the global error chip when the provider status is `Done`
   - `./scripts/check-fast` is green with the snapshots as CI gates.
+- Remaining:
+  - standardize the workspace mental model further: command palette/menu, stronger live tool/task visibility, smoother streaming, and a more intentional visual system than the current minimal terminal chrome.
 - Done:
   - Journeys feel calm and usable at phone/SSH sizes (XS/S), and remain smooth at 10k+ frames (bounded rendering).
   - Experience Review gates are satisfied for each journey (docs + snapshots + parity evidence).

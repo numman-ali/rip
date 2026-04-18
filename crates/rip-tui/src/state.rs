@@ -138,6 +138,7 @@ pub struct TuiState {
     pub frames: FrameStore,
     pub selected_seq: Option<u64>,
     pub auto_follow: bool,
+    pub canvas_scroll_from_bottom: u16,
     pub output_view: OutputViewMode,
     pub theme: ThemeId,
     pub overlay: Overlay,
@@ -155,6 +156,8 @@ pub struct TuiState {
     pub openresponses_model: Option<String>,
     pub output_text: String,
     pub output_truncated: bool,
+    pub pending_prompt: Option<String>,
+    pub awaiting_response: bool,
     pub status_message: Option<String>,
     pub clipboard_buffer: Option<String>,
     pub tools: BTreeMap<String, ToolSummary>,
@@ -180,6 +183,7 @@ impl TuiState {
             frames: FrameStore::new(max_frames),
             selected_seq: None,
             auto_follow: true,
+            canvas_scroll_from_bottom: 0,
             output_view: OutputViewMode::Rendered,
             theme: ThemeId::DefaultDark,
             overlay: Overlay::None,
@@ -197,6 +201,8 @@ impl TuiState {
             openresponses_model: None,
             output_text: String::new(),
             output_truncated: false,
+            pending_prompt: None,
+            awaiting_response: false,
             status_message: None,
             clipboard_buffer: None,
             tools: BTreeMap::new(),
@@ -284,6 +290,62 @@ impl TuiState {
         self.status_message = Some(message.into());
     }
 
+    pub fn clear_status_message(&mut self) {
+        self.status_message = None;
+    }
+
+    pub fn reset_session_state(&mut self) {
+        self.frames.clear();
+        self.selected_seq = None;
+        self.auto_follow = true;
+        self.canvas_scroll_from_bottom = 0;
+        self.overlay = Overlay::None;
+        self.now_ms = None;
+        self.session_id = None;
+        self.start_ms = None;
+        self.first_output_ms = None;
+        self.end_ms = None;
+        self.openresponses_request_started_ms = None;
+        self.openresponses_response_headers_ms = None;
+        self.openresponses_response_first_byte_ms = None;
+        self.openresponses_first_provider_event_ms = None;
+        self.openresponses_endpoint = None;
+        self.openresponses_model = None;
+        self.output_truncated = false;
+        self.pending_prompt = None;
+        self.awaiting_response = false;
+        self.status_message = None;
+        self.clipboard_buffer = None;
+        self.tools.clear();
+        self.tasks.clear();
+        self.jobs.clear();
+        self.artifacts.clear();
+        self.context = None;
+        self.last_error_seq = None;
+        self.last_event_ms = None;
+    }
+
+    pub fn begin_pending_turn(&mut self, input: &str) {
+        let prompt = input.trim();
+        if prompt.is_empty() {
+            return;
+        }
+
+        self.reset_session_state();
+        self.push_user_prompt(prompt);
+        self.pending_prompt = Some(prompt.to_string());
+        self.awaiting_response = true;
+        self.set_status_message("sending...");
+    }
+
+    pub fn scroll_canvas_up(&mut self, lines: u16) {
+        self.canvas_scroll_from_bottom = self.canvas_scroll_from_bottom.saturating_add(lines);
+    }
+
+    pub fn scroll_canvas_down(&mut self, lines: u16) {
+        self.canvas_scroll_from_bottom = self.canvas_scroll_from_bottom.saturating_sub(lines);
+    }
+
     pub fn set_now_ms(&mut self, now_ms: u64) {
         self.now_ms = Some(now_ms);
     }
@@ -332,6 +394,9 @@ impl TuiState {
         self.last_event_ms = Some(event.timestamp_ms);
         if is_error_event(&event.kind) {
             self.last_error_seq = Some(event.seq);
+            self.awaiting_response = false;
+            self.pending_prompt = None;
+            self.clear_status_message();
         }
 
         match &event.kind {
@@ -339,11 +404,19 @@ impl TuiState {
                 if self.start_ms.is_none() {
                     self.start_ms = Some(event.timestamp_ms);
                 }
-                self.push_user_prompt(input);
+                self.awaiting_response = true;
+                if self.pending_prompt.is_some() {
+                    self.pending_prompt = None;
+                } else {
+                    self.push_user_prompt(input);
+                }
             }
             EventKind::ToolTaskSpawned { .. } => {
                 if self.start_ms.is_none() {
                     self.start_ms = Some(event.timestamp_ms);
+                }
+                if self.awaiting_response {
+                    self.set_status_message("working...");
                 }
             }
             EventKind::OpenResponsesRequestStarted {
@@ -354,6 +427,9 @@ impl TuiState {
                 }
                 self.openresponses_endpoint = Some(endpoint.clone());
                 self.openresponses_model = model.clone();
+                if self.awaiting_response {
+                    self.set_status_message("waiting for model...");
+                }
             }
             EventKind::OpenResponsesResponseHeaders { .. } => {
                 if self.openresponses_response_headers_ms.is_none() {
@@ -369,12 +445,17 @@ impl TuiState {
                 if self.first_output_ms.is_none() {
                     self.first_output_ms = Some(event.timestamp_ms);
                 }
+                self.awaiting_response = false;
+                self.clear_status_message();
                 self.push_output(delta);
             }
             EventKind::SessionEnded { .. } => {
                 if self.end_ms.is_none() {
                     self.end_ms = Some(event.timestamp_ms);
                 }
+                self.awaiting_response = false;
+                self.pending_prompt = None;
+                self.clear_status_message();
             }
             EventKind::ToolTaskStatus { status, .. } => {
                 if self.end_ms.is_none()
@@ -387,12 +468,24 @@ impl TuiState {
                 {
                     self.end_ms = Some(event.timestamp_ms);
                 }
+                if matches!(
+                    status,
+                    rip_kernel::ToolTaskStatus::Exited
+                        | rip_kernel::ToolTaskStatus::Cancelled
+                        | rip_kernel::ToolTaskStatus::Failed
+                ) {
+                    self.awaiting_response = false;
+                    self.clear_status_message();
+                }
             }
             EventKind::ProviderEvent { provider, .. } => {
                 if provider == "openresponses"
                     && self.openresponses_first_provider_event_ms.is_none()
                 {
                     self.openresponses_first_provider_event_ms = Some(event.timestamp_ms);
+                }
+                if self.awaiting_response {
+                    self.set_status_message("working...");
                 }
             }
             _ => {}
@@ -465,6 +558,9 @@ impl TuiState {
             return;
         }
         // Canvas should stay conversational-first; we always show the prompt that started this run.
+        if !self.output_text.is_empty() && !self.output_text.ends_with("\n\n") {
+            self.push_output("\n\n");
+        }
         self.push_output("You: ");
         self.push_output(input);
         self.push_output("\n\n");
@@ -715,8 +811,8 @@ fn is_error_event(kind: &EventKind) -> bool {
             ..
         } => {
             *status == ProviderEventStatus::InvalidJson
-                || !errors.is_empty()
-                || !response_errors.is_empty()
+                || (*status != ProviderEventStatus::Done
+                    && (!errors.is_empty() || !response_errors.is_empty()))
         }
         _ => false,
     }
@@ -879,6 +975,73 @@ mod tests {
             },
         ));
         assert_eq!(state.output_text, "keep");
+    }
+
+    #[test]
+    fn begin_pending_turn_preserves_story_and_resets_run_state() {
+        let mut state = TuiState::new(100, 1024);
+        state.output_text = "Hi there".to_string();
+        state.session_id = Some("old-session".to_string());
+        state.selected_seq = Some(9);
+        state.last_error_seq = Some(9);
+        state.canvas_scroll_from_bottom = 4;
+        state.tools.insert(
+            "tool-1".to_string(),
+            ToolSummary {
+                tool_id: "tool-1".to_string(),
+                name: "shell".to_string(),
+                args: Value::Null,
+                started_seq: 1,
+                started_at_ms: 100,
+                status: ToolStatus::Running,
+                stdout_preview: String::new(),
+                stderr_preview: String::new(),
+                artifact_ids: BTreeSet::new(),
+            },
+        );
+
+        state.begin_pending_turn("next step");
+
+        assert_eq!(state.session_id, None);
+        assert_eq!(state.selected_seq, None);
+        assert_eq!(state.last_error_seq, None);
+        assert_eq!(state.canvas_scroll_from_bottom, 0);
+        assert!(state.tools.is_empty());
+        assert!(state.awaiting_response);
+        assert_eq!(state.pending_prompt.as_deref(), Some("next step"));
+        assert_eq!(state.status_message.as_deref(), Some("sending..."));
+        assert!(state.output_text.contains("Hi there"));
+        assert!(state.output_text.contains("You: next step"));
+    }
+
+    #[test]
+    fn session_started_does_not_duplicate_pending_prompt() {
+        let mut state = TuiState::new(100, 1024);
+        state.begin_pending_turn("hello");
+        let before = state.output_text.clone();
+
+        state.update(event(
+            0,
+            1000,
+            EventKind::SessionStarted {
+                input: "hello".to_string(),
+            },
+        ));
+
+        assert_eq!(state.output_text, before);
+        assert_eq!(state.pending_prompt, None);
+        assert!(state.awaiting_response);
+    }
+
+    #[test]
+    fn canvas_scroll_helpers_clamp_at_zero() {
+        let mut state = TuiState::default();
+        state.scroll_canvas_up(12);
+        state.scroll_canvas_down(5);
+        assert_eq!(state.canvas_scroll_from_bottom, 7);
+
+        state.scroll_canvas_down(99);
+        assert_eq!(state.canvas_scroll_from_bottom, 0);
     }
 
     fn artifact(fill: char) -> String {
@@ -1381,6 +1544,15 @@ mod tests {
             raw: None,
             errors: vec!["oops".to_string()],
             response_errors: Vec::new(),
+        }));
+        assert!(!is_error_event(&EventKind::ProviderEvent {
+            provider: "openresponses".to_string(),
+            status: ProviderEventStatus::Done,
+            event_name: None,
+            data: None,
+            raw: None,
+            errors: Vec::new(),
+            response_errors: vec!["warning".to_string()],
         }));
         assert!(!is_error_event(&EventKind::SessionEnded {
             reason: "ok".to_string(),
