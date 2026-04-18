@@ -126,3 +126,189 @@ impl RunMetrics {
 fn delta(start: Option<u64>, end: Option<u64>) -> Option<u64> {
     Some(end?.saturating_sub(start?))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn event(seq: u64, timestamp_ms: u64, kind: EventKind) -> Event {
+        Event {
+            id: format!("e{seq}"),
+            session_id: "s1".to_string(),
+            timestamp_ms,
+            seq,
+            kind,
+        }
+    }
+
+    #[test]
+    fn observe_tracks_openresponses_timings_and_serializes_json() {
+        let mut metrics = RunMetrics::default();
+        for event in [
+            event(
+                0,
+                100,
+                EventKind::SessionStarted {
+                    input: "hi".to_string(),
+                },
+            ),
+            event(
+                1,
+                110,
+                EventKind::OpenResponsesRequestStarted {
+                    endpoint: "https://ignored.invalid".to_string(),
+                    model: Some("ignored".to_string()),
+                    request_index: 1,
+                    kind: "response.create".to_string(),
+                },
+            ),
+            event(
+                2,
+                120,
+                EventKind::OpenResponsesRequestStarted {
+                    endpoint: "https://api.openai.com/v1/responses".to_string(),
+                    model: Some("gpt-5".to_string()),
+                    request_index: 0,
+                    kind: "response.create".to_string(),
+                },
+            ),
+            event(
+                3,
+                150,
+                EventKind::OpenResponsesResponseHeaders {
+                    request_index: 1,
+                    status: 500,
+                    request_id: Some("ignored".to_string()),
+                    content_type: Some("text/plain".to_string()),
+                },
+            ),
+            event(
+                4,
+                160,
+                EventKind::OpenResponsesResponseHeaders {
+                    request_index: 0,
+                    status: 200,
+                    request_id: Some("req_123".to_string()),
+                    content_type: Some("text/event-stream".to_string()),
+                },
+            ),
+            event(
+                5,
+                170,
+                EventKind::OpenResponsesResponseFirstByte { request_index: 0 },
+            ),
+            event(
+                6,
+                180,
+                EventKind::ProviderEvent {
+                    provider: "openresponses".to_string(),
+                    status: ProviderEventStatus::Event,
+                    event_name: Some("response.created".to_string()),
+                    data: None,
+                    raw: None,
+                    errors: Vec::new(),
+                    response_errors: Vec::new(),
+                },
+            ),
+            event(
+                7,
+                190,
+                EventKind::ProviderEvent {
+                    provider: "openresponses".to_string(),
+                    status: ProviderEventStatus::InvalidJson,
+                    event_name: None,
+                    data: None,
+                    raw: Some("{".to_string()),
+                    errors: vec!["bad json".to_string()],
+                    response_errors: Vec::new(),
+                },
+            ),
+            event(
+                8,
+                210,
+                EventKind::OutputTextDelta {
+                    delta: "hello".to_string(),
+                },
+            ),
+            event(
+                9,
+                300,
+                EventKind::SessionEnded {
+                    reason: "done".to_string(),
+                },
+            ),
+            event(
+                10,
+                320,
+                EventKind::SessionEnded {
+                    reason: "ignored".to_string(),
+                },
+            ),
+        ] {
+            metrics.observe(&event);
+        }
+
+        let actual = metrics.to_json();
+        assert_eq!(
+            actual,
+            json!({
+                "session_started_ms": 100,
+                "session_ended_ms": 300,
+                "session_end_reason": "done",
+                "ttft_ms": 110,
+                "e2e_ms": 200,
+                "openresponses": {
+                    "endpoint": "https://api.openai.com/v1/responses",
+                    "model": "gpt-5",
+                    "status": 200,
+                    "request_id": "req_123",
+                    "content_type": "text/event-stream",
+                    "invalid_json": true,
+                    "session_overhead_ms": 20,
+                    "headers_ms": 40,
+                    "first_byte_ms": 50,
+                    "first_provider_event_ms": 60,
+                    "first_output_ms": 90,
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn to_json_uses_null_without_openresponses_request_and_delta_saturates() {
+        let mut metrics = RunMetrics {
+            session_started_ms: Some(100),
+            session_ended_ms: Some(90),
+            session_end_reason: Some("done".to_string()),
+            first_output_ms: None,
+            openresponses: OpenResponsesMetrics::default(),
+        };
+
+        metrics.observe(&event(
+            0,
+            80,
+            EventKind::ProviderEvent {
+                provider: "other".to_string(),
+                status: ProviderEventStatus::InvalidJson,
+                event_name: None,
+                data: None,
+                raw: None,
+                errors: vec!["ignored".to_string()],
+                response_errors: Vec::new(),
+            },
+        ));
+
+        assert_eq!(
+            metrics.to_json(),
+            json!({
+                "session_started_ms": 100,
+                "session_ended_ms": 90,
+                "session_end_reason": "done",
+                "ttft_ms": Value::Null,
+                "e2e_ms": 0,
+                "openresponses": Value::Null,
+            })
+        );
+    }
+}

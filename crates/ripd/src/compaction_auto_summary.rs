@@ -480,4 +480,122 @@ mod tests {
             .any(|l| l.to_ascii_lowercase().contains("todo")));
         assert!(!delta.recent_highlights.is_empty());
     }
+
+    #[test]
+    fn extract_cumulative_summary_section_returns_trimmed_section() {
+        let markdown = "\
+# Compaction summary (auto)
+
+## Cumulative Summary
+
+Keep this section
+with two lines
+
+## Recent Delta Highlights
+
+- next
+";
+        assert_eq!(
+            extract_cumulative_summary_section(markdown).as_deref(),
+            Some("Keep this section\nwith two lines")
+        );
+        assert_eq!(extract_cumulative_summary_section("# nope"), None);
+    }
+
+    #[test]
+    fn render_auto_summary_markdown_supports_bootstrap_and_base_summary_modes() {
+        let bootstrap =
+            render_auto_compaction_summary_markdown_v0_2(RenderAutoSummaryMarkdownParams {
+                thread_id: "thread-1",
+                cut_rule_id: "stride_messages_v1",
+                stride_messages: 8,
+                target_message_ordinal: 16,
+                to_seq: 42,
+                to_message_id: "m42",
+                base_summary_artifact_id: None,
+                base_summary_markdown: None,
+                basis_note: Some("first summary"),
+                delta: AutoSummaryDelta {
+                    message_count: 3,
+                    actor_counts: vec![("user".to_string(), 2), ("agent".to_string(), 1)],
+                    top_keywords: vec!["compaction".to_string(), "latency".to_string()],
+                    notable_lines: vec!["TODO: verify replay".to_string()],
+                    recent_highlights: vec!["user: Please ship this".to_string()],
+                },
+                bootstrap: true,
+            });
+        assert!(bootstrap.contains("- base_summary_artifact_id: null"));
+        assert!(bootstrap.contains("- basis_note: first summary"));
+        assert!(bootstrap.contains("Topics so far (best-effort): compaction, latency"));
+        assert!(bootstrap.contains("Notable items (best-effort):"));
+        assert!(bootstrap.contains("Recent Delta Highlights"));
+
+        let with_base = render_auto_compaction_summary_markdown_v0_2(
+            RenderAutoSummaryMarkdownParams {
+                thread_id: "thread-1",
+                cut_rule_id: "stride_messages_v1",
+                stride_messages: 8,
+                target_message_ordinal: 32,
+                to_seq: 99,
+                to_message_id: "m99",
+                base_summary_artifact_id: Some("artifact-1"),
+                base_summary_markdown: Some(
+                    "# Old\n\n## Cumulative Summary\n\nExisting summary body\n\n## Recent Delta Highlights\n\n- old",
+                ),
+                basis_note: None,
+                delta: AutoSummaryDelta {
+                    message_count: 1,
+                    actor_counts: vec![],
+                    top_keywords: vec!["routing".to_string()],
+                    notable_lines: vec![],
+                    recent_highlights: vec![],
+                },
+                bootstrap: false,
+            },
+        );
+        assert!(with_base.contains("- base_summary_artifact_id: artifact-1"));
+        assert!(with_base.contains("Existing summary body"));
+        assert!(with_base.contains("Delta topics: routing"));
+        assert!(with_base.contains("## Recent Delta Highlights\n\n(none)"));
+    }
+
+    #[test]
+    fn helpers_bound_and_filter_tokens_and_notable_lines() {
+        assert_eq!(render_actor_counts(&[]), "none");
+        assert_eq!(
+            render_actor_counts(&[
+                ("agent".to_string(), 3),
+                ("user".to_string(), 2),
+                ("tool".to_string(), 1),
+            ]),
+            "agent=3, user=2, tool=1"
+        );
+
+        let mut out = String::new();
+        push_bounded(&mut out, "abcdef", 4);
+        push_bounded(&mut out, "ignored", 4);
+        assert_eq!(out, "abc…");
+
+        assert_eq!(
+            tokenize_words_bounded("Build 123 fast-path and THE cache", 64),
+            vec![
+                "build".to_string(),
+                "fast-path".to_string(),
+                "and".to_string(),
+                "the".to_string(),
+                "cache".to_string()
+            ]
+        );
+        assert!(is_stopword("the"));
+        assert!(!is_stopword("cache"));
+
+        let notable = extract_notable_lines(
+            "hello\nTODO: one\n- plan next cut\nnoise\nDecision: keep cache\n",
+        );
+        assert_eq!(notable.len(), 3);
+        assert!(notable[0].starts_with("TODO:"));
+
+        assert_eq!(truncate_chars("abcdef", 0), "");
+        assert_eq!(truncate_chars("abcdef", 4), "abc…");
+    }
 }

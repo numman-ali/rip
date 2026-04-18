@@ -496,6 +496,15 @@ mod tests {
     }
 
     #[test]
+    fn stream_capture_failed_records_error() {
+        let capture = StreamCapture::failed("boom".to_string());
+        assert!(capture.preview_lines.is_empty());
+        assert_eq!(capture.bytes_total, 0);
+        assert_eq!(capture.error.as_deref(), Some("boom"));
+        assert!(capture.artifact.is_none());
+    }
+
+    #[test]
     fn path_rel_returns_absolute_when_outside_root() {
         let root_dir = tempdir().expect("tmp");
         let other_dir = tempdir().expect("tmp");

@@ -1312,6 +1312,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn run_interactive_remote_smoke() {
+        let server = MockServer::start();
+        let _ensure = server.mock(|when, then| {
+            when.method(POST).path("/threads/ensure");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"thread_id":"t1"}"#);
+        });
+        let _post = server.mock(|when, then| {
+            when.method(POST).path("/threads/t1/messages");
+            then.status(202)
+                .header("content-type", "application/json")
+                .body(r#"{"thread_id":"t1","message_id":"m1","session_id":"abc"}"#);
+        });
+        let _events = server.mock(|when, then| {
+            when.method(GET).path("/sessions/abc/events");
+            then.status(200)
+                .header("content-type", "text/event-stream")
+                .body(format!("data: {}\n\n", session_started_frame()));
+        });
+
+        let result = run_interactive_remote(
+            "hello".to_string(),
+            server.base_url(),
+            OutputView::Raw,
+            None,
+        )
+        .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
     async fn run_interactive_local_uses_env_paths() {
         with_clean_env_async(|| async {
             let tmp = std::env::temp_dir().join(format!("rip-cli-local-{}", std::process::id()));
@@ -1945,6 +1977,20 @@ mod tests {
     }
 
     #[test]
+    fn parse_env_bool_handles_truthy_and_falsey_values() {
+        with_clean_env(|| {
+            std::env::set_var("RIP_TEST_BOOL", "yes");
+            assert_eq!(parse_env_bool("RIP_TEST_BOOL"), Some(true));
+
+            std::env::set_var("RIP_TEST_BOOL", "off");
+            assert_eq!(parse_env_bool("RIP_TEST_BOOL"), Some(false));
+
+            std::env::remove_var("RIP_TEST_BOOL");
+            assert_eq!(parse_env_bool("RIP_TEST_BOOL"), None);
+        });
+    }
+
+    #[test]
     fn openresponses_overrides_from_env_reads_vars() {
         with_clean_env(|| {
             std::env::set_var(
@@ -1966,6 +2012,15 @@ mod tests {
             });
             assert_eq!(overrides, expected);
         });
+    }
+
+    #[test]
+    fn base64_encode_handles_padding_boundaries() {
+        assert_eq!(base64_encode(b""), "");
+        assert_eq!(base64_encode(b"f"), "Zg==");
+        assert_eq!(base64_encode(b"fo"), "Zm8=");
+        assert_eq!(base64_encode(b"foo"), "Zm9v");
+        assert_eq!(base64_encode(b"hello"), "aGVsbG8=");
     }
 
     #[test]

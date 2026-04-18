@@ -347,3 +347,178 @@ pub(super) fn base64_decode(value: &str) -> Result<Vec<u8>, String> {
 
     Ok(out)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rip_kernel::ToolTaskExecutionMode;
+    use tempfile::tempdir;
+
+    fn config(workspace_root: &Path) -> TaskEngineConfig {
+        TaskEngineConfig {
+            workspace_root: workspace_root.to_path_buf(),
+            artifact_max_bytes: 32,
+            max_bytes: 16,
+        }
+    }
+
+    #[test]
+    fn task_logs_refs_and_helpers_cover_pipe_and_pty_modes() {
+        let dir = tempdir().expect("tmp");
+        let workspace_root = dir.path();
+
+        let log = TaskLog::new(workspace_root);
+        let log_ref = log.as_ref_json();
+        assert_eq!(
+            log_ref.get("id").and_then(|value| value.as_str()),
+            Some(log.artifact_id.as_str())
+        );
+        assert_eq!(
+            log_ref.get("path").and_then(|value| value.as_str()),
+            Some(log.path.as_str())
+        );
+
+        let pipe_logs = TaskLogs::new(workspace_root, ToolTaskExecutionMode::Pipes);
+        let pipe_refs = pipe_logs.refs_json();
+        assert!(pipe_logs.log_for_output(TaskOutputStream::Stdout).is_some());
+        assert!(pipe_logs.log_for_output(TaskOutputStream::Stderr).is_some());
+        assert!(pipe_logs.log_for_output(TaskOutputStream::Pty).is_none());
+        assert!(pipe_refs.get("stdout").is_some());
+        assert!(pipe_refs.get("stderr").is_some());
+        assert!(pipe_refs.get("pty").is_none());
+
+        let pty_logs = TaskLogs::new(workspace_root, ToolTaskExecutionMode::Pty);
+        let pty_refs = pty_logs.refs_json();
+        assert!(pty_logs.log_for_output(TaskOutputStream::Stdout).is_none());
+        assert!(pty_logs.log_for_output(TaskOutputStream::Stderr).is_none());
+        assert!(pty_logs.log_for_output(TaskOutputStream::Pty).is_some());
+        assert!(pty_refs.get("stdout").is_none());
+        assert!(pty_refs.get("stderr").is_none());
+        assert!(pty_refs.get("pty").is_some());
+    }
+
+    #[test]
+    fn truncate_base64_and_path_helpers_cover_validation_paths() {
+        let dir = tempdir().expect("tmp");
+        let workspace_root = dir.path();
+
+        let (text, truncated, used_bytes) = truncate_utf8("éa".as_bytes(), 2);
+        assert_eq!(text, "é");
+        assert!(truncated);
+        assert_eq!(used_bytes, 2);
+
+        let resolved = resolve_path(workspace_root, "src/lib.rs").expect("relative path");
+        assert!(resolved.ends_with("src/lib.rs"));
+        assert!(resolve_path(workspace_root, "/tmp/absolute").is_err());
+        assert!(resolve_path(workspace_root, "../escape").is_err());
+
+        let normalized =
+            normalize_rel_path(workspace_root, &workspace_root.join("a").join("b.txt"));
+        assert_eq!(normalized, "a/b.txt");
+
+        let artifact_id = new_artifact_id();
+        assert_eq!(artifact_id.len(), 64);
+        assert!(is_lower_hex_64(&artifact_id));
+        assert!(!is_lower_hex_64("bad"));
+
+        assert_eq!(base64_decode("").expect("empty"), Vec::<u8>::new());
+        assert_eq!(base64_decode("Zm8=").expect("decode"), b"fo");
+        assert!(base64_decode("abc").is_err());
+        assert!(base64_decode("AA?=").is_err());
+        assert!(base64_decode("AA=A").is_err());
+    }
+
+    #[tokio::test]
+    async fn task_log_writer_and_read_artifact_range_cover_round_trip_and_errors() {
+        let dir = tempdir().expect("tmp");
+        let workspace_root = dir.path();
+        let config = config(workspace_root);
+        let artifact_id = new_artifact_id();
+
+        let err = match TaskLogWriter::new(&config, &artifact_id, "logs/stdout", 8).await {
+            Ok(_) => panic!("expected missing artifacts dir"),
+            Err(err) => err,
+        };
+        assert!(err.contains("artifact create failed"));
+
+        std::fs::create_dir_all(config.artifacts_blobs_dir()).expect("artifacts dir");
+        let mut writer = TaskLogWriter::new(&config, &artifact_id, "logs/stdout", 8)
+            .await
+            .expect("writer");
+
+        let first = writer.append(b"hello").await.expect("append first");
+        assert_eq!(first.get("bytes").and_then(|value| value.as_u64()), Some(5));
+        assert_eq!(
+            first.get("offset_bytes").and_then(|value| value.as_u64()),
+            Some(0)
+        );
+
+        let second = writer.append(b" world!").await.expect("append second");
+        assert_eq!(
+            second.get("bytes").and_then(|value| value.as_u64()),
+            Some(3)
+        );
+        assert_eq!(
+            second.get("offset_bytes").and_then(|value| value.as_u64()),
+            Some(5)
+        );
+        assert_eq!(
+            second.get("truncated").and_then(|value| value.as_bool()),
+            Some(true)
+        );
+
+        writer.file.flush().await.expect("flush artifact");
+        let summary = writer.finish();
+        let summary_json = summary.as_json();
+        assert_eq!(
+            summary_json
+                .get("bytes_total")
+                .and_then(|value| value.as_u64()),
+            Some(12)
+        );
+        assert_eq!(
+            summary_json
+                .get("bytes_stored")
+                .and_then(|value| value.as_u64()),
+            Some(8)
+        );
+        assert_eq!(
+            summary_json
+                .get("truncated")
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+
+        let failed = TaskLogSummary::failed(
+            artifact_id.clone(),
+            "logs/stdout".to_string(),
+            "join failed".to_string(),
+        );
+        let failed_json = failed.as_json();
+        assert_eq!(
+            failed_json.get("error").and_then(|value| value.as_str()),
+            Some("join failed")
+        );
+
+        let err = read_artifact_range(&config, "not-an-id", 0, 8).expect_err("invalid id");
+        assert!(err.contains("invalid artifact id"));
+
+        let missing_id = new_artifact_id();
+        let err = read_artifact_range(&config, &missing_id, 0, 8).expect_err("missing artifact");
+        assert!(err.contains("read artifact meta failed"));
+
+        let (content, used_bytes, total_bytes, truncated) =
+            read_artifact_range(&config, &artifact_id, 0, 4).expect("read range");
+        assert_eq!(content, "hell");
+        assert_eq!(used_bytes, 4);
+        assert_eq!(total_bytes, 8);
+        assert!(truncated);
+
+        let (content, used_bytes, total_bytes, truncated) =
+            read_artifact_range(&config, &artifact_id, 5, 8).expect("read offset");
+        assert_eq!(content, " wo");
+        assert_eq!(used_bytes, 3);
+        assert_eq!(total_bytes, 8);
+        assert!(!truncated);
+    }
+}

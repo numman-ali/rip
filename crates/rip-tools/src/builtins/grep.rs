@@ -27,6 +27,7 @@ struct GrepArgs {
     follow_symlinks: Option<bool>,
 }
 
+#[cfg_attr(test, inline(never))]
 pub(super) fn run_grep(invocation: ToolInvocation, config: &BuiltinToolConfig) -> ToolOutput {
     let args: GrepArgs = match parse_args(invocation.args) {
         Ok(args) => args,
@@ -148,5 +149,67 @@ pub(super) fn run_grep(invocation: ToolInvocation, config: &BuiltinToolConfig) -
             "root": normalize_rel_path(&config.workspace_root, &root_path),
             "matches": matches
         })),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::builtins::BuiltinToolConfig;
+    use tempfile::tempdir;
+
+    #[test]
+    fn run_grep_finds_matches_direct() {
+        let dir = tempdir().expect("tmp");
+        std::fs::write(dir.path().join("notes.txt"), "Hello\nworld\n").expect("write");
+        let config = BuiltinToolConfig {
+            workspace_root: dir.path().to_path_buf(),
+            ..BuiltinToolConfig::default()
+        };
+
+        let output = run_grep(
+            ToolInvocation {
+                name: "grep".to_string(),
+                args: json!({
+                    "pattern": "hello",
+                    "path": ".",
+                    "case_sensitive": false,
+                }),
+                timeout_ms: None,
+            },
+            &config,
+        );
+
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(output.stdout, vec!["notes.txt:1:Hello".to_string()]);
+        assert!(output.stderr.is_empty());
+    }
+
+    #[test]
+    fn run_grep_defaults_path_to_workspace_root() {
+        let dir = tempdir().expect("tmp");
+        std::fs::write(dir.path().join("notes.txt"), "workspace default\n").expect("write");
+        let config = BuiltinToolConfig {
+            workspace_root: dir.path().to_path_buf(),
+            ..BuiltinToolConfig::default()
+        };
+
+        let output = run_grep(
+            ToolInvocation {
+                name: "grep".to_string(),
+                args: json!({
+                    "pattern": "workspace",
+                }),
+                timeout_ms: None,
+            },
+            &config,
+        );
+
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(
+            output.stdout,
+            vec!["notes.txt:1:workspace default".to_string()]
+        );
+        assert!(output.stderr.is_empty());
     }
 }

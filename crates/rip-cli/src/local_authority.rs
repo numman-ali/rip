@@ -230,3 +230,130 @@ fn spawn_local_authority(data_dir: &Path, workspace_root: &Path) -> anyhow::Resu
     let _child = cmd.spawn()?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use httpmock::prelude::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    struct EnvGuard {
+        key: &'static str,
+        previous: Option<std::ffi::OsString>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, value: &Path) -> Self {
+            let previous = std::env::var_os(key);
+            std::env::set_var(key, value);
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(value) => std::env::set_var(self.key, value),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+
+    fn unique_tmp_root(prefix: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        std::env::temp_dir().join(format!("{prefix}-{}-{unique}", std::process::id()))
+    }
+
+    #[test]
+    fn update_last_state_only_resets_backoff_when_state_changes() {
+        let mut last_state = None;
+        let mut backoff_ms = 75;
+
+        update_last_state(&mut last_state, &mut backoff_ms, "starting".to_string());
+        assert_eq!(last_state.as_deref(), Some("starting"));
+        assert_eq!(backoff_ms, 20);
+
+        backoff_ms = 120;
+        update_last_state(&mut last_state, &mut backoff_ms, "starting".to_string());
+        assert_eq!(last_state.as_deref(), Some("starting"));
+        assert_eq!(backoff_ms, 120);
+
+        update_last_state(&mut last_state, &mut backoff_ms, "ready".to_string());
+        assert_eq!(last_state.as_deref(), Some("ready"));
+        assert_eq!(backoff_ms, 20);
+    }
+
+    #[tokio::test]
+    async fn default_paths_and_ensure_local_authority_use_env() {
+        let root = unique_tmp_root("rip-cli-local-authority");
+        let data_dir = root.join("data");
+        let workspace_dir = root.join("workspace");
+        let other_workspace = root.join("other-workspace");
+        std::fs::create_dir_all(&workspace_dir).expect("workspace");
+
+        let _data_guard = EnvGuard::set("RIP_DATA_DIR", &data_dir);
+        let _workspace_guard = EnvGuard::set("RIP_WORKSPACE_ROOT", &workspace_dir);
+
+        assert_eq!(default_data_dir(), data_dir);
+        assert_eq!(default_workspace_root(), workspace_dir);
+
+        std::fs::create_dir_all(ripd::authority_dir(&data_dir)).expect("authority dir");
+        let meta = ripd::AuthorityMeta {
+            endpoint: "http://127.0.0.1:9999".to_string(),
+            pid: std::process::id(),
+            started_at_ms: 123,
+            workspace_root: other_workspace.to_string_lossy().to_string(),
+        };
+        std::fs::write(
+            ripd::authority_meta_path(&data_dir),
+            serde_json::to_vec(&meta).expect("meta json"),
+        )
+        .expect("meta write");
+
+        let err = ensure_local_authority()
+            .await
+            .expect_err("workspace mismatch");
+        assert!(err.to_string().contains("workspace mismatch"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn ping_reflects_server_health() {
+        let server = MockServer::start();
+        let _openapi = server.mock(|when, then| {
+            when.method(GET).path("/openapi.json");
+            then.status(200);
+        });
+
+        let client = Client::builder()
+            .timeout(Duration::from_millis(250))
+            .build()
+            .expect("client");
+        assert!(ping(&client, &server.base_url()).await);
+        assert!(!ping(&client, "http://127.0.0.1:9").await);
+    }
+
+    #[test]
+    fn spawn_local_authority_reports_directory_errors() {
+        let root = unique_tmp_root("rip-cli-local-authority-blocked");
+        std::fs::create_dir_all(&root).expect("root");
+        let blocked = root.join("blocked");
+        std::fs::write(&blocked, "blocked").expect("write blocker");
+        let workspace_root = root.join("workspace");
+        std::fs::create_dir_all(&workspace_root).expect("workspace");
+
+        let err = spawn_local_authority(&blocked, &workspace_root).expect_err("dir error");
+        assert!(
+            err.to_string().contains("Not a directory")
+                || err.to_string().contains("create")
+                || err.to_string().contains("failed")
+        );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+}

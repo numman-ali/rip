@@ -807,11 +807,15 @@ mod tests {
         assert_eq!(result.expect("command"), "pong");
     }
 
+    fn ok_command(_ctx: CommandContext) -> CommandResult {
+        Ok("ok".to_string())
+    }
+
     #[test]
     fn command_registry_rejects_duplicates() {
         let runtime = Runtime::new();
         runtime
-            .register_command("dup", "first", |_ctx| Ok("ok".to_string()))
+            .register_command("dup", "first", ok_command)
             .expect("register");
         let result = runtime.commands().execute(
             "dup",
@@ -823,7 +827,7 @@ mod tests {
         );
         assert_eq!(result.expect("execute"), "ok");
         let err = runtime
-            .register_command("dup", "second", |_ctx| Ok("ok".to_string()))
+            .register_command("dup", "second", ok_command)
             .expect_err("error");
         assert!(err.contains("already registered"));
     }

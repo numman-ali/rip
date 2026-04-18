@@ -889,7 +889,11 @@ mod tests {
     use super::*;
     use ratatui::backend::TestBackend;
     use ratatui::Terminal;
-    use rip_kernel::{Event, EventKind};
+    use rip_kernel::{
+        Event, EventKind, ProviderEventStatus, ToolTaskExecutionMode, ToolTaskStatus,
+        ToolTaskStream,
+    };
+    use serde_json::json;
 
     fn event(seq: u64, kind: EventKind) -> Event {
         Event {
@@ -930,5 +934,238 @@ mod tests {
         state.output_truncated = true;
         state.output_text = "partial".to_string();
         render_once(&state, RenderMode::Decoded, 100);
+    }
+
+    fn seed_overlay_state() -> TuiState {
+        let mut state = TuiState::new(100, 1024);
+        state.update(event(
+            0,
+            EventKind::SessionStarted {
+                input: "hello".to_string(),
+            },
+        ));
+        state.update(event(
+            1,
+            EventKind::OpenResponsesRequestStarted {
+                endpoint: "https://openrouter.ai/api/v1/responses".to_string(),
+                model: Some("gpt-5".to_string()),
+                request_index: 0,
+                kind: "response.create".to_string(),
+            },
+        ));
+        state.update(event(
+            2,
+            EventKind::OpenResponsesResponseHeaders {
+                request_index: 0,
+                status: 200,
+                request_id: Some("req_123".to_string()),
+                content_type: Some("text/event-stream".to_string()),
+            },
+        ));
+        state.update(event(
+            3,
+            EventKind::OpenResponsesResponseFirstByte { request_index: 0 },
+        ));
+        state.update(event(
+            4,
+            EventKind::ProviderEvent {
+                provider: "openresponses".to_string(),
+                status: ProviderEventStatus::InvalidJson,
+                event_name: None,
+                data: None,
+                raw: Some("{".to_string()),
+                errors: vec!["bad json".to_string()],
+                response_errors: vec!["schema".to_string()],
+            },
+        ));
+        state.update(event(
+            5,
+            EventKind::OutputTextDelta {
+                delta: "output".to_string(),
+            },
+        ));
+        state.update(event(
+            6,
+            EventKind::ToolStarted {
+                tool_id: "tool-1".to_string(),
+                name: "write".to_string(),
+                args: json!({"path": "notes.md"}),
+                timeout_ms: None,
+            },
+        ));
+        state.update(event(
+            7,
+            EventKind::ToolStdout {
+                tool_id: "tool-1".to_string(),
+                chunk: "stdout line".to_string(),
+            },
+        ));
+        state.update(event(
+            8,
+            EventKind::ToolStderr {
+                tool_id: "tool-1".to_string(),
+                chunk: "stderr line".to_string(),
+            },
+        ));
+        state.update(event(
+            9,
+            EventKind::ToolTaskSpawned {
+                task_id: "task-1".to_string(),
+                tool_name: "shell".to_string(),
+                args: json!({"cmd": "pwd"}),
+                cwd: Some("/tmp".to_string()),
+                title: Some("pwd".to_string()),
+                execution_mode: ToolTaskExecutionMode::Pty,
+                origin_session_id: None,
+                artifacts: Some(json!({"artifact": "a".repeat(64)})),
+            },
+        ));
+        state.update(event(
+            10,
+            EventKind::ToolTaskOutputDelta {
+                task_id: "task-1".to_string(),
+                stream: ToolTaskStream::Pty,
+                chunk: "pty line".to_string(),
+                artifacts: None,
+            },
+        ));
+        state.update(event(
+            11,
+            EventKind::ToolTaskStatus {
+                task_id: "task-1".to_string(),
+                status: ToolTaskStatus::Running,
+                exit_code: None,
+                started_at_ms: Some(9),
+                ended_at_ms: None,
+                artifacts: None,
+                error: None,
+            },
+        ));
+        state.update(event(
+            12,
+            EventKind::ContinuityJobSpawned {
+                job_id: "job-1".to_string(),
+                job_kind: "compaction".to_string(),
+                details: None,
+                actor_id: "user".to_string(),
+                origin: "cli".to_string(),
+            },
+        ));
+        state.update(event(
+            13,
+            EventKind::ContinuityContextCompiled {
+                run_session_id: "run-1".to_string(),
+                bundle_artifact_id: "b".repeat(64),
+                compiler_id: "rip.context_compiler.v1".to_string(),
+                compiler_strategy: "recent_messages_v1".to_string(),
+                from_seq: 1,
+                from_message_id: None,
+                actor_id: "user".to_string(),
+                origin: "cli".to_string(),
+            },
+        ));
+        state.activity_pinned = true;
+        state.set_status_message("watching");
+        state.set_now_ms(10_000);
+        state
+    }
+
+    #[test]
+    fn helper_builders_reflect_errors_stalls_and_running_work() {
+        let mut state = seed_overlay_state();
+        state.last_event_ms = Some(0);
+
+        let activity = build_activity_lines(&state, 10)
+            .into_iter()
+            .map(|line| line.to_string())
+            .collect::<Vec<_>>();
+        assert!(activity.iter().any(|line| line.contains("error")));
+        assert!(activity.iter().any(|line| line.contains("stalled")));
+        assert!(activity.iter().any(|line| line.contains("tool write")));
+        assert!(activity.iter().any(|line| line.contains("task pwd")));
+        assert!(activity.iter().any(|line| line.contains("job compaction")));
+        assert!(activity.iter().any(|line| line.contains("ctx compiled")));
+        assert!(activity.iter().any(|line| line.contains("artifacts")));
+
+        let chips = build_chips_line(&state, 120);
+        assert!(chips.contains("[⟳ write]"));
+        assert!(chips.contains("[tasks:1]"));
+        assert!(chips.contains("[jobs:1]"));
+        assert!(chips.contains("[⚙ ctx:compiled]"));
+        assert!(chips.contains("[⚠ error]"));
+
+        let truncated = build_chips_line(&state, 12);
+        assert!(truncated.ends_with('…'));
+    }
+
+    #[test]
+    fn selected_event_renderers_and_overlay_geometry_have_fallbacks() {
+        let state = TuiState::default();
+        assert_eq!(
+            selected_event_json(&state).to_string(),
+            "<no frame selected>"
+        );
+        assert_eq!(selected_event_decoded(&state).to_string(), "");
+
+        let body = overlay_body_area(
+            Rect {
+                x: 0,
+                y: 0,
+                width: 120,
+                height: 40,
+            },
+            OutputViewMode::Raw,
+        );
+        assert_eq!(body.y, 3);
+        assert_eq!(body.height, 34);
+
+        let modal = overlay_modal_area(body);
+        assert!(modal.width < body.width);
+        assert!(modal.height < body.height);
+    }
+
+    #[test]
+    fn render_helpers_cover_overlay_variants_and_decoded_views() {
+        let mut state = seed_overlay_state();
+        state.selected_seq = Some(0);
+        let json = selected_event_json(&state).to_string();
+        assert!(json.contains("\"type\": \"session_started\""));
+        let decoded = selected_event_decoded(&state).to_string();
+        assert!(decoded.contains("\"summary\": \"\\\"hello\\\"\""));
+
+        render_once(&state, RenderMode::Json, 120);
+
+        state.output_view = OutputViewMode::Raw;
+        state.theme = ThemeId::DefaultLight;
+        render_once(&state, RenderMode::Decoded, 120);
+
+        for overlay in [
+            Overlay::Activity,
+            Overlay::TaskList,
+            Overlay::ToolDetail {
+                tool_id: "tool-1".to_string(),
+            },
+            Overlay::TaskDetail {
+                task_id: "task-1".to_string(),
+            },
+            Overlay::ErrorDetail { seq: 4 },
+            Overlay::StallDetail,
+        ] {
+            state.overlay = overlay;
+            render_once(&state, RenderMode::Decoded, 120);
+        }
+
+        state.overlay = Overlay::ToolDetail {
+            tool_id: "missing".to_string(),
+        };
+        render_once(&state, RenderMode::Json, 120);
+
+        state.overlay = Overlay::TaskDetail {
+            task_id: "missing".to_string(),
+        };
+        render_once(&state, RenderMode::Json, 120);
+
+        state.overlay = Overlay::ErrorDetail { seq: 999 };
+        render_once(&state, RenderMode::Json, 120);
     }
 }

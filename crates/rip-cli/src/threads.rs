@@ -1470,6 +1470,95 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    #[tokio::test]
+    async fn run_threads_local_compaction_surfaces_smoke() {
+        let root = unique_tmp_root("rip-cli-threads-local-compaction");
+        let data_dir = root.join("data");
+        let workspace_dir = root.join("workspace");
+        std::fs::create_dir_all(&workspace_dir).expect("workspace");
+
+        let engine = ripd::SessionEngine::new(data_dir, workspace_dir, None).expect("engine");
+        let store = engine.continuities();
+        let thread_id = store.ensure_default().expect("default thread");
+        let message_id = store
+            .append_message(
+                &thread_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "hello".to_string(),
+            )
+            .expect("message");
+
+        run_threads_local_with_engine(
+            &engine,
+            ThreadsCommand::CompactionCheckpoint {
+                id: thread_id.clone(),
+                summary_markdown: Some("summary".to_string()),
+                summary_artifact_id: None,
+                to_message_id: Some(message_id),
+                to_seq: None,
+                stride_messages: None,
+                actor_id: None,
+                origin: None,
+            },
+        )
+        .await
+        .expect("thread compaction-checkpoint");
+
+        run_threads_local_with_engine(
+            &engine,
+            ThreadsCommand::CompactionCutPoints {
+                id: thread_id.clone(),
+                stride_messages: Some(1),
+                limit: Some(1),
+            },
+        )
+        .await
+        .expect("thread compaction-cut-points");
+
+        run_threads_local_with_engine(
+            &engine,
+            ThreadsCommand::CompactionStatus {
+                id: thread_id.clone(),
+                stride_messages: Some(1),
+            },
+        )
+        .await
+        .expect("thread compaction-status");
+
+        run_threads_local_with_engine(
+            &engine,
+            ThreadsCommand::CompactionAuto {
+                id: thread_id.clone(),
+                stride_messages: Some(1),
+                max_new_checkpoints: Some(1),
+                dry_run: true,
+                actor_id: None,
+                origin: None,
+            },
+        )
+        .await
+        .expect("thread compaction-auto");
+
+        run_threads_local_with_engine(
+            &engine,
+            ThreadsCommand::CompactionAutoSchedule {
+                id: thread_id,
+                stride_messages: Some(1),
+                max_new_checkpoints: Some(1),
+                allow_inflight: false,
+                no_execute: true,
+                dry_run: true,
+                actor_id: None,
+                origin: None,
+            },
+        )
+        .await
+        .expect("thread compaction-auto-schedule");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     fn continuity_created_frame(thread_id: &str, seq: u64) -> FrameEvent {
         FrameEvent {
             id: format!("e{seq}"),
@@ -1733,6 +1822,132 @@ mod tests {
         )
         .await
         .expect("remote compaction-checkpoint");
+    }
+
+    #[tokio::test]
+    async fn run_threads_remote_status_and_auto_surfaces_smoke() {
+        let server = MockServer::start();
+
+        let _cursor_status = server.mock(|when, then| {
+            when.method(POST).path("/threads/t1/provider-cursor-status");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"thread_id":"t1","active":null,"history":[]}"#);
+        });
+        let _cursor_rotate = server.mock(|when, then| {
+            when.method(POST).path("/threads/t1/provider-cursor-rotate");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"thread_id":"t1","rotated":true}"#);
+        });
+        let _context_status = server.mock(|when, then| {
+            when.method(POST)
+                .path("/threads/t1/context-selection-status");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"thread_id":"t1","decisions":[]}"#);
+        });
+        let _cut_points = server.mock(|when, then| {
+            when.method(POST).path("/threads/t1/compaction-cut-points");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"thread_id":"t1","cut_points":[]}"#);
+        });
+        let _compaction_status = server.mock(|when, then| {
+            when.method(POST).path("/threads/t1/compaction-status");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"thread_id":"t1","next_cut_point":null,"latest_checkpoint":null}"#);
+        });
+        let _compaction_auto = server.mock(|when, then| {
+            when.method(POST).path("/threads/t1/compaction-auto");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"thread_id":"t1","job_id":null,"planned_cut_points":[]}"#);
+        });
+        let _compaction_auto_schedule = server.mock(|when, then| {
+            when.method(POST)
+                .path("/threads/t1/compaction-auto-schedule");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"thread_id":"t1","scheduled":true,"job_id":null}"#);
+        });
+
+        run_threads(
+            Some(server.base_url()),
+            ThreadsCommand::ProviderCursorStatus {
+                id: "t1".to_string(),
+            },
+        )
+        .await
+        .expect("remote provider-cursor-status");
+        run_threads(
+            Some(server.base_url()),
+            ThreadsCommand::ProviderCursorRotate {
+                id: "t1".to_string(),
+                reason: Some("test".to_string()),
+                actor_id: None,
+                origin: None,
+            },
+        )
+        .await
+        .expect("remote provider-cursor-rotate");
+        run_threads(
+            Some(server.base_url()),
+            ThreadsCommand::ContextSelectionStatus {
+                id: "t1".to_string(),
+                limit: Some(1),
+            },
+        )
+        .await
+        .expect("remote context-selection-status");
+        run_threads(
+            Some(server.base_url()),
+            ThreadsCommand::CompactionCutPoints {
+                id: "t1".to_string(),
+                stride_messages: Some(1),
+                limit: Some(1),
+            },
+        )
+        .await
+        .expect("remote compaction-cut-points");
+        run_threads(
+            Some(server.base_url()),
+            ThreadsCommand::CompactionStatus {
+                id: "t1".to_string(),
+                stride_messages: Some(1),
+            },
+        )
+        .await
+        .expect("remote compaction-status");
+        run_threads(
+            Some(server.base_url()),
+            ThreadsCommand::CompactionAuto {
+                id: "t1".to_string(),
+                stride_messages: Some(1),
+                max_new_checkpoints: Some(1),
+                dry_run: true,
+                actor_id: None,
+                origin: None,
+            },
+        )
+        .await
+        .expect("remote compaction-auto");
+        run_threads(
+            Some(server.base_url()),
+            ThreadsCommand::CompactionAutoSchedule {
+                id: "t1".to_string(),
+                stride_messages: Some(1),
+                max_new_checkpoints: Some(1),
+                allow_inflight: false,
+                no_execute: true,
+                dry_run: true,
+                actor_id: None,
+                origin: None,
+            },
+        )
+        .await
+        .expect("remote compaction-auto-schedule");
     }
 
     #[tokio::test]

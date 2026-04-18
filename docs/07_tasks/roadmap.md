@@ -14,19 +14,19 @@ How to use
 
 Now
 
-## Quality gate: restore workspace `scripts/check` coverage compliance [needs work]
+## Quality gate: workspace `scripts/check` coverage compliance restored [confirm spec]
 - Refs:
   - `scripts/check`
   - `docs/05_quality/tests.md`
   - `agent_state.md`
 - Status (2026-04-18):
-  - Functional validation is green: `scripts/check-fast` passes, `scripts/check-sdk-ts` passes, and the full test/doc-test suite is green.
-  - Blocking issue: the final `cargo llvm-cov` step in `scripts/check` fails the enforced 90% floors. Latest local run ended at 83.73% lines / 83.20% regions / 84.74% functions.
-  - Largest shortfalls are concentrated in TUI/UI-adjacent modules and observability/control-plane support files rather than the current config cleanup slice.
+  - Functional validation is green: `scripts/check-fast`, `scripts/check-sdk-ts`, and full `scripts/check` all pass locally again.
+  - Workspace coverage is back above the enforced floors. Latest local run ended at 91.74% lines / 90.77% regions / 90.06% functions.
+  - Restored by adding focused coverage in `ripd`, `rip-cli`, `rip-tui`, `rip-tools`, and `rip-kernel`, including local-first CLI integration tests and direct/source-level probes for stubborn helper paths.
 - Ready:
-  - Decide whether to restore the 90% bar with targeted tests, or ratchet the threshold intentionally with a recorded decision.
+  - Keep the gate green as follow-on work lands; treat any drop below the enforced floors as a regression.
 - Done:
-  - `scripts/check` completes locally without coverage-gate failure, and roadmap/agent state no longer claim a green gate unless it is true.
+  - Satisfied locally on 2026-04-18.
 
 ## Continuities (Threads): one chat forever (resume/branch, cursor rotation, multi-actor) [needs work]
 - Refs:

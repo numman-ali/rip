@@ -136,4 +136,28 @@ mod tests {
         let err = rewind_fn(hook_ref, "s1", "missing").expect_err("error");
         assert!(err.contains("not found"));
     }
+
+    #[test]
+    fn new_and_create_error_paths_are_covered() {
+        let dir = tempdir().expect("tmp");
+        let blocked_root = dir.path().join("root-file");
+        fs::write(&blocked_root, "blocked").expect("write blocker");
+        assert!(WorkspaceCheckpointHook::new(blocked_root).is_err());
+
+        let root = dir.path().join("workspace");
+        fs::create_dir_all(&root).expect("workspace");
+        let hook = WorkspaceCheckpointHook::new(root.clone()).expect("hook");
+        let outside = dir.path().join("outside.txt");
+        fs::write(&outside, "hello").expect("outside");
+        let err = hook
+            .create(CheckpointRequest {
+                session_id: "s1".to_string(),
+                label: "bad".to_string(),
+                files: vec![outside],
+                auto: false,
+                tool_name: None,
+            })
+            .expect_err("outside path should fail");
+        assert!(err.contains("checkpoint create failed"));
+    }
 }

@@ -106,4 +106,15 @@ mod tests {
         assert!(store.get_by_seq(11).is_some());
         assert!(store.get_by_seq(12).is_some());
     }
+
+    #[test]
+    fn empty_state_helpers_track_store_contents() {
+        let mut store = FrameStore::new(3);
+        assert_eq!(store.len(), 0);
+        assert!(store.is_empty());
+
+        store.push(event(1));
+        assert_eq!(store.len(), 1);
+        assert!(!store.is_empty());
+    }
 }

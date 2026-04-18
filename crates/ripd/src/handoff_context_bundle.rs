@@ -132,4 +132,40 @@ mod tests {
             .and_then(|v| v.as_array())
             .is_some());
     }
+
+    #[test]
+    fn source_cut_and_write_failures_are_serialized_cleanly() {
+        let bundle = HandoffContextBundleV1::new_source_cut(
+            "handoff".to_string(),
+            "thread-1".to_string(),
+            9,
+            None,
+        );
+        let json = serde_json::to_value(&bundle).expect("json");
+        assert_eq!(
+            json.get("schema").and_then(|value| value.as_str()),
+            Some(HANDOFF_CONTEXT_BUNDLE_SCHEMA_V1)
+        );
+        assert_eq!(
+            json.get("summary_markdown")
+                .and_then(|value| value.as_str()),
+            Some("handoff")
+        );
+        assert_eq!(
+            json.get("refs")
+                .and_then(|value| value.get("threads"))
+                .and_then(|value| value.as_array())
+                .and_then(|threads| threads.first())
+                .and_then(|thread| thread.get("thread_id"))
+                .and_then(|value| value.as_str()),
+            Some("thread-1")
+        );
+
+        let blocked = tempdir().expect("tmp");
+        fs::create_dir_all(blocked.path().join(".rip")).expect("rip dir");
+        fs::write(blocked.path().join(".rip").join("artifacts"), b"blocked")
+            .expect("write blocker");
+        let err = write_bundle_v1(blocked.path(), &bundle).expect_err("dir failure");
+        assert!(err.contains("artifact dir create failed"));
+    }
 }

@@ -196,3 +196,200 @@ pub(crate) fn rebuild_index_from_compaction_sidecar_v1(
 
     rebuild_index_from_events_v1(index_path, continuity_id, &events)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn checkpoint_event(continuity_id: &str, seq: u64, to_seq: u64, checkpoint_id: &str) -> Event {
+        Event {
+            id: format!("e{seq}"),
+            session_id: continuity_id.to_string(),
+            timestamp_ms: 0,
+            seq,
+            kind: EventKind::ContinuityCompactionCheckpointCreated {
+                checkpoint_id: checkpoint_id.to_string(),
+                cut_rule_id: "stride_messages_v1".to_string(),
+                summary_kind: "cumulative_v1".to_string(),
+                summary_artifact_id: format!("summary_{seq}"),
+                from_seq: seq.saturating_sub(1),
+                from_message_id: Some(format!("m{}", seq.saturating_sub(1))),
+                to_seq,
+                to_message_id: Some(format!("m{to_seq}")),
+                actor_id: "user".to_string(),
+                origin: "cli".to_string(),
+            },
+        }
+    }
+
+    fn session_event(seq: u64) -> Event {
+        Event {
+            id: format!("s{seq}"),
+            session_id: "run-1".to_string(),
+            timestamp_ms: 0,
+            seq,
+            kind: EventKind::SessionStarted {
+                input: "hi".to_string(),
+            },
+        }
+    }
+
+    #[test]
+    fn from_event_filters_non_checkpoint_variants() {
+        assert!(CompactionCheckpointIndexEntryV1::from_event(&session_event(0)).is_none());
+
+        let event = checkpoint_event("c1", 3, 2, "ckpt_1");
+        let entry = CompactionCheckpointIndexEntryV1::from_event(&event).expect("entry");
+        assert_eq!(entry.seq, 3);
+        assert_eq!(entry.to_seq, 2);
+        assert_eq!(entry.checkpoint_id, "ckpt_1");
+        assert_eq!(entry.summary_kind, "cumulative_v1");
+    }
+
+    #[test]
+    fn load_index_v1_handles_missing_valid_and_invalid_inputs() {
+        let dir = tempdir().expect("tmp");
+        let path = dir.path().join("idx.jsonl");
+        assert!(load_index_v1(&path).expect("missing").is_none());
+
+        let entry1 =
+            CompactionCheckpointIndexEntryV1::from_event(&checkpoint_event("c1", 3, 2, "a"))
+                .expect("entry");
+        let entry2 =
+            CompactionCheckpointIndexEntryV1::from_event(&checkpoint_event("c1", 7, 6, "b"))
+                .expect("entry");
+        fs::write(
+            &path,
+            format!(
+                "{}\n\n{}\n",
+                serde_json::to_string(&entry1).expect("json"),
+                serde_json::to_string(&entry2).expect("json"),
+            ),
+        )
+        .expect("write");
+        let entries = load_index_v1(&path).expect("load").expect("entries");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[1].checkpoint_id, "b");
+
+        fs::write(&path, "\n\n").expect("write");
+        let err = load_index_v1(&path).expect_err("empty should fail");
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("empty"));
+
+        let mut bad_version = entry1.clone();
+        bad_version.version = 99;
+        fs::write(
+            &path,
+            format!("{}\n", serde_json::to_string(&bad_version).expect("json")),
+        )
+        .expect("write");
+        let err = load_index_v1(&path).expect_err("version mismatch");
+        assert!(err.to_string().contains("version mismatch"));
+
+        fs::write(
+            &path,
+            format!(
+                "{}\n{}\n",
+                serde_json::to_string(&entry2).expect("json"),
+                serde_json::to_string(&entry1).expect("json"),
+            ),
+        )
+        .expect("write");
+        let err = load_index_v1(&path).expect_err("non monotonic");
+        assert!(err.to_string().contains("not monotonic"));
+    }
+
+    #[test]
+    fn rebuild_index_from_events_writes_only_matching_checkpoints_and_removes_empty_outputs() {
+        let dir = tempdir().expect("tmp");
+        let path = dir.path().join("idx.jsonl");
+        rebuild_index_from_events_v1(
+            &path,
+            "c1",
+            &[
+                session_event(0),
+                checkpoint_event("other", 1, 1, "skip"),
+                checkpoint_event("c1", 3, 2, "keep"),
+                Event {
+                    id: "e4".to_string(),
+                    session_id: "c1".to_string(),
+                    timestamp_ms: 0,
+                    seq: 4,
+                    kind: EventKind::ContinuityRunEnded {
+                        run_session_id: "run-1".to_string(),
+                        message_id: "m2".to_string(),
+                        reason: "done".to_string(),
+                        actor_id: None,
+                        origin: None,
+                    },
+                },
+            ],
+        )
+        .expect("rebuild");
+        let loaded = load_index_v1(&path).expect("load").expect("entries");
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].checkpoint_id, "keep");
+
+        rebuild_index_from_events_v1(&path, "c1", &[session_event(0)]).expect("rebuild");
+        assert!(!path.exists(), "empty rebuild should remove stale index");
+    }
+
+    #[test]
+    fn rebuild_index_from_compaction_sidecar_validates_contents() {
+        let dir = tempdir().expect("tmp");
+        let sidecar = dir.path().join("comp.jsonl");
+        let index = dir.path().join("idx.jsonl");
+
+        fs::write(
+            &sidecar,
+            format!(
+                "{}\n{}\n",
+                serde_json::to_string(&checkpoint_event("c1", 3, 2, "a")).expect("json"),
+                serde_json::to_string(&checkpoint_event("c1", 8, 6, "b")).expect("json"),
+            ),
+        )
+        .expect("write sidecar");
+        rebuild_index_from_compaction_sidecar_v1(&sidecar, &index, "c1").expect("rebuild");
+        let entries = load_index_v1(&index).expect("load").expect("entries");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[1].checkpoint_id, "b");
+
+        fs::write(
+            &sidecar,
+            format!(
+                "{}\n",
+                serde_json::to_string(&session_event(0)).expect("json")
+            ),
+        )
+        .expect("write sidecar");
+        let err = rebuild_index_from_compaction_sidecar_v1(&sidecar, &index, "c1")
+            .expect_err("non continuity");
+        assert!(err.to_string().contains("non-continuity"));
+
+        fs::write(
+            &sidecar,
+            format!(
+                "{}\n",
+                serde_json::to_string(&Event {
+                    id: "e1".to_string(),
+                    session_id: "c1".to_string(),
+                    timestamp_ms: 0,
+                    seq: 1,
+                    kind: EventKind::ContinuityRunEnded {
+                        run_session_id: "run-1".to_string(),
+                        message_id: "m1".to_string(),
+                        reason: "done".to_string(),
+                        actor_id: None,
+                        origin: None,
+                    },
+                })
+                .expect("json"),
+            ),
+        )
+        .expect("write sidecar");
+        let err = rebuild_index_from_compaction_sidecar_v1(&sidecar, &index, "c1")
+            .expect_err("non checkpoint");
+        assert!(err.to_string().contains("non-checkpoint"));
+    }
+}

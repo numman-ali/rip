@@ -277,7 +277,7 @@ mod tests {
     use std::ffi::OsString;
     use std::fs;
     use std::path::Path;
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::{Arc, Mutex, OnceLock};
     use tempfile::tempdir;
 
     fn env_lock() -> &'static Mutex<()> {
@@ -313,6 +313,73 @@ mod tests {
         assert!(config.max_bytes > 0);
         assert!(config.max_results > 0);
         assert!(config.max_depth > 0);
+    }
+
+    #[tokio::test]
+    async fn register_builtin_tools_invokes_handlers_and_aliases() {
+        let dir = tempdir().expect("tmp");
+        let config = BuiltinToolConfig {
+            workspace_root: dir.path().to_path_buf(),
+            artifact_max_bytes: 1024 * 1024,
+            max_bytes: 1024,
+            max_results: 10,
+            max_depth: 4,
+            follow_symlinks: false,
+            include_hidden: false,
+        };
+        assert_eq!(
+            config.artifacts_root(),
+            dir.path().join(".rip").join("artifacts")
+        );
+
+        let registry = Arc::new(ToolRegistry::default());
+        register_builtin_tools(&registry, config.clone());
+
+        for name in ["read", "artifact_fetch", "write", "apply_patch", "grep"] {
+            let handler = registry
+                .get(name)
+                .unwrap_or_else(|| panic!("missing {name} handler"));
+            let output = handler(ToolInvocation {
+                name: name.to_string(),
+                args: json!({"invalid": true}),
+                timeout_ms: None,
+            })
+            .await;
+            assert_eq!(output.exit_code, 2, "expected invalid args exit for {name}");
+        }
+
+        let ls = registry.get("ls").expect("missing ls handler");
+        let output = ls(ToolInvocation {
+            name: "ls".to_string(),
+            args: json!({}),
+            timeout_ms: None,
+        })
+        .await;
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(
+            output
+                .artifacts
+                .as_ref()
+                .and_then(|value| value.get("root")),
+            Some(&json!(""))
+        );
+
+        for name in ["bash", "shell"] {
+            let handler = registry
+                .get(name)
+                .unwrap_or_else(|| panic!("missing {name} handler"));
+            let output = handler(ToolInvocation {
+                name: name.to_string(),
+                args: json!({
+                    "command": "printf ok",
+                    "cwd": ".",
+                }),
+                timeout_ms: None,
+            })
+            .await;
+            assert_eq!(output.exit_code, 0, "expected success for {name}");
+            assert!(output.stdout.join("\n").contains("ok"));
+        }
     }
 
     #[test]

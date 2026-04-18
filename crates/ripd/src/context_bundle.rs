@@ -54,6 +54,7 @@ pub(crate) enum ContextBundleItemV1 {
 }
 
 impl ContextBundleV1 {
+    #[cfg_attr(test, inline(never))]
     pub(crate) fn new(
         compiler: ContextBundleCompilerV1,
         source: ContextBundleSourceV1,
@@ -69,11 +70,13 @@ impl ContextBundleV1 {
         }
     }
 
+    #[cfg_attr(test, inline(never))]
     pub(crate) fn items(&self) -> &[ContextBundleItemV1] {
         &self.items
     }
 }
 
+#[cfg_attr(test, inline(never))]
 pub(crate) fn write_bundle_v1(
     workspace_root: &Path,
     bundle: &ContextBundleV1,
@@ -89,6 +92,7 @@ fn artifacts_blobs_dir(workspace_root: &Path) -> PathBuf {
     workspace_root.join(".rip").join("artifacts").join("blobs")
 }
 
+#[cfg_attr(test, inline(never))]
 fn write_blob_atomic(workspace_root: &Path, artifact_id: &str, bytes: &[u8]) -> Result<(), String> {
     let dir = artifacts_blobs_dir(workspace_root);
     fs::create_dir_all(&dir).map_err(|err| format!("artifact dir create failed: {err}"))?;
@@ -161,5 +165,52 @@ mod tests {
             Some("t1")
         );
         assert!(json.get("items").and_then(|v| v.as_array()).is_some());
+    }
+
+    #[test]
+    fn items_getter_and_write_failures_are_covered() {
+        let bundle = ContextBundleV1::new(
+            ContextBundleCompilerV1 {
+                id: "rip.context_compiler.v1".to_string(),
+                strategy: "recent_messages_v1".to_string(),
+            },
+            ContextBundleSourceV1 {
+                thread_id: "thread-1".to_string(),
+                from_seq: 5,
+                from_message_id: None,
+            },
+            ContextBundleProvenanceV1 {
+                run_session_id: "run-1".to_string(),
+                actor_id: "alice".to_string(),
+                origin: "cli".to_string(),
+            },
+            vec![
+                ContextBundleItemV1::SummaryRef {
+                    artifact_id: "artifact-1".to_string(),
+                    note: Some("carry".to_string()),
+                },
+                ContextBundleItemV1::Message {
+                    role: "assistant".to_string(),
+                    content: "hello".to_string(),
+                    actor_id: None,
+                    origin: None,
+                    thread_seq: Some(5),
+                    thread_event_id: Some("evt-5".to_string()),
+                },
+            ],
+        );
+
+        assert_eq!(bundle.items().len(), 2);
+
+        let artifact_id = new_artifact_id();
+        assert_eq!(artifact_id.len(), 64);
+        assert!(artifact_id.chars().all(|ch| ch.is_ascii_hexdigit()));
+
+        let blocked = tempdir().expect("tmp");
+        fs::create_dir_all(blocked.path().join(".rip")).expect("rip dir");
+        fs::write(blocked.path().join(".rip").join("artifacts"), b"blocked")
+            .expect("write blocker");
+        let err = write_bundle_v1(blocked.path(), &bundle).expect_err("dir failure");
+        assert!(err.contains("artifact dir create failed"));
     }
 }

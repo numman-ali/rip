@@ -772,7 +772,11 @@ fn looks_like_artifact_id(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rip_kernel::{Event, EventKind};
+    use rip_kernel::{
+        CheckpointAction, Event, EventKind, ProviderEventStatus, ToolTaskExecutionMode,
+        ToolTaskStatus, ToolTaskStream,
+    };
+    use serde_json::json;
 
     fn event(seq: u64, timestamp_ms: u64, kind: EventKind) -> Event {
         Event {
@@ -875,5 +879,526 @@ mod tests {
             },
         ));
         assert_eq!(state.output_text, "keep");
+    }
+
+    fn artifact(fill: char) -> String {
+        std::iter::repeat_n(fill, 64).collect()
+    }
+
+    #[test]
+    fn overlay_and_status_helpers_toggle_cleanly() {
+        let mut state = TuiState::default();
+        assert_eq!(state.output_view.as_str(), "rendered");
+        assert_eq!(state.theme.as_str(), "default-dark");
+
+        state.toggle_output_view();
+        state.toggle_theme();
+        assert_eq!(state.output_view.as_str(), "raw");
+        assert_eq!(state.theme.as_str(), "default-light");
+
+        state.toggle_activity_overlay();
+        assert_eq!(state.overlay, Overlay::Activity);
+        state.toggle_activity_overlay();
+        assert_eq!(state.overlay, Overlay::None);
+
+        state.toggle_tasks_overlay();
+        assert_eq!(state.overlay, Overlay::TaskList);
+        state.close_overlay();
+        assert_eq!(state.overlay, Overlay::None);
+
+        state.set_status_message("watching");
+        state.set_now_ms(2_000);
+        assert!(!state.is_stalled(100));
+        state.last_event_ms = Some(1_500);
+        assert!(state.is_stalled(400));
+        assert!(!state.is_stalled(600));
+    }
+
+    #[test]
+    fn open_selected_detail_prefers_errors_and_toggles_tool_and_task_details() {
+        let mut state = TuiState::default();
+        state.update(event(
+            0,
+            100,
+            EventKind::ToolStarted {
+                tool_id: "tool-1".to_string(),
+                name: "ls".to_string(),
+                args: json!({"path": "."}),
+                timeout_ms: None,
+            },
+        ));
+        state.update(event(
+            1,
+            110,
+            EventKind::ToolTaskSpawned {
+                task_id: "task-1".to_string(),
+                tool_name: "shell".to_string(),
+                args: json!({"cmd": "pwd"}),
+                cwd: None,
+                title: Some("pwd".to_string()),
+                execution_mode: ToolTaskExecutionMode::Pty,
+                origin_session_id: None,
+                artifacts: None,
+            },
+        ));
+        state.update(event(
+            2,
+            120,
+            EventKind::SessionStarted {
+                input: "hello".to_string(),
+            },
+        ));
+
+        state.last_error_seq = Some(99);
+        state.open_selected_detail();
+        assert_eq!(state.overlay, Overlay::ErrorDetail { seq: 99 });
+        state.open_selected_detail();
+        assert_eq!(state.overlay, Overlay::None);
+
+        state.last_error_seq = None;
+        state.selected_seq = Some(0);
+        state.open_selected_detail();
+        assert_eq!(
+            state.overlay,
+            Overlay::ToolDetail {
+                tool_id: "tool-1".to_string()
+            }
+        );
+        state.open_selected_detail();
+        assert_eq!(state.overlay, Overlay::None);
+
+        state.selected_seq = Some(1);
+        state.open_selected_detail();
+        assert_eq!(
+            state.overlay,
+            Overlay::TaskDetail {
+                task_id: "task-1".to_string()
+            }
+        );
+        state.open_selected_detail();
+        assert_eq!(state.overlay, Overlay::None);
+
+        state.selected_seq = Some(2);
+        state.open_selected_detail();
+        assert_eq!(state.overlay, Overlay::None);
+    }
+
+    #[test]
+    fn update_tracks_timings_derived_state_and_artifacts() {
+        let mut state = TuiState::new(100, 1024);
+        let a1 = artifact('a');
+        let a2 = artifact('b');
+        let a3 = artifact('c');
+        let a4 = artifact('d');
+        let a5 = artifact('e');
+        let a6 = artifact('f');
+        let a7 = artifact('1');
+
+        for event in [
+            event(
+                0,
+                100,
+                EventKind::SessionStarted {
+                    input: "hello".to_string(),
+                },
+            ),
+            event(
+                1,
+                110,
+                EventKind::OpenResponsesRequestStarted {
+                    endpoint: "https://openrouter.ai/api/v1/responses".to_string(),
+                    model: Some("gpt-5".to_string()),
+                    request_index: 0,
+                    kind: "response.create".to_string(),
+                },
+            ),
+            event(
+                2,
+                120,
+                EventKind::OpenResponsesResponseHeaders {
+                    request_index: 0,
+                    status: 200,
+                    request_id: Some("req_123".to_string()),
+                    content_type: Some("text/event-stream".to_string()),
+                },
+            ),
+            event(
+                3,
+                130,
+                EventKind::OpenResponsesResponseFirstByte { request_index: 0 },
+            ),
+            event(
+                4,
+                140,
+                EventKind::ProviderEvent {
+                    provider: "openresponses".to_string(),
+                    status: ProviderEventStatus::InvalidJson,
+                    event_name: None,
+                    data: None,
+                    raw: Some("{".to_string()),
+                    errors: vec!["bad json".to_string()],
+                    response_errors: vec!["schema".to_string()],
+                },
+            ),
+            event(
+                5,
+                150,
+                EventKind::OutputTextDelta {
+                    delta: "world".to_string(),
+                },
+            ),
+            event(
+                6,
+                160,
+                EventKind::ToolStarted {
+                    tool_id: "tool-1".to_string(),
+                    name: "write".to_string(),
+                    args: json!({"path": "notes.md"}),
+                    timeout_ms: Some(1000),
+                },
+            ),
+            event(
+                7,
+                165,
+                EventKind::ToolStdout {
+                    tool_id: "tool-1".to_string(),
+                    chunk: "stdout".to_string(),
+                },
+            ),
+            event(
+                8,
+                170,
+                EventKind::ToolStderr {
+                    tool_id: "tool-1".to_string(),
+                    chunk: "stderr".to_string(),
+                },
+            ),
+            event(
+                9,
+                180,
+                EventKind::ToolEnded {
+                    tool_id: "tool-1".to_string(),
+                    exit_code: 0,
+                    duration_ms: 20,
+                    artifacts: Some(json!({"artifact_id": a1, "nested": [a2, "ignore"]})),
+                },
+            ),
+            event(
+                10,
+                185,
+                EventKind::ToolStarted {
+                    tool_id: "tool-2".to_string(),
+                    name: "shell".to_string(),
+                    args: json!({"cmd": "sleep 1"}),
+                    timeout_ms: None,
+                },
+            ),
+            event(
+                11,
+                190,
+                EventKind::ToolFailed {
+                    tool_id: "tool-2".to_string(),
+                    error: "boom".to_string(),
+                },
+            ),
+            event(
+                12,
+                200,
+                EventKind::ToolTaskSpawned {
+                    task_id: "task-1".to_string(),
+                    tool_name: "shell".to_string(),
+                    args: json!({"cmd": "pwd"}),
+                    cwd: Some("/tmp".to_string()),
+                    title: Some("pwd".to_string()),
+                    execution_mode: ToolTaskExecutionMode::Pty,
+                    origin_session_id: Some("s1".to_string()),
+                    artifacts: Some(json!({"artifact": a3})),
+                },
+            ),
+            event(
+                13,
+                205,
+                EventKind::ToolTaskOutputDelta {
+                    task_id: "task-1".to_string(),
+                    stream: ToolTaskStream::Stdout,
+                    chunk: "line one".to_string(),
+                    artifacts: Some(json!([a4])),
+                },
+            ),
+            event(
+                14,
+                206,
+                EventKind::ToolTaskOutputDelta {
+                    task_id: "task-1".to_string(),
+                    stream: ToolTaskStream::Stderr,
+                    chunk: "warn".to_string(),
+                    artifacts: None,
+                },
+            ),
+            event(
+                15,
+                207,
+                EventKind::ToolTaskOutputDelta {
+                    task_id: "task-1".to_string(),
+                    stream: ToolTaskStream::Pty,
+                    chunk: "pty".to_string(),
+                    artifacts: None,
+                },
+            ),
+            event(
+                16,
+                210,
+                EventKind::ToolTaskStatus {
+                    task_id: "task-1".to_string(),
+                    status: ToolTaskStatus::Running,
+                    exit_code: None,
+                    started_at_ms: Some(205),
+                    ended_at_ms: None,
+                    artifacts: None,
+                    error: None,
+                },
+            ),
+            event(
+                17,
+                220,
+                EventKind::ToolTaskStatus {
+                    task_id: "task-2".to_string(),
+                    status: ToolTaskStatus::Failed,
+                    exit_code: Some(9),
+                    started_at_ms: Some(219),
+                    ended_at_ms: Some(220),
+                    artifacts: Some(json!({"artifact": a5})),
+                    error: Some("failed".to_string()),
+                },
+            ),
+            event(
+                18,
+                230,
+                EventKind::ContinuityJobSpawned {
+                    job_id: "job-1".to_string(),
+                    job_kind: "compaction".to_string(),
+                    details: None,
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                },
+            ),
+            event(
+                19,
+                240,
+                EventKind::ContinuityJobEnded {
+                    job_id: "job-2".to_string(),
+                    job_kind: "audit".to_string(),
+                    status: "completed".to_string(),
+                    result: None,
+                    error: Some("none".to_string()),
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                },
+            ),
+            event(
+                20,
+                250,
+                EventKind::ContinuityContextSelectionDecided {
+                    run_session_id: "run-1".to_string(),
+                    message_id: "m1".to_string(),
+                    compiler_id: "rip.context_compiler.v1".to_string(),
+                    compiler_strategy: "recent_messages_v1".to_string(),
+                    limits: json!({"recent_messages_v1_limit": 8}),
+                    compaction_checkpoint: None,
+                    compaction_checkpoints: Vec::new(),
+                    resets: Vec::new(),
+                    reason: None,
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                },
+            ),
+            event(
+                21,
+                255,
+                EventKind::ContinuityContextCompiled {
+                    run_session_id: "run-1".to_string(),
+                    bundle_artifact_id: a6.clone(),
+                    compiler_id: "rip.context_compiler.v1".to_string(),
+                    compiler_strategy: "recent_messages_v1".to_string(),
+                    from_seq: 1,
+                    from_message_id: Some("m1".to_string()),
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                },
+            ),
+            event(
+                22,
+                260,
+                EventKind::ContinuityCompactionCheckpointCreated {
+                    checkpoint_id: "ckpt-1".to_string(),
+                    cut_rule_id: "stride_messages_v1".to_string(),
+                    summary_kind: "cumulative_v1".to_string(),
+                    summary_artifact_id: a7.clone(),
+                    from_seq: 1,
+                    from_message_id: Some("m1".to_string()),
+                    to_seq: 5,
+                    to_message_id: Some("m5".to_string()),
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                },
+            ),
+            event(
+                23,
+                265,
+                EventKind::OpenResponsesRequest {
+                    endpoint: "https://openrouter.ai/api/v1/responses".to_string(),
+                    model: Some("gpt-5".to_string()),
+                    request_index: 0,
+                    kind: "response.create".to_string(),
+                    body_artifact_id: artifact('9'),
+                    body_bytes: 12,
+                    total_bytes: 12,
+                    truncated: false,
+                },
+            ),
+        ] {
+            state.update(event);
+        }
+
+        assert_eq!(state.session_id.as_deref(), Some("s1"));
+        assert_eq!(state.ttft_ms(), Some(50));
+        assert_eq!(state.e2e_ms(), Some(120));
+        assert_eq!(state.openresponses_headers_ms(), Some(10));
+        assert_eq!(state.openresponses_first_byte_ms(), Some(20));
+        assert_eq!(state.openresponses_first_provider_event_ms(), Some(30));
+        assert_eq!(
+            state.openresponses_endpoint.as_deref(),
+            Some("https://openrouter.ai/api/v1/responses")
+        );
+        assert_eq!(state.openresponses_model.as_deref(), Some("gpt-5"));
+        assert_eq!(state.selected_seq, Some(23));
+        assert!(state.has_error());
+        assert_eq!(state.last_error_seq, Some(17));
+        assert!(state.output_text.contains("You: hello"));
+        assert!(state.output_text.contains("world"));
+
+        let tool1 = state.tools.get("tool-1").expect("tool-1");
+        assert_eq!(tool1.stdout_preview, "stdout");
+        assert_eq!(tool1.stderr_preview, "stderr");
+        assert!(matches!(
+            tool1.status,
+            ToolStatus::Ended {
+                exit_code: 0,
+                duration_ms: 20
+            }
+        ));
+        assert!(tool1.artifact_ids.contains(&artifact('a')));
+        assert!(tool1.artifact_ids.contains(&artifact('b')));
+
+        let tool2 = state.tools.get("tool-2").expect("tool-2");
+        assert!(matches!(
+            &tool2.status,
+            ToolStatus::Failed { error } if error == "boom"
+        ));
+
+        let task1 = state.tasks.get("task-1").expect("task-1");
+        assert_eq!(task1.tool_name, "shell");
+        assert_eq!(task1.stdout_preview, "line one");
+        assert_eq!(task1.stderr_preview, "warn");
+        assert_eq!(task1.pty_preview, "pty");
+        assert_eq!(task1.status, ToolTaskStatus::Running);
+        assert!(task1.artifact_ids.contains(&artifact('c')));
+        assert!(task1.artifact_ids.contains(&artifact('d')));
+
+        let task2 = state.tasks.get("task-2").expect("task-2");
+        assert_eq!(task2.tool_name, "unknown");
+        assert_eq!(task2.status, ToolTaskStatus::Failed);
+        assert_eq!(task2.exit_code, Some(9));
+        assert_eq!(task2.error.as_deref(), Some("failed"));
+        assert!(task2.artifact_ids.contains(&artifact('e')));
+
+        assert_eq!(
+            state.running_tool_ids().collect::<Vec<_>>(),
+            Vec::<&str>::new()
+        );
+        assert_eq!(state.running_task_ids().collect::<Vec<_>>(), vec!["task-1"]);
+        assert_eq!(state.running_job_ids().collect::<Vec<_>>(), vec!["job-1"]);
+
+        assert!(matches!(
+            state.jobs.get("job-1").expect("job-1").status,
+            JobStatus::Running
+        ));
+        assert!(matches!(
+            &state.jobs.get("job-2").expect("job-2").status,
+            JobStatus::Ended { status, error }
+                if status == "completed" && error.as_deref() == Some("none")
+        ));
+        assert!(matches!(
+            &state.context,
+            Some(ContextSummary {
+                run_session_id,
+                compiler_strategy,
+                status: ContextStatus::Compiled,
+                bundle_artifact_id: Some(bundle),
+            }) if run_session_id == "run-1"
+                && compiler_strategy == "recent_messages_v1"
+                && bundle == &a6
+        ));
+
+        for artifact_id in [
+            artifact('a'),
+            artifact('b'),
+            artifact('c'),
+            artifact('d'),
+            artifact('e'),
+            a6,
+            a7,
+            artifact('9'),
+        ] {
+            assert!(state.artifacts.contains(&artifact_id));
+        }
+    }
+
+    #[test]
+    fn helper_functions_handle_errors_artifacts_and_utf8_boundaries() {
+        assert!(is_error_event(&EventKind::ToolFailed {
+            tool_id: "tool-1".to_string(),
+            error: "boom".to_string(),
+        }));
+        assert!(is_error_event(&EventKind::CheckpointFailed {
+            action: CheckpointAction::Create,
+            error: "bad".to_string(),
+        }));
+        assert!(is_error_event(&EventKind::ToolTaskStatus {
+            task_id: "task-1".to_string(),
+            status: ToolTaskStatus::Failed,
+            exit_code: None,
+            started_at_ms: None,
+            ended_at_ms: None,
+            artifacts: None,
+            error: None,
+        }));
+        assert!(is_error_event(&EventKind::ProviderEvent {
+            provider: "openresponses".to_string(),
+            status: ProviderEventStatus::Event,
+            event_name: None,
+            data: None,
+            raw: None,
+            errors: vec!["oops".to_string()],
+            response_errors: Vec::new(),
+        }));
+        assert!(!is_error_event(&EventKind::SessionEnded {
+            reason: "ok".to_string(),
+        }));
+
+        let mut preview = String::new();
+        push_preview(&mut preview, "", 6);
+        push_preview(&mut preview, "ab😀cd😀ef", 6);
+        assert!(preview.is_char_boundary(preview.len()));
+        assert!(preview.len() <= 8);
+
+        let ids = extract_artifact_ids(&json!({
+            "one": artifact('a'),
+            "nested": [artifact('b'), {"deep": artifact('c')}],
+            "ignore": "short"
+        }));
+        assert_eq!(ids.len(), 3);
+        assert!(looks_like_artifact_id(&artifact('f')));
+        assert!(!looks_like_artifact_id("artifact"));
     }
 }

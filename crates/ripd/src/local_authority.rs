@@ -348,4 +348,167 @@ mod tests {
             "lock should remain"
         );
     }
+
+    #[test]
+    fn try_acquire_write_meta_and_drop_round_trip() {
+        let dir = tempdir().expect("tmp");
+        let data_dir = dir.path().join("data");
+        let workspace = dir.path().join("workspace");
+        let lock_path = authority_lock_path(&data_dir);
+        let meta_path = authority_meta_path(&data_dir);
+
+        {
+            let guard = AuthorityLockGuard::try_acquire(&data_dir, &workspace).expect("guard");
+            assert_eq!(
+                guard.record().workspace_root,
+                workspace.to_string_lossy().to_string()
+            );
+            assert!(lock_path.exists());
+
+            guard
+                .write_meta("http://127.0.0.1:9000")
+                .expect("write meta");
+            let meta = read_authority_meta(&data_dir)
+                .expect("read meta")
+                .expect("meta");
+            assert_eq!(meta.endpoint, "http://127.0.0.1:9000");
+            assert_eq!(meta.pid, guard.record().pid);
+
+            let lock = read_authority_lock_record(&data_dir)
+                .expect("read lock")
+                .expect("lock");
+            assert_eq!(lock.pid, guard.record().pid);
+        }
+
+        assert!(!lock_path.exists(), "drop should clean lock");
+        assert!(!meta_path.exists(), "drop should clean meta");
+    }
+
+    #[test]
+    fn try_acquire_rejects_second_lock() {
+        let dir = tempdir().expect("tmp");
+        let data_dir = dir.path().join("data");
+        let _guard = AuthorityLockGuard::try_acquire(&data_dir, dir.path()).expect("guard");
+        let err = match AuthorityLockGuard::try_acquire(&data_dir, dir.path()) {
+            Ok(_) => panic!("expected second lock acquisition to fail"),
+            Err(err) => err,
+        };
+        assert!(err.contains("already has an authority"));
+    }
+
+    #[test]
+    fn read_helpers_handle_missing_and_invalid_files() {
+        let dir = tempdir().expect("tmp");
+        let data_dir = dir.path().join("data");
+        assert!(read_authority_meta(&data_dir).expect("meta").is_none());
+        assert!(read_authority_lock_record(&data_dir)
+            .expect("lock")
+            .is_none());
+
+        std::fs::create_dir_all(authority_dir(&data_dir)).expect("authority dir");
+        std::fs::write(authority_meta_path(&data_dir), "{").expect("write meta");
+        std::fs::write(authority_lock_path(&data_dir), "{").expect("write lock");
+        assert!(read_authority_meta(&data_dir).is_err());
+        assert!(read_authority_lock_record(&data_dir).is_err());
+    }
+
+    #[test]
+    fn cleanup_corrupt_lock_file_requires_missing_meta() {
+        let dir = tempdir().expect("tmp");
+        let data_dir = dir.path().join("data");
+        std::fs::create_dir_all(authority_dir(&data_dir)).expect("authority dir");
+
+        assert!(!try_cleanup_corrupt_lock_file(&data_dir).expect("cleanup"));
+
+        std::fs::write(authority_lock_path(&data_dir), "{").expect("write lock");
+        assert!(try_cleanup_corrupt_lock_file(&data_dir).expect("cleanup"));
+        assert!(!authority_lock_path(&data_dir).exists());
+
+        std::fs::write(authority_lock_path(&data_dir), "{").expect("write lock");
+        std::fs::write(authority_meta_path(&data_dir), "{}").expect("write meta");
+        assert!(!try_cleanup_corrupt_lock_file(&data_dir).expect("cleanup"));
+        assert!(authority_lock_path(&data_dir).exists());
+    }
+
+    #[test]
+    fn pid_liveness_reports_current_process_alive() {
+        let current = pid_liveness(std::process::id());
+        assert_eq!(current, PidLiveness::Alive);
+    }
+
+    #[test]
+    fn helper_paths_and_atomic_writes_cover_generic_variants() {
+        let dir = tempdir().expect("tmp");
+        let data_dir = dir.path().join("data");
+
+        assert_eq!(
+            authority_dir(dir.path()),
+            dir.path().join(AUTHORITY_DIR),
+            "path refs should resolve authority dir"
+        );
+        assert_eq!(
+            authority_dir(data_dir.clone()),
+            data_dir.join(AUTHORITY_DIR),
+            "owned pathbufs should resolve authority dir"
+        );
+        assert_eq!(
+            authority_lock_path(dir.path()),
+            dir.path().join(AUTHORITY_DIR).join(LOCK_FILE)
+        );
+        assert_eq!(
+            authority_meta_path(data_dir.clone()),
+            data_dir.join(AUTHORITY_DIR).join(META_FILE)
+        );
+
+        assert!(!try_cleanup_stale_authority_files(dir.path(), 1, 1).expect("missing lock"));
+        assert!(!try_cleanup_corrupt_lock_file(dir.path()).expect("missing corrupt lock"));
+
+        let guard =
+            AuthorityLockGuard::try_acquire(data_dir.clone(), dir.path()).expect("acquire guard");
+        assert_eq!(
+            guard.record().workspace_root,
+            dir.path().to_string_lossy().to_string()
+        );
+        guard
+            .write_meta(String::from("http://127.0.0.1:8080"))
+            .expect("write meta");
+        assert!(read_authority_meta(data_dir.clone())
+            .expect("read meta pathbuf")
+            .is_some());
+        assert!(read_authority_lock_record(&data_dir)
+            .expect("read lock ref")
+            .is_some());
+        drop(guard);
+
+        let atomic_path = dir.path().join("nested").join("meta.json");
+        atomic_write_file(&atomic_path, b"first").expect("write first");
+        assert_eq!(fs::read(&atomic_path).expect("read first"), b"first");
+        atomic_write_file(&atomic_path, b"second").expect("overwrite second");
+        assert_eq!(fs::read(&atomic_path).expect("read second"), b"second");
+    }
+
+    #[test]
+    fn helper_error_paths_cover_try_acquire_and_cleanup_variants() {
+        let dir = tempdir().expect("tmp");
+        let blocked_parent = dir.path().join("blocked");
+        fs::write(&blocked_parent, "blocked").expect("write blocker");
+        let err = match AuthorityLockGuard::try_acquire(blocked_parent.join("data"), dir.path()) {
+            Ok(_) => panic!("blocked authority dir"),
+            Err(err) => err,
+        };
+        assert!(err.contains("create authority dir"));
+
+        let data_dir = dir.path().join("data");
+        fs::create_dir_all(authority_dir(&data_dir)).expect("authority dir");
+        fs::write(authority_lock_path(&data_dir), "{").expect("invalid lock");
+
+        assert!(
+            !try_cleanup_stale_authority_files(data_dir.clone(), 123, 456)
+                .expect("stale cleanup handles invalid lock")
+        );
+        assert!(read_authority_meta(data_dir.clone())
+            .expect("missing meta")
+            .is_none());
+        assert!(read_authority_lock_record(data_dir).is_err());
+    }
 }

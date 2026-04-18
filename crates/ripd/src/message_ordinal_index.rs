@@ -206,7 +206,107 @@ fn validate_header_v1(file: &mut File) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rip_kernel::EventKind;
     use tempfile::tempdir;
+
+    fn continuity_message_event(continuity_id: &str, seq: u64, id: &str) -> rip_kernel::Event {
+        rip_kernel::Event {
+            id: id.to_string(),
+            session_id: continuity_id.to_string(),
+            timestamp_ms: 0,
+            seq,
+            kind: EventKind::ContinuityMessageAppended {
+                actor_id: "user".to_string(),
+                origin: "cli".to_string(),
+                content: format!("m{seq}"),
+            },
+        }
+    }
+
+    #[test]
+    fn ordinal_index_surfaces_validation_and_append_failures() {
+        let dir = tempdir().expect("tmp");
+        let path = dir.path().join("idx.bin");
+        let valid_id = Uuid::new_v4().to_string();
+
+        assert_eq!(message_count_v1(&path).expect("missing count"), None);
+        assert_eq!(
+            read_message_by_ordinal_v1(&path, 1).expect("missing read"),
+            None
+        );
+        assert_eq!(
+            read_message_by_ordinal_v1(&path, 0).expect("ordinal zero"),
+            None
+        );
+
+        append_message_record_best_effort_v1(&path, 1, "not-a-uuid");
+        assert!(!path.exists(), "invalid uuids should not create indexes");
+
+        let blocked_parent = dir.path().join("blocked-parent");
+        fs::write(&blocked_parent, b"nope").expect("write parent file");
+        append_message_record_best_effort_v1(&blocked_parent.join("idx.bin"), 1, &valid_id);
+        assert!(!blocked_parent.join("idx.bin").exists());
+
+        let dir_target = dir.path().join("dir-target");
+        fs::create_dir_all(&dir_target).expect("dir target");
+        append_message_record_best_effort_v1(&dir_target, 1, &valid_id);
+        assert!(dir_target.is_dir(), "directory targets should be ignored");
+
+        let truncated_path = dir.path().join("truncated.bin");
+        fs::write(&truncated_path, b"short").expect("write truncated");
+        let err = message_count_v1(&truncated_path).expect_err("truncated count");
+        assert!(err.to_string().contains("truncated"));
+        let err = read_message_by_ordinal_v1(&truncated_path, 1).expect_err("truncated read");
+        assert!(err.to_string().contains("truncated"));
+
+        let aligned_path = dir.path().join("aligned.bin");
+        let mut file = File::create(&aligned_path).expect("create");
+        write_header_v1(&mut file).expect("header");
+        file.write_all(&[0u8; 1]).expect("extra byte");
+        drop(file);
+        let err = message_count_v1(&aligned_path).expect_err("alignment");
+        assert!(err.to_string().contains("alignment mismatch"));
+
+        append_message_record_best_effort_v1(&path, 10, &valid_id);
+        let id2 = Uuid::new_v4().to_string();
+        append_message_record_best_effort_v1(&path, 20, &id2);
+        assert_eq!(message_count_v1(&path).expect("count"), Some(2));
+        assert_eq!(
+            read_message_by_ordinal_v1(&path, 3).expect("out of range"),
+            None
+        );
+
+        let magic_path = dir.path().join("bad-magic.bin");
+        let mut magic_file = File::create(&magic_path).expect("magic file");
+        write_header_v1(&mut magic_file).expect("magic header");
+        magic_file.seek(SeekFrom::Start(0)).expect("seek");
+        magic_file.write_all(b"BADMAGIC").expect("bad magic");
+        drop(magic_file);
+        let err = message_count_v1(&magic_path).expect_err("magic mismatch");
+        assert!(err.to_string().contains("magic mismatch"));
+
+        let version_path = dir.path().join("bad-version.bin");
+        let mut version_file = File::create(&version_path).expect("version file");
+        write_header_v1(&mut version_file).expect("version header");
+        version_file.seek(SeekFrom::Start(8)).expect("seek");
+        version_file
+            .write_all(&2u32.to_le_bytes())
+            .expect("bad version");
+        drop(version_file);
+        let err = read_message_by_ordinal_v1(&version_path, 1).expect_err("version mismatch");
+        assert!(err.to_string().contains("version mismatch"));
+
+        let record_size_path = dir.path().join("bad-record-size.bin");
+        let mut record_size_file = File::create(&record_size_path).expect("record size file");
+        write_header_v1(&mut record_size_file).expect("record size header");
+        record_size_file.seek(SeekFrom::Start(12)).expect("seek");
+        record_size_file
+            .write_all(&8u32.to_le_bytes())
+            .expect("bad record size");
+        drop(record_size_file);
+        let err = read_message_by_ordinal_v1(&record_size_path, 1).expect_err("record size");
+        assert!(err.to_string().contains("record size mismatch"));
+    }
 
     #[test]
     fn ordinal_index_round_trips() {
@@ -232,5 +332,78 @@ mod tests {
         assert!(read_message_by_ordinal_v1(&path, 3)
             .expect("read")
             .is_none());
+    }
+
+    #[test]
+    fn rebuild_message_ordinal_index_filters_streams_and_rejects_invalid_ids() {
+        let dir = tempdir().expect("tmp");
+        let path = dir.path().join("rebuilt.bin");
+        let continuity_id = "c-ordinal";
+
+        let invalid_events = vec![
+            rip_kernel::Event {
+                id: "session-0".to_string(),
+                session_id: "run-1".to_string(),
+                timestamp_ms: 0,
+                seq: 0,
+                kind: EventKind::SessionStarted {
+                    input: "hi".to_string(),
+                },
+            },
+            continuity_message_event(continuity_id, 1, "not-a-uuid"),
+        ];
+        let err =
+            rebuild_message_ordinal_index_from_events_v1(&path, continuity_id, &invalid_events)
+                .expect_err("invalid uuid");
+        assert!(err
+            .to_string()
+            .contains("message id is not a uuid while building ordinal index"));
+
+        let id1 = Uuid::new_v4().to_string();
+        let id2 = Uuid::new_v4().to_string();
+        let other_id = Uuid::new_v4().to_string();
+        let events = vec![
+            rip_kernel::Event {
+                id: "session-1".to_string(),
+                session_id: "run-2".to_string(),
+                timestamp_ms: 0,
+                seq: 0,
+                kind: EventKind::SessionEnded {
+                    reason: "done".to_string(),
+                },
+            },
+            continuity_message_event(continuity_id, 0, &id1),
+            rip_kernel::Event {
+                id: "tool-2".to_string(),
+                session_id: continuity_id.to_string(),
+                timestamp_ms: 0,
+                seq: 1,
+                kind: EventKind::ContinuityToolSideEffects {
+                    run_session_id: "run-1".to_string(),
+                    tool_id: "tool-2".to_string(),
+                    tool_name: "write".to_string(),
+                    affected_paths: None,
+                    checkpoint_id: None,
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                },
+            },
+            continuity_message_event("other", 0, &other_id),
+            continuity_message_event(continuity_id, 2, &id2),
+        ];
+        rebuild_message_ordinal_index_from_events_v1(&path, continuity_id, &events)
+            .expect("rebuild");
+
+        assert_eq!(message_count_v1(&path).expect("count"), Some(2));
+        let first = read_message_by_ordinal_v1(&path, 1)
+            .expect("read")
+            .expect("first");
+        let second = read_message_by_ordinal_v1(&path, 2)
+            .expect("read")
+            .expect("second");
+        assert_eq!(first.seq, 0);
+        assert_eq!(first.id.to_string(), id1);
+        assert_eq!(second.seq, 2);
+        assert_eq!(second.id.to_string(), id2);
     }
 }

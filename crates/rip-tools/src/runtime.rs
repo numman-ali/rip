@@ -137,6 +137,7 @@ impl ToolRunner {
         }
     }
 
+    #[cfg_attr(test, inline(never))]
     pub fn with_checkpoint_hook(
         registry: Arc<ToolRegistry>,
         max_concurrency: usize,
@@ -242,6 +243,7 @@ impl ToolRunner {
         events
     }
 
+    #[cfg_attr(test, inline(never))]
     pub fn rewind_checkpoint(
         &self,
         session_id: &str,
@@ -284,6 +286,7 @@ impl ToolRunner {
         events
     }
 
+    #[cfg_attr(test, inline(never))]
     pub fn create_checkpoint(
         &self,
         session_id: &str,
@@ -426,6 +429,7 @@ struct ApplyPatchArgs {
     patch: String,
 }
 
+#[cfg_attr(test, inline(never))]
 fn files_for_invocation(invocation: &ToolInvocation) -> Result<Option<Vec<PathBuf>>, String> {
     match invocation.name.as_str() {
         "write" => {
@@ -448,6 +452,58 @@ mod tests {
     use super::*;
     use futures_util::future::pending;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct MockCheckpointHook {
+        last_create: Mutex<Option<CheckpointRequest>>,
+        create_error: Mutex<Option<String>>,
+        rewind_error: Mutex<Option<String>>,
+    }
+
+    impl CheckpointHook for MockCheckpointHook {
+        fn create(&self, request: CheckpointRequest) -> Result<CheckpointRecord, String> {
+            *self.last_create.lock().expect("create mutex") = Some(request.clone());
+            if let Some(error) = self
+                .create_error
+                .lock()
+                .expect("create error mutex")
+                .clone()
+            {
+                return Err(error);
+            }
+            Ok(CheckpointRecord {
+                id: "ckpt-1".to_string(),
+                label: request.label,
+                created_at_ms: 123,
+                files: request
+                    .files
+                    .into_iter()
+                    .map(|path| path.to_string_lossy().into_owned())
+                    .collect(),
+            })
+        }
+
+        fn rewind(
+            &self,
+            _session_id: &str,
+            checkpoint_id: &str,
+        ) -> Result<CheckpointRewindRecord, String> {
+            if let Some(error) = self
+                .rewind_error
+                .lock()
+                .expect("rewind error mutex")
+                .clone()
+            {
+                return Err(error);
+            }
+            Ok(CheckpointRewindRecord {
+                id: checkpoint_id.to_string(),
+                label: "rewind".to_string(),
+                files: vec!["a.txt".to_string()],
+            })
+        }
+    }
 
     #[tokio::test]
     async fn runs_tool_and_streams_output() {
@@ -692,6 +748,17 @@ mod tests {
     }
 
     #[test]
+    fn files_for_invocation_reports_invalid_apply_patch_args() {
+        let invocation = ToolInvocation {
+            name: "apply_patch".to_string(),
+            args: serde_json::json!({"path": "missing patch"}),
+            timeout_ms: None,
+        };
+        let err = files_for_invocation(&invocation).unwrap_err();
+        assert!(err.contains("checkpoint args invalid"));
+    }
+
+    #[test]
     fn files_for_invocation_returns_none_for_unknown_tool() {
         let invocation = ToolInvocation {
             name: "ls".to_string(),
@@ -700,5 +767,91 @@ mod tests {
         };
         let result = files_for_invocation(&invocation).expect("ok");
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn with_checkpoint_hook_and_checkpoint_methods_emit_events() {
+        let hook = Arc::new(MockCheckpointHook::default());
+        let ctor: fn(Arc<ToolRegistry>, usize, Arc<dyn CheckpointHook>) -> ToolRunner =
+            ToolRunner::with_checkpoint_hook;
+        let runner = ctor(Arc::new(ToolRegistry::default()), 1, hook.clone());
+
+        let mut seq = 0;
+        let created = runner.create_checkpoint(
+            "session-1",
+            &mut seq,
+            "manual".to_string(),
+            vec![PathBuf::from("a.txt")],
+        );
+        assert!(matches!(
+            created.first().map(|event| &event.kind),
+            Some(EventKind::CheckpointCreated {
+                checkpoint_id,
+                label,
+                created_at_ms,
+                files,
+                auto,
+                tool_name,
+            }) if checkpoint_id == "ckpt-1"
+                && label == "manual"
+                && *created_at_ms == 123
+                && files == &vec!["a.txt".to_string()]
+                && !auto
+                && tool_name.is_none()
+        ));
+
+        let recorded = hook
+            .last_create
+            .lock()
+            .expect("recorded create")
+            .clone()
+            .expect("request");
+        assert_eq!(recorded.session_id, "session-1");
+        assert_eq!(recorded.label, "manual");
+        assert!(!recorded.auto);
+
+        let rewound = runner.rewind_checkpoint("session-1", &mut seq, "ckpt-1");
+        assert!(matches!(
+            rewound.first().map(|event| &event.kind),
+            Some(EventKind::CheckpointRewound {
+                checkpoint_id,
+                label,
+                files,
+            }) if checkpoint_id == "ckpt-1"
+                && label == "rewind"
+                && files == &vec!["a.txt".to_string()]
+        ));
+    }
+
+    #[test]
+    fn checkpoint_methods_emit_failures_when_hook_errors() {
+        let hook = Arc::new(MockCheckpointHook::default());
+        *hook.create_error.lock().expect("create error mutex") = Some("create failed".to_string());
+        *hook.rewind_error.lock().expect("rewind error mutex") = Some("rewind failed".to_string());
+        let runner = ToolRunner::with_checkpoint_hook(Arc::new(ToolRegistry::default()), 1, hook);
+
+        let mut seq = 0;
+        let created = runner.create_checkpoint(
+            "session-1",
+            &mut seq,
+            "manual".to_string(),
+            vec![PathBuf::from("a.txt")],
+        );
+        assert!(matches!(
+            created.first().map(|event| &event.kind),
+            Some(EventKind::CheckpointFailed {
+                action: CheckpointAction::Create,
+                error,
+            }) if error == "create failed"
+        ));
+
+        let rewound = runner.rewind_checkpoint("session-1", &mut seq, "ckpt-1");
+        assert!(matches!(
+            rewound.first().map(|event| &event.kind),
+            Some(EventKind::CheckpointFailed {
+                action: CheckpointAction::Rewind,
+                error,
+            }) if error == "rewind failed"
+        ));
     }
 }

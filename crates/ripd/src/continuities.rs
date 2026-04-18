@@ -5670,6 +5670,131 @@ mod tests {
     }
 
     #[test]
+    fn branch_and_handoff_support_from_seq_and_head_defaults() {
+        let dir = tempdir().expect("tmp");
+        let (event_log, store, _data_dir) = store_for(&dir);
+
+        let parent_thread_id = store.ensure_default().expect("ensure");
+        let m1 = store
+            .append_message(
+                &parent_thread_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "turn1".to_string(),
+            )
+            .expect("append");
+        store
+            .append_run_spawned(
+                &parent_thread_id,
+                &m1,
+                "session-1",
+                "user".to_string(),
+                "cli".to_string(),
+            )
+            .expect("run spawned");
+        store
+            .append_run_ended(
+                &parent_thread_id,
+                &m1,
+                "session-1",
+                "completed".to_string(),
+                "user".to_string(),
+                "cli".to_string(),
+            )
+            .expect("run ended");
+        let m2 = store
+            .append_message(
+                &parent_thread_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "turn2".to_string(),
+            )
+            .expect("append");
+
+        let (branch_from_seq_id, branch_from_seq, branch_message_id) = store
+            .branch(
+                &parent_thread_id,
+                None,
+                None,
+                Some(2),
+                "alice".to_string(),
+                "team".to_string(),
+            )
+            .expect("branch from_seq");
+        assert_eq!(branch_from_seq, 2);
+        assert_eq!(branch_message_id.as_deref(), Some(m1.as_str()));
+
+        let branch_events = event_log
+            .replay_stream(StreamKind::Continuity, &branch_from_seq_id)
+            .expect("replay child");
+        match &branch_events[1].kind {
+            EventKind::ContinuityBranched {
+                parent_seq,
+                parent_message_id,
+                ..
+            } => {
+                assert_eq!(*parent_seq, 2);
+                assert_eq!(parent_message_id.as_deref(), Some(m1.as_str()));
+            }
+            other => panic!("expected continuity_branched, got {other:?}"),
+        }
+
+        let (_branch_head_id, branch_head_seq, branch_head_message_id) = store
+            .branch(
+                &parent_thread_id,
+                None,
+                None,
+                None,
+                "alice".to_string(),
+                "team".to_string(),
+            )
+            .expect("branch head");
+        assert_eq!(branch_head_seq, 4);
+        assert_eq!(branch_head_message_id.as_deref(), Some(m2.as_str()));
+
+        let (handoff_from_seq_id, handoff_from_seq, handoff_message_id) = store
+            .handoff(
+                &parent_thread_id,
+                None,
+                (Some("summary".to_string()), None),
+                None,
+                Some(2),
+                ("alice".to_string(), "team".to_string()),
+            )
+            .expect("handoff from_seq");
+        assert_eq!(handoff_from_seq, 2);
+        assert_eq!(handoff_message_id.as_deref(), Some(m1.as_str()));
+
+        let handoff_events = event_log
+            .replay_stream(StreamKind::Continuity, &handoff_from_seq_id)
+            .expect("replay handoff");
+        match &handoff_events[1].kind {
+            EventKind::ContinuityHandoffCreated {
+                from_seq,
+                from_message_id,
+                ..
+            } => {
+                assert_eq!(*from_seq, 2);
+                assert_eq!(from_message_id.as_deref(), Some(m1.as_str()));
+            }
+            other => panic!("expected continuity_handoff_created, got {other:?}"),
+        }
+
+        let (_handoff_head_id, handoff_head_seq, handoff_head_message_id) = store
+            .handoff(
+                &parent_thread_id,
+                None,
+                (Some("summary".to_string()), None),
+                None,
+                None,
+                ("alice".to_string(), "team".to_string()),
+            )
+            .expect("handoff head");
+        assert_eq!(handoff_head_seq, 4);
+        assert_eq!(handoff_head_message_id.as_deref(), Some(m2.as_str()));
+    }
+
+    #[test]
     fn handoff_creates_child_with_cutpoint_provenance_and_summary() {
         let dir = tempdir().expect("tmp");
         let (event_log, store, _data_dir) = store_for(&dir);
@@ -5941,6 +6066,269 @@ mod tests {
 
         let continuity_id = store.ensure_default().expect("ensure");
         assert_ne!(continuity_id, legacy_id);
+    }
+
+    #[test]
+    fn context_compile_and_checkpoint_lookups_fall_back_without_sidecars() {
+        let dir = tempdir().expect("tmp");
+        let (_event_log, store, data_dir) = store_for(&dir);
+
+        let continuity_id = store.ensure_default().expect("ensure");
+        let m1 = store
+            .append_message(
+                &continuity_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "m1".to_string(),
+            )
+            .expect("append");
+        let m2 = store
+            .append_message(
+                &continuity_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "m2".to_string(),
+            )
+            .expect("append");
+        let _m3 = store
+            .append_message(
+                &continuity_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "m3".to_string(),
+            )
+            .expect("append");
+        let _m4 = store
+            .append_message(
+                &continuity_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "m4".to_string(),
+            )
+            .expect("append");
+
+        let (_ckpt1, _summary1, to_seq1, _to_mid1, _cut_rule1) = store
+            .compaction_checkpoint_cumulative_v1(
+                &continuity_id,
+                CompactionCheckpointCumulativeV1Request {
+                    summary_markdown: Some("summary-1".to_string()),
+                    summary_artifact_id: None,
+                    to_message_id: Some(m1.clone()),
+                    to_seq: None,
+                    stride_messages: None,
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                },
+            )
+            .expect("checkpoint1");
+        let (_ckpt2, _summary2, _to_seq2, _to_mid2, _cut_rule2) = store
+            .compaction_checkpoint_cumulative_v1(
+                &continuity_id,
+                CompactionCheckpointCumulativeV1Request {
+                    summary_markdown: Some("summary-2".to_string()),
+                    summary_artifact_id: None,
+                    to_message_id: Some(m2.clone()),
+                    to_seq: None,
+                    stride_messages: None,
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                },
+            )
+            .expect("checkpoint2");
+        let (_ckpt3, summary3, to_seq3, _to_mid3, _cut_rule3) = store
+            .compaction_checkpoint_cumulative_v1(
+                &continuity_id,
+                CompactionCheckpointCumulativeV1Request {
+                    summary_markdown: Some("summary-3".to_string()),
+                    summary_artifact_id: None,
+                    to_message_id: Some(m2.clone()),
+                    to_seq: None,
+                    stride_messages: None,
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                },
+            )
+            .expect("checkpoint3");
+
+        let full_events = store.replay_events(&continuity_id).expect("replay full");
+        let (full_from_seq, full_from_message_id) =
+            resolve_context_compile_cutpoint_full(&full_events, &m2).expect("cutpoint");
+
+        fs::remove_dir_all(data_dir.join("continuity_streams")).expect("remove sidecars");
+        let input = store
+            .load_context_compile_input_recent_messages_v1(&continuity_id, &m2)
+            .expect("input");
+        assert_eq!(input.from_seq, full_from_seq);
+        assert_eq!(input.from_message_id, full_from_message_id);
+        assert_eq!(
+            serde_json::to_value(&input.continuity_events).expect("input json"),
+            serde_json::to_value(&full_events).expect("full json")
+        );
+
+        let head_seq = full_events
+            .last()
+            .map(|event| event.seq)
+            .unwrap_or_default();
+
+        fs::remove_dir_all(data_dir.join("continuity_streams")).expect("remove sidecars again");
+        let latest = store
+            .latest_compaction_checkpoint_for_compile_v1(&continuity_id, head_seq)
+            .expect("latest lookup")
+            .expect("latest");
+        assert_eq!(latest.to_seq, to_seq3);
+        assert_eq!(latest.summary_artifact_id, summary3);
+
+        fs::remove_dir_all(data_dir.join("continuity_streams")).expect("remove sidecars third");
+        let hierarchy = store
+            .hierarchical_compaction_checkpoints_for_compile_v1(&continuity_id, head_seq, 2)
+            .expect("hierarchy");
+        assert_eq!(
+            hierarchy
+                .iter()
+                .map(|entry| entry.to_seq)
+                .collect::<Vec<_>>(),
+            vec![to_seq1, to_seq3]
+        );
+        assert_eq!(
+            hierarchy
+                .last()
+                .map(|entry| entry.summary_artifact_id.as_str()),
+            Some(summary3.as_str())
+        );
+    }
+
+    #[test]
+    fn compaction_auto_helpers_cover_noop_and_failed_job_paths() {
+        let dir = tempdir().expect("tmp");
+        let (event_log, store, _data_dir) = store_for(&dir);
+
+        let continuity_id = store.ensure_default().expect("ensure");
+        let m1 = store
+            .append_message(
+                &continuity_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "m1".to_string(),
+            )
+            .expect("append");
+        let _m2 = store
+            .append_message(
+                &continuity_id,
+                "user".to_string(),
+                "cli".to_string(),
+                "m2".to_string(),
+            )
+            .expect("append");
+
+        let (_checkpoint_id, artifact_id, _to_seq, _to_mid, _cut_rule) = store
+            .compaction_checkpoint_cumulative_v1(
+                &continuity_id,
+                CompactionCheckpointCumulativeV1Request {
+                    summary_markdown: Some("summary".to_string()),
+                    summary_artifact_id: None,
+                    to_message_id: Some(m1.clone()),
+                    to_seq: None,
+                    stride_messages: None,
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                },
+            )
+            .expect("checkpoint");
+
+        let noop = store
+            .compaction_auto_spawn_job_v1(
+                &continuity_id,
+                CompactionAutoV1Request {
+                    stride_messages: Some(1),
+                    max_new_checkpoints: Some(1),
+                    dry_run: Some(true),
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                },
+            )
+            .expect("dry run");
+        assert_eq!(noop.status, "noop");
+
+        let scheduled = store
+            .compaction_auto_schedule_v1(
+                &continuity_id,
+                CompactionAutoScheduleV1Request {
+                    stride_messages: Some(1),
+                    max_new_checkpoints: Some(1),
+                    block_on_inflight: Some(false),
+                    execute: Some(false),
+                    dry_run: Some(false),
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                },
+            )
+            .expect("scheduled");
+        assert_eq!(scheduled.decision, "scheduled");
+        assert!(scheduled.job_id.is_some());
+
+        let invalid = store
+            .compaction_auto_schedule_spawn_job_v1(
+                &continuity_id,
+                CompactionAutoScheduleV1Request {
+                    stride_messages: Some(0),
+                    max_new_checkpoints: Some(1),
+                    block_on_inflight: Some(true),
+                    execute: Some(true),
+                    dry_run: Some(false),
+                    actor_id: "user".to_string(),
+                    origin: "cli".to_string(),
+                },
+            )
+            .expect_err("invalid stride");
+        assert!(invalid.contains("invalid_stride"));
+
+        let blob_path = dir
+            .path()
+            .join("workspace")
+            .join(".rip")
+            .join("artifacts")
+            .join("blobs")
+            .join(&artifact_id);
+        fs::remove_file(&blob_path).expect("remove summary artifact");
+
+        let err = store
+            .compaction_auto_run_spawned_job_v1(
+                &continuity_id,
+                "job-failed",
+                1,
+                "stride_messages_v1/1",
+                &[CompactionPlannedCutPointV1 {
+                    target_message_ordinal: 2,
+                    to_seq: 2,
+                    to_message_id: "00000000-0000-0000-0000-000000000099".to_string(),
+                }],
+                ("user", "cli"),
+            )
+            .expect_err("failed job");
+        assert!(err.contains("compaction cut point message mismatch"));
+
+        let ended = event_log
+            .replay_stream(StreamKind::Continuity, &continuity_id)
+            .expect("replay")
+            .into_iter()
+            .rev()
+            .find_map(|event| match event.kind {
+                EventKind::ContinuityJobEnded {
+                    job_id,
+                    status,
+                    error,
+                    ..
+                } => Some((job_id, status, error)),
+                _ => None,
+            })
+            .expect("job ended");
+        assert_eq!(ended.0, "job-failed");
+        assert_eq!(ended.1, "failed");
+        assert!(ended
+            .2
+            .as_deref()
+            .unwrap_or_default()
+            .contains("compaction cut point message mismatch"));
     }
 
     #[test]
