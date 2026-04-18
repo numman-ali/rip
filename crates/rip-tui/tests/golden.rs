@@ -550,6 +550,36 @@ fn multi_turn_continuity_state() -> TuiState {
 }
 
 #[test]
+fn journey_tool_card_expand_s_80x24_focused_expanded() {
+    // B.4: focusing a `ToolCard` + toggling expand surfaces args + output
+    // inside the card's rounded-border body. The `▎` focus rule shows
+    // in the gutter's second column.
+    let mut state = follow_run_state_tool_detail();
+    state.close_overlay();
+
+    let tool_card_id = state
+        .canvas
+        .messages
+        .iter()
+        .find_map(|m| match m {
+            rip_tui::CanvasMessage::ToolCard { message_id, .. } => Some(message_id.clone()),
+            _ => None,
+        })
+        .expect("tool card present");
+    state.focused_message_id = Some(tool_card_id.clone());
+    assert!(
+        state.canvas.toggle_card_expanded(&tool_card_id),
+        "tool card should toggle expanded"
+    );
+
+    let rendered = render_to_string(80, 24, &state, RenderMode::Json);
+    assert_snapshot(
+        "journey_tool_card_expand_s_80x24_focused_expanded.txt",
+        rendered,
+    );
+}
+
+#[test]
 fn journey_multi_turn_continuity_s_80x24_ambient_persists() {
     let state = multi_turn_continuity_state();
 

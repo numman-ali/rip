@@ -19,6 +19,10 @@ pub enum Command {
     CopySelected,
     SelectPrev,
     SelectNext,
+    FocusPrevMessage,
+    FocusNextMessage,
+    FocusClear,
+    OpenFocusedDetail,
     ScrollCanvasUp,
     ScrollCanvasDown,
     CompactionAuto,
@@ -58,6 +62,16 @@ impl Keymap {
         bindings.insert("C-y".to_string(), Command::CopySelected);
         bindings.insert("PageUp".to_string(), Command::ScrollCanvasUp);
         bindings.insert("PageDown".to_string(), Command::ScrollCanvasDown);
+
+        // Canvas focus ring (Phase B.4). `[` / `]` step through focusable
+        // canvas messages; `x` opens the X-ray / detail overlay on the
+        // focused item. Enter on a focused tool/task card toggles
+        // expand — that happens inside Submit's handler so a focused
+        // card doesn't swallow the submit path when input is non-empty.
+        bindings.insert("[".to_string(), Command::FocusPrevMessage);
+        bindings.insert("]".to_string(), Command::FocusNextMessage);
+        bindings.insert("x".to_string(), Command::OpenFocusedDetail);
+
         // Advanced control-plane actions are intentionally unbound by default to avoid accidental
         // execution. Power users can bind them via ~/.rip/keybindings.json.
 
@@ -182,6 +196,16 @@ fn parse_command(raw: &str) -> Option<Command> {
         }
         "scrollcanvasdown" | "scroll_canvas_down" | "canvasdown" | "canvas_down" | "pagedown" => {
             Some(Command::ScrollCanvasDown)
+        }
+        "focusprev" | "focus_prev" | "focusprevmessage" | "focus_prev_message" => {
+            Some(Command::FocusPrevMessage)
+        }
+        "focusnext" | "focus_next" | "focusnextmessage" | "focus_next_message" => {
+            Some(Command::FocusNextMessage)
+        }
+        "focusclear" | "focus_clear" | "clearfocus" | "clear_focus" => Some(Command::FocusClear),
+        "openfocuseddetail" | "open_focused_detail" | "xray" | "x_ray" | "raw_focused" => {
+            Some(Command::OpenFocusedDetail)
         }
         "compactionauto" | "compaction_auto" | "compaction-auto" => Some(Command::CompactionAuto),
         "compactionautoschedule"

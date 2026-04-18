@@ -279,6 +279,11 @@ pub struct TuiState {
     /// `output_text` is still populated from agent deltas for parity with
     /// legacy tests; the renderer no longer reads it.
     pub canvas: CanvasModel,
+    /// Focus ring over canvas messages (Phase B.4). Drives the `▎` accent
+    /// rule on cards, `⏎`-expand on `ToolCard`/`TaskCard`, and the `x`
+    /// route into the per-item X-ray overlay. `None` means "focus is on
+    /// the input editor, nothing on the canvas is selected."
+    pub focused_message_id: Option<String>,
     pub output_truncated: bool,
     pub pending_prompt: Option<String>,
     pub awaiting_response: bool,
@@ -328,6 +333,7 @@ impl TuiState {
             preferred_openresponses_model: None,
             output_text: String::new(),
             canvas: CanvasModel::new(),
+            focused_message_id: None,
             output_truncated: false,
             pending_prompt: None,
             awaiting_response: false,
@@ -560,6 +566,7 @@ impl TuiState {
         self.last_event_ms = None;
         self.canvas.clear();
         self.output_text.clear();
+        self.focused_message_id = None;
     }
 
     /// Prepare TuiState for a new run on the existing conversation.
@@ -609,6 +616,73 @@ impl TuiState {
 
     pub fn scroll_canvas_down(&mut self, lines: u16) {
         self.canvas_scroll_from_bottom = self.canvas_scroll_from_bottom.saturating_sub(lines);
+    }
+
+    /// Move the canvas focus to the previous/next focusable message.
+    ///
+    /// The ring is restricted to items the user can *act on* — cards,
+    /// user/agent turns, error notices. Ambient job/context/compaction
+    /// notices are skipped so arrow-paging doesn't flood the ring with
+    /// non-interactive entries.
+    pub fn focus_prev_message(&mut self) {
+        self.step_focus(FocusStep::Prev);
+    }
+
+    pub fn focus_next_message(&mut self) {
+        self.step_focus(FocusStep::Next);
+    }
+
+    pub fn focused_message(&self) -> Option<&crate::canvas::CanvasMessage> {
+        let id = self.focused_message_id.as_deref()?;
+        self.canvas.messages.iter().find(|m| m.message_id() == id)
+    }
+
+    pub fn clear_focus(&mut self) {
+        self.focused_message_id = None;
+    }
+
+    /// `⏎` semantic on a focused tool/task card. Returns `true` when the
+    /// focused message is a card (and its `expanded` flag was flipped),
+    /// `false` otherwise — so the driver can fall back to "submit input"
+    /// when the focus isn't on an expandable item.
+    pub fn toggle_focused_card_expanded(&mut self) -> bool {
+        let Some(id) = self.focused_message_id.clone() else {
+            return false;
+        };
+        self.canvas.toggle_card_expanded(&id)
+    }
+
+    fn step_focus(&mut self, step: FocusStep) {
+        let focusable: Vec<&str> = self
+            .canvas
+            .messages
+            .iter()
+            .filter(|m| is_focusable(m))
+            .map(|m| m.message_id())
+            .collect();
+        if focusable.is_empty() {
+            self.focused_message_id = None;
+            return;
+        }
+
+        let current = self
+            .focused_message_id
+            .as_deref()
+            .and_then(|id| focusable.iter().position(|candidate| *candidate == id));
+
+        let next_idx = match (current, step) {
+            (None, FocusStep::Prev) => focusable.len() - 1,
+            (None, FocusStep::Next) => 0,
+            (Some(idx), FocusStep::Prev) => {
+                if idx == 0 {
+                    focusable.len() - 1
+                } else {
+                    idx - 1
+                }
+            }
+            (Some(idx), FocusStep::Next) => (idx + 1) % focusable.len(),
+        };
+        self.focused_message_id = Some(focusable[next_idx].to_string());
     }
 
     pub fn set_now_ms(&mut self, now_ms: u64) {
@@ -1053,6 +1127,25 @@ impl TuiState {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum FocusStep {
+    Prev,
+    Next,
+}
+
+fn is_focusable(message: &crate::canvas::CanvasMessage) -> bool {
+    use crate::canvas::CanvasMessage::*;
+    matches!(
+        message,
+        UserTurn { .. }
+            | AgentTurn { .. }
+            | ToolCard { .. }
+            | TaskCard { .. }
+            | SystemNotice { .. }
+            | ExtensionPanel { .. }
+    )
+}
+
 fn entry_matches(entry: &PaletteEntry, terms: &[String]) -> bool {
     let mut haystack = String::new();
     haystack.push_str(&entry.value);
@@ -1296,6 +1389,89 @@ mod tests {
             state.canvas.messages.last(),
             Some(CanvasMessage::UserTurn { .. })
         ));
+    }
+
+    #[test]
+    fn focus_ring_walks_focusable_messages_and_toggles_expand_on_cards() {
+        use crate::canvas::{Block, CachedText, CanvasMessage, ToolCardStatus};
+
+        let mut state = TuiState::new(100, 1024);
+        // Build an ambient canvas that resembles a mid-conversation state:
+        // user → agent → tool card → job notice (non-focusable) → system notice.
+        state.canvas.push_user_turn("user", "tui", "hello", 100);
+        state.canvas.messages.push(CanvasMessage::AgentTurn {
+            message_id: "a".into(),
+            run_session_id: "r".into(),
+            agent_id: None,
+            role: crate::canvas::AgentRole::Primary,
+            actor_id: "agent".into(),
+            model: None,
+            blocks: Vec::new(),
+            streaming: false,
+            started_at_ms: 0,
+            ended_at_ms: None,
+        });
+        state.canvas.messages.push(CanvasMessage::ToolCard {
+            message_id: "tc".into(),
+            tool_id: "t1".into(),
+            tool_name: "write".into(),
+            args_block: Block::Paragraph(CachedText::empty()),
+            status: ToolCardStatus::Running,
+            body: Vec::new(),
+            expanded: false,
+            artifact_ids: Vec::new(),
+            started_seq: 0,
+            started_at_ms: 0,
+        });
+        state.canvas.messages.push(CanvasMessage::JobNotice {
+            message_id: "jn".into(),
+            job_id: "j1".into(),
+            job_kind: "compaction".into(),
+            details: None,
+            status: crate::canvas::JobLifecycle::Running,
+            actor_id: "user".into(),
+            origin: "cli".into(),
+            started_at_ms: None,
+            ended_at_ms: None,
+        });
+        state.canvas.messages.push(CanvasMessage::SystemNotice {
+            message_id: "sn".into(),
+            level: crate::canvas::NoticeLevel::Warn,
+            text: "warn".into(),
+            origin_event_kind: "x".into(),
+            seq: 0,
+        });
+
+        // Forward walk skips JobNotice.
+        state.focus_next_message();
+        assert_eq!(state.focused_message_id.as_deref(), Some("m000000")); // UserTurn
+        state.focus_next_message();
+        assert_eq!(state.focused_message_id.as_deref(), Some("a")); // AgentTurn
+        state.focus_next_message();
+        assert_eq!(state.focused_message_id.as_deref(), Some("tc")); // ToolCard
+        state.focus_next_message();
+        assert_eq!(state.focused_message_id.as_deref(), Some("sn")); // SystemNotice (skipped JobNotice)
+        state.focus_next_message();
+        assert_eq!(state.focused_message_id.as_deref(), Some("m000000")); // wraps
+
+        // Expand toggles only on cards.
+        state.focused_message_id = Some("tc".into());
+        assert!(state.toggle_focused_card_expanded());
+        match &state.canvas.messages[2] {
+            CanvasMessage::ToolCard { expanded, .. } => assert!(expanded),
+            _ => unreachable!(),
+        }
+        state.focused_message_id = Some("a".into());
+        assert!(!state.toggle_focused_card_expanded());
+
+        // Backwards walk.
+        state.focused_message_id = Some("tc".into());
+        state.focus_prev_message();
+        assert_eq!(state.focused_message_id.as_deref(), Some("a"));
+
+        // Clearing drops focus outright.
+        state.clear_focus();
+        assert!(state.focused_message_id.is_none());
     }
 
     #[test]

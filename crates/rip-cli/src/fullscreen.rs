@@ -357,6 +357,18 @@ async fn run_fullscreen_tui_sse(
                     UiAction::OpenSelectedDetail => {
                         state.open_selected_detail();
                     }
+                    UiAction::OpenFocusedDetail => {
+                        // Phase B.4: `x` on a focused card routes into the
+                        // per-item detail overlay scoped to that card's
+                        // tool/task. Future Phase C.8 lands a proper X-ray
+                        // overlay that narrows to the card's frame range.
+                        if let Some(overlay) = focused_detail_overlay(&state) {
+                            state.set_overlay(overlay);
+                        }
+                    }
+                    UiAction::ExpandFocusedCard => {
+                        state.toggle_focused_card_expanded();
+                    }
                     UiAction::CompactionCutPoints => {
                         if ui_mode == SseUiMode::Interactive {
                             let client = client.clone();
@@ -908,6 +920,8 @@ enum UiAction {
     ToggleActivity,
     ToggleTasks,
     OpenSelectedDetail,
+    OpenFocusedDetail,
+    ExpandFocusedCard,
     CopySelected,
     CompactionAuto,
     CompactionAutoSchedule,
@@ -1063,7 +1077,14 @@ fn handle_key_event(
         return match cmd {
             KeyCommand::Quit => UiAction::Quit,
             KeyCommand::Submit => {
-                if session_running {
+                // `⏎` is contextual per the revamp plan (Part 9.1): if a
+                // tool/task card is focused and the input is empty, Enter
+                // toggles expand on that card. Otherwise: submit (when
+                // the editor is the focus) or open the detail overlay
+                // for the selected frame (when a run is active).
+                if input.trim().is_empty() && card_expand_target(state) {
+                    UiAction::ExpandFocusedCard
+                } else if session_running {
                     UiAction::OpenSelectedDetail
                 } else {
                     UiAction::Submit
@@ -1073,6 +1094,19 @@ fn handle_key_event(
             KeyCommand::TogglePalette => UiAction::TogglePalette,
             KeyCommand::ToggleActivity => UiAction::ToggleActivity,
             KeyCommand::ToggleTasks => UiAction::ToggleTasks,
+            KeyCommand::FocusPrevMessage => {
+                state.focus_prev_message();
+                UiAction::None
+            }
+            KeyCommand::FocusNextMessage => {
+                state.focus_next_message();
+                UiAction::None
+            }
+            KeyCommand::FocusClear => {
+                state.clear_focus();
+                UiAction::None
+            }
+            KeyCommand::OpenFocusedDetail => UiAction::OpenFocusedDetail,
             KeyCommand::ToggleDetailsMode => {
                 *mode = match mode {
                     RenderMode::Json => RenderMode::Decoded,
@@ -1146,6 +1180,36 @@ fn move_selected(state: &mut TuiState, delta: i64) {
         .max(state.frames.first_seq().unwrap_or(next))
         .min(state.frames.last_seq().unwrap_or(next));
     state.selected_seq = Some(clamped);
+}
+
+/// `⏎` on a focused card expands it — but only if there's something to
+/// expand onto. `true` when the focused message is a `ToolCard` or
+/// `TaskCard`; `false` when it's a plain turn / notice or when focus is
+/// empty (in which case submit falls through to its usual path).
+fn card_expand_target(state: &TuiState) -> bool {
+    use rip_tui::CanvasMessage;
+    matches!(
+        state.focused_message(),
+        Some(CanvasMessage::ToolCard { .. } | CanvasMessage::TaskCard { .. })
+    )
+}
+
+/// `x` on a focused canvas item opens the per-item detail overlay. For
+/// now this routes into the existing `ToolDetail` / `TaskDetail` overlays
+/// (scoped to that tool/task id); Phase C.8 replaces them with a proper
+/// `XrayOverlay` that takes a `(from_seq, to_seq)` window.
+fn focused_detail_overlay(state: &TuiState) -> Option<rip_tui::Overlay> {
+    use rip_tui::{CanvasMessage, Overlay};
+    match state.focused_message()? {
+        CanvasMessage::ToolCard { tool_id, .. } => Some(Overlay::ToolDetail {
+            tool_id: tool_id.clone(),
+        }),
+        CanvasMessage::TaskCard { task_id, .. } => Some(Overlay::TaskDetail {
+            task_id: task_id.clone(),
+        }),
+        CanvasMessage::SystemNotice { seq, .. } => Some(Overlay::ErrorDetail { seq: *seq }),
+        _ => None,
+    }
 }
 
 async fn next_sse_event(

@@ -58,6 +58,48 @@ impl CanvasModel {
         });
         id
     }
+
+    /// Toggle the `expanded` flag on a tool/task card. Returns true if the
+    /// target was a card (and was toggled). Non-cards are ignored so callers
+    /// can call this unconditionally from a focus handler.
+    pub fn toggle_card_expanded(&mut self, message_id: &str) -> bool {
+        for message in self.messages.iter_mut() {
+            if message.message_id() != message_id {
+                continue;
+            }
+            return match message {
+                CanvasMessage::ToolCard { expanded, .. }
+                | CanvasMessage::TaskCard { expanded, .. } => {
+                    *expanded = !*expanded;
+                    true
+                }
+                _ => false,
+            };
+        }
+        false
+    }
+
+    /// Seq range that backs a canvas message — used by X-ray and per-item
+    /// overlays to scope the timeline they show. `ToolCard`/`TaskCard` are
+    /// anchored on their spawn frame and extend to the tail; other messages
+    /// collapse to a single-seq range. Messages without a known anchor
+    /// return `None` so the caller can fall back to "whole stream".
+    pub fn seq_range_for(&self, message_id: &str) -> Option<(u64, u64)> {
+        for message in &self.messages {
+            if message.message_id() != message_id {
+                continue;
+            }
+            return match message {
+                CanvasMessage::ToolCard { started_seq, .. } => Some((*started_seq, u64::MAX)),
+                CanvasMessage::SystemNotice { seq, .. } => Some((*seq, *seq)),
+                CanvasMessage::CompactionCheckpoint {
+                    from_seq, to_seq, ..
+                } => Some((*from_seq, *to_seq)),
+                _ => None,
+            };
+        }
+        None
+    }
 }
 
 #[cfg(test)]
@@ -82,5 +124,67 @@ mod tests {
         // Cleared canvases start fresh at id 0 so snapshots don't carry
         // stale message-ids across turns.
         assert_eq!(canvas.next_message_id, 0);
+    }
+
+    #[test]
+    fn toggle_card_expanded_flips_tool_and_task_cards_and_ignores_others() {
+        let mut canvas = CanvasModel::new();
+        canvas.messages.push(CanvasMessage::ToolCard {
+            message_id: "mt".into(),
+            tool_id: "t1".into(),
+            tool_name: "write".into(),
+            args_block: Block::Paragraph(CachedText::empty()),
+            status: ToolCardStatus::Running,
+            body: Vec::new(),
+            expanded: false,
+            artifact_ids: Vec::new(),
+            started_seq: 0,
+            started_at_ms: 0,
+        });
+        assert!(canvas.toggle_card_expanded("mt"));
+        let expanded = match &canvas.messages[0] {
+            CanvasMessage::ToolCard { expanded, .. } => *expanded,
+            _ => unreachable!(),
+        };
+        assert!(expanded);
+
+        // Non-card messages short-circuit to false and stay untouched.
+        canvas.messages.push(CanvasMessage::SystemNotice {
+            message_id: "mn".into(),
+            level: NoticeLevel::Info,
+            text: "hi".into(),
+            origin_event_kind: "x".into(),
+            seq: 0,
+        });
+        assert!(!canvas.toggle_card_expanded("mn"));
+        // Unknown ids return false.
+        assert!(!canvas.toggle_card_expanded("missing"));
+    }
+
+    #[test]
+    fn seq_range_for_anchors_tool_cards_at_started_seq_and_collapses_notices() {
+        let mut canvas = CanvasModel::new();
+        canvas.messages.push(CanvasMessage::ToolCard {
+            message_id: "mt".into(),
+            tool_id: "t1".into(),
+            tool_name: "write".into(),
+            args_block: Block::Paragraph(CachedText::empty()),
+            status: ToolCardStatus::Running,
+            body: Vec::new(),
+            expanded: false,
+            artifact_ids: Vec::new(),
+            started_seq: 12,
+            started_at_ms: 0,
+        });
+        canvas.messages.push(CanvasMessage::SystemNotice {
+            message_id: "mn".into(),
+            level: NoticeLevel::Danger,
+            text: "bad".into(),
+            origin_event_kind: "provider_event".into(),
+            seq: 33,
+        });
+        assert_eq!(canvas.seq_range_for("mt"), Some((12, u64::MAX)));
+        assert_eq!(canvas.seq_range_for("mn"), Some((33, 33)));
+        assert_eq!(canvas.seq_range_for("missing"), None);
     }
 }

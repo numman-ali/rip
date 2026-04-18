@@ -7,10 +7,10 @@
 │◎  Got it. ┌Tool Detail: t1───────────────────────────────────────────────────────────────────────────────┐           │
 │           │tool: bash                                                                                    │           │
 │           │status: ended exit=0 (100ms)                                                                  │           │
-│⟡  bash · ✓│                                                                                              │           │
+│⟡  ╭─ bash │                                                                                              │           │
 │           │args:                                                                                         │           │
-│           │{                                                                                             │           │
-│           │  "command": "ls"                                                                             │           │
+│     1 arti│{                                                                                             │           │
+│   ╰───────│  "command": "ls"                                                                             │           │
 │           │}                                                                                             │           │
 │           │                                                                                              │           │
 │           │stdout (preview):                                                                             │           │

@@ -7,10 +7,10 @@
 │◎  Got it. I'll draft a 5-slide outline, then refine it.  │
 │                                                          │
 │                                                          │
-│⟡  bash · running                                         │
+│⟡  ╭─ bash ─────────────────────────────────── running ─╮ │
 │                                                          │
-│                                                          │
-│                                                          │
+│     ⏎ expand · x raw                                     │
+│   ╰────────────────────────────────────────────────────╯ │
 │                                                          │
 │                                                          │
 │chips: [⟳ bash]                                           │

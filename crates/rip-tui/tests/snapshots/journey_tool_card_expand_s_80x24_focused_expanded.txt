@@ -1,23 +1,23 @@
 ┌RIP───────────────────────────────────────────────────────────────────────────┐
-│ msg:sending... | view:canvas  session:-  seq:7  hdr:-  fb:-  evt:-  TTFT:-  E│
+│ view:canvas  session:s1  seq:4  hdr:-  fb:-  evt:-  TTFT:200ms  E2E:-  tools:│
 └──────────────────────────────────────────────────────────────────────────────┘
 ┌Canvas────────────────────────────────────────────────────────────────────────┐
-│›  start a long-running lint                                                  │
 │                                                                              │
-│◉  Kicked off clippy in the background.                                       │
+│⟡▎ ╭─ bash ─────────────────────────────────────────────────────── ✓ 100ms ─╮ │
+│     args                                                                     │
+│     {                                                                        │
+│       "command": "ls"                                                        │
+│     }                                                                        │
 │                                                                              │
-│⧉  ╭─ bash · clippy ────────────────────────────────────────────── running ─╮ │
+│     stdout                                                                   │
+│     README.md                                                                │
+│     slides.md                                                                │
 │                                                                              │
-│     ⏎ expand · x raw                                                         │
+│                                                                              │
+│     artifacts                                                                │
+│     ⧉ 01234567                                                               │
 │   ╰────────────────────────────────────────────────────────────────────────╯ │
-│                                                                              │
-│›  what should we plan next?                                                  │
-│                                                                              │
-│◉  Let's outline the deploy checklist.                                        │
-│                                                                              │
-│›  go ahead and deploy                                                        │
-│                                                                              │
-│chips: [◔ sending] [tasks:1/1]                                                │
+│chips: [✓ bash] [📄 1]                                                         │
 └──────────────────────────────────────────────────────────────────────────────┘
 ┌Input  Enter send  Ctrl-K palette  Wheel/Pg scroll  Ctrl-B activity  Ctrl-…───┐
 │>                                                                             │

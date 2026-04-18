@@ -259,14 +259,14 @@ mod tests {
         let mut state = TuiState::default();
         state.begin_pending_turn("hello\nsecond line");
         let theme = ThemeStyles::for_theme(ThemeId::DefaultDark);
-        let text = build_canvas_text(&state, &theme);
+        let text = build_canvas_text(&state, &theme, 80);
 
-        // UserTurn renders as a 3-column gutter (glyph in accent) + body.
-        // Second and subsequent body lines keep the body style but the
-        // gutter column is a plain spacer (default style).
+        // UserTurn renders as a 3-column gutter (glyph in accent + focus
+        // rule + spacer) followed by the body. Second and subsequent body
+        // lines keep the body style but the gutter columns are spacers.
         assert_eq!(text.lines[0].spans[0].style, theme.prompt_label);
-        assert_eq!(text.lines[0].spans[1].style, theme.prompt);
-        assert_eq!(text.lines[1].spans[1].style, theme.prompt);
+        assert_eq!(text.lines[0].spans[3].style, theme.prompt);
+        assert_eq!(text.lines[1].spans[3].style, theme.prompt);
     }
 
     #[test]
