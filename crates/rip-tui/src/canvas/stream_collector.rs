@@ -26,6 +26,10 @@
 //! - `finalize` flushes whatever's left in the tail as a final set of
 //!   blocks. Called on `SessionEnded`; at that point the stream
 //!   promises no more deltas, so the parser sees complete input.
+//! - **Theme invariance (B.8).** The blocks produced here contain no
+//!   theme-dependent styling (see `CachedText`'s docstring). A theme
+//!   swap is a pure repaint — no need to re-run `push`, no need to
+//!   blow cache.
 
 use super::markdown::parse_blocks;
 use super::model::Block;

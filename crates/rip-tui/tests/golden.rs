@@ -624,6 +624,40 @@ fn journey_markdown_rendering_s_80x24() {
 }
 
 #[test]
+fn journey_markdown_theme_swap_is_a_pure_repaint() {
+    // B.8: toggling the theme is a pure repaint. No cache
+    // invalidation, no re-parse — the markdown blocks are theme-
+    // agnostic (plain `Span::raw` content) and the renderer applies
+    // all color at paint time, including syntect highlighting for
+    // fences. This test locks in that invariant: two renders at the
+    // same theme match character-for-character; swap the theme and
+    // the SHAPE still matches (only the styling differs), and swap
+    // back and we bit-identical the first render.
+    let mut state = markdown_rendering_state();
+    let dark_first = render_to_string(120, 40, &state, RenderMode::Json);
+    let dark_second = render_to_string(120, 40, &state, RenderMode::Json);
+    assert_eq!(
+        dark_first, dark_second,
+        "same theme, same state → identical characters"
+    );
+
+    state.toggle_theme();
+    let light = render_to_string(120, 40, &state, RenderMode::Json);
+    // Character shape invariant: layout, wrapping, glyph positions
+    // don't move just because the theme changed. `render_to_string`
+    // strips style, so if this fails the block renderer is leaking
+    // theme state into CachedText.
+    assert_eq!(
+        dark_first, light,
+        "theme swap must not change character placement"
+    );
+
+    state.toggle_theme();
+    let dark_again = render_to_string(120, 40, &state, RenderMode::Json);
+    assert_eq!(dark_first, dark_again, "swap-and-back restores exact frame");
+}
+
+#[test]
 fn journey_markdown_rendering_m_120x40() {
     let state = markdown_rendering_state();
     let rendered = render_to_string(120, 40, &state, RenderMode::Json);

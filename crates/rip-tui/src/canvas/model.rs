@@ -13,8 +13,18 @@ use rip_kernel::ToolTaskExecutionMode;
 use serde_json::Value;
 
 /// Pre-rendered ratatui `Text` with a hash of its source for cache
-/// invalidation. Phase B.1 only uses [`CachedText::plain`]; B.6+ fill the
-/// same slot with markdown- and syntect-rendered output.
+/// invalidation.
+///
+/// **Theme invariant (B.8).** `CachedText` MUST NOT contain
+/// theme-dependent styling. The markdown parser stores only
+/// `Span::raw` content here; per-token colors (including syntect
+/// highlighting for `Block::CodeFence`) are applied at render time.
+/// This means toggling the theme (`TuiState::toggle_theme`) only
+/// needs the next frame to repaint — no cache invalidation, no
+/// re-parse, no block rewrite. Any future phase that wants to cache
+/// *styled* spans needs to either (a) re-cache on theme swap or
+/// (b) carry a theme tag in `source_hash` so stale cache is
+/// detectable.
 #[derive(Debug, Clone)]
 pub struct CachedText {
     pub text: Text<'static>,
