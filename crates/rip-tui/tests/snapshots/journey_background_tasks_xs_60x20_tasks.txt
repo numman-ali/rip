@@ -4,10 +4,10 @@
 ┌Tasks─────────────────────────────────────────────────────┐
 │running / completed / failed                              │
 │                                                          │
-│                                                          │
 │⟳ tests  (Running)                                        │
 │✗ rust tests  (Failed)                                    │
 │✓ lint  (Exited)                                          │
+│                                                          │
 │                                                          │
 │                                                          │
 │                                                          │

@@ -9,8 +9,8 @@
 │           │last_seq: 1                                                                                   │           │
 │           │idle_ms: 18900                                                                                │           │
 │           │                                                                                              │           │
-│           │                                                                                              │           │
 │           │Safe actions: cancel run, retry, or inspect last error.                                       │           │
+│           │                                                                                              │           │
 │           │                                                                                              │           │
 │           │                                                                                              │           │
 │           │                                                                                              │           │

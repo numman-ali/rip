@@ -7,9 +7,9 @@
 │       │title: tests                                                  │       │
 │       │status: Running                                               │       │
 │       │                                                              │       │
-│       │                                                              │       │
 │       │stdout (preview):                                             │       │
 │       │PASS src/app.test.ts                                          │       │
+│       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │

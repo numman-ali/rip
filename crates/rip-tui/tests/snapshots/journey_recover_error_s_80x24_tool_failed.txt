@@ -7,8 +7,8 @@
 │       │type: tool_failed                                             │       │
 │       │summary: "permission denied"                                  │       │
 │       │                                                              │       │
-│       │                                                              │       │
 │       │error: permission denied                                      │       │
+│       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │

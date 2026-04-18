@@ -8,22 +8,22 @@
 │           │tool: bash                                                                                    │           │
 │           │status: ended exit=0 (100ms)                                                                  │           │
 │           │                                                                                              │           │
-│           │                                                                                              │           │
 │           │args:                                                                                         │           │
 │           │{                                                                                             │           │
 │           │  "command": "ls"                                                                             │           │
 │           │}                                                                                             │           │
 │           │                                                                                              │           │
-│           │                                                                                              │           │
 │           │stdout (preview):                                                                             │           │
 │           │README.md                                                                                     │           │
 │           │slides.md                                                                                     │           │
 │           │                                                                                              │           │
-│           │                                                                                              │           │
 │           │artifacts: 1                                                                                  │           │
 │           │                                                                                              │           │
-│           │                                                                                              │           │
 │           │inspector_mode: decoded                                                                       │           │
+│           │                                                                                              │           │
+│           │                                                                                              │           │
+│           │                                                                                              │           │
+│           │                                                                                              │           │
 │           │                                                                                              │           │
 │           │                                                                                              │           │
 │           │                                                                                              │           │

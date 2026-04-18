@@ -4,8 +4,8 @@
 ┌Activity──────────────────────────────────────────────────────────────────────┐
 │tools / tasks / jobs / context / artifacts / errors                           │
 │                                                                              │
-│                                                                              │
 │⟳ tool bash                                                                   │
+│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │

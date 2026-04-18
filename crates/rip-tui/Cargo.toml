@@ -5,5 +5,5 @@ edition = "2021"
 
 [dependencies]
 rip-kernel = { path = "../rip-kernel" }
-ratatui = "0.29"
+ratatui = "0.30"
 serde_json = "1.0"

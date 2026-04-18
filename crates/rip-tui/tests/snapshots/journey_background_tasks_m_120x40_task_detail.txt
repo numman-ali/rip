@@ -11,12 +11,12 @@
 │           │exit: 101                                                                                     │           │
 │           │error: exit status 101                                                                        │           │
 │           │                                                                                              │           │
-│           │                                                                                              │           │
 │           │stderr (preview):                                                                             │           │
 │           │error: test failed                                                                            │           │
 │           │                                                                                              │           │
-│           │                                                                                              │           │
 │           │artifacts: 1                                                                                  │           │
+│           │                                                                                              │           │
+│           │                                                                                              │           │
 │           │                                                                                              │           │
 │           │                                                                                              │           │
 │           │                                                                                              │           │
