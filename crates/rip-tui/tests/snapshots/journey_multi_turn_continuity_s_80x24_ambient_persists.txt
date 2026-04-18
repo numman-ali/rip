@@ -1,0 +1,24 @@
+┌RIP───────────────────────────────────────────────────────────────────────────┐
+│ msg:sending... | view:canvas  session:-  seq:7  hdr:-  fb:-  evt:-  TTFT:-  E│
+└──────────────────────────────────────────────────────────────────────────────┘
+┌Canvas────────────────────────────────────────────────────────────────────────┐
+│›  start a long-running lint                                                  │
+│                                                                              │
+│◉  Kicked off clippy in the background.                                       │
+│                                                                              │
+│⧉  clippy · running                                                           │
+│                                                                              │
+│›  what should we plan next?                                                  │
+│                                                                              │
+│◉  Let's outline the deploy checklist.                                        │
+│                                                                              │
+│›  go ahead and deploy                                                        │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│chips: [◔ sending] [tasks:1/1]                                                │
+└──────────────────────────────────────────────────────────────────────────────┘
+┌Input  Enter send  Ctrl-K palette  Wheel/Pg scroll  Ctrl-B activity  Ctrl-…───┐
+│>                                                                             │
+└──────────────────────────────────────────────────────────────────────────────┘

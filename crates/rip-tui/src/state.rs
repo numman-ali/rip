@@ -519,7 +519,17 @@ impl TuiState {
         self.status_message = None;
     }
 
-    pub fn reset_session_state(&mut self) {
+    /// Reset the UI to a fresh conversation — clears *everything*, ambient
+    /// state included. Callers should not reach for this on every submit;
+    /// `begin_pending_turn` used to, which meant a task spawned on turn 1
+    /// vanished from the Activity strip by turn 3. The revamp plan
+    /// (Part 4.3) makes continuity the default: ambient state persists
+    /// across turns, only per-run timings reset.
+    ///
+    /// Today this is intentionally only reachable via tests and explicit
+    /// operator resets (Phase C wires a "Reset conversation" palette
+    /// command in that will call it).
+    pub fn reset_conversation_state(&mut self) {
         self.frames.clear();
         self.selected_seq = None;
         self.auto_follow = true;
@@ -548,10 +558,31 @@ impl TuiState {
         self.context = None;
         self.last_error_seq = None;
         self.last_event_ms = None;
-        // B.1: keep the structured canvas aligned with the string canvas;
-        // B.3 removes this call from `begin_pending_turn` so ambient state
-        // (tools / tasks / jobs / canvas / frames) persists across turns.
         self.canvas.clear();
+        self.output_text.clear();
+    }
+
+    /// Prepare TuiState for a new run on the existing conversation.
+    /// Per-run fields reset (timings, session id, pending prompt); ambient
+    /// state (tools / tasks / jobs / context / canvas / frames) persists.
+    fn begin_new_run(&mut self) {
+        self.session_id = None;
+        self.start_ms = None;
+        self.first_output_ms = None;
+        self.end_ms = None;
+        self.openresponses_request_started_ms = None;
+        self.openresponses_response_headers_ms = None;
+        self.openresponses_response_first_byte_ms = None;
+        self.openresponses_first_provider_event_ms = None;
+        self.openresponses_endpoint = None;
+        self.openresponses_model = None;
+        self.output_truncated = false;
+        self.pending_prompt = None;
+        self.awaiting_response = false;
+        self.status_message = None;
+        self.selected_seq = None;
+        self.canvas_scroll_from_bottom = 0;
+        self.last_error_seq = None;
     }
 
     pub fn begin_pending_turn(&mut self, input: &str) {
@@ -560,7 +591,10 @@ impl TuiState {
             return;
         }
 
-        self.reset_session_state();
+        // Ambient state (canvas, tools, tasks, jobs, artifacts, context,
+        // frames) persists across turns so "one chat forever" is real;
+        // only per-run fields reset.
+        self.begin_new_run();
         let submitted_at_ms = self.now_ms.unwrap_or(0);
         self.canvas
             .push_user_turn("user", "tui", prompt, submitted_at_ms);
@@ -1243,25 +1277,25 @@ mod tests {
 
         state.begin_pending_turn("next step");
 
+        // Per-run fields reset.
         assert_eq!(state.session_id, None);
-        assert_eq!(state.continuity_id.as_deref(), Some("thread-1"));
         assert_eq!(state.selected_seq, None);
         assert_eq!(state.last_error_seq, None);
         assert_eq!(state.canvas_scroll_from_bottom, 0);
-        assert!(state.tools.is_empty());
+        assert_eq!(state.continuity_id.as_deref(), Some("thread-1"));
         assert!(state.awaiting_response);
         assert_eq!(state.pending_prompt.as_deref(), Some("next step"));
         assert_eq!(state.status_message.as_deref(), Some("sending..."));
-        // The canvas is reset during B.2 (B.3 removes that so ambient state
-        // persists across turns); the just-submitted prompt is the sole
-        // message left on the canvas.
-        assert_eq!(state.canvas.messages.len(), 1);
-        match &state.canvas.messages[0] {
-            CanvasMessage::UserTurn { blocks, .. } => {
-                assert!(!blocks.is_empty());
-            }
-            other => panic!("expected UserTurn, got {other:?}"),
-        }
+        // Ambient state persists across turns (Plan Part 4.3): a tool from
+        // a previous turn must still be on the TuiState when the next
+        // `begin_pending_turn` runs. Canvas messages accumulate — the
+        // pre-existing canvas is untouched and a fresh UserTurn is
+        // appended to the tail.
+        assert!(state.tools.contains_key("tool-1"));
+        assert!(matches!(
+            state.canvas.messages.last(),
+            Some(CanvasMessage::UserTurn { .. })
+        ));
     }
 
     #[test]

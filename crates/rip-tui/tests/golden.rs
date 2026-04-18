@@ -459,3 +459,120 @@ fn journey_recover_error_m_120x40_stalled() {
     let rendered = render_to_string(120, 40, &state, RenderMode::Json);
     assert_snapshot("journey_recover_error_m_120x40_stalled.txt", rendered);
 }
+
+/// Build a TuiState after three conversational turns on the same thread.
+/// Turn 1 spawns a background task (`tsk_a`) that is still running at the
+/// start of turn 3. This exercises B.3's contract: ambient state
+/// (frames, tools, tasks, jobs, context, canvas) persists across turns.
+fn multi_turn_continuity_state() -> TuiState {
+    let mut state = TuiState::new(10_000, 1_000_000);
+    state.set_continuity_id("thread-1");
+
+    // --- Turn 1 ---
+    state.begin_pending_turn("start a long-running lint");
+    state.update(event(
+        0,
+        1000,
+        EventKind::SessionStarted {
+            input: "start a long-running lint".to_string(),
+        },
+    ));
+    state.update(event(
+        1,
+        1050,
+        EventKind::ToolTaskSpawned {
+            task_id: "tsk_a".to_string(),
+            tool_name: "bash".to_string(),
+            args: serde_json::json!({"command": "cargo clippy --all-targets"}),
+            cwd: Some("/repo".to_string()),
+            title: Some("clippy".to_string()),
+            execution_mode: rip_kernel::ToolTaskExecutionMode::Pipes,
+            origin_session_id: Some("s1".to_string()),
+            artifacts: None,
+        },
+    ));
+    state.update(event(
+        2,
+        1080,
+        EventKind::ToolTaskStatus {
+            task_id: "tsk_a".to_string(),
+            status: rip_kernel::ToolTaskStatus::Running,
+            exit_code: None,
+            started_at_ms: Some(1080),
+            ended_at_ms: None,
+            artifacts: None,
+            error: None,
+        },
+    ));
+    state.update(event(
+        3,
+        1100,
+        EventKind::OutputTextDelta {
+            delta: "Kicked off clippy in the background.".to_string(),
+        },
+    ));
+    state.update(event(
+        4,
+        1200,
+        EventKind::SessionEnded {
+            reason: "completed".to_string(),
+        },
+    ));
+
+    // --- Turn 2 ---
+    state.begin_pending_turn("what should we plan next?");
+    state.update(event(
+        5,
+        2000,
+        EventKind::SessionStarted {
+            input: "what should we plan next?".to_string(),
+        },
+    ));
+    state.update(event(
+        6,
+        2080,
+        EventKind::OutputTextDelta {
+            delta: "Let's outline the deploy checklist.".to_string(),
+        },
+    ));
+    state.update(event(
+        7,
+        2150,
+        EventKind::SessionEnded {
+            reason: "completed".to_string(),
+        },
+    ));
+
+    // --- Turn 3 (just submitted; still pending) ---
+    state.begin_pending_turn("go ahead and deploy");
+
+    state
+}
+
+#[test]
+fn journey_multi_turn_continuity_s_80x24_ambient_persists() {
+    let state = multi_turn_continuity_state();
+
+    // Programmatic invariant: the task spawned in turn 1 is still on
+    // TuiState at the start of turn 3.
+    assert!(
+        state.tasks.contains_key("tsk_a"),
+        "ambient task from turn 1 missing at turn 3"
+    );
+    assert!(
+        state
+            .canvas
+            .messages
+            .iter()
+            .filter(|m| matches!(m, rip_tui::CanvasMessage::UserTurn { .. }))
+            .count()
+            >= 3,
+        "canvas should retain all three user turns"
+    );
+
+    let rendered = render_to_string(80, 24, &state, RenderMode::Json);
+    assert_snapshot(
+        "journey_multi_turn_continuity_s_80x24_ambient_persists.txt",
+        rendered,
+    );
+}
