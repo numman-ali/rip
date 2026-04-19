@@ -421,6 +421,22 @@ fn journey_keylight_typing_s_80x24() {
 }
 
 #[test]
+fn journey_multiline_input_s_80x24() {
+    // C.4: editor grows to accommodate newlines and the activity strip
+    // yields vertical space to the input block once the editor exceeds
+    // one row.
+    let state = basic_state();
+    let rendered = render_to_string_with_input(
+        80,
+        24,
+        &state,
+        RenderMode::Json,
+        "line one\nline two\nline three",
+    );
+    assert_snapshot("journey_multiline_input_s_80x24.txt", rendered);
+}
+
+#[test]
 fn journey_follow_a_run_s_80x24_activity() {
     let mut state = follow_run_state_mid_tool();
     state.set_overlay(Overlay::Activity);

@@ -18,7 +18,7 @@
 
 
 
-
-
-▎ › Continue the thread
-   ? help   ⌘K command   ⌘M model   ⌘G go to
+▎ › line one
+▎   line two
+▎   line three
+   ⏎ send   ⇧⏎ newline   ⌘K palette

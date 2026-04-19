@@ -20,5 +20,5 @@
         └──────────────────────────────────────────────────────────────┘
 
 ▲ error @seq 2
-▎ ›
+▎ › Retry, or press r for recovery
    ⎋ close   ↑↓ scroll   x raw

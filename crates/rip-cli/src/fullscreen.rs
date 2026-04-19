@@ -7,7 +7,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crossterm::event::{
     DisableMouseCapture, EnableMouseCapture, Event as TermEvent, EventStream, KeyCode, KeyEvent,
-    MouseEvent, MouseEventKind,
+    KeyModifiers, MouseEvent, MouseEventKind,
 };
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
@@ -1158,11 +1158,59 @@ fn handle_key_event(
             input.pop();
             UiAction::None
         }
+        // Alt-Enter / Shift-Enter inserts a newline (Part 7: "multi-line
+        // with ⇧⏎ newline"). Alt- is more reliable across terminals than
+        // Shift-Enter, which many terminals don't distinguish from Enter;
+        // accepting both is harmless and matches the keylight's advertised
+        // `⇧⏎ newline` affordance.
+        KeyCode::Enter
+            if key
+                .modifiers
+                .intersects(KeyModifiers::ALT | KeyModifiers::SHIFT) =>
+        {
+            input.push('\n');
+            UiAction::None
+        }
+        KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            // Emacs BOL — with a plain String buffer we don't track
+            // cursor position, so this is a no-op for now. Left as a
+            // stub so the keybinding exists and a future
+            // ratatui-textarea swap can wire it up without another
+            // touch through this match arm.
+            UiAction::None
+        }
+        KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            // Emacs EOL — see `C-a` above.
+            UiAction::None
+        }
+        KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            // Emacs kill-bol → clear the whole buffer (no cursor model).
+            input.clear();
+            UiAction::None
+        }
+        KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            // Emacs kill-word (backwards).
+            kill_word_backward(input);
+            UiAction::None
+        }
         KeyCode::Char(ch) => {
             input.push(ch);
             UiAction::None
         }
         _ => UiAction::None,
+    }
+}
+
+/// Remove the last whitespace-delimited word (and any trailing
+/// whitespace) from `input`. Mirrors the Emacs `C-w` convention.
+fn kill_word_backward(input: &mut String) {
+    // Strip trailing whitespace first so repeated `C-w` keeps removing
+    // words instead of just whitespace.
+    while input.ends_with(|c: char| c.is_whitespace()) {
+        input.pop();
+    }
+    while input.ends_with(|c: char| !c.is_whitespace()) {
+        input.pop();
     }
 }
 
@@ -1665,6 +1713,81 @@ mod tests {
         );
         assert_eq!(action, UiAction::None);
         assert_eq!(input, "");
+    }
+
+    #[test]
+    fn handle_key_event_alt_enter_inserts_newline() {
+        // C.4 multi-line input: ⌥⏎ / ⇧⏎ sends a `\n` instead of
+        // submitting the turn.
+        let keymap = Keymap::default();
+        let mut state = seed_state();
+        let mut mode = RenderMode::Json;
+        let mut input = "first".to_string();
+
+        let action = handle_key_event(
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(action, UiAction::None);
+        assert_eq!(input, "first\n");
+
+        let action = handle_key_event(
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(action, UiAction::None);
+        assert_eq!(input, "first\n\n");
+    }
+
+    #[test]
+    fn handle_key_event_emacs_kill_bindings_trim_the_buffer() {
+        let keymap = Keymap::default();
+        let mut state = seed_state();
+        let mut mode = RenderMode::Json;
+        let mut input = "hello world ".to_string();
+
+        // C-w kills the trailing word + any trailing whitespace.
+        handle_key_event(
+            KeyEvent::new(KeyCode::Char('w'), KeyModifiers::CONTROL),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(input, "hello ");
+
+        // C-u clears the whole buffer.
+        handle_key_event(
+            KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(input, "");
+    }
+
+    #[test]
+    fn kill_word_backward_handles_whitespace_and_words() {
+        let mut buf = "  foo".to_string();
+        kill_word_backward(&mut buf);
+        assert_eq!(buf, "  ");
+        let mut buf = "foo bar  ".to_string();
+        kill_word_backward(&mut buf);
+        assert_eq!(buf, "foo ");
+        let mut buf = String::new();
+        kill_word_backward(&mut buf);
+        assert_eq!(buf, "");
     }
 
     #[test]

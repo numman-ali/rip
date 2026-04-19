@@ -16,5 +16,5 @@
 │                                                          │
 │                                                          │
 └──────────────────────────────────────────────────────────┘
-▎ ›
+▎ › Retry, or press r for recovery
    ⎋ close   ↑↓ scroll   x raw

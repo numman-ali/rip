@@ -37,20 +37,42 @@ pub(super) fn render_canvas_screen(
     theme: &ThemeStyles,
     input: &str,
 ) {
+    // Input block grows with multi-line input (C.4). `input_block_rows`
+    // reserves enough vertical space for the editor + keylight: always
+    // 1 keylight + [1..6] editor rows, capped by the buffer's newlines.
+    // The activity strip hides when the editor exceeds 2 rows so we
+    // never triple-squeeze the canvas.
+    let editor_rows = editor_rows_needed(input, frame.area().height);
+    let keylight_row = 1u16;
+    let input_block = editor_rows + keylight_row;
+    let show_activity = editor_rows <= 1;
+    let activity_row = if show_activity { 1u16 } else { 0u16 };
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1),
             Constraint::Min(1),
-            Constraint::Length(1),
-            Constraint::Length(2),
+            Constraint::Length(activity_row),
+            Constraint::Length(input_block),
         ])
         .split(frame.area());
 
     render_status_bar(frame, state, theme, chunks[0]);
     render_canvas_body(frame, state, theme, chunks[1]);
-    render_footer_strip(frame, state, theme, chunks[2]);
+    if show_activity {
+        render_footer_strip(frame, state, theme, chunks[2]);
+    }
     render_input(frame, state, theme, chunks[3], input);
+}
+
+fn editor_rows_needed(input: &str, available: u16) -> u16 {
+    let newlines = input.chars().filter(|c| *c == '\n').count() as u16 + 1;
+    let cap = 6u16;
+    let keylight = 1u16;
+    // Keep at least 3 rows for the canvas so we never zero it out.
+    let max_input_block = available.saturating_sub(3 + keylight);
+    newlines.min(cap).min(max_input_block.max(1))
 }
 
 pub(super) fn render_canvas_body(

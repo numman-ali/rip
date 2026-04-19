@@ -16,5 +16,5 @@
       │                                              │
       └──────────────────────────────────────────────┘
 ▲ error @seq 1
-▎ ›
+▎ › Retry, or press r for recovery
    ⎋ close   ↑↓ scroll   x raw

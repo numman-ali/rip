@@ -37,29 +37,110 @@ pub(super) fn render_input(
         return;
     }
 
+    // Editor grows with the number of `\n`s in the buffer, bounded by
+    // the 6-row cap from Part 7 of the plan. The area we're given
+    // already reserves one row for the keylight, so we split
+    // `area.height - 1` between the editor and the keylight; everything
+    // above the cap keeps scrolling internally via Paragraph wrap.
+    let editor_rows = editor_rows_for(input, area.height).max(1);
+    let keylight_rows = area.height.saturating_sub(editor_rows).min(1);
+    let editor_rows = area.height - keylight_rows;
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Length(1)])
+        .constraints([
+            Constraint::Length(editor_rows),
+            Constraint::Length(keylight_rows),
+        ])
         .split(area);
 
-    render_editor_row(frame, theme, chunks[0], input);
-    if chunks.len() > 1 {
+    render_editor_row(frame, state, theme, chunks[0], input);
+    if keylight_rows > 0 {
         render_keylight_row(frame, state, theme, chunks[1], input);
     }
 }
 
-fn render_editor_row(frame: &mut Frame<'_>, theme: &ThemeStyles, area: Rect, input: &str) {
+/// How many rows the editor needs: 1 + number of `\n`s in the input,
+/// clamped to the available area minus the keylight (1 row) and to
+/// the revamp's 6-row cap. Empty input always gets 1 row so the
+/// prompt glyph is visible.
+fn editor_rows_for(input: &str, available: u16) -> u16 {
+    let newlines = input.chars().filter(|c| *c == '\n').count() as u16 + 1;
+    let cap = 6u16; // Part 7: editor grows up to 6 rows
+    let keylight_reserve = 1u16;
+    newlines
+        .min(cap)
+        .min(available.saturating_sub(keylight_reserve))
+}
+
+fn render_editor_row(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    theme: &ThemeStyles,
+    area: Rect,
+    input: &str,
+) {
     if area.width == 0 || area.height == 0 {
         return;
     }
-    // `▎` in col 0 (focused accent), space in col 1, then the editor.
-    let gutter = Span::styled("▎".to_string(), theme.header);
-    let prompt = Span::styled("› ".to_string(), theme.header);
+
+    // Placeholder picks a context-aware string when the buffer is
+    // empty: fresh canvas → "Ask anything", mid-thread → "Continue the
+    // thread", post-error → "Retry, or r for recovery". This matches
+    // the plan's Part 7 input contract. The placeholder is dimmed so
+    // it visibly differs from real input.
+    let show_placeholder = input.is_empty();
+    let body_text = if show_placeholder {
+        placeholder_for(state).to_string()
+    } else {
+        input.to_string()
+    };
+    let body_style = if show_placeholder {
+        theme.quiet
+    } else {
+        theme.chrome
+    };
+
     let body_width = area.width.saturating_sub(3) as usize;
-    let text = truncate(input, body_width);
-    let body = Span::styled(text, theme.chrome);
-    let line = Line::from(vec![gutter, Span::raw(" "), prompt, body]);
-    frame.render_widget(Paragraph::new(line).style(Style::default()), area);
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    for (row_idx, segment) in body_text.split('\n').enumerate() {
+        let gutter = if row_idx == 0 {
+            vec![
+                Span::styled("▎".to_string(), theme.header),
+                Span::raw(" "),
+                Span::styled("› ".to_string(), theme.header),
+            ]
+        } else {
+            vec![
+                Span::styled("▎".to_string(), theme.header),
+                Span::raw("   "),
+            ]
+        };
+        let trimmed = truncate(segment, body_width);
+        let mut spans = gutter;
+        spans.push(Span::styled(trimmed, body_style));
+        lines.push(Line::from(spans));
+        if lines.len() as u16 >= area.height {
+            break;
+        }
+    }
+    frame.render_widget(Paragraph::new(lines).style(Style::default()), area);
+}
+
+fn placeholder_for(state: &TuiState) -> &'static str {
+    if state.has_error() {
+        return "Retry, or press r for recovery";
+    }
+    if state.is_stalled(5_000) {
+        return "Run is quiet. ⎋ cancel, r retry";
+    }
+    if state.awaiting_response {
+        return "Thinking… ⎋ to cancel";
+    }
+    if state.canvas.messages.is_empty() {
+        return "Ask anything";
+    }
+    "Continue the thread"
 }
 
 fn render_keylight_row(

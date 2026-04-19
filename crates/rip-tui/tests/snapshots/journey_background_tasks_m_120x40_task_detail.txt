@@ -36,5 +36,5 @@
 
 
 ▲ error @seq 5  ·  ⧉ tests
-▎ ›
+▎ › Retry, or press r for recovery
    ⎋ close   ↑↓ scroll   x raw

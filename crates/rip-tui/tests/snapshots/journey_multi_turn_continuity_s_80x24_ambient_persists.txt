@@ -20,5 +20,5 @@ thread-1 · rip · -                                          thinking  sending.
 
 
 ⧉ clippy
-▎ ›
+▎ › Thinking… ⎋ to cancel
    ⎋ stop   ⌘[ prev msg
