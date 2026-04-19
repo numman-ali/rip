@@ -1,0 +1,30 @@
+- · rip · -                                                                                               idle  ttft 200
+›  hi
+                                               ┌Palette · Models──────────────────────────────────────────────────────┐
+◉  hello                                       │ Models                                                               │
+                                               │                                                                      │
+⟡  ╭─ bash ────────────────────────────────────│┌Filter──────────────────────────────────────────────────────────────┐│
+                                               ││> type to filter                                                    ││
+     ⏎ expand · x raw                          │└────────────────────────────────────────────────────────────────────┘│
+   ╰───────────────────────────────────────────│› openai/gpt-5-nano  OpenAI · gpt-5 nano  [current]                   │
+                                               │  openai/gpt-5-pro  OpenAI · gpt-5 pro  [variants:2]                  │
+                                               │  openrouter/openai/gpt-oss-20b  OpenRouter · gpt-oss 20b  [catalog]  │
+                                               │                                                                      │
+                                               │                                                                      │
+                                               │                                                                      │
+                                               │                                                                      │
+                                               │                                                                      │
+                                               │                                                                      │
+                                               │                                                                      │
+                                               │                                                                      │
+                                               │                                                                      │
+                                               │                                                                      │
+                                               │                                                                      │
+                                               │Enter apply  Esc close  Type to filter                                │
+                                               │Ctrl-K reopens model switching for future palette modes               │
+                                               └──────────────────────────────────────────────────────────────────────┘
+
+
+
+▎ › Continue the thread
+   ↑↓ select   ⏎ apply   ⇥ mode   ⎋ close

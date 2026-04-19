@@ -505,6 +505,72 @@ fn journey_palette_go_to_m_120x30() {
 }
 
 #[test]
+fn journey_palette_models_m_120x30() {
+    // C.5: Models palette — anchored to the hero model chip (TopRight).
+    // Fixture mirrors the driver's ModelPaletteCatalog shape: one route per
+    // provider with the current route chipped, plus a typed-route custom
+    // prompt so the "Use typed route" affordance renders.
+    use rip_tui::palette::modes::models::{ModelRoute, ModelsMode};
+    use rip_tui::{PaletteMode, PaletteOrigin, PaletteSource};
+    let mut provider_endpoints = std::collections::BTreeMap::new();
+    provider_endpoints.insert(
+        "openai".to_string(),
+        "https://api.openai.com/v1/responses".to_string(),
+    );
+    provider_endpoints.insert(
+        "openrouter".to_string(),
+        "https://openrouter.ai/api/v1/responses".to_string(),
+    );
+    let routes = vec![
+        ModelRoute {
+            route: "openai/gpt-5-nano".to_string(),
+            provider_id: "openai".to_string(),
+            model_id: "gpt-5-nano".to_string(),
+            endpoint: "https://api.openai.com/v1/responses".to_string(),
+            label: Some("OpenAI · gpt-5 nano".to_string()),
+            variants: 0,
+            sources: vec!["config".to_string()],
+        },
+        ModelRoute {
+            route: "openai/gpt-5-pro".to_string(),
+            provider_id: "openai".to_string(),
+            model_id: "gpt-5-pro".to_string(),
+            endpoint: "https://api.openai.com/v1/responses".to_string(),
+            label: Some("OpenAI · gpt-5 pro".to_string()),
+            variants: 2,
+            sources: vec!["config".to_string()],
+        },
+        ModelRoute {
+            route: "openrouter/openai/gpt-oss-20b".to_string(),
+            provider_id: "openrouter".to_string(),
+            model_id: "openai/gpt-oss-20b".to_string(),
+            endpoint: "https://openrouter.ai/api/v1/responses".to_string(),
+            label: Some("OpenRouter · gpt-oss 20b".to_string()),
+            variants: 0,
+            sources: vec!["catalog".to_string()],
+        },
+    ];
+    let mode = ModelsMode::new(
+        routes,
+        provider_endpoints,
+        Some("openai/gpt-5-nano".to_string()),
+        Some("https://api.openai.com/v1/responses".to_string()),
+        Some("gpt-5-nano".to_string()),
+    );
+    let mut state = basic_state();
+    state.open_palette(
+        PaletteMode::Model,
+        PaletteOrigin::TopRight,
+        mode.entries(),
+        mode.empty_state().to_string(),
+        mode.allow_custom().is_some(),
+        mode.allow_custom().unwrap_or("").to_string(),
+    );
+    let rendered = render_to_string(120, 30, &state, RenderMode::Json);
+    assert_snapshot("journey_palette_models_m_120x30.txt", rendered);
+}
+
+#[test]
 fn journey_keylight_typing_s_80x24() {
     // Non-empty input → keylight should foreground send / newline / palette
     // instead of the idle help row. Locks in the state-driven keylight from C.3.
