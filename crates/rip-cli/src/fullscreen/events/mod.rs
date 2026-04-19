@@ -190,3 +190,6 @@ pub(super) fn last_user_prompt(state: &TuiState) -> Option<String> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests;

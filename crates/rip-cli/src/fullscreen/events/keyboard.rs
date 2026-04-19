@@ -240,3 +240,6 @@ pub(in crate::fullscreen) fn handle_key_event(
     let _ = input.input(Input::from(key));
     UiAction::None
 }
+
+#[cfg(test)]
+mod tests;

@@ -45,6 +45,7 @@ mod tests {
     use super::*;
     use crate::ThemeId;
     use ratatui::backend::TestBackend;
+    use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;
     use ratatui::Terminal;
     use rip_kernel::{
@@ -76,6 +77,29 @@ mod tests {
         terminal
             .draw(|f| render(f, state, mode, &input))
             .expect("draw");
+    }
+
+    fn buffer_to_string(buffer: &Buffer) -> String {
+        let mut out = String::new();
+        for y in 0..buffer.area.height {
+            let mut line = String::new();
+            for x in 0..buffer.area.width {
+                let symbol = buffer.cell((x, y)).map(|cell| cell.symbol()).unwrap_or(" ");
+                line.push_str(symbol);
+            }
+            out.push_str(line.trim_end());
+            out.push('\n');
+        }
+        out
+    }
+
+    fn render_to_string(state: &TuiState, mode: RenderMode, width: u16, height: u16) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
+        let input = TextArea::default();
+        terminal
+            .draw(|f| render(f, state, mode, &input))
+            .expect("draw");
+        buffer_to_string(terminal.backend().buffer())
     }
 
     #[test]
@@ -403,5 +427,73 @@ mod tests {
 
         state.set_overlay(Overlay::ErrorDetail { seq: 999 });
         render_once(&state, RenderMode::Json, 120);
+    }
+
+    #[test]
+    fn overlay_renderers_expose_palette_tool_and_task_details() {
+        let mut state = seed_overlay_state();
+
+        state.set_overlay(Overlay::Palette(crate::PaletteState::new(
+            crate::PaletteMode::Model,
+            crate::PaletteOrigin::TopCenter,
+            vec![
+                crate::PaletteEntry {
+                    value: "openrouter/openai/gpt-oss-20b".to_string(),
+                    title: "openrouter/openai/gpt-oss-20b".to_string(),
+                    subtitle: Some("OpenRouter".to_string()),
+                    chips: vec!["current".to_string(), "128k".to_string()],
+                },
+                crate::PaletteEntry {
+                    value: "openai/gpt-5-nano".to_string(),
+                    title: "openai/gpt-5-nano".to_string(),
+                    subtitle: None,
+                    chips: vec![],
+                },
+            ],
+            "No models".to_string(),
+            true,
+            "Use typed route".to_string(),
+        )));
+        let palette = render_to_string(&state, RenderMode::Json, 120, 30);
+        assert!(palette.contains("Palette · Model"), "{palette}");
+        assert!(palette.contains("Filter"), "{palette}");
+        assert!(
+            palette.contains("openrouter/openai/gpt-oss-20b"),
+            "{palette}"
+        );
+        assert!(palette.contains("OpenRouter"), "{palette}");
+        assert!(palette.contains("[current] [128k]"), "{palette}");
+
+        state.set_overlay(Overlay::ToolDetail {
+            tool_id: "tool-1".to_string(),
+        });
+        let tool = render_to_string(&state, RenderMode::Json, 120, 30);
+        assert!(tool.contains("Tool Detail: tool-1"), "{tool}");
+        assert!(tool.contains("tool: write"), "{tool}");
+        assert!(tool.contains("stdout (preview):"), "{tool}");
+        assert!(tool.contains("stderr (preview):"), "{tool}");
+        assert!(tool.contains("inspector_mode: json"), "{tool}");
+
+        state.set_overlay(Overlay::TaskDetail {
+            task_id: "task-1".to_string(),
+        });
+        let task = render_to_string(&state, RenderMode::Decoded, 120, 30);
+        assert!(task.contains("Task Detail: task-1"), "{task}");
+        assert!(task.contains("tool: shell"), "{task}");
+        assert!(task.contains("title: pwd"), "{task}");
+        assert!(task.contains("pty (preview):"), "{task}");
+        assert!(task.contains("artifacts: 1"), "{task}");
+
+        state.set_overlay(Overlay::ToolDetail {
+            tool_id: "missing".to_string(),
+        });
+        let missing_tool = render_to_string(&state, RenderMode::Json, 120, 20);
+        assert!(missing_tool.contains("<unknown tool>"), "{missing_tool}");
+
+        state.set_overlay(Overlay::TaskDetail {
+            task_id: "missing".to_string(),
+        });
+        let missing_task = render_to_string(&state, RenderMode::Json, 120, 20);
+        assert!(missing_task.contains("<unknown task>"), "{missing_task}");
     }
 }

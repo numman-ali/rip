@@ -1,6 +1,19 @@
 use super::*;
+use crate::CompactionCheckpointCumulativeV1Request;
 use rip_provider_openresponses::ToolChoiceParam;
 use tempfile::tempdir;
+
+fn continuity_store_for_session(
+    dir: &tempfile::TempDir,
+) -> (Arc<EventLog>, ContinuityStore, PathBuf) {
+    let data_dir = dir.path().join("data");
+    let workspace_root = dir.path().join("workspace");
+    std::fs::create_dir_all(&workspace_root).expect("workspace");
+    let event_log = Arc::new(EventLog::new(data_dir.join("events.jsonl")).expect("log"));
+    let store =
+        ContinuityStore::new(data_dir.clone(), workspace_root, event_log.clone()).expect("store");
+    (event_log, store, data_dir)
+}
 
 fn make_event(kind: EventKind) -> Event {
     Event {
@@ -65,6 +78,289 @@ fn parse_action_invalid_json_defaults_to_prompt() {
         InputAction::Prompt => {}
         _ => panic!("expected prompt"),
     }
+}
+
+#[test]
+fn compile_context_bundle_for_run_uses_recent_messages_when_no_checkpoint_exists() {
+    let dir = tempdir().expect("tmp");
+    let (event_log, store, _data_dir) = continuity_store_for_session(&dir);
+    let snapshot_dir = dir.path().join("snapshots");
+    std::fs::create_dir_all(&snapshot_dir).expect("snapshots");
+
+    let continuity_id = store.ensure_default().expect("ensure");
+    let _m1 = store
+        .append_message(
+            &continuity_id,
+            "user".to_string(),
+            "cli".to_string(),
+            "hello".to_string(),
+        )
+        .expect("append");
+    let m2 = store
+        .append_message(
+            &continuity_id,
+            "assistant".to_string(),
+            "cli".to_string(),
+            "world".to_string(),
+        )
+        .expect("append");
+
+    let outcome = context_compile::compile_context_bundle_for_run(
+        &store,
+        &event_log,
+        &snapshot_dir,
+        &ContinuityRunLink {
+            continuity_id: continuity_id.clone(),
+            message_id: m2,
+            actor_id: "alice".to_string(),
+            origin: "cli".to_string(),
+        },
+        "run-1",
+    )
+    .expect("compile");
+
+    assert_eq!(outcome.decision.compiler_strategy, "recent_messages_v1");
+    assert!(outcome.decision.compaction_checkpoint.is_none());
+    assert_eq!(
+        outcome
+            .decision
+            .reason
+            .as_ref()
+            .and_then(|reason| reason.get("cause"))
+            .and_then(|value| value.as_str()),
+        Some("no_compaction_checkpoint")
+    );
+    assert_eq!(outcome.compiled.items.len(), 2);
+    let values = outcome
+        .compiled
+        .items
+        .iter()
+        .map(|item| item.value().clone())
+        .collect::<Vec<_>>();
+    assert!(values
+        .iter()
+        .all(|value| { value.get("type").and_then(|field| field.as_str()) == Some("message") }));
+    assert!(values.iter().any(|value| {
+        value
+            .get("content")
+            .and_then(|field| field.as_str())
+            .unwrap_or("")
+            .contains("hello")
+    }));
+    assert!(outcome
+        .compiled
+        .items
+        .iter()
+        .all(|item| item.errors().is_empty()));
+}
+
+#[test]
+fn compile_context_bundle_for_run_uses_summary_and_hierarchy_strategies() {
+    let dir = tempdir().expect("tmp");
+    let (event_log, store, _data_dir) = continuity_store_for_session(&dir);
+    let snapshot_dir = dir.path().join("snapshots");
+    std::fs::create_dir_all(&snapshot_dir).expect("snapshots");
+
+    let continuity_id = store.ensure_default().expect("ensure");
+    let m1 = store
+        .append_message(
+            &continuity_id,
+            "user".to_string(),
+            "cli".to_string(),
+            "m1".to_string(),
+        )
+        .expect("append");
+    let m2 = store
+        .append_message(
+            &continuity_id,
+            "assistant".to_string(),
+            "cli".to_string(),
+            "m2".to_string(),
+        )
+        .expect("append");
+    let _m3 = store
+        .append_message(
+            &continuity_id,
+            "user".to_string(),
+            "cli".to_string(),
+            "m3".to_string(),
+        )
+        .expect("append");
+    let m4 = store
+        .append_message(
+            &continuity_id,
+            "assistant".to_string(),
+            "cli".to_string(),
+            "m4".to_string(),
+        )
+        .expect("append");
+
+    let (_checkpoint_1, summary_1, to_seq_1, _to_message_1, _cut_rule_1) = store
+        .compaction_checkpoint_cumulative_v1(
+            &continuity_id,
+            CompactionCheckpointCumulativeV1Request {
+                summary_markdown: Some("summary one".to_string()),
+                summary_artifact_id: None,
+                to_message_id: Some(m1.clone()),
+                to_seq: None,
+                stride_messages: None,
+                actor_id: "alice".to_string(),
+                origin: "cli".to_string(),
+            },
+        )
+        .expect("checkpoint one");
+
+    let summary_outcome = context_compile::compile_context_bundle_for_run(
+        &store,
+        &event_log,
+        &snapshot_dir,
+        &ContinuityRunLink {
+            continuity_id: continuity_id.clone(),
+            message_id: m4.clone(),
+            actor_id: "alice".to_string(),
+            origin: "cli".to_string(),
+        },
+        "run-summary",
+    )
+    .expect("compile summaries");
+
+    assert_eq!(
+        summary_outcome.decision.compiler_strategy,
+        "summaries_recent_messages_v1"
+    );
+    assert_eq!(
+        summary_outcome
+            .decision
+            .compaction_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.to_seq),
+        Some(to_seq_1)
+    );
+    let summary_values = summary_outcome
+        .compiled
+        .items
+        .iter()
+        .map(|item| item.value().clone())
+        .collect::<Vec<_>>();
+    assert!(summary_values.iter().any(|value| {
+        value.get("role").and_then(|field| field.as_str()) == Some("system")
+            && value
+                .get("content")
+                .and_then(|field| field.as_str())
+                .unwrap_or("")
+                .contains("Compaction summary (earlier context)")
+    }));
+    assert!(summary_values.iter().any(|value| {
+        value
+            .get("content")
+            .and_then(|field| field.as_str())
+            .unwrap_or("")
+            .contains("summary one")
+    }));
+
+    let (_checkpoint_2, summary_2, to_seq_2, _to_message_2, _cut_rule_2) = store
+        .compaction_checkpoint_cumulative_v1(
+            &continuity_id,
+            CompactionCheckpointCumulativeV1Request {
+                summary_markdown: Some("summary two".to_string()),
+                summary_artifact_id: None,
+                to_message_id: Some(m2),
+                to_seq: None,
+                stride_messages: None,
+                actor_id: "alice".to_string(),
+                origin: "cli".to_string(),
+            },
+        )
+        .expect("checkpoint two");
+
+    let hierarchical_outcome = context_compile::compile_context_bundle_for_run(
+        &store,
+        &event_log,
+        &snapshot_dir,
+        &ContinuityRunLink {
+            continuity_id,
+            message_id: m4,
+            actor_id: "alice".to_string(),
+            origin: "cli".to_string(),
+        },
+        "run-hierarchical",
+    )
+    .expect("compile hierarchy");
+
+    assert_eq!(
+        hierarchical_outcome.decision.compiler_strategy,
+        "hierarchical_summaries_recent_messages_v1"
+    );
+    assert_eq!(
+        hierarchical_outcome.decision.compaction_checkpoints.len(),
+        2
+    );
+    assert_eq!(
+        hierarchical_outcome
+            .decision
+            .reason
+            .as_ref()
+            .and_then(|reason| reason.get("cause"))
+            .and_then(|value| value.as_str()),
+        Some("compaction_checkpoint_hierarchy")
+    );
+    assert_eq!(
+        hierarchical_outcome
+            .decision
+            .reason
+            .as_ref()
+            .and_then(|reason| reason.get("levels"))
+            .and_then(|value| value.as_u64()),
+        Some(2)
+    );
+    let hierarchical_values = hierarchical_outcome
+        .compiled
+        .items
+        .iter()
+        .map(|item| item.value().clone())
+        .collect::<Vec<_>>();
+    assert!(
+        hierarchical_values
+            .iter()
+            .filter(|value| {
+                value.get("role").and_then(|field| field.as_str()) == Some("system")
+            })
+            .count()
+            >= 2
+    );
+    assert!(hierarchical_values.iter().any(|value| {
+        value
+            .get("content")
+            .and_then(|field| field.as_str())
+            .unwrap_or("")
+            .contains(&summary_1)
+            || value
+                .get("content")
+                .and_then(|field| field.as_str())
+                .unwrap_or("")
+                .contains("summary one")
+    }));
+    assert!(hierarchical_values.iter().any(|value| {
+        value
+            .get("content")
+            .and_then(|field| field.as_str())
+            .unwrap_or("")
+            .contains(&summary_2)
+            || value
+                .get("content")
+                .and_then(|field| field.as_str())
+                .unwrap_or("")
+                .contains("summary two")
+    }));
+    assert_eq!(
+        hierarchical_outcome
+            .decision
+            .compaction_checkpoints
+            .iter()
+            .map(|checkpoint| checkpoint.to_seq)
+            .collect::<Vec<_>>(),
+        vec![to_seq_1, to_seq_2]
+    );
 }
 
 #[test]
@@ -1221,4 +1517,120 @@ async fn run_session_with_tool_invocation_emits_events() {
     assert!(guard
         .iter()
         .any(|event| matches!(event.kind, EventKind::ToolEnded { .. })));
+}
+
+#[tokio::test]
+async fn run_session_with_prompt_and_no_provider_uses_runtime_loop() {
+    let dir = tempdir().expect("tmp");
+    let data_dir = dir.path().join("data");
+    let workspace_dir = dir.path().join("workspace");
+    std::fs::create_dir_all(&workspace_dir).expect("workspace");
+    let event_log = Arc::new(EventLog::new(data_dir.join("events.jsonl")).expect("log"));
+    let continuities = Arc::new(
+        ContinuityStore::new(data_dir, workspace_dir, event_log.clone()).expect("continuities"),
+    );
+    let snapshot_dir = Arc::new(dir.path().join("snapshots"));
+    let runtime = Arc::new(Runtime::new());
+
+    let registry = Arc::new(rip_tools::ToolRegistry::default());
+    let tool_runner = Arc::new(ToolRunner::new(registry, 1));
+    let workspace_lock = Arc::new(crate::workspace_lock::WorkspaceLock::new());
+
+    let (sender, _) = broadcast::channel(8);
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let ctx = SessionContext {
+        runtime,
+        tool_runner,
+        workspace_lock,
+        http_client: reqwest::Client::new(),
+        openresponses: None,
+        sender,
+        events: events.clone(),
+        event_log,
+        snapshot_dir,
+        continuities,
+        continuity_run: None,
+        server_session_id: "s1".to_string(),
+        input: "hello".to_string(),
+    };
+
+    run_session(ctx).await;
+    let guard = events.lock().await;
+    assert!(guard
+        .iter()
+        .any(|event| matches!(event.kind, EventKind::SessionStarted { .. })));
+    assert!(guard
+        .iter()
+        .any(|event| matches!(event.kind, EventKind::OutputTextDelta { .. })));
+    assert!(guard.iter().any(|event| matches!(
+        &event.kind,
+        EventKind::SessionEnded { reason } if reason == "completed"
+    )));
+}
+
+#[tokio::test]
+async fn run_session_ends_when_context_compile_fails_before_provider_loop() {
+    let dir = tempdir().expect("tmp");
+    let data_dir = dir.path().join("data");
+    let workspace_dir = dir.path().join("workspace");
+    std::fs::create_dir_all(&workspace_dir).expect("workspace");
+    let event_log = Arc::new(EventLog::new(data_dir.join("events.jsonl")).expect("log"));
+    let continuities = Arc::new(
+        ContinuityStore::new(data_dir, workspace_dir, event_log.clone()).expect("continuities"),
+    );
+    let continuity_id = continuities.ensure_default().expect("ensure");
+    let snapshot_dir = Arc::new(dir.path().join("snapshots"));
+    let runtime = Arc::new(Runtime::new());
+
+    let registry = Arc::new(rip_tools::ToolRegistry::default());
+    let tool_runner = Arc::new(ToolRunner::new(registry, 1));
+    let workspace_lock = Arc::new(crate::workspace_lock::WorkspaceLock::new());
+
+    let (sender, _) = broadcast::channel(8);
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let ctx = SessionContext {
+        runtime,
+        tool_runner,
+        workspace_lock,
+        http_client: reqwest::Client::new(),
+        openresponses: Some(OpenResponsesConfig {
+            endpoint: "http://127.0.0.1:9/v1/responses".to_string(),
+            api_key: None,
+            model: Some("fixture-model".to_string()),
+            headers: Vec::new(),
+            tool_choice: ToolChoiceParam::auto(),
+            followup_user_message: None,
+            stateless_history: false,
+            parallel_tool_calls: false,
+        }),
+        sender,
+        events: events.clone(),
+        event_log,
+        snapshot_dir,
+        continuities,
+        continuity_run: Some(ContinuityRunLink {
+            continuity_id,
+            message_id: "missing-message".to_string(),
+            actor_id: "alice".to_string(),
+            origin: "cli".to_string(),
+        }),
+        server_session_id: "s1".to_string(),
+        input: "hello".to_string(),
+    };
+
+    run_session(ctx).await;
+    let guard = events.lock().await;
+    assert!(guard
+        .iter()
+        .any(|event| matches!(event.kind, EventKind::SessionStarted { .. })));
+    assert!(guard.iter().any(|event| matches!(
+        &event.kind,
+        EventKind::SessionEnded { reason } if reason == "context_compile_failed"
+    )));
+    assert!(
+        !guard
+            .iter()
+            .any(|event| matches!(event.kind, EventKind::ProviderEvent { .. })),
+        "provider loop should not start when context compilation fails"
+    );
 }

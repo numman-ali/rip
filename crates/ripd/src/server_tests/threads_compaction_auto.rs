@@ -88,6 +88,67 @@ async fn thread_compaction_auto_dry_run_emits_no_job_frames() {
 }
 
 #[tokio::test]
+async fn thread_compaction_auto_invalid_stride_is_400() {
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app(&dir);
+    let thread_id = ensure_thread_id(&app).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/threads/{thread_id}/compaction-auto"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({
+                        "stride_messages": 0,
+                        "max_new_checkpoints": 1,
+                        "dry_run": true,
+                        "actor_id": "alice",
+                        "origin": "cli",
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn thread_compaction_auto_unknown_thread_is_404() {
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app(&dir);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/threads/nope/compaction-auto")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({
+                        "stride_messages": 1,
+                        "max_new_checkpoints": 1,
+                        "dry_run": true,
+                        "actor_id": "alice",
+                        "origin": "cli",
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn thread_compaction_auto_spawns_job_and_emits_checkpoint_and_job_ended() {
     let dir = tempdir().expect("tmp");
     let app = build_test_app(&dir);
@@ -197,6 +258,71 @@ async fn thread_compaction_auto_spawns_job_and_emits_checkpoint_and_job_ended() 
         "expected continuity_compaction_checkpoint_created for to_message_id={m2}"
     );
     assert!(saw_job_ended, "expected continuity_job_ended");
+}
+
+#[tokio::test]
+async fn thread_compaction_auto_schedule_invalid_stride_is_400() {
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app(&dir);
+    let thread_id = ensure_thread_id(&app).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/threads/{thread_id}/compaction-auto-schedule"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({
+                        "stride_messages": 0,
+                        "max_new_checkpoints": 1,
+                        "block_on_inflight": true,
+                        "execute": true,
+                        "dry_run": true,
+                        "actor_id": "alice",
+                        "origin": "cli",
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn thread_compaction_auto_schedule_unknown_thread_is_404() {
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app(&dir);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/threads/nope/compaction-auto-schedule")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({
+                        "stride_messages": 1,
+                        "max_new_checkpoints": 1,
+                        "block_on_inflight": true,
+                        "execute": true,
+                        "dry_run": true,
+                        "actor_id": "alice",
+                        "origin": "cli",
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

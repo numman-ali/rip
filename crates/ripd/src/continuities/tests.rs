@@ -123,6 +123,106 @@ fn provider_cursor_status_survives_sidecar_rotation() {
 }
 
 #[test]
+fn provider_cursor_rotate_defaults_filters_and_reports_miss() {
+    let dir = tempdir().expect("tmp");
+    let (_event_log, store, _data_dir) = store_for(&dir);
+
+    let thread_id = store.ensure_default().expect("ensure");
+    for model in ["model-a", "model-b"] {
+        store
+            .append_provider_cursor_updated(
+                &thread_id,
+                ProviderCursorUpdatedPayload {
+                    provider: "openresponses".to_string(),
+                    endpoint: Some("http://example.test/v1/responses".to_string()),
+                    model: Some(model.to_string()),
+                    cursor: Some(serde_json::json!({
+                        "previous_response_id": format!("resp-{model}")
+                    })),
+                    action: "set".to_string(),
+                    reason: Some("seed".to_string()),
+                    run_session_id: Some(format!("session-{model}")),
+                    actor_id: "alice".to_string(),
+                    origin: "test".to_string(),
+                },
+            )
+            .expect("append cursor");
+    }
+
+    let rotated = store
+        .provider_cursor_rotate_v1(
+            &thread_id,
+            ProviderCursorRotateV1Request {
+                provider: Some("openresponses".to_string()),
+                endpoint: Some("http://example.test/v1/responses".to_string()),
+                model: Some("model-b".to_string()),
+                reason: Some("manual".to_string()),
+                actor_id: "   ".to_string(),
+                origin: "".to_string(),
+            },
+        )
+        .expect("rotate filtered");
+    assert!(rotated.rotated);
+    assert_eq!(rotated.model.as_deref(), Some("model-b"));
+
+    let status = store
+        .provider_cursor_status_v1(&thread_id, ProviderCursorStatusV1Request {})
+        .expect("status");
+    let active = status.active.expect("active");
+    assert_eq!(active.action, "rotated");
+    assert_eq!(active.model.as_deref(), Some("model-b"));
+    assert_eq!(active.reason.as_deref(), Some("manual"));
+    assert_eq!(active.actor_id, "user");
+    assert_eq!(active.origin, "unknown");
+    assert!(status
+        .cursors
+        .iter()
+        .any(|cursor| cursor.model.as_deref() == Some("model-a")));
+
+    let missed = store
+        .provider_cursor_rotate_v1(
+            &thread_id,
+            ProviderCursorRotateV1Request {
+                provider: Some("missing".to_string()),
+                endpoint: None,
+                model: None,
+                reason: Some("manual".to_string()),
+                actor_id: "alice".to_string(),
+                origin: "test".to_string(),
+            },
+        )
+        .expect("rotate miss");
+    assert!(!missed.rotated);
+    assert!(missed.cursor_event_id.is_none());
+}
+
+#[test]
+fn provider_cursor_status_and_rotate_reject_unknown_threads() {
+    let dir = tempdir().expect("tmp");
+    let (_event_log, store, _data_dir) = store_for(&dir);
+
+    let status_err = store
+        .provider_cursor_status_v1("missing-thread", ProviderCursorStatusV1Request {})
+        .expect_err("missing status");
+    assert_eq!(status_err, "not_found");
+
+    let rotate_err = store
+        .provider_cursor_rotate_v1(
+            "missing-thread",
+            ProviderCursorRotateV1Request {
+                provider: None,
+                endpoint: None,
+                model: None,
+                reason: None,
+                actor_id: "alice".to_string(),
+                origin: "test".to_string(),
+            },
+        )
+        .expect_err("missing rotate");
+    assert_eq!(rotate_err, "not_found");
+}
+
+#[test]
 fn context_selection_status_survives_sidecar_rotation_and_orders_latest_first() {
     let dir = tempdir().expect("tmp");
     let (_event_log, store, data_dir) = store_for(&dir);
@@ -635,6 +735,94 @@ fn compaction_checkpoint_cumulative_v1_writes_artifact_and_appends_frame() {
 }
 
 #[test]
+fn compaction_checkpoint_cumulative_v1_supports_to_seq_and_stride_targets() {
+    let dir = tempdir().expect("tmp");
+    let (_event_log, store, _data_dir) = store_for(&dir);
+
+    let continuity_id = store.ensure_default().expect("ensure");
+    let _m1 = store
+        .append_message(
+            &continuity_id,
+            "user".to_string(),
+            "cli".to_string(),
+            "m1".to_string(),
+        )
+        .expect("append");
+    let m2 = store
+        .append_message(
+            &continuity_id,
+            "user".to_string(),
+            "cli".to_string(),
+            "m2".to_string(),
+        )
+        .expect("append");
+    let _m3 = store
+        .append_message(
+            &continuity_id,
+            "user".to_string(),
+            "cli".to_string(),
+            "m3".to_string(),
+        )
+        .expect("append");
+    let m4 = store
+        .append_message(
+            &continuity_id,
+            "user".to_string(),
+            "cli".to_string(),
+            "m4".to_string(),
+        )
+        .expect("append");
+
+    let (_checkpoint_id_1, summary_artifact_id_1, to_seq_1, to_message_id_1, cut_rule_id_1) = store
+        .compaction_checkpoint_cumulative_v1(
+            &continuity_id,
+            CompactionCheckpointCumulativeV1Request {
+                summary_markdown: Some("summary one".to_string()),
+                summary_artifact_id: None,
+                to_message_id: None,
+                to_seq: Some(2),
+                stride_messages: None,
+                actor_id: "user".to_string(),
+                origin: "cli".to_string(),
+            },
+        )
+        .expect("checkpoint by seq");
+    assert_eq!(to_seq_1, 2);
+    assert_eq!(to_message_id_1, m2);
+    assert_eq!(cut_rule_id_1, "manual_v1");
+
+    let (_checkpoint_id_2, summary_artifact_id_2, to_seq_2, to_message_id_2, cut_rule_id_2) = store
+        .compaction_checkpoint_cumulative_v1(
+            &continuity_id,
+            CompactionCheckpointCumulativeV1Request {
+                summary_markdown: Some("summary two".to_string()),
+                summary_artifact_id: None,
+                to_message_id: None,
+                to_seq: None,
+                stride_messages: Some(4),
+                actor_id: "user".to_string(),
+                origin: "cli".to_string(),
+            },
+        )
+        .expect("checkpoint by stride");
+    assert_eq!(to_seq_2, 4);
+    assert_eq!(to_message_id_2, m4);
+    assert_eq!(cut_rule_id_2, "stride_messages_v1/4");
+
+    let summary = read_compaction_summary_v1(store.workspace_root(), &summary_artifact_id_2)
+        .expect("read second summary");
+    let summary_json = serde_json::to_value(&summary).expect("summary json");
+    assert_eq!(summary.coverage_to_seq(), to_seq_2);
+    assert_eq!(
+        summary_json
+            .get("basis")
+            .and_then(|basis| basis.get("base_summary_artifact_id"))
+            .and_then(|value| value.as_str()),
+        Some(summary_artifact_id_1.as_str())
+    );
+}
+
+#[test]
 fn latest_compaction_checkpoint_for_compile_tie_breaks_by_stream_order() {
     let dir = tempdir().expect("tmp");
     let (_event_log, store, _data_dir) = store_for(&dir);
@@ -903,6 +1091,618 @@ fn compaction_status_v1_reports_next_cut_point_and_latest_checkpoint() {
             .as_ref()
             .and_then(|c| c.to_message_id.as_deref()),
         Some(m2.as_str())
+    );
+}
+
+#[test]
+fn compaction_cut_points_v1_rejects_invalid_stride_and_handles_missing_or_under_stride_threads() {
+    let dir = tempdir().expect("tmp");
+    let (_event_log, store, _data_dir) = store_for(&dir);
+
+    let continuity_id = store.ensure_default().expect("ensure");
+    let err = store
+        .compaction_cut_points_v1(
+            &continuity_id,
+            CompactionCutPointsV1Request {
+                stride_messages: Some(0),
+                limit: None,
+            },
+        )
+        .expect_err("zero stride should fail");
+    assert_eq!(err, "invalid_stride");
+
+    let err = store
+        .compaction_cut_points_v1(
+            "missing",
+            CompactionCutPointsV1Request {
+                stride_messages: Some(1),
+                limit: None,
+            },
+        )
+        .expect_err("missing thread should fail");
+    assert_eq!(err, "thread_not_found");
+
+    store
+        .append_message(
+            &continuity_id,
+            "user".to_string(),
+            "cli".to_string(),
+            "m1".to_string(),
+        )
+        .expect("append");
+    let response = store
+        .compaction_cut_points_v1(
+            &continuity_id,
+            CompactionCutPointsV1Request {
+                stride_messages: Some(2),
+                limit: Some(99),
+            },
+        )
+        .expect("under-stride cut points");
+    assert_eq!(response.thread_id, continuity_id);
+    assert_eq!(response.stride_messages, 2);
+    assert_eq!(response.message_count, 1);
+    assert_eq!(response.cut_rule_id, "stride_messages_v1/2");
+    assert!(response.cut_points.is_empty());
+}
+
+#[test]
+fn compaction_checkpoint_cumulative_v1_rejects_invalid_requests_and_bad_artifacts() {
+    let dir = tempdir().expect("tmp");
+    let (_event_log, store, _data_dir) = store_for(&dir);
+
+    let continuity_id = store.ensure_default().expect("ensure");
+    let m1 = store
+        .append_message(
+            &continuity_id,
+            "user".to_string(),
+            "cli".to_string(),
+            "m1".to_string(),
+        )
+        .expect("append");
+
+    let err = store
+        .compaction_checkpoint_cumulative_v1(
+            &continuity_id,
+            CompactionCheckpointCumulativeV1Request {
+                summary_markdown: None,
+                summary_artifact_id: None,
+                to_message_id: Some(m1.clone()),
+                to_seq: None,
+                stride_messages: None,
+                actor_id: "user".to_string(),
+                origin: "cli".to_string(),
+            },
+        )
+        .expect_err("missing summary should fail");
+    assert!(err.contains("requires summary_markdown and/or summary_artifact_id"));
+
+    let err = store
+        .compaction_checkpoint_cumulative_v1(
+            &continuity_id,
+            CompactionCheckpointCumulativeV1Request {
+                summary_markdown: Some("summary".to_string()),
+                summary_artifact_id: None,
+                to_message_id: Some(m1.clone()),
+                to_seq: Some(1),
+                stride_messages: None,
+                actor_id: "user".to_string(),
+                origin: "cli".to_string(),
+            },
+        )
+        .expect_err("ambiguous target should fail");
+    assert!(err.contains("only one of to_message_id or to_seq"));
+
+    let err = store
+        .compaction_checkpoint_cumulative_v1(
+            &continuity_id,
+            CompactionCheckpointCumulativeV1Request {
+                summary_markdown: Some("summary".to_string()),
+                summary_artifact_id: None,
+                to_message_id: Some("missing".to_string()),
+                to_seq: None,
+                stride_messages: None,
+                actor_id: "user".to_string(),
+                origin: "cli".to_string(),
+            },
+        )
+        .expect_err("missing message should fail");
+    assert!(err.contains("to_message_id not found"));
+
+    store
+        .append_run_spawned(
+            &continuity_id,
+            &m1,
+            "session-1",
+            "user".to_string(),
+            "cli".to_string(),
+        )
+        .expect("run spawned");
+    let err = store
+        .compaction_checkpoint_cumulative_v1(
+            &continuity_id,
+            CompactionCheckpointCumulativeV1Request {
+                summary_markdown: Some("summary".to_string()),
+                summary_artifact_id: None,
+                to_message_id: None,
+                to_seq: Some(2),
+                stride_messages: None,
+                actor_id: "user".to_string(),
+                origin: "cli".to_string(),
+            },
+        )
+        .expect_err("non-message seq should fail");
+    assert!(err.contains("to_seq must be a message boundary"));
+
+    let err = store
+        .compaction_checkpoint_cumulative_v1(
+            &continuity_id,
+            CompactionCheckpointCumulativeV1Request {
+                summary_markdown: Some("summary".to_string()),
+                summary_artifact_id: None,
+                to_message_id: None,
+                to_seq: None,
+                stride_messages: Some(0),
+                actor_id: "user".to_string(),
+                origin: "cli".to_string(),
+            },
+        )
+        .expect_err("zero stride should fail");
+    assert!(err.contains("stride_messages must be > 0"));
+
+    let empty_dir = tempdir().expect("tmp");
+    let (_empty_event_log, empty_store, _empty_data_dir) = store_for(&empty_dir);
+    let empty_continuity = empty_store.ensure_default().expect("ensure");
+    let err = empty_store
+        .compaction_checkpoint_cumulative_v1(
+            &empty_continuity,
+            CompactionCheckpointCumulativeV1Request {
+                summary_markdown: Some("summary".to_string()),
+                summary_artifact_id: None,
+                to_message_id: None,
+                to_seq: None,
+                stride_messages: Some(1),
+                actor_id: "user".to_string(),
+                origin: "cli".to_string(),
+            },
+        )
+        .expect_err("empty thread should fail");
+    assert!(err.contains("at least one message"));
+
+    let wrong_thread_summary = CompactionSummaryV1::new_cumulative_source_cut(
+        crate::compaction_summary::NewCumulativeCompactionSummaryV1 {
+            thread_id: "different-thread".to_string(),
+            to_seq: 1,
+            to_message_id: Some(m1.clone()),
+            actor_id: "user".to_string(),
+            origin: "cli".to_string(),
+            produced_by: None,
+            base_summary_artifact_id: None,
+            basis_note: None,
+            summary_markdown: "summary".to_string(),
+        },
+    );
+    let wrong_thread_artifact =
+        write_compaction_summary_v1(store.workspace_root(), &wrong_thread_summary)
+            .expect("write summary");
+    let err = store
+        .compaction_checkpoint_cumulative_v1(
+            &continuity_id,
+            CompactionCheckpointCumulativeV1Request {
+                summary_markdown: None,
+                summary_artifact_id: Some(wrong_thread_artifact),
+                to_message_id: Some(m1.clone()),
+                to_seq: None,
+                stride_messages: None,
+                actor_id: "user".to_string(),
+                origin: "cli".to_string(),
+            },
+        )
+        .expect_err("thread mismatch should fail");
+    assert!(err.contains("thread_id mismatch"));
+
+    let wrong_seq_summary = CompactionSummaryV1::new_cumulative_source_cut(
+        crate::compaction_summary::NewCumulativeCompactionSummaryV1 {
+            thread_id: continuity_id.clone(),
+            to_seq: 99,
+            to_message_id: Some(m1.clone()),
+            actor_id: "user".to_string(),
+            origin: "cli".to_string(),
+            produced_by: None,
+            base_summary_artifact_id: None,
+            basis_note: None,
+            summary_markdown: "summary".to_string(),
+        },
+    );
+    let wrong_seq_artifact =
+        write_compaction_summary_v1(store.workspace_root(), &wrong_seq_summary)
+            .expect("write summary");
+    let err = store
+        .compaction_checkpoint_cumulative_v1(
+            &continuity_id,
+            CompactionCheckpointCumulativeV1Request {
+                summary_markdown: None,
+                summary_artifact_id: Some(wrong_seq_artifact),
+                to_message_id: Some(m1.clone()),
+                to_seq: None,
+                stride_messages: None,
+                actor_id: "user".to_string(),
+                origin: "cli".to_string(),
+            },
+        )
+        .expect_err("to_seq mismatch should fail");
+    assert!(err.contains("to_seq mismatch"));
+}
+
+#[test]
+fn compaction_checkpoint_cumulative_v1_rejects_missing_threads_small_strides_and_wrong_kind() {
+    let dir = tempdir().expect("tmp");
+    let (_event_log, store, _data_dir) = store_for(&dir);
+
+    let err = store
+        .compaction_checkpoint_cumulative_v1(
+            "missing",
+            CompactionCheckpointCumulativeV1Request {
+                summary_markdown: Some("summary".to_string()),
+                summary_artifact_id: None,
+                to_message_id: None,
+                to_seq: None,
+                stride_messages: Some(1),
+                actor_id: "user".to_string(),
+                origin: "cli".to_string(),
+            },
+        )
+        .expect_err("missing thread should fail");
+    assert!(err.contains("continuity stream does not exist"));
+
+    let continuity_id = store.ensure_default().expect("ensure");
+    let m1 = store
+        .append_message(
+            &continuity_id,
+            "user".to_string(),
+            "cli".to_string(),
+            "m1".to_string(),
+        )
+        .expect("append");
+
+    let err = store
+        .compaction_checkpoint_cumulative_v1(
+            &continuity_id,
+            CompactionCheckpointCumulativeV1Request {
+                summary_markdown: Some("summary".to_string()),
+                summary_artifact_id: None,
+                to_message_id: None,
+                to_seq: None,
+                stride_messages: Some(2),
+                actor_id: "user".to_string(),
+                origin: "cli".to_string(),
+            },
+        )
+        .expect_err("stride should not be reached");
+    assert!(err.contains("stride_messages not reached"));
+
+    let artifact_id = "bad-kind-artifact";
+    let summary = CompactionSummaryV1::new_cumulative_source_cut(
+        crate::compaction_summary::NewCumulativeCompactionSummaryV1 {
+            thread_id: continuity_id.clone(),
+            to_seq: 1,
+            to_message_id: Some(m1.clone()),
+            actor_id: "user".to_string(),
+            origin: "cli".to_string(),
+            produced_by: None,
+            base_summary_artifact_id: None,
+            basis_note: None,
+            summary_markdown: "summary".to_string(),
+        },
+    );
+    let mut summary_json = serde_json::to_value(summary).expect("summary json");
+    summary_json["kind"] = serde_json::json!("other_kind");
+    let blobs_dir = store
+        .workspace_root()
+        .join(".rip")
+        .join("artifacts")
+        .join("blobs");
+    fs::create_dir_all(&blobs_dir).expect("blobs dir");
+    fs::write(
+        blobs_dir.join(artifact_id),
+        serde_json::to_vec(&summary_json).expect("serialize"),
+    )
+    .expect("write artifact");
+
+    let err = store
+        .compaction_checkpoint_cumulative_v1(
+            &continuity_id,
+            CompactionCheckpointCumulativeV1Request {
+                summary_markdown: None,
+                summary_artifact_id: Some(artifact_id.to_string()),
+                to_message_id: Some(m1),
+                to_seq: None,
+                stride_messages: None,
+                actor_id: "user".to_string(),
+                origin: "cli".to_string(),
+            },
+        )
+        .expect_err("wrong summary kind should fail");
+    assert!(err.contains("summary kind mismatch"));
+}
+
+#[test]
+fn compaction_status_v1_recovers_schedule_and_job_details_without_sidecars() {
+    let dir = tempdir().expect("tmp");
+    let (_event_log, store, data_dir) = store_for(&dir);
+
+    let continuity_id = store.ensure_default().expect("ensure");
+    let m1 = store
+        .append_message(
+            &continuity_id,
+            "user".to_string(),
+            "cli".to_string(),
+            "m1".to_string(),
+        )
+        .expect("append");
+    let m2 = store
+        .append_message(
+            &continuity_id,
+            "user".to_string(),
+            "cli".to_string(),
+            "m2".to_string(),
+        )
+        .expect("append");
+
+    let (checkpoint_id, _summary_artifact_id, to_seq, _to_message_id, _cut_rule_id) = store
+        .compaction_checkpoint_cumulative_v1(
+            &continuity_id,
+            CompactionCheckpointCumulativeV1Request {
+                summary_markdown: Some("summary".to_string()),
+                summary_artifact_id: None,
+                to_message_id: Some(m1.clone()),
+                to_seq: None,
+                stride_messages: None,
+                actor_id: "user".to_string(),
+                origin: "cli".to_string(),
+            },
+        )
+        .expect("checkpoint");
+
+    store
+        .append_compaction_auto_schedule_decided(
+            &continuity_id,
+            CompactionAutoScheduleDecidedPayload {
+                decision_id: "decision-1".to_string(),
+                policy_id: "policy-1".to_string(),
+                decision: "scheduled".to_string(),
+                execute: true,
+                stride_messages: 1,
+                max_new_checkpoints: 1,
+                block_on_inflight: true,
+                message_count: 2,
+                cut_rule_id: "stride_messages_v1/1".to_string(),
+                planned: vec![rip_kernel::CompactionPlannedCutPoint {
+                    target_message_ordinal: 2,
+                    to_seq: 2,
+                    to_message_id: m2.clone(),
+                }],
+                job_id: Some("job-1".to_string()),
+                job_kind: Some(COMPACTION_JOB_KIND_SUMMARIZER_V1.to_string()),
+                reason: Some(serde_json::json!({"why": "test"})),
+                actor_id: "alice".to_string(),
+                origin: "cli".to_string(),
+            },
+        )
+        .expect("schedule decided");
+    store
+        .append_job_spawned(
+            &continuity_id,
+            "job-inflight",
+            COMPACTION_JOB_KIND_SUMMARIZER_V1,
+            None,
+            "alice".to_string(),
+            "cli".to_string(),
+        )
+        .expect("spawn inflight job");
+    store
+        .append_job_ended(
+            &continuity_id,
+            JobEndedPayload {
+                job_id: "job-1".to_string(),
+                job_kind: COMPACTION_JOB_KIND_SUMMARIZER_V1.to_string(),
+                status: "completed".to_string(),
+                result: Some(serde_json::json!({
+                    "created": [{
+                        "checkpoint_id": checkpoint_id,
+                        "summary_artifact_id": "artifact-1",
+                        "to_seq": to_seq,
+                        "to_message_id": m1,
+                        "cut_rule_id": "stride_messages_v1/1",
+                    }]
+                })),
+                error: None,
+                actor_id: "alice".to_string(),
+                origin: "cli".to_string(),
+            },
+        )
+        .expect("job ended");
+
+    fs::remove_dir_all(data_dir.join("continuity_streams")).expect("remove sidecars");
+
+    let status = store
+        .compaction_status_v1(
+            &continuity_id,
+            CompactionStatusV1Request {
+                stride_messages: Some(1),
+            },
+        )
+        .expect("status");
+    assert_eq!(status.inflight_job_id.as_deref(), Some("job-inflight"));
+    assert_eq!(
+        status
+            .latest_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.to_seq),
+        Some(to_seq)
+    );
+    assert_eq!(
+        status
+            .last_schedule_decision
+            .as_ref()
+            .map(|decision| decision.decision_id.as_str()),
+        Some("decision-1")
+    );
+    assert_eq!(
+        status
+            .last_job_outcome
+            .as_ref()
+            .map(|outcome| outcome.job_id.as_str()),
+        Some("job-1")
+    );
+    assert_eq!(
+        status
+            .last_job_outcome
+            .as_ref()
+            .map(|outcome| outcome.created.len()),
+        Some(1)
+    );
+    store
+        .append_job_ended(
+            &continuity_id,
+            JobEndedPayload {
+                job_id: "job-2".to_string(),
+                job_kind: COMPACTION_JOB_KIND_SUMMARIZER_V1.to_string(),
+                status: "failed".to_string(),
+                result: Some(serde_json::json!({ "created": "bad" })),
+                error: Some("boom".to_string()),
+                actor_id: "alice".to_string(),
+                origin: "cli".to_string(),
+            },
+        )
+        .expect("malformed job ended");
+
+    fs::remove_dir_all(data_dir.join("continuity_streams")).expect("remove sidecars again");
+    let malformed = store
+        .compaction_status_v1(
+            &continuity_id,
+            CompactionStatusV1Request {
+                stride_messages: Some(1),
+            },
+        )
+        .expect("status after malformed result");
+    assert_eq!(
+        malformed
+            .last_job_outcome
+            .as_ref()
+            .map(|outcome| outcome.job_id.as_str()),
+        Some("job-2")
+    );
+    assert_eq!(
+        malformed
+            .last_job_outcome
+            .as_ref()
+            .map(|outcome| outcome.created.len()),
+        Some(0)
+    );
+}
+
+#[test]
+fn compaction_status_v1_rejects_invalid_stride_and_inflight_scan_skips_ended_jobs() {
+    let dir = tempdir().expect("tmp");
+    let (_event_log, store, _data_dir) = store_for(&dir);
+
+    let continuity_id = store.ensure_default().expect("ensure");
+    let err = store
+        .compaction_status_v1(
+            &continuity_id,
+            CompactionStatusV1Request {
+                stride_messages: Some(0),
+            },
+        )
+        .expect_err("zero stride should fail");
+    assert_eq!(err, "invalid_stride");
+
+    let err = store
+        .compaction_status_v1(
+            "missing",
+            CompactionStatusV1Request {
+                stride_messages: Some(1),
+            },
+        )
+        .expect_err("missing thread should fail");
+    assert_eq!(err, "thread_not_found");
+
+    store
+        .append_message(
+            &continuity_id,
+            "user".to_string(),
+            "cli".to_string(),
+            "m1".to_string(),
+        )
+        .expect("append");
+    store
+        .append_job_spawned(
+            &continuity_id,
+            "job-other",
+            "not-compaction",
+            None,
+            "alice".to_string(),
+            "cli".to_string(),
+        )
+        .expect("spawn non-compaction job");
+    store
+        .append_job_spawned(
+            &continuity_id,
+            "job-ended",
+            COMPACTION_JOB_KIND_SUMMARIZER_V1,
+            None,
+            "alice".to_string(),
+            "cli".to_string(),
+        )
+        .expect("spawn ended job");
+    store
+        .append_job_ended(
+            &continuity_id,
+            JobEndedPayload {
+                job_id: "job-ended".to_string(),
+                job_kind: COMPACTION_JOB_KIND_SUMMARIZER_V1.to_string(),
+                status: "completed".to_string(),
+                result: None,
+                error: None,
+                actor_id: "alice".to_string(),
+                origin: "cli".to_string(),
+            },
+        )
+        .expect("end job");
+    store
+        .append_job_spawned(
+            &continuity_id,
+            "job-live",
+            COMPACTION_JOB_KIND_SUMMARIZER_V1,
+            None,
+            "alice".to_string(),
+            "cli".to_string(),
+        )
+        .expect("spawn live job");
+
+    assert_eq!(
+        store.find_inflight_compaction_job_id_best_effort_v1(&continuity_id),
+        Some("job-live".to_string())
+    );
+
+    store
+        .append_job_ended(
+            &continuity_id,
+            JobEndedPayload {
+                job_id: "job-live".to_string(),
+                job_kind: COMPACTION_JOB_KIND_SUMMARIZER_V1.to_string(),
+                status: "completed".to_string(),
+                result: None,
+                error: None,
+                actor_id: "alice".to_string(),
+                origin: "cli".to_string(),
+            },
+        )
+        .expect("end live job");
+    assert_eq!(
+        store.find_inflight_compaction_job_id_best_effort_v1(&continuity_id),
+        None
     );
 }
 
@@ -2631,6 +3431,180 @@ fn compaction_auto_helpers_cover_noop_and_failed_job_paths() {
         .as_deref()
         .unwrap_or_default()
         .contains("compaction cut point message mismatch"));
+}
+
+#[test]
+fn compaction_auto_v1_returns_noop_for_dry_run_and_missing_cut_points() {
+    let dir = tempdir().expect("tmp");
+    let (_event_log, store, _data_dir) = store_for(&dir);
+
+    let continuity_id = store.ensure_default().expect("ensure");
+    store
+        .append_message(
+            &continuity_id,
+            "user".to_string(),
+            "cli".to_string(),
+            "m1".to_string(),
+        )
+        .expect("append");
+    store
+        .append_message(
+            &continuity_id,
+            "user".to_string(),
+            "cli".to_string(),
+            "m2".to_string(),
+        )
+        .expect("append");
+
+    let dry_run = store
+        .compaction_auto_v1(
+            &continuity_id,
+            CompactionAutoV1Request {
+                stride_messages: Some(1),
+                max_new_checkpoints: Some(1),
+                dry_run: Some(true),
+                actor_id: "alice".to_string(),
+                origin: "test".to_string(),
+            },
+        )
+        .expect("dry run");
+    assert_eq!(dry_run.status, "noop");
+    assert!(dry_run.job_id.is_none());
+    assert_eq!(dry_run.planned.len(), 1);
+
+    let noop = store
+        .compaction_auto_v1(
+            &continuity_id,
+            CompactionAutoV1Request {
+                stride_messages: Some(10),
+                max_new_checkpoints: Some(1),
+                dry_run: Some(false),
+                actor_id: "alice".to_string(),
+                origin: "test".to_string(),
+            },
+        )
+        .expect("noop");
+    assert_eq!(noop.status, "noop");
+    assert!(noop.job_id.is_none());
+    assert!(noop.planned.is_empty());
+}
+
+#[test]
+fn compaction_auto_schedule_covers_dry_run_inflight_skip_and_completed_execution() {
+    let dir = tempdir().expect("tmp");
+    let (event_log, store, _data_dir) = store_for(&dir);
+
+    let continuity_id = store.ensure_default().expect("ensure");
+    let _m1 = store
+        .append_message(
+            &continuity_id,
+            "user".to_string(),
+            "cli".to_string(),
+            "m1".to_string(),
+        )
+        .expect("append");
+    let _m2 = store
+        .append_message(
+            &continuity_id,
+            "user".to_string(),
+            "cli".to_string(),
+            "m2".to_string(),
+        )
+        .expect("append");
+
+    let dry_run = store
+        .compaction_auto_schedule_spawn_job_v1(
+            &continuity_id,
+            CompactionAutoScheduleV1Request {
+                stride_messages: Some(1),
+                max_new_checkpoints: Some(1),
+                block_on_inflight: Some(true),
+                execute: Some(true),
+                dry_run: Some(true),
+                actor_id: "alice".to_string(),
+                origin: "test".to_string(),
+            },
+        )
+        .expect("schedule dry run");
+    assert_eq!(dry_run.decision, "dry_run");
+    assert!(dry_run.decision_id.is_none());
+    assert_eq!(dry_run.planned.len(), 1);
+
+    store
+        .append_job_spawned(
+            &continuity_id,
+            "job-live",
+            COMPACTION_JOB_KIND_SUMMARIZER_V1,
+            None,
+            "alice".to_string(),
+            "cli".to_string(),
+        )
+        .expect("spawn live job");
+
+    let skipped = store
+        .compaction_auto_schedule_spawn_job_v1(
+            &continuity_id,
+            CompactionAutoScheduleV1Request {
+                stride_messages: Some(1),
+                max_new_checkpoints: Some(1),
+                block_on_inflight: Some(true),
+                execute: Some(true),
+                dry_run: Some(false),
+                actor_id: "alice".to_string(),
+                origin: "test".to_string(),
+            },
+        )
+        .expect("schedule skipped");
+    assert_eq!(skipped.decision, "skipped_inflight");
+    assert!(skipped.decision_id.is_some());
+    assert!(skipped.job_id.is_none());
+
+    store
+        .append_job_ended(
+            &continuity_id,
+            JobEndedPayload {
+                job_id: "job-live".to_string(),
+                job_kind: COMPACTION_JOB_KIND_SUMMARIZER_V1.to_string(),
+                status: "completed".to_string(),
+                result: None,
+                error: None,
+                actor_id: "alice".to_string(),
+                origin: "cli".to_string(),
+            },
+        )
+        .expect("end live job");
+
+    let completed = store
+        .compaction_auto_schedule_v1(
+            &continuity_id,
+            CompactionAutoScheduleV1Request {
+                stride_messages: Some(1),
+                max_new_checkpoints: Some(1),
+                block_on_inflight: Some(true),
+                execute: Some(true),
+                dry_run: Some(false),
+                actor_id: "alice".to_string(),
+                origin: "test".to_string(),
+            },
+        )
+        .expect("schedule completed");
+    assert_eq!(completed.decision, "completed");
+    assert_eq!(completed.result.len(), 1);
+    assert!(completed.job_id.is_some());
+
+    let events = event_log
+        .replay_stream(StreamKind::Continuity, &continuity_id)
+        .expect("replay");
+    assert!(events.iter().any(|event| matches!(
+        &event.kind,
+        EventKind::ContinuityCompactionAutoScheduleDecided { decision, .. }
+            if decision == "skipped_inflight"
+    )));
+    assert!(events.iter().any(|event| matches!(
+        &event.kind,
+        EventKind::ContinuityCompactionAutoScheduleDecided { decision, .. }
+            if decision == "scheduled"
+    )));
 }
 
 #[test]

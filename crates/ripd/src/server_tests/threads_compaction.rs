@@ -402,6 +402,49 @@ async fn thread_compaction_cut_points_returns_latest_first_and_respects_limit() 
 }
 
 #[tokio::test]
+async fn thread_compaction_cut_points_invalid_stride_is_400() {
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app(&dir);
+    let thread_id = ensure_thread_id(&app).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/threads/{thread_id}/compaction-cut-points"))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"stride_messages":0}"#))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn thread_compaction_cut_points_unknown_thread_is_404() {
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app(&dir);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/threads/nope/compaction-cut-points")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"stride_messages":1}"#))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn thread_compaction_cut_points_marks_already_checkpointed() {
     let dir = tempdir().expect("tmp");
     let app = build_test_app(&dir);
@@ -446,6 +489,49 @@ async fn thread_compaction_cut_points_marks_already_checkpointed() {
             .and_then(|v| v.as_str()),
         Some(created.checkpoint_id.as_str())
     );
+}
+
+#[tokio::test]
+async fn thread_compaction_status_invalid_stride_is_400() {
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app(&dir);
+    let thread_id = ensure_thread_id(&app).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/threads/{thread_id}/compaction-status"))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"stride_messages":0}"#))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn thread_compaction_status_unknown_thread_is_404() {
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app(&dir);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/threads/nope/compaction-status")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"stride_messages":1}"#))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

@@ -1,4 +1,14 @@
+use super::super::theme::ThemeStyles;
+use super::content::{
+    artifact_chip_lines, block_as_lines, message_body_lines, message_glyph, plain_text,
+    render_blocks,
+};
 use super::*;
+use crate::canvas::{
+    AgentRole, Block as CanvasBlock, CachedText, CanvasMessage, ContextLifecycle, JobLifecycle,
+    NoticeLevel, PanelPlacement, StyledLine,
+};
+use crate::ThemeId;
 
 #[test]
 fn canvas_hit_message_id_tracks_visible_rows() {
@@ -92,4 +102,155 @@ fn motion_streaming_is_hot_requires_recent_token() {
         last_event_ms: 500,
     };
     assert!(!ctx.streaming_is_hot(), "500ms gap > 350ms threshold");
+}
+
+#[test]
+fn render_blocks_handles_heading_lists_quotes_code_and_artifacts() {
+    let styles = ThemeStyles::for_theme(ThemeId::DefaultDark);
+    let ctx = RenderCtx {
+        theme_id: ThemeId::DefaultDark,
+        styles: &styles,
+        motion: MotionCtx::default(),
+    };
+    let blocks = vec![
+        CanvasBlock::Heading {
+            level: 2,
+            text: CachedText::plain("Title"),
+        },
+        CanvasBlock::Paragraph(CachedText::plain("para")),
+        CanvasBlock::List {
+            ordered: false,
+            items: vec![vec![CanvasBlock::Paragraph(CachedText::plain("item"))]],
+        },
+        CanvasBlock::BlockQuote(vec![CanvasBlock::Paragraph(CachedText::plain("quoted"))]),
+        CanvasBlock::CodeFence {
+            lang: Some("rust".to_string()),
+            text: CachedText::plain("let x = 1;"),
+        },
+        CanvasBlock::Thematic,
+        CanvasBlock::ArtifactChip {
+            artifact_id: "abcdef1234567890".to_string(),
+            bytes: Some(42),
+        },
+    ];
+
+    let rendered = render_blocks(&blocks, &ctx);
+    let text = plain_text(&ratatui::text::Text::from(rendered));
+    assert!(text.contains("## Title"), "{text}");
+    assert!(text.contains("para"), "{text}");
+    assert!(text.contains("• item"), "{text}");
+    assert!(text.contains("│ quoted"), "{text}");
+    assert!(text.contains("```rust"), "{text}");
+    assert!(text.contains("let x = 1;"), "{text}");
+    assert!(text.contains("────"), "{text}");
+    assert!(text.contains("⧉ abcdef12"), "{text}");
+
+    let artifact_lines = artifact_chip_lines(&["abcdef1234567890".to_string()]);
+    assert_eq!(artifact_lines[0].to_string(), "⧉ abcdef12");
+
+    let block_lines = block_as_lines(&CanvasBlock::ToolStdout(CachedText::plain("stdout")));
+    assert_eq!(block_lines[0].to_string(), "stdout");
+}
+
+#[test]
+fn message_body_lines_cover_notice_and_summary_variants() {
+    let styles = ThemeStyles::for_theme(ThemeId::DefaultDark);
+    let ctx = RenderCtx {
+        theme_id: ThemeId::DefaultDark,
+        styles: &styles,
+        motion: MotionCtx::default(),
+    };
+
+    let job = CanvasMessage::JobNotice {
+        message_id: "m1".to_string(),
+        job_id: "job-1".to_string(),
+        job_kind: "compaction".to_string(),
+        details: None,
+        status: JobLifecycle::Failed {
+            error: Some("boom".to_string()),
+        },
+        actor_id: "user".to_string(),
+        origin: "cli".to_string(),
+        started_at_ms: Some(1),
+        ended_at_ms: Some(2),
+    };
+    assert_eq!(
+        message_body_lines(&job, &ctx)[0].to_string(),
+        "compaction · failed"
+    );
+
+    let notice = CanvasMessage::SystemNotice {
+        message_id: "m2".to_string(),
+        level: NoticeLevel::Warn,
+        text: "watch out".to_string(),
+        origin_event_kind: "provider_event".to_string(),
+        seq: 7,
+    };
+    assert_eq!(
+        message_body_lines(&notice, &ctx)[0].to_string(),
+        "watch out"
+    );
+
+    let context = CanvasMessage::ContextNotice {
+        message_id: "m3".to_string(),
+        run_session_id: "run-1".to_string(),
+        strategy: "recent_messages_v1".to_string(),
+        status: ContextLifecycle::Compiled,
+        bundle_artifact_id: Some("bundle".to_string()),
+        contributed_artifact_ids: vec!["artifact".to_string()],
+    };
+    assert_eq!(
+        message_body_lines(&context, &ctx)[0].to_string(),
+        "context recent_messages_v1 · compiled"
+    );
+
+    let checkpoint = CanvasMessage::CompactionCheckpoint {
+        message_id: "m4".to_string(),
+        checkpoint_id: "ckpt-1".to_string(),
+        from_seq: 4,
+        to_seq: 9,
+        summary_artifact_id: "artifact".to_string(),
+    };
+    assert_eq!(
+        message_body_lines(&checkpoint, &ctx)[0].to_string(),
+        "compaction checkpoint · seq 4…9"
+    );
+
+    let panel = CanvasMessage::ExtensionPanel {
+        message_id: "m5".to_string(),
+        panel_id: "panel-1".to_string(),
+        extension_id: "ext".to_string(),
+        title: "Inspector".to_string(),
+        placement: PanelPlacement::Inline,
+        lines: vec![StyledLine {
+            text: "line".to_string(),
+            accent: None,
+        }],
+        keys: vec![],
+        artifact_ids: vec![],
+    };
+    assert_eq!(
+        message_body_lines(&panel, &ctx)[0].to_string(),
+        "extension: Inspector"
+    );
+
+    let reviewer = CanvasMessage::AgentTurn {
+        message_id: "m6".to_string(),
+        run_session_id: "run-2".to_string(),
+        agent_id: Some("reviewer".to_string()),
+        role: AgentRole::Reviewer {
+            target_message_id: "m1".to_string(),
+        },
+        actor_id: "reviewer".to_string(),
+        model: Some("gpt".to_string()),
+        blocks: vec![CanvasBlock::Paragraph(CachedText::plain("review"))],
+        streaming_tail: String::new(),
+        streaming: false,
+        started_at_ms: 0,
+        ended_at_ms: Some(1),
+    };
+    assert_eq!(
+        message_glyph(&reviewer, &styles, MotionCtx::default()).0,
+        "◌"
+    );
 }

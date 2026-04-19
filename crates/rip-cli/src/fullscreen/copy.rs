@@ -110,3 +110,6 @@ pub(super) fn base64_encode(bytes: &[u8]) -> String {
 
     out
 }
+
+#[cfg(test)]
+mod tests;
