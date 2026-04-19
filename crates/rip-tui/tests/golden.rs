@@ -412,6 +412,66 @@ fn journey_debug_overlay_m_120x30() {
 }
 
 #[test]
+fn journey_help_overlay_m_120x30() {
+    // C.7: Help overlay is the searchable keybinding + command
+    // reference. Populated from CommandAction metadata so a new
+    // palette entry is discoverable without a separate table.
+    let mut state = follow_run_state_tool_detail();
+    state.set_overlay(Overlay::Help);
+    let rendered = render_to_string(120, 30, &state, RenderMode::Json);
+    assert_snapshot("journey_help_overlay_m_120x30.txt", rendered);
+}
+
+#[test]
+fn journey_error_recovery_overlay_m_120x30() {
+    // C.10: ErrorRecovery overlay auto-opens on provider errors
+    // (wired in a follow-up). The overlay itself is render-only; the
+    // driver dispatches `r/c/m/x/⎋` to capability calls.
+    let mut state = recover_error_provider_state();
+    let seq = state.last_error_seq.unwrap_or(1);
+    state.set_overlay(Overlay::ErrorRecovery { seq });
+    let rendered = render_to_string(120, 30, &state, RenderMode::Json);
+    assert_snapshot("journey_error_recovery_overlay_m_120x30.txt", rendered);
+}
+
+#[test]
+fn journey_palette_command_m_120x30() {
+    // C.5: Command palette — the primary entry point. Mirrors the
+    // driver's `open_command_palette` path (see rip-cli fullscreen).
+    use rip_tui::palette::modes::command::CommandMode;
+    use rip_tui::{PaletteMode, PaletteSource};
+    let mut state = basic_state();
+    let mode = CommandMode::new();
+    state.open_palette(
+        PaletteMode::Command,
+        mode.entries(),
+        mode.empty_state().to_string(),
+        false,
+        String::new(),
+    );
+    let rendered = render_to_string(120, 30, &state, RenderMode::Json);
+    assert_snapshot("journey_palette_command_m_120x30.txt", rendered);
+}
+
+#[test]
+fn journey_palette_go_to_m_120x30() {
+    use rip_tui::palette::modes::go_to::GoToMode;
+    use rip_tui::{PaletteMode, PaletteSource};
+    let mut state = follow_run_state_tool_detail();
+    let mode = GoToMode::from_canvas(&state.canvas);
+    let entries = mode.entries();
+    state.open_palette(
+        PaletteMode::Navigation,
+        entries,
+        mode.empty_state().to_string(),
+        false,
+        String::new(),
+    );
+    let rendered = render_to_string(120, 30, &state, RenderMode::Json);
+    assert_snapshot("journey_palette_go_to_m_120x30.txt", rendered);
+}
+
+#[test]
 fn journey_keylight_typing_s_80x24() {
     // Non-empty input → keylight should foreground send / newline / palette
     // instead of the idle help row. Locks in the state-driven keylight from C.3.

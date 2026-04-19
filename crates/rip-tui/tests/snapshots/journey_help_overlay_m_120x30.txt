@@ -1,0 +1,30 @@
+- · rip · -                                                                                               idle  ttft 200
+›  Add a slide outline for a product launch.
+
+◎  Got it. I┌Help──────────────────────────────────────────────────────────────────────────────────────────┐
+            │CANVAS                                                                                        │
+            │  Scroll to top                                                                               │
+⟡  ╭─ bash ─│  Scroll to bottom                                                                            │ ✓ 100ms ─╮
+            │  Toggle follow-tail                                                                          │
+     1 artif│  Previous message                                                                            │
+   ╰────────│  Next message                                                                                │──────────╯
+            │  Jump to previous error                                                                      │
+            │  Copy last message                                                                           │
+            │  Copy selection                                                                              │
+            │  Clear selection                                                                             │
+            │                                                                                              │
+            │THREADS                                                                                       │
+            │  New thread  · unavailable                                                                   │
+            │  Switch thread                                                                               │
+            │  Branch current thread                                                                       │
+            │  Handoff to new thread                                                                       │
+            │  Rename current thread  · unavailable                                                        │
+            │  Run compaction now                                                                          │
+            │  Schedule compaction                                                                         │
+            │  Compaction status                                                                           │
+            │                                                                                              │
+            └──────────────────────────────────────────────────────────────────────────────────────────────┘
+
+
+▎ › Continue the thread
+   ⎋ close   ↑↓ scroll   x raw

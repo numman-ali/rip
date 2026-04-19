@@ -800,6 +800,17 @@ impl TuiState {
             self.awaiting_response = false;
             self.pending_prompt = None;
             self.clear_status_message();
+            // C.10: the first provider error for a run auto-opens the
+            // recovery overlay so the operator has a one-keystroke
+            // path to retry / rotate / switch / X-ray. Only push when
+            // nothing else already owns the overlay stack — if the
+            // user is mid-palette or mid-detail view we keep their
+            // context; the error chip persists on the activity strip
+            // and they can reach the overlay via the palette.
+            if matches!(self.overlay_stack.top(), Overlay::None) {
+                self.overlay_stack
+                    .set(Overlay::ErrorRecovery { seq: event.seq });
+            }
         }
 
         match &event.kind {

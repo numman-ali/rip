@@ -1036,6 +1036,87 @@ async fn run_fullscreen_tui_sse(
                             move_selected(&mut state, 8);
                         }
                     }
+                    UiAction::ErrorRecoveryRetry => {
+                        // `r` → re-post the last user message on the
+                        // same continuity so the kernel spawns a
+                        // fresh retry run. We go through the same
+                        // start_remote_session path the Submit arm
+                        // uses; nothing new about the capability
+                        // contract, just a different trigger.
+                        if ui_mode == SseUiMode::Interactive {
+                            if let Some(prompt) = last_user_prompt(&state) {
+                                let prompt = prompt.to_string();
+                                state.close_overlay();
+                                state.begin_pending_turn(&prompt);
+                                match start_remote_session(
+                                    client,
+                                    &server,
+                                    prompt,
+                                    current_overrides.clone(),
+                                )
+                                .await
+                                {
+                                    Ok(next) => {
+                                        state.set_continuity_id(next.thread_id);
+                                        stream = Some(next.stream);
+                                    }
+                                    Err(err) => {
+                                        state.awaiting_response = false;
+                                        state
+                                            .set_status_message(format!("retry failed: {err}"));
+                                    }
+                                }
+                            } else {
+                                state.set_status_message(
+                                    "retry: no previous user message to re-post",
+                                );
+                            }
+                        }
+                    }
+                    UiAction::ErrorRecoveryRotateCursor => {
+                        if ui_mode == SseUiMode::Interactive {
+                            let client = client.clone();
+                            let server = server.clone();
+                            let tx = status_tx.clone();
+                            tokio::spawn(async move {
+                                let message =
+                                    match crate::ensure_thread(&client, &server).await {
+                                        Ok(thread_id) => {
+                                            let url = format!(
+                                                "{server}/threads/{thread_id}/provider-cursor-rotate"
+                                            );
+                                            match client.post(url).send().await {
+                                                Ok(resp) if resp.status().is_success() => {
+                                                    "provider cursor rotated".to_string()
+                                                }
+                                                Ok(resp) => format!(
+                                                    "rotate cursor: {}",
+                                                    resp.status()
+                                                ),
+                                                Err(err) => format!("rotate cursor: {err}"),
+                                            }
+                                        }
+                                        Err(err) => format!("rotate cursor: {err}"),
+                                    };
+                                let _ = tx.send(message).await;
+                            });
+                            state.close_overlay();
+                        }
+                    }
+                    UiAction::ErrorRecoverySwitchModel => {
+                        if ui_mode == SseUiMode::Interactive {
+                            // Swap the error-recovery overlay for the
+                            // Models palette so the operator picks a
+                            // model, then invokes retry manually.
+                            open_model_palette(&mut state, &model_catalog);
+                        }
+                    }
+                    UiAction::ErrorRecoveryXray => {
+                        if let rip_tui::Overlay::ErrorRecovery { seq } = state.overlay() {
+                            let seq = *seq;
+                            state.set_overlay(rip_tui::Overlay::ErrorDetail { seq });
+                        }
+                    }
                 };
 
                 dirty = true;
@@ -1203,6 +1284,20 @@ enum UiAction {
     ContextSelectionStatus,
     ScrollCanvasUp,
     ScrollCanvasDown,
+    /// C.10 error-recovery actions. Routed through capabilities —
+    /// none of them reach disk or the event log directly.
+    /// `r` re-posts the last user message (kernel spawns the retry
+    /// run per the capability contract).
+    ErrorRecoveryRetry,
+    /// `c` rotates the provider cursor.
+    ErrorRecoveryRotateCursor,
+    /// `m` opens the Models palette so the operator can switch
+    /// before retrying.
+    ErrorRecoverySwitchModel,
+    /// `x` opens the X-ray window scoped to this error's seq (for
+    /// now it routes into the existing `ErrorDetail` overlay —
+    /// a Phase D follow-up widens it to a proper `XrayOverlay`).
+    ErrorRecoveryXray,
 }
 
 struct InitState {
@@ -1301,6 +1396,21 @@ fn handle_key_event(
     session_running: bool,
     keymap: &Keymap,
 ) -> UiAction {
+    // C.10: ErrorRecovery owns the key stream while it's on top of
+    // the overlay stack. `r/c/m/x` dispatch to capabilities; `⎋`
+    // dismisses. We intercept here so recovery actions don't have
+    // to be bound globally in the keymap.
+    if let rip_tui::Overlay::ErrorRecovery { .. } = state.overlay() {
+        return match key.code {
+            KeyCode::Char('r') => UiAction::ErrorRecoveryRetry,
+            KeyCode::Char('c') => UiAction::ErrorRecoveryRotateCursor,
+            KeyCode::Char('m') => UiAction::ErrorRecoverySwitchModel,
+            KeyCode::Char('x') => UiAction::ErrorRecoveryXray,
+            KeyCode::Esc => UiAction::CloseOverlay,
+            _ => UiAction::None,
+        };
+    }
+
     if state.is_palette_open() {
         if let Some(cmd) = keymap.command_for(key) {
             return match cmd {
@@ -1518,6 +1628,45 @@ fn card_expand_target(state: &TuiState) -> bool {
         state.focused_message(),
         Some(CanvasMessage::ToolCard { .. } | CanvasMessage::TaskCard { .. })
     )
+}
+
+/// C.10 — dig out the last user message's plain text from the canvas.
+/// Used by `ErrorRecoveryRetry` to re-post the turn that triggered
+/// the error. Returns `None` when the canvas has no UserTurn to
+/// replay (fresh thread, or the user hasn't submitted anything yet).
+fn last_user_prompt(state: &TuiState) -> Option<String> {
+    use rip_tui::canvas::{Block, CanvasMessage};
+    let user_turn = state
+        .canvas
+        .messages
+        .iter()
+        .rev()
+        .find_map(|msg| match msg {
+            CanvasMessage::UserTurn { blocks, .. } => Some(blocks),
+            _ => None,
+        })?;
+    for block in user_turn {
+        let text = match block {
+            Block::Paragraph(t)
+            | Block::Markdown(t)
+            | Block::Heading { text: t, .. }
+            | Block::CodeFence { text: t, .. } => t,
+            _ => continue,
+        };
+        let mut out = String::new();
+        for (idx, line) in text.text.lines.iter().enumerate() {
+            if idx > 0 {
+                out.push('\n');
+            }
+            for span in &line.spans {
+                out.push_str(&span.content);
+            }
+        }
+        if !out.trim().is_empty() {
+            return Some(out);
+        }
+    }
+    None
 }
 
 /// `x` on a focused canvas item opens the per-item detail overlay. For

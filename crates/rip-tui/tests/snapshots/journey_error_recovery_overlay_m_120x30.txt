@@ -1,0 +1,30 @@
+- · rip · -                                                                                                        error
+›  Continue.
+
+            ┌Recover from provider error───────────────────────────────────────────────────────────────────┐
+▲  Provider │▲  invalid_json (1)                                                                           │
+            │                                                                                              │
+            │The current run is paused. Pick a recovery action:                                            │
+            │                                                                                              │
+            │  r  retry turn   re-posts last user message                                                  │
+            │  c  rotate cursor   thread.provider_cursor.rotate                                            │
+            │  m  switch model   opens Models palette                                                      │
+            │  x  open X-ray   raw frames around this error                                                │
+            │                                                                                              │
+            │⎋ dismiss — error chip stays on the activity strip                                            │
+            │                                                                                              │
+            │                                                                                              │
+            │                                                                                              │
+            │                                                                                              │
+            │                                                                                              │
+            │                                                                                              │
+            │                                                                                              │
+            │                                                                                              │
+            │                                                                                              │
+            │                                                                                              │
+            │                                                                                              │
+            └──────────────────────────────────────────────────────────────────────────────────────────────┘
+
+▲ error @seq 1
+▎ › Retry, or press r for recovery
+   ⎋ close   ↑↓ scroll   x raw
