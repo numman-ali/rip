@@ -1,7 +1,7 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::{Paragraph, Wrap};
 use ratatui::Frame;
 
 use crate::canvas::{
@@ -19,6 +19,18 @@ use super::util::{canvas_scroll_offset, truncate};
 const GUTTER_WIDTH: usize = 3;
 const CARD_BODY_INDENT: usize = 2;
 
+/// Canvas layout (Phase C.1+):
+///
+/// ```text
+///  row 0         hero strip (borderless, 1 row)
+///  rows 1..n-2   canvas body (borderless)
+///  row n-2       activity strip (borderless, 1 row)
+///  rows n-1..n   input (borderless w/ ▎ rule, currently 2 rows)
+/// ```
+///
+/// No outer borders, no titled panes. Rhythm and gutters do the work
+/// that boxes used to — see `docs/07_tasks/tui_revamp.md` Part 2.3 /
+/// Part 3.1.
 pub(super) fn render_canvas_screen(
     frame: &mut Frame<'_>,
     state: &TuiState,
@@ -28,15 +40,17 @@ pub(super) fn render_canvas_screen(
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
+            Constraint::Length(1),
             Constraint::Min(1),
-            Constraint::Length(3),
+            Constraint::Length(1),
+            Constraint::Length(2),
         ])
         .split(frame.area());
 
     render_status_bar(frame, state, theme, chunks[0]);
     render_canvas_body(frame, state, theme, chunks[1]);
-    render_input(frame, theme, chunks[2], input);
+    render_footer_strip(frame, state, theme, chunks[2]);
+    render_input(frame, theme, chunks[3], input);
 }
 
 pub(super) fn render_canvas_body(
@@ -58,30 +72,29 @@ pub(super) fn render_canvas_body(
 }
 
 fn render_canvas(frame: &mut Frame<'_>, state: &TuiState, theme: &ThemeStyles, area: Rect) {
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(Line::from("Canvas").style(theme.header))
-        .style(theme.chrome);
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
-    let panes = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(1)])
-        .split(inner);
-
-    let canvas_width = panes[0].width as usize;
+    let canvas_width = area.width as usize;
     let text = build_canvas_text(state, theme, canvas_width);
     let scroll_text = plain_text(&text);
     let widget = Paragraph::new(text)
         .wrap(Wrap { trim: false })
-        .scroll(canvas_scroll_offset(state, panes[0], &scroll_text))
+        .scroll(canvas_scroll_offset(state, area, &scroll_text))
         .style(theme.chrome);
-    frame.render_widget(widget, panes[0]);
+    frame.render_widget(widget, area);
+}
 
-    let chips = build_chips_line(state, panes[1].width as usize);
-    let chip_widget = Paragraph::new(Line::from(chips)).style(theme.chrome);
-    frame.render_widget(chip_widget, panes[1]);
+/// Bottom strip above the input. Shows the activity chip summary when
+/// anything is happening (tools running, tasks queued, error present);
+/// otherwise blank. `build_chips_line` was carrying this before C.1 —
+/// keeping the content the same so we only move chrome here, not
+/// semantics. C.2 rewrites this as the activity *strip* proper
+/// (auto-hide when idle + transcript bottom, colored by worst state).
+fn render_footer_strip(frame: &mut Frame<'_>, state: &TuiState, theme: &ThemeStyles, area: Rect) {
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+    let chips = build_chips_line(state, area.width as usize);
+    let widget = Paragraph::new(Line::from(chips)).style(theme.muted);
+    frame.render_widget(widget, area);
 }
 
 /// Walk `state.canvas.messages` and render each as a gutter + body pair.

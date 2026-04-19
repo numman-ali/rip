@@ -1,20 +1,20 @@
-┌RIP───────────────────────────────────────────────────────┐
-│ view:canvas  session:s1  seq:3  hdr:-  fb:-  evt:-  TTFT:│
-└──────────────────────────────────────────────────────────┘
-┌Canvas────────────────────────────────────────────────────┐
-│›  Add a slide outline for a product launch.              │
-│                                                          │
-│◎  Got it. I'll draft a 5-slide outline, then refine it.  │
-│                                                          │
-│                                                          │
-│⟡  ╭─ bash ─────────────────────────────────── running ─╮ │
-│                                                          │
-│     ⏎ expand · x raw                                     │
-│   ╰────────────────────────────────────────────────────╯ │
-│                                                          │
-│                                                          │
-│chips: [⟳ bash]                                           │
-└──────────────────────────────────────────────────────────┘
-┌Input  Enter send  Ctrl-K palette  Wheel/Pg scroll  Ct…───┐
-│>                                                         │
-└──────────────────────────────────────────────────────────┘
+- · rip · -                                   idle  ttft 200
+›  Add a slide outline for a product launch.
+
+◎  Got it. I'll draft a 5-slide outline, then refine it.
+
+
+⟡  ╭─ bash ───────────────────────────────────── running ─╮
+
+     ⏎ expand · x raw
+   ╰──────────────────────────────────────────────────────╯
+
+
+
+
+
+
+
+chips: [⟳ bash]
+▎ ›
+   ⏎ send   ⌘K palette   ⌘M model   ⌘G go to   ? help

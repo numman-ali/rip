@@ -1,24 +1,24 @@
-┌RIP───────────────────────────────────────────────────────────────────────────┐
-│ msg:sending... | view:canvas  session:-  seq:7  hdr:-  fb:-  evt:-  TTFT:-  E│
-└──────────────────────────────────────────────────────────────────────────────┘
-┌Canvas────────────────────────────────────────────────────────────────────────┐
-│›  start a long-running lint                                                  │
-│                                                                              │
-│◉  Kicked off clippy in the background.                                       │
-│                                                                              │
-│⧉  ╭─ bash · clippy ────────────────────────────────────────────── running ─╮ │
-│                                                                              │
-│     ⏎ expand · x raw                                                         │
-│   ╰────────────────────────────────────────────────────────────────────────╯ │
-│                                                                              │
-│›  what should we plan next?                                                  │
-│                                                                              │
-│◉  Let's outline the deploy checklist.                                        │
-│                                                                              │
-│›  go ahead and deploy                                                        │
-│                                                                              │
-│chips: [◔ sending] [tasks:1/1]                                                │
-└──────────────────────────────────────────────────────────────────────────────┘
-┌Input  Enter send  Ctrl-K palette  Wheel/Pg scroll  Ctrl-B activity  Ctrl-…───┐
-│>                                                                             │
-└──────────────────────────────────────────────────────────────────────────────┘
+thread-1 · rip · -                                          thinking  sending...
+›  start a long-running lint
+
+◉  Kicked off clippy in the background.
+
+⧉  ╭─ bash · clippy ──────────────────────────────────────────────── running ─╮
+
+     ⏎ expand · x raw
+   ╰──────────────────────────────────────────────────────────────────────────╯
+
+›  what should we plan next?
+
+◉  Let's outline the deploy checklist.
+
+›  go ahead and deploy
+
+
+
+
+
+
+chips: [◔ sending] [tasks:1/1]
+▎ ›
+   ⏎ send   ⌘K palette   ⌘M model   ⌘G go to   ? help

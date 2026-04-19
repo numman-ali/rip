@@ -392,6 +392,14 @@ fn journey_follow_a_run_xs_60x20() {
 }
 
 #[test]
+fn journey_debug_overlay_m_120x30() {
+    let mut state = follow_run_state_tool_detail();
+    state.set_overlay(Overlay::Debug);
+    let rendered = render_to_string(120, 30, &state, RenderMode::Json);
+    assert_snapshot("journey_debug_overlay_m_120x30.txt", rendered);
+}
+
+#[test]
 fn journey_follow_a_run_s_80x24_activity() {
     let mut state = follow_run_state_mid_tool();
     state.set_overlay(Overlay::Activity);

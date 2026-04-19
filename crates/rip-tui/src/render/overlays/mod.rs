@@ -7,6 +7,7 @@ use super::theme::ThemeStyles;
 use super::RenderMode;
 
 pub(super) mod activity;
+pub(super) mod debug;
 pub(super) mod error;
 pub(super) mod palette;
 pub(super) mod stall;
@@ -49,15 +50,20 @@ pub(super) fn render_overlay(
         Overlay::StallDetail => {
             stall::render_stall_overlay(frame, state, theme, overlay_modal_area(body))
         }
+        Overlay::Debug => {
+            debug::render_debug_overlay(frame, state, theme, overlay_modal_area(body))
+        }
     }
 }
 
 pub(super) fn overlay_body_area(area: Rect, view: OutputViewMode) -> Rect {
-    // Keep overlays out of the status + input bars so the UI doesn't become a border salad.
-    // Canvas layout: status=3, input=3.
-    // X-ray layout: status=3, input=3 (output sits in body for now).
-    let top = 3;
-    let bottom = 3;
+    // After C.1 the outer chrome is borderless: 1-row hero on top, and
+    // a 2-row input block on the bottom (editor row + keylight row).
+    // The activity strip (1 row between body and input) is not an
+    // overlay target — overlays peel over it too so the focus tint
+    // reaches the editor.
+    let top = 1;
+    let bottom = 2;
     let y = area.y.saturating_add(top);
     let height = area.height.saturating_sub(top + bottom).max(1);
 

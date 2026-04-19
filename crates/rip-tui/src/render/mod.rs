@@ -273,7 +273,7 @@ mod tests {
         assert_eq!(wrapped_line_count("", 10), 1);
         assert_eq!(wrapped_line_count("hello", 10), 1);
         assert_eq!(wrapped_line_count("hello world", 5), 3);
-        assert_eq!(build_help_line(8), "Enter s…");
+        assert_eq!(build_help_line(8), "⏎ send …");
     }
 
     #[test]
@@ -294,8 +294,9 @@ mod tests {
             },
             OutputViewMode::Raw,
         );
-        assert_eq!(body.y, 3);
-        assert_eq!(body.height, 34);
+        // Hero (1 row) on top, input block (2 rows) on bottom.
+        assert_eq!(body.y, 1);
+        assert_eq!(body.height, 37);
 
         let modal = overlay_modal_area(body);
         assert!(modal.width < body.width);

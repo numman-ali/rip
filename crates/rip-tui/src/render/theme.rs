@@ -132,6 +132,19 @@ pub(super) struct ThemeStyles {
     pub(super) accent: Style,
     pub(super) prompt: Style,
     pub(super) prompt_label: Style,
+    /// Secondary text: timestamps, model chip, separator dots.
+    pub(super) muted: Style,
+    /// Tertiary text: rules, bottom card corners, palette mode chips.
+    pub(super) quiet: Style,
+    /// Semantic warning accent (stalled runs, warn notices).
+    pub(super) warn: Style,
+    /// Semantic danger accent (errors, failed provider events).
+    pub(super) danger: Style,
+    /// Semantic success accent (succeeded tools, completed tasks).
+    /// Currently surfaced via the `HeroState` mapping and will be
+    /// consumed by the C.2 activity strip / C.10 error recovery rows.
+    #[allow(dead_code)]
+    pub(super) success: Style,
 }
 
 impl ThemeStyles {
@@ -175,6 +188,13 @@ impl ThemeStyles {
                     .fg(theme.accent_agent)
                     .bg(theme.prompt_ribbon)
                     .add_modifier(Modifier::BOLD),
+                muted: Style::default().fg(theme.fg_muted),
+                quiet: Style::default().fg(theme.fg_quiet),
+                warn: Style::default().fg(theme.accent_warn),
+                danger: Style::default()
+                    .fg(theme.accent_danger)
+                    .add_modifier(Modifier::BOLD),
+                success: Style::default().fg(theme.accent_success),
             },
             ThemeId::DefaultLight => Self {
                 chrome: Style::default().fg(theme.fg_primary),
@@ -193,6 +213,13 @@ impl ThemeStyles {
                     .fg(theme.accent_agent)
                     .bg(theme.prompt_ribbon)
                     .add_modifier(Modifier::BOLD),
+                muted: Style::default().fg(theme.fg_muted),
+                quiet: Style::default().fg(theme.fg_quiet),
+                warn: Style::default().fg(theme.accent_warn),
+                danger: Style::default()
+                    .fg(theme.accent_danger)
+                    .add_modifier(Modifier::BOLD),
+                success: Style::default().fg(theme.accent_success),
             },
         }
     }

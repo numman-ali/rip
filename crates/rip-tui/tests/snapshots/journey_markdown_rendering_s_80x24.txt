@@ -1,24 +1,24 @@
-┌RIP───────────────────────────────────────────────────────────────────────────┐
-│ view:canvas  session:s1  seq:2  hdr:-  fb:-  evt:-  TTFT:200ms  E2E:400ms  to│
-└──────────────────────────────────────────────────────────────────────────────┘
-┌Canvas────────────────────────────────────────────────────────────────────────┐
-│›  Summarize the deploy plan in markdown.                                     │
-│                                                                              │
-│◉  ## Deploy plan                                                             │
-│   Steps in order:                                                            │
-│   1. Cut a release branch                                                    │
-│   2. Run smoke tests                                                         │
-│   3. Flip the feature flag                                                   │
-│   │ Rollback is one flag flip.                                               │
-│   ```sh                                                                      │
-│   rip deploy --env=prod                                                      │
-│   ```                                                                        │
-│   ────                                                                       │
-│   See the runbook ↗ for details.                                             │
-│                                                                              │
-│                                                                              │
-│chips:                                                                        │
-└──────────────────────────────────────────────────────────────────────────────┘
-┌Input  Enter send  Ctrl-K palette  Wheel/Pg scroll  Ctrl-B activity  Ctrl-…───┐
-│>                                                                             │
-└──────────────────────────────────────────────────────────────────────────────┘
+- · rip · -                                                       idle  ttft 200
+›  Summarize the deploy plan in markdown.
+
+◉  ## Deploy plan
+   Steps in order:
+   1. Cut a release branch
+   2. Run smoke tests
+   3. Flip the feature flag
+   │ Rollback is one flag flip.
+   ```sh
+   rip deploy --env=prod
+   ```
+   ────
+   See the runbook ↗ for details.
+
+
+
+
+
+
+
+chips:
+▎ ›
+   ⏎ send   ⌘K palette   ⌘M model   ⌘G go to   ? help

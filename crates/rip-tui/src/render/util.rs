@@ -2,12 +2,6 @@ use ratatui::layout::Rect;
 
 use crate::TuiState;
 
-pub(super) fn fmt_ms(value: Option<u64>) -> String {
-    value
-        .map(|ms| format!("{ms}ms"))
-        .unwrap_or_else(|| "-".to_string())
-}
-
 pub(super) fn truncate(input: &str, max_len: usize) -> String {
     if max_len == 0 {
         return String::new();

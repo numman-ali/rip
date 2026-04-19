@@ -1,0 +1,30 @@
+- · rip · -                                                                                               idle  ttft 200
+›  Add a slide outline for a product launch.
+
+◎  Got it. I╭ Debug ───────────────────────────────────────────────────────────────────────────────────────╮
+            │session                                                                                       │
+            │  session_id   s1                                                                             │
+⟡  ╭─ bash ─│  continuity_id —                                                                             │ ✓ 100ms ─╮
+            │  last_seq     4                                                                              │
+     1 artif│                                                                                              │
+   ╰────────│timings                                                                                       │──────────╯
+            │  ttft         200ms                                                                          │
+            │  e2e          —                                                                              │
+            │  handshake    —                                                                              │
+            │  first_byte   —                                                                              │
+            │  first_event  —                                                                              │
+            │                                                                                              │
+            │provider                                                                                      │
+            │  endpoint     —                                                                              │
+            │  model        —                                                                              │
+            │                                                                                              │
+            │counts                                                                                        │
+            │  tools        0/1                                                                            │
+            │  tasks        0/0                                                                            │
+            │  jobs         0/0                                                                            │
+            │  artifacts    1                                                                              │
+            ╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+
+chips: [✓ bash] [📄 1]
+▎ ›
+   ⏎ send   ⌘K palette   ⌘M model   ⌘G go to   ? help

@@ -1,6 +1,6 @@
-use ratatui::layout::Rect;
-use ratatui::text::{Line, Text};
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::text::{Line, Span, Text};
+use ratatui::widgets::{Paragraph, Wrap};
 use ratatui::Frame;
 
 use crate::TuiState;
@@ -13,18 +13,22 @@ pub(super) fn render_activity_rail(
     theme: &ThemeStyles,
     area: Rect,
 ) {
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(Line::from("Activity").style(theme.header))
-        .style(theme.chrome);
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Min(1)])
+        .split(area);
 
-    let lines = build_activity_lines(state, inner.height as usize);
+    let header = Paragraph::new(Line::from(Span::styled("Activity", theme.header)));
+    frame.render_widget(header, chunks[0]);
+
+    let lines = build_activity_lines(state, chunks[1].height as usize);
     let widget = Paragraph::new(Text::from(lines))
         .wrap(Wrap { trim: false })
-        .style(theme.chrome);
-    frame.render_widget(widget, inner);
+        .style(theme.muted);
+    frame.render_widget(widget, chunks[1]);
 }
 
 pub(super) fn build_activity_lines(state: &TuiState, max_lines: usize) -> Vec<Line<'static>> {

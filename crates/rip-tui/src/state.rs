@@ -14,11 +14,24 @@ pub enum Overlay {
     None,
     Activity,
     Palette(PaletteState),
-    ToolDetail { tool_id: String },
+    ToolDetail {
+        tool_id: String,
+    },
     TaskList,
-    TaskDetail { task_id: String },
-    ErrorDetail { seq: u64 },
+    TaskDetail {
+        task_id: String,
+    },
+    ErrorDetail {
+        seq: u64,
+    },
     StallDetail,
+    /// C.1: debug tokens previously shown in the status bar (session id,
+    /// last seq, handshake/first-byte/event timings, tool/task/job
+    /// counters, endpoint, model, theme). Opened from `Command → Show
+    /// debug info` in Phase C.5's palette; for now it's reachable via
+    /// `set_overlay(Overlay::Debug)` and surfaced in a dedicated
+    /// snapshot.
+    Debug,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
