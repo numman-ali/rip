@@ -579,6 +579,52 @@ async fn openresponses_pipe_emits_output_text_delta() {
 }
 
 #[tokio::test]
+async fn openresponses_pipe_openrouter_compat_does_not_emit_schema_errors_for_reasoning_text() {
+    let dir = tempdir().expect("tmp");
+    let log = EventLog::new(dir.path().join("events.jsonl")).expect("log");
+    let buffer = Arc::new(Mutex::new(Vec::new()));
+    let (sender, _) = broadcast::channel(8);
+    let mut seq = 0;
+    let sink = EventSink::new(&sender, &buffer, &log);
+    let mut pipe = OpenResponsesSsePipe::new(
+        "s1",
+        &mut seq,
+        sink,
+        None,
+        ValidationOptions::compat_openrouter(),
+    );
+    let payload = "event: response.created\n\
+                  data: {\"type\":\"response.created\",\"sequence_number\":1,\"response\":{\"background\":false,\"completed_at\":null,\"created_at\":1776635696,\"error\":null,\"frequency_penalty\":0,\"id\":\"resp_1\",\"incomplete_details\":null,\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":32,\"metadata\":{},\"model\":\"nvidia/nemotron-3-nano-30b-a3b:free\",\"object\":\"response\",\"output\":[],\"parallel_tool_calls\":false,\"presence_penalty\":0,\"previous_response_id\":null,\"prompt_cache_key\":null,\"reasoning\":null,\"safety_identifier\":null,\"service_tier\":\"auto\",\"status\":\"in_progress\",\"store\":false,\"temperature\":1,\"text\":{\"format\":{\"type\":\"text\"}},\"tool_choice\":\"auto\",\"tools\":[],\"top_logprobs\":0,\"top_p\":1,\"truncation\":\"disabled\",\"usage\":null}}\n\n\
+                  event: response.reasoning_text.delta\n\
+                  data: {\"type\":\"response.reasoning_text.delta\",\"sequence_number\":2,\"item_id\":\"rs_tmp_1\",\"output_index\":0,\"content_index\":0,\"delta\":\"We\"}\n\n\
+                  event: response.output_text.delta\n\
+                  data: {\"type\":\"response.output_text.delta\",\"sequence_number\":3,\"item_id\":\"msg_1\",\"output_index\":1,\"content_index\":0,\"delta\":\"Hello! 👋\",\"logprobs\":[]}\n\n";
+    let saw_done = pipe.push_sse_str(payload).await;
+    assert!(!saw_done);
+
+    let events = buffer.lock().await;
+    let provider_events: Vec<_> = events
+        .iter()
+        .filter_map(|event| match &event.kind {
+            EventKind::ProviderEvent {
+                errors,
+                response_errors,
+                ..
+            } => Some((errors, response_errors)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(provider_events.len(), 3);
+    for (errors, response_errors) in provider_events {
+        assert!(errors.is_empty(), "unexpected provider errors: {errors:?}");
+        assert!(
+            response_errors.is_empty(),
+            "unexpected response errors: {response_errors:?}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn stream_openresponses_request_rejects_invalid_payload() {
     let dir = tempdir().expect("tmp");
     let log = EventLog::new(dir.path().join("events.jsonl")).expect("log");
@@ -623,6 +669,44 @@ async fn stream_openresponses_request_rejects_invalid_payload() {
         }
         _ => panic!("expected provider_event"),
     }
+}
+
+#[test]
+fn validation_options_for_stream_uses_openrouter_compat_profile() {
+    let config = OpenResponsesConfig {
+        endpoint: "https://openrouter.ai/api/v1/responses".to_string(),
+        api_key: None,
+        model: Some("nvidia/nemotron-3-nano-30b-a3b:free".to_string()),
+        headers: Vec::new(),
+        tool_choice: ToolChoiceParam::auto(),
+        followup_user_message: None,
+        stateless_history: false,
+        parallel_tool_calls: false,
+    };
+
+    assert_eq!(
+        super::openresponses::validation_options_for_stream(&config),
+        ValidationOptions::compat_openrouter()
+    );
+}
+
+#[test]
+fn validation_options_for_stream_adds_missing_item_ids_for_stateless_history() {
+    let config = OpenResponsesConfig {
+        endpoint: "https://api.openai.com/v1/responses".to_string(),
+        api_key: None,
+        model: Some("gpt-5".to_string()),
+        headers: Vec::new(),
+        tool_choice: ToolChoiceParam::auto(),
+        followup_user_message: None,
+        stateless_history: true,
+        parallel_tool_calls: false,
+    };
+
+    assert_eq!(
+        super::openresponses::validation_options_for_stream(&config),
+        ValidationOptions::compat_missing_item_ids()
+    );
 }
 
 #[test]

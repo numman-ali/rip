@@ -15,22 +15,42 @@ pub use stream_transformers::{
     extract_reasoning_deltas, extract_text_deltas, extract_tool_call_argument_deltas,
 };
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ValidationOptions {
-    pub normalize_missing_item_ids: bool,
+    normalize_missing_item_ids: bool,
+    normalize_missing_response_user: bool,
+    normalize_reasoning_text_events: bool,
 }
 
 impl ValidationOptions {
     pub fn strict() -> Self {
-        Self {
-            normalize_missing_item_ids: false,
-        }
+        Self::default()
     }
 
     pub fn compat_missing_item_ids() -> Self {
-        Self {
-            normalize_missing_item_ids: true,
-        }
+        Self::strict().with_missing_item_ids()
+    }
+
+    pub fn compat_openrouter() -> Self {
+        Self::strict()
+            .with_missing_item_ids()
+            .with_missing_response_user()
+            .with_reasoning_text_events()
+    }
+
+    pub fn with_missing_item_ids(mut self) -> Self {
+        self.normalize_missing_item_ids = true;
+        self
+    }
+
+    pub fn with_missing_response_user(mut self) -> Self {
+        self.normalize_missing_response_user = true;
+        self
+    }
+
+    pub fn with_reasoning_text_events(mut self) -> Self {
+        self.normalize_reasoning_text_events = true;
+        self
     }
 }
 
@@ -81,8 +101,11 @@ impl ParsedEvent {
         validation: ValidationOptions,
     ) -> Self {
         let mut errors = Vec::new();
-        let validation_data = if validation.normalize_missing_item_ids {
-            normalize_event_for_validation(&data)
+        let validation_data = if validation.normalize_missing_item_ids
+            || validation.normalize_missing_response_user
+            || validation.normalize_reasoning_text_events
+        {
+            normalize_event_for_validation(&data, validation)
         } else {
             data.clone()
         };
@@ -197,11 +220,15 @@ fn output_text_delta(parsed: &ParsedEvent) -> Option<String> {
         .map(|value| value.to_string())
 }
 
-fn normalize_event_for_validation(value: &Value) -> Value {
+fn normalize_event_for_validation(value: &Value, validation: ValidationOptions) -> Value {
     let mut normalized = value.clone();
     let Some(obj) = normalized.as_object_mut() else {
         return normalized;
     };
+
+    if validation.normalize_reasoning_text_events {
+        normalize_reasoning_text_event_type(obj);
+    }
 
     let output_index = obj.get("output_index").and_then(|value| value.as_u64());
     if let Some(item) = obj.get_mut("item") {
@@ -209,7 +236,7 @@ fn normalize_event_for_validation(value: &Value) -> Value {
     }
 
     if let Some(response) = obj.get_mut("response") {
-        normalize_response_resource(response);
+        normalize_response_resource(response, validation);
     }
 
     if let Some(event_type) = obj.get("type").and_then(|value| value.as_str()) {
@@ -234,10 +261,29 @@ fn normalize_event_for_validation(value: &Value) -> Value {
     normalized
 }
 
-fn normalize_response_resource(response: &mut Value) {
+fn normalize_reasoning_text_event_type(obj: &mut serde_json::Map<String, Value>) {
+    let Some(Value::String(event_type)) = obj.get_mut("type") else {
+        return;
+    };
+
+    match event_type.as_str() {
+        "response.reasoning_text.delta" => {
+            *event_type = "response.reasoning.delta".to_string();
+        }
+        "response.reasoning_text.done" => {
+            *event_type = "response.reasoning.done".to_string();
+        }
+        _ => {}
+    }
+}
+
+fn normalize_response_resource(response: &mut Value, validation: ValidationOptions) {
     let Some(obj) = response.as_object_mut() else {
         return;
     };
+    if validation.normalize_missing_response_user && !obj.contains_key("user") {
+        obj.insert("user".to_string(), Value::Null);
+    }
     let Some(output) = obj.get_mut("output") else {
         return;
     };
@@ -653,6 +699,33 @@ data: {\"type\":\"response.output_item.added\",\"sequence_number\":1,\"output_in
     }
 
     #[test]
+    fn compat_openrouter_accepts_reasoning_text_and_missing_response_user() {
+        let mut decoder = SseDecoder::new_with_validation(ValidationOptions::compat_openrouter());
+        let payload = "event: response.created\n\
+                      data: {\"type\":\"response.created\",\"sequence_number\":1,\"response\":{\"background\":false,\"completed_at\":null,\"created_at\":1776635696,\"error\":null,\"frequency_penalty\":0,\"id\":\"resp_1\",\"incomplete_details\":null,\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":32,\"metadata\":{},\"model\":\"nvidia/nemotron-3-nano-30b-a3b:free\",\"object\":\"response\",\"output\":[],\"parallel_tool_calls\":false,\"presence_penalty\":0,\"previous_response_id\":null,\"prompt_cache_key\":null,\"reasoning\":null,\"safety_identifier\":null,\"service_tier\":\"auto\",\"status\":\"in_progress\",\"store\":false,\"temperature\":1,\"text\":{\"format\":{\"type\":\"text\"}},\"tool_choice\":\"auto\",\"tools\":[],\"top_logprobs\":0,\"top_p\":1,\"truncation\":\"disabled\",\"usage\":null}}\n\n\
+                      event: response.reasoning_text.delta\n\
+                      data: {\"type\":\"response.reasoning_text.delta\",\"sequence_number\":4,\"item_id\":\"rs_tmp_1\",\"output_index\":0,\"content_index\":0,\"delta\":\"We\"}\n\n\
+                      event: response.reasoning_text.done\n\
+                      data: {\"type\":\"response.reasoning_text.done\",\"sequence_number\":5,\"item_id\":\"rs_tmp_1\",\"output_index\":0,\"content_index\":0,\"text\":\"We responded.\"}\n\n\
+                      event: response.completed\n\
+                      data: {\"type\":\"response.completed\",\"sequence_number\":6,\"response\":{\"background\":false,\"completed_at\":1776635696,\"created_at\":1776635696,\"error\":null,\"frequency_penalty\":0,\"id\":\"resp_1\",\"incomplete_details\":null,\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":32,\"metadata\":{},\"model\":\"nvidia/nemotron-3-nano-30b-a3b:free\",\"object\":\"response\",\"output\":[],\"parallel_tool_calls\":false,\"presence_penalty\":0,\"previous_response_id\":null,\"prompt_cache_key\":null,\"reasoning\":null,\"safety_identifier\":null,\"service_tier\":\"auto\",\"status\":\"completed\",\"store\":false,\"temperature\":1,\"text\":{\"format\":{\"type\":\"text\"}},\"tool_choice\":\"auto\",\"tools\":[],\"top_logprobs\":0,\"top_p\":1,\"truncation\":\"disabled\",\"usage\":null}}\n\n";
+        let events = decoder.push(payload);
+        assert_eq!(events.len(), 4);
+        for event in events {
+            assert!(
+                event.errors.is_empty(),
+                "unexpected event errors: {:?}",
+                event.errors
+            );
+            assert!(
+                event.response_errors.is_empty(),
+                "unexpected response errors: {:?}",
+                event.response_errors
+            );
+        }
+    }
+
+    #[test]
     fn output_text_delta_filters_non_text_events() {
         let parsed = ParsedEvent {
             kind: ParsedEventKind::Event,
@@ -674,7 +747,8 @@ data: {\"type\":\"response.output_item.added\",\"sequence_number\":1,\"output_in
             "output_index": 2,
             "delta": "{}"
         });
-        let normalized = normalize_event_for_validation(&value);
+        let normalized =
+            normalize_event_for_validation(&value, ValidationOptions::compat_missing_item_ids());
         assert_eq!(
             normalized.get("item_id").and_then(|v| v.as_str()),
             Some("item_2")
@@ -688,7 +762,8 @@ data: {\"type\":\"response.output_item.added\",\"sequence_number\":1,\"output_in
             "output_index": 1,
             "item_id": "item_custom"
         });
-        let normalized = normalize_event_for_validation(&value);
+        let normalized =
+            normalize_event_for_validation(&value, ValidationOptions::compat_missing_item_ids());
         assert_eq!(
             normalized.get("item_id").and_then(|v| v.as_str()),
             Some("item_custom")
@@ -698,8 +773,78 @@ data: {\"type\":\"response.output_item.added\",\"sequence_number\":1,\"output_in
     #[test]
     fn normalize_event_for_validation_passthrough_non_object() {
         let value = serde_json::json!("raw");
-        let normalized = normalize_event_for_validation(&value);
+        let normalized = normalize_event_for_validation(&value, ValidationOptions::strict());
         assert_eq!(normalized, value);
+    }
+
+    #[test]
+    fn compat_openrouter_normalizes_reasoning_text_event_types() {
+        let value = serde_json::json!({
+            "type": "response.reasoning_text.delta",
+            "sequence_number": 4,
+            "item_id": "rs_tmp_1",
+            "output_index": 0,
+            "content_index": 0,
+            "delta": "We"
+        });
+        let normalized =
+            normalize_event_for_validation(&value, ValidationOptions::compat_openrouter());
+        assert_eq!(
+            normalized.get("type").and_then(|v| v.as_str()),
+            Some("response.reasoning.delta")
+        );
+    }
+
+    #[test]
+    fn compat_openrouter_fills_missing_response_user_with_null() {
+        let value = serde_json::json!({
+            "type": "response.created",
+            "sequence_number": 1,
+            "response": {
+                "background": false,
+                "completed_at": null,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0,
+                "id": "resp_1",
+                "incomplete_details": null,
+                "instructions": null,
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "fixture-model",
+                "object": "response",
+                "output": [],
+                "parallel_tool_calls": false,
+                "presence_penalty": 0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "reasoning": null,
+                "safety_identifier": null,
+                "service_tier": "",
+                "status": "",
+                "store": false,
+                "temperature": 0,
+                "text": { "format": { "type": "text" } },
+                "tool_choice": "auto",
+                "tools": [],
+                "top_logprobs": 0,
+                "top_p": 0,
+                "truncation": "auto",
+                "usage": null
+            }
+        });
+        let normalized =
+            normalize_event_for_validation(&value, ValidationOptions::compat_openrouter());
+        assert!(normalized
+            .get("response")
+            .and_then(|v| v.get("user"))
+            .is_some());
+        assert!(normalized
+            .get("response")
+            .and_then(|v| v.get("user"))
+            .unwrap()
+            .is_null());
     }
 
     #[test]
@@ -740,7 +885,7 @@ data: {\"type\":\"response.output_item.added\",\"sequence_number\":1,\"output_in
                 {"type": "function_call_output", "call_id": "call_b"}
             ]
         });
-        normalize_response_resource(&mut value);
+        normalize_response_resource(&mut value, ValidationOptions::compat_missing_item_ids());
         let output = value
             .get("output")
             .and_then(|v| v.as_array())

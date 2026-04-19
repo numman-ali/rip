@@ -551,6 +551,9 @@ impl TuiState {
     }
 
     pub fn is_stalled(&self, threshold_ms: u64) -> bool {
+        if self.end_ms.is_some() {
+            return false;
+        }
         let Some(now_ms) = self.now_ms else {
             return false;
         };

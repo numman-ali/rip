@@ -294,6 +294,8 @@ fn overlay_and_status_helpers_toggle_cleanly() {
     state.last_event_ms = Some(1_500);
     assert!(state.is_stalled(400));
     assert!(!state.is_stalled(600));
+    state.end_ms = Some(1_600);
+    assert!(!state.is_stalled(400));
 }
 
 #[test]

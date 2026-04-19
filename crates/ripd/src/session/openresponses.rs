@@ -327,11 +327,7 @@ pub(super) struct OpenResponsesStreamRequest<'a> {
 pub(super) async fn stream_openresponses_request<'a>(
     req: OpenResponsesStreamRequest<'a>,
 ) -> Result<(), String> {
-    let validation = if req.config.stateless_history {
-        ValidationOptions::compat_missing_item_ids()
-    } else {
-        ValidationOptions::strict()
-    };
+    let validation = validation_options_for_stream(req.config);
 
     if !req.payload.errors().is_empty() {
         req.sink
@@ -509,4 +505,18 @@ pub(super) async fn stream_openresponses_request<'a>(
     }
 
     Ok(())
+}
+
+pub(super) fn validation_options_for_stream(config: &OpenResponsesConfig) -> ValidationOptions {
+    let mut validation = ValidationOptions::strict();
+    if config.stateless_history {
+        validation = validation.with_missing_item_ids();
+    }
+    if crate::provider_openresponses::is_openrouter_responses_endpoint(&config.endpoint) {
+        validation = validation
+            .with_missing_item_ids()
+            .with_missing_response_user()
+            .with_reasoning_text_events();
+    }
+    validation
 }

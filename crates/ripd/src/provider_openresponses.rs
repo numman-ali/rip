@@ -132,7 +132,7 @@ fn base_streaming_builder(config: &OpenResponsesConfig) -> CreateResponseBuilder
     builder
 }
 
-fn is_openrouter_responses_endpoint(endpoint: &str) -> bool {
+pub(crate) fn is_openrouter_responses_endpoint(endpoint: &str) -> bool {
     // NOTE: This is intentionally a strict-ish heuristic: we only apply this default to the
     // canonical OpenRouter OpenAI-compatible Responses endpoint.
     let raw = endpoint.trim();

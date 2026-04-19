@@ -181,6 +181,25 @@ Next
     - Capturing the exact OpenResponses request JSON (artifact ref + replayable frame).
     - Comparing `timestamp_ms` deltas across `session_started`, `openresponses_request_started`, `openresponses_response_headers`, `openresponses_response_first_byte`, first `provider_event`, first `output_text_delta`, and `session_ended`.
 
+## OpenResponses: provider compatibility profiles + health matrix [needs work]
+- Refs:
+  - `docs/03_contracts/openresponses_capability_map.md`
+  - `docs/03_contracts/openresponses_coverage.md`
+  - `docs/03_contracts/modules/phase-1/02_provider_adapters.md`
+  - `crates/rip-provider-openresponses/src/lib.rs`
+  - `crates/ripd/src/session/openresponses.rs`
+- Status (2026-04-19):
+  - Implemented: provider-boundary compat seam v0.1. OpenRouter Responses streams now normalize known downstream deltas before schema validation (`response.user` missing from response resources, `response.reasoning_text.{delta,done}` stream events, and missing item ids in stateless-history paths), which removes false `provider_error` frames from successful runs and keeps TUI recovery overlays reserved for real failures.
+  - This is intentionally the start of a broader provider/model health layer, not the end state.
+- Ready:
+  - Define a versioned provider compatibility profile shape that can express provider-level and model-level deltas cleanly (request fields, stream event variants, response field omissions, tool/runtime capability quirks, stateful vs stateless expectations).
+  - Track that profile in both code and docs so there is one canonical place to see what each provider/model combination supports, what is normalized, and what still degrades.
+  - Add integration coverage per provider/profile that proves the expected behavior end to end, especially for real downstream SSE/event payloads and recovery semantics.
+- Done:
+  - RIP can explain, in code and docs, how each supported provider/model behaves at the OpenResponses boundary.
+  - Known downstream differences are normalized by declarative profiles rather than scattered conditionals.
+  - Real provider failures still surface as recoverable errors; compat-normalized success paths do not.
+
 Later
 - SDK distribution: bundled binaries (npm) [needs work]
   - Context: PATH-first is the Phase 1 default (ADR-0017). Bundling is an operational/release surface that must be explicit and reviewed.
