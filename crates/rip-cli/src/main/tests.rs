@@ -127,6 +127,23 @@ async fn ensure_thread_failure() {
 }
 
 #[tokio::test]
+async fn ensure_thread_parse_error() {
+    let server = MockServer::start();
+    let _mock = server.mock(|when, then| {
+        when.method(POST).path("/threads/ensure");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(r#"{"thread":"missing_id"}"#);
+    });
+
+    let client = Client::new();
+    let err = ensure_thread(&client, &server.base_url())
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("missing field"));
+}
+
+#[tokio::test]
 async fn post_thread_message_failure() {
     let server = MockServer::start();
     let _mock = server.mock(|when, then| {
@@ -139,6 +156,41 @@ async fn post_thread_message_failure() {
         .await
         .unwrap_err();
     assert!(err.to_string().contains("post message failed"));
+}
+
+#[tokio::test]
+async fn post_thread_message_success_includes_openresponses_payload() {
+    let server = MockServer::start();
+    let _mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/threads/t1/messages")
+            .body_contains(r#""content":"hi""#)
+            .body_contains(r#""actor_id":"user""#)
+            .body_contains(r#""origin":"cli""#)
+            .body_contains(
+                r#""openresponses":{"model":"openai/gpt-oss-20b","parallel_tool_calls":true}"#,
+            );
+        then.status(202)
+            .header("content-type", "application/json")
+            .body(r#"{"thread_id":"t1","message_id":"m1","session_id":"s1"}"#);
+    });
+
+    let client = Client::new();
+    let response = post_thread_message(
+        &client,
+        &server.base_url(),
+        "t1",
+        "hi",
+        "user",
+        "cli",
+        Some(serde_json::json!({
+            "model": "openai/gpt-oss-20b",
+            "parallel_tool_calls": true
+        })),
+    )
+    .await
+    .expect("post message");
+    assert_eq!(response.session_id, "s1");
 }
 
 #[tokio::test]
@@ -349,6 +401,44 @@ async fn run_interactive_remote_smoke() {
         server.base_url(),
         OutputView::Raw,
         None,
+    )
+    .await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn run_interactive_remote_forwards_openresponses_overrides() {
+    let server = MockServer::start();
+    let _ensure = server.mock(|when, then| {
+        when.method(POST).path("/threads/ensure");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(r#"{"thread_id":"t1"}"#);
+    });
+    let _post = server.mock(|when, then| {
+        when.method(POST)
+            .path("/threads/t1/messages")
+            .body_contains(r#""openresponses":{"endpoint":"https://openrouter.ai/api/v1/responses","model":"nvidia/nemotron-3-nano-30b-a3b:free","stateless_history":true}"#);
+        then.status(202)
+            .header("content-type", "application/json")
+            .body(r#"{"thread_id":"t1","message_id":"m1","session_id":"abc"}"#);
+    });
+    let _events = server.mock(|when, then| {
+        when.method(GET).path("/sessions/abc/events");
+        then.status(200)
+            .header("content-type", "text/event-stream")
+            .body(format!("data: {}\n\n", session_started_frame()));
+    });
+
+    let result = run_interactive_remote(
+        "hello".to_string(),
+        server.base_url(),
+        OutputView::Raw,
+        Some(serde_json::json!({
+            "endpoint": "https://openrouter.ai/api/v1/responses",
+            "model": "nvidia/nemotron-3-nano-30b-a3b:free",
+            "stateless_history": true
+        })),
     )
     .await;
     assert!(result.is_ok());
