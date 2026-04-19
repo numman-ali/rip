@@ -3,6 +3,7 @@ use super::streaming::{
     EventSink, OpenResponsesSsePipe, ToolCallCollector,
 };
 use super::*;
+use crate::openresponses_compat::resolve_openresponses_compat_profile;
 
 pub(super) struct OpenResponsesRunContext<'a> {
     pub(super) http: &'a reqwest::Client,
@@ -508,15 +509,6 @@ pub(super) async fn stream_openresponses_request<'a>(
 }
 
 pub(super) fn validation_options_for_stream(config: &OpenResponsesConfig) -> ValidationOptions {
-    let mut validation = ValidationOptions::strict();
-    if config.stateless_history {
-        validation = validation.with_missing_item_ids();
-    }
-    if crate::provider_openresponses::is_openrouter_responses_endpoint(&config.endpoint) {
-        validation = validation
-            .with_missing_item_ids()
-            .with_missing_response_user()
-            .with_reasoning_text_events();
-    }
-    validation
+    resolve_openresponses_compat_profile(&config.endpoint, config.model.as_deref())
+        .validation_options(config.stateless_history)
 }

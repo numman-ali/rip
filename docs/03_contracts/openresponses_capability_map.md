@@ -42,6 +42,7 @@ Capability alignment (expanded)
 | Response include/extras | spec: (schema-only) | `IncludeEnum`, `top_logprobs` | `execution.response_include`, `model.logprobs` | server + cli_h + cli_i + sdk | registry: present; impl: pending |
 | Usage + token counts | spec: (implicit via schema) | `Usage`, `TokenCountsBody/Resource` | `usage.token_counts` | server + sdk | registry: present; impl: partial (validation only) |
 | Request metadata + identity | spec: (schema-only) | `metadata`, `user`, `safety_identifier`, `prompt_cache_*`, `store`, `background` | `policy.request_identifiers`, `model.prompt_cache`, `openresponses.request_fidelity` | server + cli_h + cli_i + sdk | registry: present; impl: partial (passthrough + validation) |
+| Provider compatibility profiles + health matrix | provider docs + observed payloads + spec discrepancies | runtime-selected provider/model profiles | `openresponses.compat_profiles` | server + cli_h + cli_i + sdk + tui | registry: present; impl: partial (OpenAI/OpenRouter seeded; runtime validation selection wired; request/tool/modality health seeded; richer surfacing pending) |
 | Extensions (items/events/schemas) | spec: Extending Open Responses | extension-prefixed items/events, schema extensions | `openresponses.extensions` | server + tui + mcp | registry: present; impl: pending |
 
 Next steps

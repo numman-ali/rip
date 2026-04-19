@@ -11,7 +11,7 @@ Phase 1 — Foundation
 - Context compiler kernel (pulled-forward slice of Phase 2 `context.compile`): deterministic compilation (context bundles + compile frames) so runs can start from continuity truth without relying on provider cursors; hook: prompt assembly pipeline.
 - Execution modes: fullscreen terminal UI, headless CLI, JSONL output + JSON Schema; hook: output renderer.
 - Models & providers: Open Responses adapter boundary + full schema/streaming fidelity + model selection stub; hook: provider adapter boundary.
-- OpenResponses boundary: request/response/streaming fidelity + item lifecycle + tool/content unions; hook: provider adapter boundary.
+- OpenResponses boundary: request/response/streaming fidelity + item lifecycle + tool/content unions + provider/model compatibility profiles + provider/model request/tool/modality health matrix; hook: provider adapter boundary.
 - Tools & tooling: tool registry, allowlist, sandbox policy; hook: tool dispatch pipeline.
 - Hooks (minimal): session-level hook engine; hook: session lifecycle events.
 - Commands (core): in-memory command registry; hook: CLI/router integration.

@@ -20,11 +20,14 @@ Spec sync
 
 Config
 - Provider selection and routing rules.
+- Provider compatibility profiles + model health overlays.
+- Provider-level transport/auth/static header config remains layered config, but compatibility profiles record what the resolved provider/model route actually supports or degrades.
 - Retry policy and timeouts.
 
 Invariants
 - Preserve event order and timestamps.
 - No transformation that loses semantic meaning.
+- Validation-only normalization is allowed only through versioned compatibility profiles; raw provider payloads remain canonical.
 - Emit one `provider_event` frame per SSE event (including `[DONE]` and invalid JSON).
 - Provider conversation state (cursors) is cache only (ADR-0010); adapters must never be required to reconstruct continuity truth.
 

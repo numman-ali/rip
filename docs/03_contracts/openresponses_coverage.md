@@ -4,6 +4,7 @@ Summary
 - Source repo: `temp/openresponses` (local vendor).
 - Reviewed: 2026-01-17.
 - Traceability: see `docs/03_contracts/openresponses_traceability.md` for the current upstream snapshot.
+- Compatibility profiles: see `docs/03_contracts/openresponses_provider_profiles.md` for the curated provider/model health layer over the raw schema coverage.
 - OpenAPI source: `temp/openresponses/public/openapi/openapi.json` (canonical; `temp/openresponses/schema/openapi.json` is fallback only).
 - Schema files: 412 split components in `temp/openresponses/schema/components/schemas` (+3 additive patch schemas: `InputVideoContent`, `JsonSchemaResponseFormatParam`, `TextFormatParam`).
 - Streaming event schemas: 58 (from `temp/openresponses/schema/paths/responses.json`).
@@ -20,6 +21,11 @@ Sources reviewed
 - `temp/openresponses/src/pages/compliance.mdx`
 - `temp/openresponses/src/pages/changelog.mdx`
 - `temp/openresponses/src/pages/governance.mdx`
+- `temp/docs/openrouter/responses/overview.md`
+- `temp/docs/openrouter/responses/basic-usage.md`
+- `temp/docs/openrouter/responses/reasoning.md`
+- `temp/docs/openrouter/responses/tool-calling.md`
+- `temp/docs/openrouter/nemotron_3_nano_30b_a3b_free_2026-04-19.md`
 - `temp/openresponses/public/openapi/openapi.json`
 - `temp/openresponses/schema/openapi.json`
 - `temp/openresponses/schema/openapi_additive_patches.yaml`
@@ -70,6 +76,8 @@ Supporting (non-OpenResponses) capabilities referenced by the spec
 
 ## Coverage evidence (current)
 - Provider adapter validates streaming events against the split `paths/responses.json` schema and embedded `response` objects against split component schemas.
+- Provider/model compatibility profiles are now versioned explicitly in `docs/03_contracts/openresponses_provider_profiles.md` and mirrored in code by `crates/ripd/src/openresponses_compat.rs`; runtime validation selection now resolves through those profiles instead of ad-hoc provider checks.
+- The compatibility-profile shape now captures more than validation posture: request-field health (`background`, `store`, `service_tier`, `include`, `reasoning`), tool-surface health (`tool_choice`, `allowed_tools`, hosted tools, MCP rows), and modality health (text/image/file/video input). This is the seed of the provider/model health matrix.
 - Split schemas validate all 58 streaming event variants and 23 output item variants; bundled OpenAPI remains partial (24/58 streaming events, 4/23 output items).
 - Provider adapter emits `output_text_delta` frames for `response.output_text.delta` events alongside `provider_event` frames.
 - ResponseResource validation tests cover tool_choice variants (including allowed_tools + value enum), Tool union variants, shell output items, code interpreter calls, search/computer/image/apply_patch tool call items, MCPListTools output items, MCP approval items, and MCP tool calls (including error variants); MCP Memory/MCP filter/approval/error schemas plus search/tool call enums and code interpreter output params are validated directly.
@@ -78,6 +86,8 @@ Supporting (non-OpenResponses) capabilities referenced by the spec
 - Tool execution is constrained by `tool_choice`/`allowed_tools`: `ripd` rejects disallowed `function_call` items deterministically (no tool execution; `function_call_output.ok=false` + tool error events).
 - Provider supports stateless history compatibility (opt-in via `RIP_OPENRESPONSES_STATELESS_HISTORY`) for providers that do not honor `previous_response_id`; in this mode, follow-ups resend accumulated input items with deterministic ids.
 - Provider validation supports compatibility normalization for missing item `id` fields (opt-in via `RIP_OPENRESPONSES_STATELESS_HISTORY`; raw events preserved) to keep schema validation strict while accommodating non-compliant streams.
+- Provider validation supports OpenRouter-specific compatibility normalization for missing `response.user` and `response.reasoning_text.{delta,done}` stream events (raw events preserved; validation copy only), so successful OpenRouter runs do not surface false provider errors.
+- Config remains layered separately from compatibility truth: provider-level auth/static headers/defaults resolve the route, and the compatibility profile records what that resolved route actually supports or degrades.
 - Tool schemas are emitted with `strict: false` for broad provider compatibility; runtime still validates tool args locally.
 - Tool schema validation uses split component schemas for `ResponsesToolParam` and `ToolChoiceParam`, validating optional fields and nested structures; bundled OpenAPI still only includes function tool variants.
 - Split component schemas are vendored in `schemas/openresponses/split_components.json`; split paths schema is vendored in `schemas/openresponses/paths_responses.json`.

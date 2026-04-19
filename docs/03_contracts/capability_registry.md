@@ -139,6 +139,7 @@ Notes
 | openresponses.reasoning_items | v1 | P1 | planned | planned | planned | planned | planned | planned | Reasoning item content/encrypted/summary handling. |
 | openresponses.tools_union | v1 | P1 | planned | planned | planned | planned | planned | planned | Full OpenResponses tool union + tool call item variants. |
 | openresponses.errors | v1 | P1 | planned | planned | planned | planned | planned | planned | Error payloads + streaming failure events. |
+| openresponses.compat_profiles | v1 | P1 | planned | planned | planned | planned | planned | planned | Declarative provider/model compatibility profiles and health matrix at the provider boundary (validation, request, tools, modalities, diagnostics). |
 | openresponses.extensions | v1 | P2 | planned | planned | planned | planned | planned | planned | Vendor-prefixed items/events + schema extensions. |
 
 ## Tools & Tooling

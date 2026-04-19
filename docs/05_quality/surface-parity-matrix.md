@@ -85,6 +85,7 @@ Generated from docs/03_contracts/capability_registry.md.
 | openresponses.reasoning_items | planned | planned | planned | planned | planned | planned |
 | openresponses.tools_union | planned | planned | planned | planned | planned | planned |
 | openresponses.errors | planned | planned | planned | planned | planned | planned |
+| openresponses.compat_profiles | planned | planned | planned | planned | planned | planned |
 | openresponses.extensions | planned | planned | planned | planned | planned | planned |
 | tool.builtin_files | planned | planned | planned | planned | planned | planned |
 | tool.registry | planned | planned | planned | planned | planned | planned |

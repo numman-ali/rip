@@ -11,6 +11,7 @@ mod continuity_stream_cache;
 mod handoff_context_bundle;
 mod local_authority;
 mod message_ordinal_index;
+mod openresponses_compat;
 mod openresponses_observability;
 mod provider_openresponses;
 mod runner;
