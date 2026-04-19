@@ -45,8 +45,8 @@ mod tests {
     };
     use serde_json::json;
 
-    use self::activity::build_activity_lines;
-    use self::canvas::{build_canvas_text, build_chips_line};
+    use self::activity::{build_activity_lines, build_strip_line};
+    use self::canvas::build_canvas_text;
     use self::input::build_help_line;
     use self::overlays::{overlay_body_area, overlay_modal_area};
     use self::util::wrapped_line_count;
@@ -242,15 +242,38 @@ mod tests {
         assert!(activity.iter().any(|line| line.contains("ctx compiled")));
         assert!(activity.iter().any(|line| line.contains("artifacts")));
 
-        let chips = build_chips_line(&state, 120);
-        assert!(chips.contains("[⟳ write]"));
-        assert!(chips.contains("[tasks:1/1]"));
-        assert!(chips.contains("[jobs:1/1]"));
-        assert!(chips.contains("[⚙ ctx:compiled]"));
-        assert!(chips.contains("[⚠ error]"));
+        let theme = ThemeStyles::for_theme(ThemeId::DefaultDark);
+        let strip = build_strip_line(&state, &theme, 120).expect("strip populated");
+        let strip_str = strip.to_string();
+        assert!(strip_str.contains("▲ error"), "strip: {strip_str}");
+        assert!(strip_str.contains("stalled"));
+        assert!(strip_str.contains("⟡ write"));
+        assert!(strip_str.contains("⧉ pwd"));
+        assert!(strip_str.contains("◐ compaction"));
+        assert!(strip_str.contains("ctx compiled"));
 
-        let truncated = build_chips_line(&state, 12);
-        assert!(truncated.ends_with('…'));
+        let truncated = build_strip_line(&state, &theme, 12)
+            .expect("strip populated")
+            .to_string();
+        assert!(truncated.ends_with('…'), "expected ellipsis: {truncated}");
+    }
+
+    #[test]
+    fn strip_auto_hides_when_idle_at_bottom() {
+        let theme = ThemeStyles::for_theme(ThemeId::DefaultDark);
+        let state = TuiState::new(100);
+        assert!(build_strip_line(&state, &theme, 80).is_none());
+    }
+
+    #[test]
+    fn strip_shows_scrolled_back_hint_when_not_at_bottom() {
+        let theme = ThemeStyles::for_theme(ThemeId::DefaultDark);
+        let mut state = TuiState::new(100);
+        state.canvas_scroll_from_bottom = 3;
+        let strip = build_strip_line(&state, &theme, 80)
+            .expect("strip populated")
+            .to_string();
+        assert!(strip.contains("scrolled back"), "strip: {strip}");
     }
 
     #[test]

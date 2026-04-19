@@ -19,6 +19,6 @@
 
 
 
-chips: [✓ bash]
+
 ▎ ›
    ⏎ send   ⌘K palette   ⌘M model   ⌘G go to   ? help

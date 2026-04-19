@@ -15,6 +15,6 @@
       │tip: Ctrl-R switches to X-ray/raw frame view  │
       │                                              │
       └──────────────────────────────────────────────┘
-chips: [⚠ error]
+▲ error @seq 1
 ▎ ›
    ⏎ send   ⌘K palette   ⌘M model   ⌘G go to   ? help

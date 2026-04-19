@@ -10,7 +10,7 @@ use crate::canvas::{
 };
 use crate::TuiState;
 
-use super::activity::render_activity_rail;
+use super::activity::{build_strip_line, render_activity_rail};
 use super::input::render_input;
 use super::status_bar::render_status_bar;
 use super::theme::ThemeStyles;
@@ -82,18 +82,18 @@ fn render_canvas(frame: &mut Frame<'_>, state: &TuiState, theme: &ThemeStyles, a
     frame.render_widget(widget, area);
 }
 
-/// Bottom strip above the input. Shows the activity chip summary when
-/// anything is happening (tools running, tasks queued, error present);
-/// otherwise blank. `build_chips_line` was carrying this before C.1 —
-/// keeping the content the same so we only move chrome here, not
-/// semantics. C.2 rewrites this as the activity *strip* proper
-/// (auto-hide when idle + transcript bottom, colored by worst state).
+/// Bottom strip above the input. Shows a single-row activity summary:
+/// error → stall → running tool → running task → running job → context,
+/// truncated right-to-left with an ellipsis. Hidden when there's nothing
+/// to show *and* the transcript is at the bottom.
 fn render_footer_strip(frame: &mut Frame<'_>, state: &TuiState, theme: &ThemeStyles, area: Rect) {
     if area.width == 0 || area.height == 0 {
         return;
     }
-    let chips = build_chips_line(state, area.width as usize);
-    let widget = Paragraph::new(Line::from(chips)).style(theme.muted);
+    let Some(line) = build_strip_line(state, theme, area.width as usize) else {
+        return;
+    };
+    let widget = Paragraph::new(line);
     frame.render_widget(widget, area);
 }
 
@@ -862,82 +862,6 @@ fn plain_text(text: &Text<'_>) -> String {
         for span in &line.spans {
             out.push_str(span.content.as_ref());
         }
-    }
-    out
-}
-
-pub(super) fn build_chips_line(state: &TuiState, max_width: usize) -> String {
-    let mut chips: Vec<String> = Vec::new();
-
-    if state.awaiting_response {
-        let waiting = if state.openresponses_first_provider_event_ms.is_some() {
-            "working"
-        } else if state.openresponses_request_started_ms.is_some() {
-            "waiting"
-        } else {
-            "sending"
-        };
-        chips.push(format!("[◔ {waiting}]"));
-    }
-
-    let running_tools: Vec<&str> = state.running_tool_ids().collect();
-    if !running_tools.is_empty() {
-        let name = state
-            .tools
-            .get(running_tools[0])
-            .map(|t| t.name.as_str())
-            .unwrap_or("tool");
-        chips.push(format!("[⟳ {name}]"));
-        if running_tools.len() > 1 {
-            chips.push(format!("[+{}]", running_tools.len() - 1));
-        }
-    } else if let Some(tool) = state.tools.values().max_by_key(|tool| tool.started_seq) {
-        let chip = match &tool.status {
-            crate::ToolStatus::Ended { .. } => format!("[✓ {}]", tool.name),
-            crate::ToolStatus::Failed { .. } => format!("[✕ {}]", tool.name),
-            crate::ToolStatus::Running => format!("[⟳ {}]", tool.name),
-        };
-        chips.push(chip);
-    }
-
-    let running_tasks = state.running_task_ids().count();
-    if running_tasks > 0 {
-        chips.push(format!("[tasks:{running_tasks}/{}]", state.tasks.len()));
-    } else if !state.tasks.is_empty() {
-        chips.push(format!("[tasks:{}]", state.tasks.len()));
-    }
-
-    let running_jobs = state.running_job_ids().count();
-    if running_jobs > 0 {
-        chips.push(format!("[jobs:{running_jobs}/{}]", state.jobs.len()));
-    } else if !state.jobs.is_empty() {
-        chips.push(format!("[jobs:{}]", state.jobs.len()));
-    }
-
-    if let Some(ctx) = state.context.as_ref() {
-        let status = match ctx.status {
-            crate::ContextStatus::Selecting => "ctx:selecting",
-            crate::ContextStatus::Compiled => "ctx:compiled",
-        };
-        chips.push(format!("[⚙ {status}]"));
-    }
-
-    if !state.artifacts.is_empty() {
-        chips.push(format!("[📄{}]", state.artifacts.len()));
-    }
-
-    if state.is_stalled(5_000) {
-        chips.push("[⏸ stalled]".to_string());
-    }
-
-    if state.has_error() {
-        chips.push("[⚠ error]".to_string());
-    }
-
-    let mut out = String::from("chips: ");
-    out.push_str(&chips.join(" "));
-    if out.chars().count() > max_width {
-        out = truncate(&out, max_width);
     }
     out
 }

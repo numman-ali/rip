@@ -19,6 +19,6 @@ thread-1 · rip · -                                          thinking  sending.
 
 
 
-chips: [◔ sending] [tasks:1/1]
+⧉ clippy
 ▎ ›
    ⏎ send   ⌘K palette   ⌘M model   ⌘G go to   ? help

@@ -35,6 +35,6 @@
             └──────────────────────────────────────────────────────────────────────────────────────────────┘
 
 
-chips: [⏸ stalled] [⚠ error]
+▲ error @seq 1  ·  · stalled
 ▎ ›
    ⏎ send   ⌘K palette   ⌘M model   ⌘G go to   ? help
