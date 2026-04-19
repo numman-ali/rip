@@ -73,19 +73,9 @@ pub(super) fn render_error_overlay(
                 }
             }
             lines.push(Line::from(" "));
-            if let Some(continuity_id) = state.continuity_id.as_deref() {
-                lines.push(Line::from(format!(
-                    "inspect: {}",
-                    truncate(
-                        &format!("rip threads events {continuity_id} --max-events 200"),
-                        120
-                    )
-                )));
-            }
             if let Some(session_id) = state.session_id.as_deref() {
                 lines.push(Line::from(format!("session: {}", truncate(session_id, 40))));
             }
-            lines.push(Line::from("tip: Ctrl-R switches to X-ray/raw frame view"));
         }
         _ => {}
     }

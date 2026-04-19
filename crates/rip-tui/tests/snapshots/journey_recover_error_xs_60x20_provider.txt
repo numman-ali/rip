@@ -12,7 +12,7 @@
       │data: {not json}                              │
       │                                              │
       │session: s1                                   │
-      │tip: Ctrl-R switches to X-ray/raw frame view  │
+      │                                              │
       │                                              │
       └──────────────────────────────────────────────┘
 ▲ error @seq 1

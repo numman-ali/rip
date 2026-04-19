@@ -110,11 +110,11 @@ Next
   - `docs/02_architecture/tui/00_design.md` (shipped design, lands with D.8)
   - `docs/02_architecture/continuity_os.md`
   - `docs/03_contracts/capability_registry.md`
-- Status (2026-04-19): **Phase A + B + C shipped; D landing.**
+- Status (2026-04-19): **Phase A + B + C + D shipped; polish tranche deferred.**
   - Phase A foundations: Ratatui 0.30 + crossterm 0.29 bump, render/ split, semantic Theme struct with color-depth degradation, Overlay trait + Vec<Overlay> stack, PaletteMode trait + Models migrated from rip-cli, old `docs/02_architecture/tui/` files deleted.
   - Phase B canvas overhaul: `CanvasMessage` enum + `messages` Vec + `ingest()`, canvas renderer walks messages (no `output_text`/`prompt_ranges`), `reset_session_state` removed from `begin_pending_turn` (ambient state persists across turns), inline `ToolCardWidget`/`TaskCardWidget` with `⏎` expand, `StreamCollector` fence-aware markdown assembly, `pulldown-cmark` + `syntect` wiring, `CachedText` theme invariance.
-  - Phase C chrome + palette: borderless hero strip + Debug overlay (C.1), activity strip auto-hides when idle (C.2), state-driven keylight (C.3), multi-line editor + context-aware placeholder + emacs kills (C.4), Command/GoTo/Threads/Options palette modes + Tab cycling (C.5), Help overlay via `?` (C.7), Ctrl-R → X-ray on focused item (C.8), auto-opening ErrorRecovery overlay with r/c/m/x routing through capabilities (C.10).
-  - Phase D polish in progress: design doc + roadmap update + skill refresh; explicitly deferred are C.6 spatial palette positioning, C.9 motion primitives (breath/thinking/streaming pulse infrastructure hooks laid), D.2 ArtifactViewer (needs `tool.output_fetch`), D.3 ThreadPicker (palette Threads covers the need), D.4 subagent color palette, D.5 vim mode, D.6 canvas virtualization (no perf regression observed), D.7 mouse polish.
+  - Phase C chrome + palette: borderless hero strip + Debug overlay (C.1), activity strip auto-hides when idle (C.2), state-driven keylight (C.3), multi-line editor + context-aware placeholder + emacs kills (C.4 — hand-rolled; `ratatui-textarea` migration is in the polish tranche), Command/GoTo/Threads/Options palette modes + Tab cycling (C.5), Help overlay via `?` (C.7), Ctrl-R → X-ray on focused item (C.8), auto-opening ErrorRecovery overlay with r/c/m/x routing through capabilities and legacy `rip threads events` shell breadcrumb deleted (C.10).
+  - Phase D close-out: design doc shipped (D.8), roadmap + agent_state synced (D.9), `~/.claude/skills/ratatui-builder/` refreshed to reflect end-state seams (D.10). Remaining polish items (C.4 dep migration, C.6 spatial palette, C.9 motion primitives, B.9 snapshot matrix expansion, D.1 Ink QA, D.2 ArtifactViewer gated on `tool.output_fetch`, D.3 ThreadPicker, D.4 subagent palette, D.5 vim mode, D.6 virtualization, D.7 mouse) moved to the polish tranche roadmap item below.
 - Locked as surface-only: every TUI action maps to a supported capability in `docs/03_contracts/capability_registry.md`; entries with no backing capability ship *[deferred]* (visible-but-disabled), not as local hacks. Full backing matrix in Part 17 of the plan.
 - Multi-actor from day one: `UserTurn.actor_id` + `AgentTurn.role` are required. Canvas enum extends to `JobNotice` (rides `ContinuityJobSpawned/Ended` with kernel-assigned `job_kind` — no new frame kinds invented) and `ExtensionPanel` (declared but deferred until `extension.ui` P2 ships).
 - Modular cognition: retrieval, reviewer, memory, summarizer all surface via `JobNotice` when their kernel jobs ship; the TUI holds no strategy.
@@ -129,14 +129,17 @@ Next
   - Phase D final commits: skill refresh at `~/.claude/skills/ratatui-builder/` (D.10) + this roadmap/agent_state sync (D.9).
   - Deferred items listed above are tracked under a separate "TUI: polish tranche" roadmap item below.
 
-## TUI: polish tranche (C.6/C.9/D.2–D.7 follow-ups) [needs work]
+## TUI: polish tranche (C.4 dep / C.6 / C.9 / B.9 matrix / D.1–D.7 follow-ups) [needs work]
 - Refs:
   - `docs/07_tasks/tui_revamp.md` Parts 1–14
   - `docs/02_architecture/tui/00_design.md`
 - Status (2026-04-19): deferred out of the main revamp so the shipped Phase A+B+C slice is coherent on its own. Each item is small on its own; none is blocking on user-visible behavior.
 - Items:
+  - C.4 editor dep migration — plan A.0 called for `ratatui-textarea`; shipped implementation hand-rolls the multi-line editor in `crates/rip-tui/src/render/input.rs` (newlines, placeholder, emacs kills, history). Migrate only if we need features the hand-rolled version would duplicate (bracketed paste handling, soft-wrap scroll, undo/redo).
   - C.6 spatial palette positioning — palette modal origin tracks summoning zone (top-center / top-right / top-left / center / bottom-center).
   - C.9 motion primitives — idle breath dot (2400ms), pre-first-token thinking cycle (`◐◓◑◒`), streaming pulse. Needs a dirty-tick rhythm that respects the current 33ms frame cadence.
+  - B.9 snapshot matrix expansion — plan Part 14.1 called for 10 journeys × 3 breakpoints × 3 themes = 90 goldens. Shipped: 25 goldens across the high-signal journeys (follow-a-run, background-tasks, recover-error, multi-turn-continuity, markdown, tool-card-expand, palette-command, palette-go-to, help, error-recovery, debug, keylight-typing, multiline-input). Missing: `palette_models` and `xray_overlay` journeys; ink/nocolor theme variants on most journeys. Add when the first layout regression bites or when a new surface is added that would benefit from theme-variant coverage.
+  - D.1 Ink theme finalization — verify under iTerm2, Alacritty, Kitty, GNOME Terminal; 16-color + NO_COLOR visual QA.
   - D.2 ArtifactViewer — gated behind `tool.output_fetch` + `tool.output_store` flipping from planned → supported.
   - D.3 ThreadPicker — richer than palette Threads: tags, size chips, age chips.
   - D.4 Subagent color palette — per-agent accent tokens, gutter glyph `◈`, prepared in `AgentRole::Subagent`.
