@@ -308,8 +308,20 @@ fn recover_stalled_state() -> TuiState {
 }
 
 fn render_to_string(width: u16, height: u16, state: &TuiState, mode: RenderMode) -> String {
+    render_to_string_with_input(width, height, state, mode, "")
+}
+
+fn render_to_string_with_input(
+    width: u16,
+    height: u16,
+    state: &TuiState,
+    mode: RenderMode,
+    input: &str,
+) -> String {
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
-    terminal.draw(|f| render(f, state, mode, "")).expect("draw");
+    terminal
+        .draw(|f| render(f, state, mode, input))
+        .expect("draw");
     buffer_to_string(terminal.backend().buffer())
 }
 
@@ -397,6 +409,15 @@ fn journey_debug_overlay_m_120x30() {
     state.set_overlay(Overlay::Debug);
     let rendered = render_to_string(120, 30, &state, RenderMode::Json);
     assert_snapshot("journey_debug_overlay_m_120x30.txt", rendered);
+}
+
+#[test]
+fn journey_keylight_typing_s_80x24() {
+    // Non-empty input → keylight should foreground send / newline / palette
+    // instead of the idle help row. Locks in the state-driven keylight from C.3.
+    let state = basic_state();
+    let rendered = render_to_string_with_input(80, 24, &state, RenderMode::Json, "draft slide 1");
+    assert_snapshot("journey_keylight_typing_s_80x24.txt", rendered);
 }
 
 #[test]

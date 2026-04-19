@@ -33,7 +33,7 @@ pub(super) fn render_xray_screen(
     render_status_bar(frame, state, theme, chunks[0]);
     render_main_panes(frame, state, theme, mode, chunks[1]);
     render_output(frame, state, theme, chunks[2]);
-    render_input(frame, theme, chunks[3], input);
+    render_input(frame, state, theme, chunks[3], input);
 }
 
 fn render_main_panes(

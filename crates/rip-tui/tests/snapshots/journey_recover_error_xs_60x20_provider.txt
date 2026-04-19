@@ -17,4 +17,4 @@
       └──────────────────────────────────────────────┘
 ▲ error @seq 1
 ▎ ›
-   ⏎ send   ⌘K palette   ⌘M model   ⌘G go to   ? help
+   ⎋ close   ↑↓ scroll   x raw

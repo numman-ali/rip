@@ -21,4 +21,4 @@ thread-1 · rip · -                                          thinking  sending.
 
 ⧉ clippy
 ▎ ›
-   ⏎ send   ⌘K palette   ⌘M model   ⌘G go to   ? help
+   ⎋ stop   ⌘[ prev msg

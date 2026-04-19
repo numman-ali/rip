@@ -21,4 +21,4 @@
 
 ▲ error @seq 2
 ▎ ›
-   ⏎ send   ⌘K palette   ⌘M model   ⌘G go to   ? help
+   ⎋ close   ↑↓ scroll   x raw

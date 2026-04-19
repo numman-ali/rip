@@ -296,7 +296,9 @@ mod tests {
         assert_eq!(wrapped_line_count("", 10), 1);
         assert_eq!(wrapped_line_count("hello", 10), 1);
         assert_eq!(wrapped_line_count("hello world", 5), 3);
-        assert_eq!(build_help_line(8), "⏎ send …");
+        // Idle-state keylight starts with "? help" as the headline
+        // shortcut; truncation at 8 chars leaves room for an ellipsis.
+        assert_eq!(build_help_line(8), "? help …");
     }
 
     #[test]

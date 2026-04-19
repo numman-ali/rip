@@ -17,4 +17,4 @@
 
 ⟡ bash
 ▎ ›
-   ⏎ send   ⌘K palette   ⌘M model   ⌘G go to   ? help
+   ? help   ⌘K command   ⌘M model   ⌘G go to

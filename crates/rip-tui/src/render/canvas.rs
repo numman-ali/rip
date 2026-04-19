@@ -50,7 +50,7 @@ pub(super) fn render_canvas_screen(
     render_status_bar(frame, state, theme, chunks[0]);
     render_canvas_body(frame, state, theme, chunks[1]);
     render_footer_strip(frame, state, theme, chunks[2]);
-    render_input(frame, theme, chunks[3], input);
+    render_input(frame, state, theme, chunks[3], input);
 }
 
 pub(super) fn render_canvas_body(

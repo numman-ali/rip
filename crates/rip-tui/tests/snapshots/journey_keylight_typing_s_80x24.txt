@@ -1,4 +1,4 @@
-- · rip · -                             idle  clipboard: stored (OSC5…  ttft 200
+- · rip · -                                                       idle  ttft 200
 ›  hi
 
 ◉  hello
@@ -20,5 +20,5 @@
 
 
 
-▎ ›
-   ? help   ⌘K command   ⌘M model   ⌘G go to
+▎ › draft slide 1
+   ⏎ send   ⇧⏎ newline   ⌘K palette
