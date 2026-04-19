@@ -6,6 +6,13 @@ Purpose
 - All coordination happens through chat; be concise, decision‑focused, announce the plan, and proceed unless blocked (ask for approval only when required by gates).
 - `docs/` is the source of truth for scope, architecture, contracts, and tasks.
 
+Agent leadership and commit control
+- Codex is the lead agent for this repo unless the operator explicitly says otherwise.
+- Codex owns commit control, final integration, and cross-lane coordination.
+- Other agents may implement delegated slices, but they should follow Codex's lead on scope, boundaries, sequencing, and landing order.
+- Other agents must not move, stash, overwrite, or otherwise touch Codex's in-progress work without asking first.
+- TUI-facing surface work may be delegated, but non-TUI CLI, kernel, server, continuity, session, and control-plane changes stay under Codex review before landing.
+
 Core directive: Open Responses coverage
 - Implement full, first-class support for the entire Open Responses spec (no minimal/partial mappings).
 - Before changing provider logic, review the split schemas in `temp/openresponses/schema` AND the specification markdown/MDX in `temp/openresponses/src/pages` (specification/reference/compliance/etc.), then capture findings in committed docs (use `docs/` for authoritative notes; use `temp/docs` only for external/online evidence, not internal references or working notes).
