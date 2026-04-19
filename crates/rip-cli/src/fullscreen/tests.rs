@@ -1,6 +1,9 @@
 use super::*;
 use crate::test_env;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
+use crossterm::event::{
+    Event as TermEvent, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+};
+use crossterm::terminal::size as terminal_size;
 use httpmock::Method::GET;
 use httpmock::MockServer;
 use rip_kernel::{EventKind, ProviderEventStatus};
@@ -8,6 +11,7 @@ use rip_tui::palette::modes::models::{
     default_endpoint_for_provider, infer_provider_id_from_endpoint, parse_model_route,
     push_route_from_string, upsert_model_route,
 };
+use rip_tui::{canvas_hit_message_id, hero_click_target, HeroClickTarget};
 use rip_tui::{ModelRoute, ModelsMode, PaletteSource};
 use std::collections::BTreeMap;
 use std::ffi::OsString;
