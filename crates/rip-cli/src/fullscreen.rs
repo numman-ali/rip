@@ -1,19 +1,14 @@
 use std::collections::BTreeMap;
 use std::future;
 use std::io;
-use std::io::Write;
-use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crossterm::event::{
-    DisableMouseCapture, EnableMouseCapture, Event as TermEvent, EventStream, KeyCode, KeyEvent,
-    KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+    EnableMouseCapture, Event as TermEvent, EventStream, KeyCode, KeyEvent, KeyModifiers,
+    MouseButton, MouseEvent, MouseEventKind,
 };
-use crossterm::terminal::{
-    disable_raw_mode, enable_raw_mode, size as terminal_size, EnterAlternateScreen,
-    LeaveAlternateScreen,
-};
-use crossterm::{execute, ExecutableCommand};
+use crossterm::terminal::{enable_raw_mode, size as terminal_size, EnterAlternateScreen};
+use crossterm::ExecutableCommand;
 use futures_util::StreamExt;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
@@ -34,9 +29,20 @@ use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::mpsc;
 
+mod copy;
 mod keymap;
+mod terminal;
+mod theme;
 
+use copy::copy_selected;
 use keymap::{Command as KeyCommand, Keymap};
+use terminal::TerminalGuard;
+use theme::load_theme;
+
+#[cfg(test)]
+use copy::{base64_encode, osc52_sequence, prepare_copy_selected, CopySelectedAction};
+#[cfg(test)]
+use theme::{config_dir, parse_theme, theme_path};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SseUiMode {
@@ -2209,190 +2215,6 @@ async fn next_sse_event(
         return future::pending::<Option<Result<SseEvent, EventSourceError>>>().await;
     };
     stream.next().await
-}
-
-struct TerminalGuard {
-    active: bool,
-}
-
-impl TerminalGuard {
-    fn active() -> Self {
-        Self { active: true }
-    }
-
-    fn deactivate(
-        &mut self,
-        terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    ) -> anyhow::Result<()> {
-        if !self.active {
-            return Ok(());
-        }
-        self.active = false;
-
-        disable_raw_mode()?;
-        terminal.backend_mut().execute(DisableMouseCapture)?;
-        terminal.backend_mut().execute(LeaveAlternateScreen)?;
-        terminal.show_cursor()?;
-        Ok(())
-    }
-}
-
-impl Drop for TerminalGuard {
-    fn drop(&mut self) {
-        if !self.active {
-            return;
-        }
-        let _ = disable_raw_mode();
-        let mut stdout = io::stdout();
-        let _ = execute!(stdout, DisableMouseCapture);
-        let _ = execute!(stdout, LeaveAlternateScreen);
-    }
-}
-
-const OSC52_MAX_BYTES: usize = 10_000;
-
-fn load_theme() -> anyhow::Result<Option<rip_tui::ThemeId>> {
-    if let Some(raw) = std::env::var_os("RIP_TUI_THEME") {
-        return parse_theme(&raw.to_string_lossy());
-    }
-
-    let path = theme_path().ok_or_else(|| anyhow::anyhow!("missing $HOME for theme.json"))?;
-    let Ok(contents) = std::fs::read_to_string(&path) else {
-        return Ok(None);
-    };
-
-    let value: serde_json::Value = serde_json::from_str(&contents)
-        .map_err(|err| anyhow::anyhow!("theme.json invalid json at {}: {err}", path.display()))?;
-
-    match value {
-        serde_json::Value::String(s) => parse_theme(&s),
-        serde_json::Value::Object(map) => map
-            .get("theme")
-            .and_then(|v| v.as_str())
-            .map(parse_theme)
-            .transpose()
-            .map(|theme| theme.flatten()),
-        _ => Ok(None),
-    }
-}
-
-fn parse_theme(raw: &str) -> anyhow::Result<Option<rip_tui::ThemeId>> {
-    let raw = raw.trim();
-    if raw.is_empty() {
-        return Ok(None);
-    }
-
-    match raw.to_ascii_lowercase().as_str() {
-        "default-dark" | "dark" => Ok(Some(rip_tui::ThemeId::DefaultDark)),
-        "default-light" | "light" => Ok(Some(rip_tui::ThemeId::DefaultLight)),
-        _ => Err(anyhow::anyhow!("unknown theme '{raw}'")),
-    }
-}
-
-fn theme_path() -> Option<PathBuf> {
-    Some(config_dir()?.join("theme.json"))
-}
-
-fn config_dir() -> Option<PathBuf> {
-    if let Some(dir) = std::env::var_os("RIP_CONFIG_HOME") {
-        return Some(PathBuf::from(dir));
-    }
-    let home = std::env::var_os("HOME")?;
-    Some(PathBuf::from(home).join(".rip"))
-}
-
-fn copy_selected(
-    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    state: &mut TuiState,
-) -> anyhow::Result<()> {
-    let action = prepare_copy_selected(state);
-    let CopySelectedAction::Osc52(payload) = action else {
-        return Ok(());
-    };
-
-    let seq = osc52_sequence(payload.as_bytes());
-    terminal.backend_mut().write_all(seq.as_bytes())?;
-    terminal.backend_mut().flush()?;
-
-    state.clipboard_buffer = None;
-    state.set_status_message("clipboard: osc52");
-    Ok(())
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum CopySelectedAction {
-    None,
-    Store,
-    Osc52(String),
-}
-
-fn prepare_copy_selected(state: &mut TuiState) -> CopySelectedAction {
-    let Some(event) = state.selected_event() else {
-        state.set_status_message("clipboard: no frame selected");
-        return CopySelectedAction::None;
-    };
-
-    let payload = match serde_json::to_string_pretty(event) {
-        Ok(json) => json,
-        Err(_) => {
-            state.set_status_message("clipboard: failed to serialize frame");
-            return CopySelectedAction::None;
-        }
-    };
-
-    let osc52_disabled = std::env::var_os("RIP_TUI_DISABLE_OSC52").is_some();
-    if osc52_disabled || payload.len() > OSC52_MAX_BYTES {
-        state.clipboard_buffer = Some(payload);
-        if osc52_disabled {
-            state.set_status_message("clipboard: stored (OSC52 disabled)");
-        } else {
-            state.set_status_message("clipboard: stored (too large for OSC52)");
-        }
-        return CopySelectedAction::Store;
-    }
-
-    CopySelectedAction::Osc52(payload)
-}
-
-fn osc52_sequence(bytes: &[u8]) -> String {
-    let encoded = base64_encode(bytes);
-    format!("\x1b]52;c;{encoded}\x07")
-}
-
-fn base64_encode(bytes: &[u8]) -> String {
-    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-    let mut out = String::with_capacity((bytes.len().saturating_add(2) / 3) * 4);
-    let mut i = 0;
-    while i + 3 <= bytes.len() {
-        let n = ((bytes[i] as u32) << 16) | ((bytes[i + 1] as u32) << 8) | (bytes[i + 2] as u32);
-        out.push(TABLE[((n >> 18) & 0x3f) as usize] as char);
-        out.push(TABLE[((n >> 12) & 0x3f) as usize] as char);
-        out.push(TABLE[((n >> 6) & 0x3f) as usize] as char);
-        out.push(TABLE[(n & 0x3f) as usize] as char);
-        i += 3;
-    }
-
-    match bytes.len().saturating_sub(i) {
-        0 => {}
-        1 => {
-            let n = (bytes[i] as u32) << 16;
-            out.push(TABLE[((n >> 18) & 0x3f) as usize] as char);
-            out.push(TABLE[((n >> 12) & 0x3f) as usize] as char);
-            out.push('=');
-            out.push('=');
-        }
-        2 => {
-            let n = ((bytes[i] as u32) << 16) | ((bytes[i + 1] as u32) << 8);
-            out.push(TABLE[((n >> 18) & 0x3f) as usize] as char);
-            out.push(TABLE[((n >> 12) & 0x3f) as usize] as char);
-            out.push(TABLE[((n >> 6) & 0x3f) as usize] as char);
-            out.push('=');
-        }
-        _ => unreachable!("len mod 3 is always 0..=2"),
-    }
-
-    out
 }
 
 #[cfg(test)]

@@ -1683,7 +1683,7 @@ fn prepare_copy_selected_stores_when_large() {
     let _lock = test_env::lock_env();
     let _disable = remove_env("RIP_TUI_DISABLE_OSC52");
     let mut state = TuiState::default();
-    let payload = "x".repeat(OSC52_MAX_BYTES + 100);
+    let payload = "x".repeat(super::copy::OSC52_MAX_BYTES + 100);
     state.update(FrameEvent {
         id: "big".to_string(),
         session_id: "s1".to_string(),
