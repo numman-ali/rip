@@ -4,7 +4,12 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKi
 use httpmock::Method::GET;
 use httpmock::MockServer;
 use rip_kernel::{EventKind, ProviderEventStatus};
-use rip_tui::palette::modes::models::{default_endpoint_for_provider, parse_model_route};
+use rip_tui::palette::modes::models::{
+    default_endpoint_for_provider, infer_provider_id_from_endpoint, parse_model_route,
+    push_route_from_string, upsert_model_route,
+};
+use rip_tui::{ModelRoute, ModelsMode, PaletteSource};
+use std::collections::BTreeMap;
 use std::ffi::OsString;
 use tokio::time::timeout;
 
