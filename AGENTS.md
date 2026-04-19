@@ -101,7 +101,7 @@ Working style
 - Always provide: goal, proposed change, acceptance criteria, and tests.
 - Keep outputs deterministic; use replayable event logs + snapshots.
 - Prefer simple, verifiable steps over broad refactors.
-- Keep Rust source files small and single-purpose; split modules when files exceed ~600–700 lines unless there's a clear reason not to.
+- Keep Rust source files small and single-purpose; the ~600–700 line target applies to **production code**, not the combined file. If inline `#[cfg(test)] mod tests` is what pushes a module over, move the tests to a sibling test file in the same module tree (`mod tests;` pointing at `foo/tests.rs`, or `foo/tests/<concern>.rs` when the block is large enough that a single test file would still dominate) before extracting more production modules. `#[cfg(test)] mod tests;` keeps internals accessible via `super::*`; cross-crate/integration/e2e coverage continues to live under a crate's top-level `tests/` directory. Unless a file has a strong reason to keep its tests inline, apply this rule to any refactor that targets oversized modules.
 - Batch related checklist items when they share schemas/logic; avoid unnecessary micro-changes.
 - Reorient by reading `AGENTS.md`, `agent_state.md`, `docs/00_index.md`, `docs/00_doc_map.md`, `docs/01_north_star.md`, `docs/02_architecture/continuity_os.md`, and `docs/07_tasks/roadmap.md` before resuming after compaction.
 - Also read `docs/00_resonance_pack.md` first if you need the full "why" and current posture in one place.
