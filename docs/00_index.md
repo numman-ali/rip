@@ -15,6 +15,7 @@ Navigation
 - Capability baseline: docs/02_architecture/capability_baseline.md
 - Capability matrix (phases + hook points): docs/02_architecture/capability_matrix.md
 - Surface layers + parity rules: docs/02_architecture/surfaces.md
+- TUI design (canvas, palette, overlays, keymap): docs/02_architecture/tui/00_design.md
 - Module contracts (Phase 1): docs/03_contracts/modules/phase-1/
 - Module contracts (Phase 2): docs/03_contracts/modules/phase-2/
 - Context compiler contract (Phase 2): docs/03_contracts/modules/phase-2/05_context_compiler.md

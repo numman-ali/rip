@@ -55,6 +55,7 @@ Doc index (authoritative docs only)
 | continuity OS | `docs/02_architecture/continuity_os.md` | What “one chat forever” means and how we keep it replayable + provider-agnostic. |
 | roadmap | `docs/07_tasks/roadmap.md` | What’s next and what “done” means. |
 | TUI revamp plan | `docs/07_tasks/tui_revamp.md` | Canonical execution plan for the TUI revamp (Phases A–D, capability backing matrix). |
+| TUI design | `docs/02_architecture/tui/00_design.md` | Shipped TUI design — interaction model, canvas model, palette engine, overlays, keymap, capability backing. Lands with the Phase D close-out commit. |
 | capabilities | `docs/03_contracts/capabilities.md` | What a capability contract contains. |
 | capability registry | `docs/03_contracts/capability_registry.md` | Full capability id list + surface statuses. |
 | capability matrix | `docs/02_architecture/capability_matrix.md` | Phases + hook points by capability group. |

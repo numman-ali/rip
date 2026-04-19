@@ -1,6 +1,6 @@
 # Agent State (Working Log)
 
-Last updated: 2026-04-18
+Last updated: 2026-04-19
 
 How to use
 - Update this file whenever focus shifts, before ending a work session, and when blocked.
@@ -12,7 +12,7 @@ Current focus
 - Phase 1 baseline remains: shared session runner across server + CLI (frames are canonical).
 - Default local execution: `rip` (TUI), `rip run`, `rip threads`, and `rip tasks` auto-start/auto-attach to a local authority for the store; `--server <url>` preserves explicit remote runs; `rip serve` stays the control plane.
 - Decision locked (ADR-0019): one store requires a single authority for truth writes; indexes are rebuildable caches; hybrid retrieval is a compiler stage and must be truth-logged by reference.
-- TUI design language revamp in flight (Phases A–D); canonical execution plan at `docs/07_tasks/tui_revamp.md`. Replaces the old "conversational-first + drill-down" doc set (deleted in A.5); new single source of truth `docs/02_architecture/tui/00_design.md` lands in D.8.
+- TUI design language revamp landed (Phases A + B + C shipped; Phase D landing). Canonical execution plan at `docs/07_tasks/tui_revamp.md`; shipped design at `docs/02_architecture/tui/00_design.md` (D.8). Canvas walks structured `CanvasMessage`s, ambient state persists across turns, palette exposes Command/GoTo/Threads/Models/Options with Tab cycling, `?` opens the Help overlay, Ctrl-R opens X-ray on focused item, and the ErrorRecovery overlay auto-opens on provider errors routing `r/c/m/x/⎋` through supported capabilities (`thread.post_message`, `thread.provider_cursor.rotate`, Models palette, `ErrorDetail`). Cosmetic polish items (C.6 spatial positioning, C.9 motion, D.2 ArtifactViewer, D.3 ThreadPicker, D.4 subagent colors, D.5 vim, D.6 virtualization, D.7 mouse) are tracked as "TUI: polish tranche" in the roadmap.
 - Docs clarified (2026-04-18): future cognition features should layer as core capabilities for durable truth/control, background jobs + compiler stages for memory/retrieval/subagent outputs, policy profiles for autonomy levels, and extensions/skills for modular strategies and workflows.
 - Implemented (2026-04-18): TUI Confidence v1 initial pass. Fullscreen TUI no longer resets the visible transcript on each submit; it preserves the conversational Canvas across turns, shows an optimistic pending-turn state before the network round-trip completes, surfaces OpenResponses request timings in the status bar, supports both PageUp/PageDown and mouse-wheel Canvas scrollback, gives user prompts a subtle visual distinction from agent output, exposes a visible key-hint line in the input chrome, reports recent tool usage/completion instead of only currently-running work, and shows a concrete continuity/session breadcrumb in provider-error drill-downs so failures can be inspected via thread event logs.
 - Implemented (2026-04-18): fullscreen TUI palette foundation v0.1. `Ctrl-K` now opens a generic overlay state model designed for command/navigation/model/session/options modes, with model selection shipped first. The model picker is config-backed for now, supports typed `provider/model_id` fallback routes, persists the selected OpenResponses endpoint/model as the next-turn preference inside the TUI session, and applies selection by mutating per-turn OpenResponses overrides rather than rewriting global config.
