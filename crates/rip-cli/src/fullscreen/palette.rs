@@ -414,6 +414,9 @@ pub(super) fn apply_command_action(
     }
 }
 
+#[cfg(test)]
+mod tests;
+
 pub(super) fn apply_model_palette_selection(
     state: &mut TuiState,
     overrides: &mut Option<Value>,
