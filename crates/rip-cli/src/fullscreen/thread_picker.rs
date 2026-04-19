@@ -7,18 +7,22 @@
 //! that need capabilities we do not yet expose (size, actors,
 //! last-message preview) render as `—` here per the plan's "never
 //! synthesize from disk" rule.
+//!
+//! The pure `build_entries` helper is extracted so tests can exercise
+//! sorting + chip formatting without spinning http. Tests live beside
+//! this module at `thread_picker/tests.rs`.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use reqwest::Client;
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize)]
-struct ThreadMetaResponse {
-    thread_id: String,
-    created_at_ms: u64,
-    title: Option<String>,
-    archived: bool,
+#[derive(Debug, Clone, Deserialize)]
+pub(super) struct ThreadMetaResponse {
+    pub(super) thread_id: String,
+    pub(super) created_at_ms: u64,
+    pub(super) title: Option<String>,
+    pub(super) archived: bool,
 }
 
 pub(super) async fn load_thread_picker_entries(
@@ -59,6 +63,18 @@ pub(super) async fn load_thread_picker_entries(
         .map(|duration| duration.as_millis() as u64)
         .unwrap_or(0);
 
+    Ok(build_entries(threads, current_thread_id, now_ms))
+}
+
+/// Pure transform: sort threads (current pinned first, then newest
+/// first) and render each into a `ThreadPickerEntry` with the right
+/// chips. Split out of `load_thread_picker_entries` so tests can
+/// exercise ordering + chip rendering without http.
+pub(super) fn build_entries(
+    mut threads: Vec<ThreadMetaResponse>,
+    current_thread_id: Option<&str>,
+    now_ms: u64,
+) -> Vec<rip_tui::ThreadPickerEntry> {
     threads.sort_by(|a, b| {
         match (
             current_thread_id == Some(a.thread_id.as_str()),
@@ -70,7 +86,7 @@ pub(super) async fn load_thread_picker_entries(
         }
     });
 
-    Ok(threads
+    threads
         .into_iter()
         .map(|thread| {
             let mut chips = vec![
@@ -94,10 +110,10 @@ pub(super) async fn load_thread_picker_entries(
                 chips,
             }
         })
-        .collect())
+        .collect()
 }
 
-fn short_thread_label(thread_id: &str) -> String {
+pub(super) fn short_thread_label(thread_id: &str) -> String {
     if thread_id.chars().count() <= 20 {
         return thread_id.to_string();
     }
@@ -106,7 +122,7 @@ fn short_thread_label(thread_id: &str) -> String {
     format!("…{tail}")
 }
 
-fn relative_age_chip(now_ms: u64, created_at_ms: u64) -> String {
+pub(super) fn relative_age_chip(now_ms: u64, created_at_ms: u64) -> String {
     let age_ms = now_ms.saturating_sub(created_at_ms);
     let minute = 60_000;
     let hour = 60 * minute;
@@ -121,3 +137,6 @@ fn relative_age_chip(now_ms: u64, created_at_ms: u64) -> String {
         "now".to_string()
     }
 }
+
+#[cfg(test)]
+mod tests;
