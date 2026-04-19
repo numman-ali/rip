@@ -9,7 +9,29 @@ pub enum Command {
     Quit,
     Submit,
     CloseOverlay,
+    /// Primary palette trigger (Phase C.5): opens the Command palette —
+    /// the workspace's front door for every action. `⌘K` / `⌃K`. The
+    /// palette hosts Command, Models, Go To, Threads, and Options
+    /// modes; users cycle with `Tab` or type a `/` prefix in the
+    /// palette query to switch modes.
     TogglePalette,
+    /// `⌃M` / `Alt+M` → Models palette mode directly (alias into
+    /// `TogglePalette` + `SwitchMode("models")`). Retained as a
+    /// hotkey because model switching is the most-used palette
+    /// action.
+    PaletteModels,
+    /// `⌃G` → Go To palette (fuzzy over canvas items).
+    PaletteGoTo,
+    /// `⌃T` → Threads palette (switch / branch / handoff).
+    PaletteThreads,
+    /// `Alt+O` → Options palette (theme, auto-follow, vim, mouse, …).
+    PaletteOptions,
+    /// `?` → Help overlay (Phase C.7).
+    ShowHelp,
+    /// `Tab` inside the palette cycles through modes in a fixed
+    /// order: Command → Models → Go To → Threads → Options. Outside
+    /// the palette, `Tab` remains the details-mode toggle (legacy).
+    PaletteCycleMode,
     ToggleActivity,
     ToggleTasks,
     ToggleDetailsMode,
@@ -48,17 +70,32 @@ impl Keymap {
         bindings.insert("C-d".to_string(), Command::Quit);
         bindings.insert("Enter".to_string(), Command::Submit);
         bindings.insert("Esc".to_string(), Command::CloseOverlay);
+
+        // Palette — Command is the primary entry; Models / Go To /
+        // Threads get direct hotkeys because they're high-traffic; the
+        // rest are reachable via Command palette or `/` slash-prefix.
+        // (Tab cycles modes inside an open palette — see
+        // `PaletteCycleMode` in handle_term_event.)
         bindings.insert("C-k".to_string(), Command::TogglePalette);
+        bindings.insert("C-g".to_string(), Command::PaletteGoTo);
+        bindings.insert("C-t".to_string(), Command::PaletteThreads);
+        bindings.insert("M-m".to_string(), Command::PaletteModels);
+        bindings.insert("M-o".to_string(), Command::PaletteOptions);
+        bindings.insert("?".to_string(), Command::ShowHelp);
 
         // View
-        bindings.insert("Tab".to_string(), Command::ToggleDetailsMode);
+        bindings.insert("Tab".to_string(), Command::PaletteCycleMode);
         bindings.insert("Up".to_string(), Command::SelectPrev);
         bindings.insert("Down".to_string(), Command::SelectNext);
         bindings.insert("C-f".to_string(), Command::ToggleFollow);
-        bindings.insert("C-r".to_string(), Command::ToggleOutputView);
-        bindings.insert("C-b".to_string(), Command::ToggleActivity);
-        bindings.insert("C-t".to_string(), Command::ToggleTasks);
-        bindings.insert("M-t".to_string(), Command::ToggleTheme);
+        // Plan Phase C.8 replaces `Ctrl-R`'s global "raw view" toggle
+        // with "X-ray on focused item" — same key, new semantics.
+        bindings.insert("C-r".to_string(), Command::OpenFocusedDetail);
+        // `Ctrl-B`, `Alt-T`, and the legacy `Ctrl-T → Tasks` binding
+        // are retired as defaults per the plan; their functions are
+        // reached via the Command palette (theme, activity, tasks).
+        // Users can re-add them in `~/.rip/keybindings.json` if they
+        // prefer the old muscle memory.
         bindings.insert("C-y".to_string(), Command::CopySelected);
         bindings.insert("PageUp".to_string(), Command::ScrollCanvasUp);
         bindings.insert("PageDown".to_string(), Command::ScrollCanvasDown);
@@ -178,6 +215,20 @@ fn parse_command(raw: &str) -> Option<Command> {
         }
         "togglepalette" | "toggle_palette" | "palette" | "commandpalette" | "command_palette" => {
             Some(Command::TogglePalette)
+        }
+        "palettemodels" | "palette_models" | "palette-models" | "models_palette" | "models" => {
+            Some(Command::PaletteModels)
+        }
+        "palettegoto" | "palette_goto" | "palette-goto" | "goto" | "go_to" | "go-to" => {
+            Some(Command::PaletteGoTo)
+        }
+        "palettethreads" | "palette_threads" | "palette-threads" | "threads_palette"
+        | "threads" => Some(Command::PaletteThreads),
+        "paletteoptions" | "palette_options" | "palette-options" | "options_palette"
+        | "options" => Some(Command::PaletteOptions),
+        "help" | "showhelp" | "show_help" => Some(Command::ShowHelp),
+        "palettecyclemode" | "palette_cycle_mode" | "palette-cycle" => {
+            Some(Command::PaletteCycleMode)
         }
         "toggleactivity" | "toggle_activity" | "activity" => Some(Command::ToggleActivity),
         "toggletasks" | "toggle_tasks" | "tasks" => Some(Command::ToggleTasks),

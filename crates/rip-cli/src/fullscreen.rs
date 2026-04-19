@@ -197,6 +197,233 @@ fn open_model_palette(state: &mut TuiState, catalog: &ModelsMode) {
     );
 }
 
+/// C.5: Command palette — the primary entry point. Surfaces the full
+/// list of `CommandAction`s (see `rip_tui::palette::modes::command`)
+/// tagged with category subtitles and an `unavailable` chip for
+/// [deferred] entries whose backing capability is not yet in the
+/// registry.
+fn open_command_palette(state: &mut TuiState) {
+    use rip_tui::palette::modes::command::CommandMode;
+    let mode = CommandMode::new();
+    state.open_palette(
+        PaletteMode::Command,
+        mode.entries(),
+        mode.empty_state().to_string(),
+        false,
+        String::new(),
+    );
+}
+
+/// C.5: Go To palette — a fuzzy-search over canvas messages.
+fn open_go_to_palette(state: &mut TuiState) {
+    use rip_tui::palette::modes::go_to::GoToMode;
+    let mode = GoToMode::from_canvas(&state.canvas);
+    let empty_message = mode.empty_state().to_string();
+    let entries = mode.entries();
+    state.open_palette(
+        PaletteMode::Navigation,
+        entries,
+        empty_message,
+        false,
+        String::new(),
+    );
+}
+
+/// C.5: Threads palette — minimal local-runtime form ships only the
+/// current thread until the driver wires up `thread.list` seeding.
+fn open_threads_palette(state: &mut TuiState) {
+    use rip_tui::palette::modes::threads::{ThreadSummary, ThreadsMode};
+    let current = state
+        .continuity_id
+        .as_deref()
+        .map(|id| ThreadSummary {
+            thread_id: id.to_string(),
+            title: None,
+            last_message_preview: None,
+            updated_at_ms: None,
+            is_current: true,
+        })
+        .into_iter()
+        .collect();
+    let mode = ThreadsMode::new(current);
+    let empty_message = mode.empty_state().to_string();
+    state.open_palette(
+        PaletteMode::Session,
+        mode.entries(),
+        empty_message,
+        false,
+        String::new(),
+    );
+}
+
+/// C.5: Options palette — toggles for UI-local prefs. Reads the
+/// current state so each entry's subtitle reflects the active value.
+fn open_options_palette(state: &mut TuiState) {
+    use rip_tui::palette::modes::options::OptionsMode;
+    let mode = OptionsMode {
+        current_theme: Some(state.theme.as_str()),
+        auto_follow: state.auto_follow,
+        reasoning_visible: false,
+        vim_input_mode: false,
+        mouse_capture: true,
+        activity_rail_pinned: state.activity_pinned,
+    };
+    let entries = mode.entries();
+    state.open_palette(
+        PaletteMode::Option,
+        entries,
+        mode.empty_state().to_string(),
+        false,
+        String::new(),
+    );
+}
+
+/// C.5: cycle palette mode when `Tab` is pressed inside an open
+/// palette. Order mirrors the visual ranking in the plan:
+/// Command → Models → Go To → Threads → Options → Command.
+fn cycle_palette_mode(state: &mut TuiState, catalog: &ModelsMode) {
+    let next = match state.overlay() {
+        rip_tui::Overlay::Palette(p) => match p.mode {
+            PaletteMode::Command => PaletteMode::Model,
+            PaletteMode::Model => PaletteMode::Navigation,
+            PaletteMode::Navigation => PaletteMode::Session,
+            PaletteMode::Session => PaletteMode::Option,
+            PaletteMode::Option => PaletteMode::Command,
+        },
+        _ => return,
+    };
+    match next {
+        PaletteMode::Command => open_command_palette(state),
+        PaletteMode::Model => open_model_palette(state, catalog),
+        PaletteMode::Navigation => open_go_to_palette(state),
+        PaletteMode::Session => open_threads_palette(state),
+        PaletteMode::Option => open_options_palette(state),
+    }
+}
+
+/// C.5: mode-aware apply. Routes the currently-selected palette entry
+/// to the appropriate dispatcher:
+/// - `Command` → map the value (a `CommandAction` id) to a concrete
+///   action handler.
+/// - `Model` → existing `apply_model_palette_selection` path.
+/// - `Navigation` (Go To) → focus the target canvas message.
+/// - `Session` (Threads) → set the continuity id.
+/// - `Option` → treat as a command id (same table as Command mode).
+fn apply_palette_selection(
+    state: &mut TuiState,
+    overrides: &mut Option<Value>,
+    catalog: &mut ModelsMode,
+) -> Result<(), String> {
+    use rip_tui::palette::modes::command::CommandAction;
+
+    let Some(overlay) = state.palette_state_clone() else {
+        return Err("palette: no palette open".to_string());
+    };
+    match overlay.mode {
+        PaletteMode::Model => apply_model_palette_selection(state, overrides, catalog),
+        PaletteMode::Navigation => {
+            let Some(value) = state.palette_selected_value() else {
+                return Err("palette: no entry selected".to_string());
+            };
+            state.focused_message_id = Some(value);
+            state.close_overlay();
+            Ok(())
+        }
+        PaletteMode::Session => {
+            let Some(value) = state.palette_selected_value() else {
+                return Err("palette: no entry selected".to_string());
+            };
+            state.set_continuity_id(value.clone());
+            state.set_status_message(format!("switched thread: {value}"));
+            state.close_overlay();
+            Ok(())
+        }
+        PaletteMode::Command | PaletteMode::Option => {
+            let Some(value) = state.palette_selected_value() else {
+                return Err("palette: no entry selected".to_string());
+            };
+            let Some(action) = CommandAction::from_value(&value) else {
+                return Err(format!("palette: unknown action '{value}'"));
+            };
+            if !action.is_available() {
+                state.set_status_message(format!(
+                    "{}: capability not supported yet",
+                    action.title()
+                ));
+                state.close_overlay();
+                return Ok(());
+            }
+            apply_command_action(action, state, catalog);
+            state.close_overlay();
+            Ok(())
+        }
+    }
+}
+
+/// C.5: map a `CommandAction` to its concrete effect. Capability-
+/// backed actions (compaction, cursor rotate, etc.) still flow
+/// through their existing async dispatch in the main loop — we
+/// surface them via `state.set_status_message` so users get feedback
+/// that the palette accepted their choice. The heavy async path
+/// (reach over HTTP) will be wired in Phase C.10 when error-recovery
+/// lands — for Phase C.5 the table is: toggles apply immediately,
+/// palette openers re-open the right mode, everything else posts a
+/// "coming soon" status note pointing at the capability.
+fn apply_command_action(
+    action: rip_tui::palette::modes::command::CommandAction,
+    state: &mut TuiState,
+    catalog: &ModelsMode,
+) {
+    use rip_tui::palette::modes::command::CommandAction as A;
+    match action {
+        A::ScrollCanvasTop => state.scroll_canvas_up(u16::MAX),
+        A::ScrollCanvasBottom => {
+            state.canvas_scroll_from_bottom = 0;
+            state.auto_follow = true;
+        }
+        A::FollowTail => state.auto_follow = !state.auto_follow,
+        A::PrevMessage => state.focus_prev_message(),
+        A::NextMessage => state.focus_next_message(),
+        A::PrevError => {
+            if let Some(seq) = state.last_error_seq {
+                state.selected_seq = Some(seq);
+            }
+        }
+        A::ClearSelection => {
+            state.clear_focus();
+        }
+        A::ToggleTheme => state.toggle_theme(),
+        A::ToggleAutoFollow => state.auto_follow = !state.auto_follow,
+        A::ShowDebugInfo => state.set_overlay(rip_tui::Overlay::Debug),
+        A::OpenXrayOnFocused => {
+            if let Some(overlay) = focused_detail_overlay(state) {
+                state.set_overlay(overlay);
+            }
+        }
+        A::SwitchModel => {
+            open_model_palette(state, catalog);
+        }
+        A::Quit => {
+            // Signalled via the global Quit action in the caller; the
+            // palette apply path can't return UiAction::Quit without
+            // refactoring the outer loop. Surface a status note so
+            // users know `Ctrl-C` is the canonical path.
+            state.set_status_message("press Ctrl-C to quit".to_string());
+        }
+        // Everything else surfaces as a status hint — its backing
+        // capability call is owned by the outer loop's dedicated
+        // UiAction (see the KeyCommand → UiAction arms below) or by
+        // future phases. This keeps the palette semantically useful
+        // without silently failing.
+        other => {
+            state.set_status_message(format!(
+                "{}: use the dedicated hotkey or command (palette routing lands in a later phase)",
+                other.title()
+            ));
+        }
+    }
+}
+
 fn apply_model_palette_selection(
     state: &mut TuiState,
     overrides: &mut Option<Value>,
@@ -336,11 +563,35 @@ async fn run_fullscreen_tui_sse(
                     }
                     UiAction::TogglePalette => {
                         if ui_mode == SseUiMode::Interactive {
+                            // C.5: `⌃K` now opens the Command palette
+                            // (the primary entry point). Models stays
+                            // one hotkey away (`M-m`) and one palette
+                            // mode cycle (`Tab`) away.
+                            open_command_palette(&mut state);
+                        }
+                    }
+                    UiAction::OpenPaletteModels => {
+                        if ui_mode == SseUiMode::Interactive {
                             open_model_palette(&mut state, &model_catalog);
                         }
                     }
+                    UiAction::OpenPaletteGoTo => {
+                        open_go_to_palette(&mut state);
+                    }
+                    UiAction::OpenPaletteThreads => {
+                        open_threads_palette(&mut state);
+                    }
+                    UiAction::OpenPaletteOptions => {
+                        open_options_palette(&mut state);
+                    }
+                    UiAction::ShowHelp => {
+                        state.set_overlay(rip_tui::Overlay::Help);
+                    }
+                    UiAction::PaletteCycleMode => {
+                        cycle_palette_mode(&mut state, &model_catalog);
+                    }
                     UiAction::ApplyPalette => {
-                        if let Err(err) = apply_model_palette_selection(
+                        if let Err(err) = apply_palette_selection(
                             &mut state,
                             &mut current_overrides,
                             &mut model_catalog,
@@ -915,7 +1166,27 @@ enum UiAction {
     Quit,
     Submit,
     CloseOverlay,
+    /// Primary palette trigger — `⌃K` opens the Command palette
+    /// (Phase C.5). Backward-compat: when the operator has a
+    /// `C-k → TogglePalette` binding in `~/.rip/keybindings.json`,
+    /// that still opens a palette; the driver now routes it to the
+    /// Command mode instead of straight to Models.
     TogglePalette,
+    /// `⌃M` / `Alt+M` → Models palette directly.
+    OpenPaletteModels,
+    /// `⌃G` → Go To palette.
+    OpenPaletteGoTo,
+    /// `⌃T` → Threads palette.
+    OpenPaletteThreads,
+    /// `Alt+O` → Options palette.
+    OpenPaletteOptions,
+    /// `?` → Help overlay (Phase C.7).
+    ShowHelp,
+    /// `Tab` inside an open palette cycles through modes in order
+    /// Command → Models → Go To → Threads → Options → Command…
+    /// Outside the palette this is a no-op (the legacy details-mode
+    /// toggle is retired per the plan).
+    PaletteCycleMode,
     ApplyPalette,
     ToggleActivity,
     ToggleTasks,
@@ -1036,6 +1307,7 @@ fn handle_key_event(
                 KeyCommand::Quit => UiAction::Quit,
                 KeyCommand::Submit => UiAction::ApplyPalette,
                 KeyCommand::CloseOverlay | KeyCommand::TogglePalette => UiAction::CloseOverlay,
+                KeyCommand::PaletteCycleMode => UiAction::PaletteCycleMode,
                 KeyCommand::SelectPrev => {
                     state.palette_move_selection(-1);
                     UiAction::None
@@ -1092,6 +1364,12 @@ fn handle_key_event(
             }
             KeyCommand::CloseOverlay => UiAction::CloseOverlay,
             KeyCommand::TogglePalette => UiAction::TogglePalette,
+            KeyCommand::PaletteModels => UiAction::OpenPaletteModels,
+            KeyCommand::PaletteGoTo => UiAction::OpenPaletteGoTo,
+            KeyCommand::PaletteThreads => UiAction::OpenPaletteThreads,
+            KeyCommand::PaletteOptions => UiAction::OpenPaletteOptions,
+            KeyCommand::ShowHelp => UiAction::ShowHelp,
+            KeyCommand::PaletteCycleMode => UiAction::None,
             KeyCommand::ToggleActivity => UiAction::ToggleActivity,
             KeyCommand::ToggleTasks => UiAction::ToggleTasks,
             KeyCommand::FocusPrevMessage => {
@@ -1556,7 +1834,9 @@ mod tests {
         assert_eq!(action, UiAction::None);
         assert_eq!(state.selected_seq, Some(1));
 
-        // Ctrl+R toggles output view.
+        // Phase C.8 reassigns `Ctrl-R` from "toggle raw global view"
+        // to "open X-ray on focused item". The X-ray overlay is a
+        // per-item drill-down, not a canvas-wide mode swap.
         assert_eq!(state.output_view, rip_tui::OutputViewMode::Rendered);
         let action = handle_key_event(
             KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL),
@@ -1566,8 +1846,9 @@ mod tests {
             true,
             &keymap,
         );
-        assert_eq!(action, UiAction::None);
-        assert_eq!(state.output_view, rip_tui::OutputViewMode::Raw);
+        assert_eq!(action, UiAction::OpenFocusedDetail);
+        // Global output_view is unchanged — no more mode swap.
+        assert_eq!(state.output_view, rip_tui::OutputViewMode::Rendered);
 
         // Ctrl+Y triggers copy.
         let action = handle_key_event(
@@ -1915,7 +2196,15 @@ mod tests {
     }
 
     #[test]
-    fn handle_key_event_toggles_mode_follow_theme() {
+    fn handle_key_event_toggles_follow_and_palette_cycle_is_noop_outside_palette() {
+        // Phase C.5 retires Tab's legacy "details-mode toggle" role
+        // and reassigns Tab to `PaletteCycleMode`. Outside of an open
+        // palette, Tab is a no-op.
+        //
+        // `Alt+T` no longer toggles the theme — theme switching is a
+        // palette action (Options mode). Users who want the legacy
+        // binding back can re-add `"M-t": "ToggleTheme"` in
+        // `~/.rip/keybindings.json`.
         let keymap = Keymap::default();
         let mut state = seed_state();
         let mut mode = RenderMode::Json;
@@ -1930,7 +2219,7 @@ mod tests {
             &keymap,
         );
         assert_eq!(action, UiAction::None);
-        assert_eq!(mode, RenderMode::Decoded);
+        assert_eq!(mode, RenderMode::Json);
 
         let action = handle_key_event(
             KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL),
@@ -1942,18 +2231,64 @@ mod tests {
         );
         assert_eq!(action, UiAction::None);
         assert!(!state.auto_follow);
+    }
 
-        let previous_theme = state.theme;
-        let action = handle_key_event(
-            KeyEvent::new(KeyCode::Char('t'), KeyModifiers::ALT),
-            &mut state,
-            &mut mode,
-            &mut input,
-            true,
-            &keymap,
+    #[test]
+    fn palette_hotkeys_dispatch_to_correct_ui_actions() {
+        // The four new palette openers bound in Phase C.5 all have
+        // direct `UiAction::OpenPalette…` arms. We exercise each one
+        // to make sure the keymap→UiAction glue didn't regress to
+        // generic `TogglePalette` routing.
+        let keymap = Keymap::default();
+        let mut state = seed_state();
+        let mut mode = RenderMode::Json;
+        let mut input = String::new();
+
+        let k = |ch: char, mods: KeyModifiers| KeyEvent::new(KeyCode::Char(ch), mods);
+        assert_eq!(
+            handle_key_event(
+                k('k', KeyModifiers::CONTROL),
+                &mut state,
+                &mut mode,
+                &mut input,
+                true,
+                &keymap,
+            ),
+            UiAction::TogglePalette
         );
-        assert_eq!(action, UiAction::None);
-        assert_ne!(state.theme, previous_theme);
+        assert_eq!(
+            handle_key_event(
+                k('g', KeyModifiers::CONTROL),
+                &mut state,
+                &mut mode,
+                &mut input,
+                true,
+                &keymap,
+            ),
+            UiAction::OpenPaletteGoTo
+        );
+        assert_eq!(
+            handle_key_event(
+                k('m', KeyModifiers::ALT),
+                &mut state,
+                &mut mode,
+                &mut input,
+                true,
+                &keymap,
+            ),
+            UiAction::OpenPaletteModels
+        );
+        assert_eq!(
+            handle_key_event(
+                k('o', KeyModifiers::ALT),
+                &mut state,
+                &mut mode,
+                &mut input,
+                true,
+                &keymap,
+            ),
+            UiAction::OpenPaletteOptions
+        );
     }
 
     #[test]

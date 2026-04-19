@@ -9,6 +9,8 @@ use super::RenderMode;
 pub(super) mod activity;
 pub(super) mod debug;
 pub(super) mod error;
+pub(super) mod error_recovery;
+pub(super) mod help;
 pub(super) mod palette;
 pub(super) mod stall;
 pub(super) mod task_detail;
@@ -53,6 +55,14 @@ pub(super) fn render_overlay(
         Overlay::Debug => {
             debug::render_debug_overlay(frame, state, theme, overlay_modal_area(body))
         }
+        Overlay::Help => help::render_help_overlay(frame, state, theme, overlay_modal_area(body)),
+        Overlay::ErrorRecovery { seq } => error_recovery::render_error_recovery_overlay(
+            frame,
+            state,
+            theme,
+            overlay_modal_area(body),
+            *seq,
+        ),
     }
 }
 

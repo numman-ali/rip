@@ -32,6 +32,21 @@ pub enum Overlay {
     /// `set_overlay(Overlay::Debug)` and surfaced in a dedicated
     /// snapshot.
     Debug,
+    /// C.7 Help overlay — a searchable keybinding + command reference.
+    /// Opened with `?` from the input when empty; closed with `⎋`.
+    /// Renders from `CommandAction` metadata (category + title +
+    /// bound shortcut) so any new palette entry is automatically
+    /// discoverable through Help.
+    Help,
+    /// C.10 In-UI provider-error recovery. Auto-opens on the first
+    /// provider-error frame for a run; carries the frame `seq` for
+    /// X-ray linkage. Overlay actions route through capabilities:
+    /// `r` → `thread.post_message` (retry last user turn), `c` →
+    /// `thread.provider_cursor.rotate`, `m` → Models palette, `x` →
+    /// X-ray window scoped to the error, `⎋` → dismiss.
+    ErrorRecovery {
+        seq: u64,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -497,6 +512,16 @@ impl TuiState {
                 .selected_entry()
                 .map(|entry| entry.value.clone())
                 .or_else(|| palette.custom_candidate().map(ToOwned::to_owned)),
+            _ => None,
+        }
+    }
+
+    /// Snapshot of the currently-open palette (if any). The driver
+    /// uses this in the `ApplyPalette` dispatcher to branch by mode
+    /// without borrowing the overlay stack across method calls.
+    pub fn palette_state_clone(&self) -> Option<PaletteState> {
+        match self.overlay_stack.top() {
+            Overlay::Palette(palette) => Some(palette.clone()),
             _ => None,
         }
     }

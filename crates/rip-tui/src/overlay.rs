@@ -35,6 +35,8 @@ impl OverlayView for Overlay {
             Overlay::ErrorDetail { .. } => "error_detail",
             Overlay::StallDetail => "stall_detail",
             Overlay::Debug => "debug",
+            Overlay::Help => "help",
+            Overlay::ErrorRecovery { .. } => "error_recovery",
         }
     }
 
@@ -49,6 +51,8 @@ impl OverlayView for Overlay {
             Overlay::ErrorDetail { .. } => "Error Detail",
             Overlay::StallDetail => "Stalled",
             Overlay::Debug => "Debug",
+            Overlay::Help => "Help",
+            Overlay::ErrorRecovery { .. } => "Recover",
         }
     }
 }
