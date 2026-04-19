@@ -11,6 +11,11 @@
 //! they immediately hand ownership to `tokio::spawn`. Callers at the
 //! dispatch site write
 //! `actions::spawn_compaction_status(client.clone(), server.clone(), status_tx.clone())`.
+//!
+//! Success-case status formatting lives in `format_*` helpers (pure
+//! fns) so unit tests can exercise the user-visible strings without
+//! spinning up tokio or a mock HTTP server. Tests live beside this
+//! module at `actions/tests.rs`.
 
 use reqwest::Client;
 use tokio::sync::mpsc;
@@ -32,22 +37,7 @@ pub(super) fn spawn_compaction_cut_points(
                 match response {
                     Ok(resp) if resp.status().is_success() => {
                         match resp.json::<ripd::CompactionCutPointsV1Response>().await {
-                            Ok(out) => {
-                                let latest = out.cut_points.first();
-                                match latest {
-                                    Some(cp) => format!(
-                                        "cut_points: messages={} latest ordinal={} to_seq={} checkpointed={}",
-                                        out.message_count,
-                                        cp.target_message_ordinal,
-                                        cp.to_seq,
-                                        cp.already_checkpointed
-                                    ),
-                                    None => format!(
-                                        "cut_points: messages={} (no eligible cut points)",
-                                        out.message_count
-                                    ),
-                                }
-                            }
+                            Ok(out) => format_compaction_cut_points(&out),
                             Err(err) => format!("cut_points: parse failed: {err}"),
                         }
                     }
@@ -80,13 +70,7 @@ pub(super) fn spawn_compaction_auto(client: Client, server: String, tx: mpsc::Se
                 match response {
                     Ok(resp) if resp.status().is_success() => {
                         match resp.json::<ripd::CompactionAutoV1Response>().await {
-                            Ok(out) => match out.job_id {
-                                Some(job_id) => format!(
-                                    "compaction auto: status={} job_id={job_id}",
-                                    out.status
-                                ),
-                                None => format!("compaction auto: status={}", out.status),
-                            },
+                            Ok(out) => format_compaction_auto(&out),
                             Err(err) => format!("compaction auto: parse failed: {err}"),
                         }
                     }
@@ -125,15 +109,7 @@ pub(super) fn spawn_compaction_auto_schedule(
                 match response {
                     Ok(resp) if resp.status().is_success() => {
                         match resp.json::<ripd::CompactionAutoScheduleV1Response>().await {
-                            Ok(out) => match out.job_id {
-                                Some(job_id) => format!(
-                                    "compaction schedule: decision={} job_id={job_id}",
-                                    out.decision
-                                ),
-                                None => {
-                                    format!("compaction schedule: decision={}", out.decision)
-                                }
-                            },
+                            Ok(out) => format_compaction_auto_schedule(&out),
                             Err(err) => format!("compaction schedule: parse failed: {err}"),
                         }
                     }
@@ -162,40 +138,7 @@ pub(super) fn spawn_compaction_status(client: Client, server: String, tx: mpsc::
                 match response {
                     Ok(resp) if resp.status().is_success() => {
                         match resp.json::<ripd::CompactionStatusV1Response>().await {
-                            Ok(status) => {
-                                let ckpt = status
-                                    .latest_checkpoint
-                                    .as_ref()
-                                    .map(|c| c.to_seq.to_string())
-                                    .unwrap_or_else(|| "none".to_string());
-                                let next = status
-                                    .next_cut_point
-                                    .as_ref()
-                                    .map(|c| c.to_seq.to_string())
-                                    .unwrap_or_else(|| "none".to_string());
-                                let sched = status
-                                    .last_schedule_decision
-                                    .as_ref()
-                                    .map(|d| d.decision.as_str())
-                                    .unwrap_or("none");
-                                let job = status
-                                    .last_job_outcome
-                                    .as_ref()
-                                    .map(|j| j.status.as_str())
-                                    .unwrap_or("none");
-                                let inflight = status
-                                    .inflight_job_id
-                                    .as_deref()
-                                    .map(|id| {
-                                        let short = id.chars().take(16).collect::<String>();
-                                        format!(" inflight={short}")
-                                    })
-                                    .unwrap_or_default();
-                                format!(
-                                    "compaction status: messages={} ckpt_to_seq={} next_to_seq={} sched={} job={}{}",
-                                    status.message_count, ckpt, next, sched, job, inflight
-                                )
-                            }
+                            Ok(status) => format_compaction_status(&status),
                             Err(err) => format!("compaction status: parse failed: {err}"),
                         }
                     }
@@ -222,33 +165,7 @@ pub(super) fn spawn_provider_cursor_status(
                 match response {
                     Ok(resp) if resp.status().is_success() => {
                         match resp.json::<ripd::ProviderCursorStatusV1Response>().await {
-                            Ok(status) => match status.active {
-                                Some(active) => {
-                                    let prev = active
-                                        .cursor
-                                        .as_ref()
-                                        .and_then(|value| {
-                                            value
-                                                .get("previous_response_id")
-                                                .and_then(|value| value.as_str())
-                                        })
-                                        .unwrap_or("");
-                                    let prev_short = prev.chars().take(16).collect::<String>();
-                                    let cursor_desc =
-                                        if active.cursor.is_some() && !prev_short.is_empty() {
-                                            format!("prev={prev_short}")
-                                        } else if active.cursor.is_some() {
-                                            "cursor=set".to_string()
-                                        } else {
-                                            "cursor=none".to_string()
-                                        };
-                                    format!(
-                                        "provider cursor: action={} {}",
-                                        active.action, cursor_desc
-                                    )
-                                }
-                                None => "provider cursor: none".to_string(),
-                            },
+                            Ok(status) => format_provider_cursor_status(&status),
                             Err(err) => format!("provider cursor status: parse failed: {err}"),
                         }
                     }
@@ -288,13 +205,7 @@ pub(super) fn spawn_provider_cursor_rotate(
                 match response {
                     Ok(resp) if resp.status().is_success() => {
                         match resp.json::<ripd::ProviderCursorRotateV1Response>().await {
-                            Ok(out) => {
-                                if out.rotated {
-                                    "provider cursor: rotated".to_string()
-                                } else {
-                                    "provider cursor: rotate noop".to_string()
-                                }
-                            }
+                            Ok(out) => format_provider_cursor_rotate(&out),
                             Err(err) => format!("provider cursor rotate: parse failed: {err}"),
                         }
                     }
@@ -327,22 +238,7 @@ pub(super) fn spawn_context_selection_status(
                 match response {
                     Ok(resp) if resp.status().is_success() => {
                         match resp.json::<ripd::ContextSelectionStatusV1Response>().await {
-                            Ok(status) => match status.decisions.first() {
-                                Some(active) => {
-                                    let ckpt = active
-                                        .compaction_checkpoint
-                                        .as_ref()
-                                        .map(|c| c.to_seq.to_string())
-                                        .unwrap_or_else(|| "none".to_string());
-                                    format!(
-                                        "context selection: strategy={} ckpt_to_seq={} resets={}",
-                                        active.compiler_strategy,
-                                        ckpt,
-                                        active.resets.len()
-                                    )
-                                }
-                                None => "context selection: none".to_string(),
-                            },
+                            Ok(status) => format_context_selection_status(&status),
                             Err(err) => {
                                 format!("context selection status: parse failed: {err}")
                             }
@@ -386,3 +282,124 @@ pub(super) fn spawn_error_recovery_rotate_cursor(
         let _ = tx.send(message).await;
     });
 }
+
+pub(super) fn format_compaction_cut_points(resp: &ripd::CompactionCutPointsV1Response) -> String {
+    match resp.cut_points.first() {
+        Some(cp) => format!(
+            "cut_points: messages={} latest ordinal={} to_seq={} checkpointed={}",
+            resp.message_count, cp.target_message_ordinal, cp.to_seq, cp.already_checkpointed
+        ),
+        None => format!(
+            "cut_points: messages={} (no eligible cut points)",
+            resp.message_count
+        ),
+    }
+}
+
+pub(super) fn format_compaction_auto(resp: &ripd::CompactionAutoV1Response) -> String {
+    match &resp.job_id {
+        Some(job_id) => format!("compaction auto: status={} job_id={job_id}", resp.status),
+        None => format!("compaction auto: status={}", resp.status),
+    }
+}
+
+pub(super) fn format_compaction_auto_schedule(
+    resp: &ripd::CompactionAutoScheduleV1Response,
+) -> String {
+    match &resp.job_id {
+        Some(job_id) => format!(
+            "compaction schedule: decision={} job_id={job_id}",
+            resp.decision
+        ),
+        None => format!("compaction schedule: decision={}", resp.decision),
+    }
+}
+
+pub(super) fn format_compaction_status(resp: &ripd::CompactionStatusV1Response) -> String {
+    let ckpt = resp
+        .latest_checkpoint
+        .as_ref()
+        .map(|c| c.to_seq.to_string())
+        .unwrap_or_else(|| "none".to_string());
+    let next = resp
+        .next_cut_point
+        .as_ref()
+        .map(|c| c.to_seq.to_string())
+        .unwrap_or_else(|| "none".to_string());
+    let sched = resp
+        .last_schedule_decision
+        .as_ref()
+        .map(|d| d.decision.as_str())
+        .unwrap_or("none");
+    let job = resp
+        .last_job_outcome
+        .as_ref()
+        .map(|j| j.status.as_str())
+        .unwrap_or("none");
+    let inflight = resp
+        .inflight_job_id
+        .as_deref()
+        .map(|id| {
+            let short = id.chars().take(16).collect::<String>();
+            format!(" inflight={short}")
+        })
+        .unwrap_or_default();
+    format!(
+        "compaction status: messages={} ckpt_to_seq={} next_to_seq={} sched={} job={}{}",
+        resp.message_count, ckpt, next, sched, job, inflight
+    )
+}
+
+pub(super) fn format_provider_cursor_status(resp: &ripd::ProviderCursorStatusV1Response) -> String {
+    let Some(active) = resp.active.as_ref() else {
+        return "provider cursor: none".to_string();
+    };
+    let prev = active
+        .cursor
+        .as_ref()
+        .and_then(|value| {
+            value
+                .get("previous_response_id")
+                .and_then(|value| value.as_str())
+        })
+        .unwrap_or("");
+    let prev_short = prev.chars().take(16).collect::<String>();
+    let cursor_desc = if active.cursor.is_some() && !prev_short.is_empty() {
+        format!("prev={prev_short}")
+    } else if active.cursor.is_some() {
+        "cursor=set".to_string()
+    } else {
+        "cursor=none".to_string()
+    };
+    format!("provider cursor: action={} {}", active.action, cursor_desc)
+}
+
+pub(super) fn format_provider_cursor_rotate(resp: &ripd::ProviderCursorRotateV1Response) -> String {
+    if resp.rotated {
+        "provider cursor: rotated".to_string()
+    } else {
+        "provider cursor: rotate noop".to_string()
+    }
+}
+
+pub(super) fn format_context_selection_status(
+    resp: &ripd::ContextSelectionStatusV1Response,
+) -> String {
+    let Some(active) = resp.decisions.first() else {
+        return "context selection: none".to_string();
+    };
+    let ckpt = active
+        .compaction_checkpoint
+        .as_ref()
+        .map(|c| c.to_seq.to_string())
+        .unwrap_or_else(|| "none".to_string());
+    format!(
+        "context selection: strategy={} ckpt_to_seq={} resets={}",
+        active.compiler_strategy,
+        ckpt,
+        active.resets.len()
+    )
+}
+
+#[cfg(test)]
+mod tests;
