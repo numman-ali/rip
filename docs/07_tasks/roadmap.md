@@ -133,21 +133,22 @@ Next
 - Refs:
   - `docs/07_tasks/tui_revamp.md` Parts 1–14
   - `docs/02_architecture/tui/00_design.md`
-- Status (2026-04-19): deferred out of the main revamp so the shipped Phase A+B+C slice is coherent on its own. Each item is small on its own; none is blocking on user-visible behavior.
-- Items:
-  - C.4 editor dep migration — plan A.0 called for `ratatui-textarea`; shipped implementation hand-rolls the multi-line editor in `crates/rip-tui/src/render/input.rs` (newlines, placeholder, emacs kills, history). Migrate only if we need features the hand-rolled version would duplicate (bracketed paste handling, soft-wrap scroll, undo/redo).
-  - C.6 spatial palette positioning — palette modal origin tracks summoning zone (top-center / top-right / top-left / center / bottom-center).
-  - C.9 motion primitives — idle breath dot (2400ms), pre-first-token thinking cycle (`◐◓◑◒`), streaming pulse. Needs a dirty-tick rhythm that respects the current 33ms frame cadence.
-  - B.9 snapshot matrix expansion — plan Part 14.1 called for 10 journeys × 3 breakpoints × 3 themes = 90 goldens. Shipped: 25 goldens across the high-signal journeys (follow-a-run, background-tasks, recover-error, multi-turn-continuity, markdown, tool-card-expand, palette-command, palette-go-to, help, error-recovery, debug, keylight-typing, multiline-input). Missing: `palette_models` and `xray_overlay` journeys; ink/nocolor theme variants on most journeys. Add when the first layout regression bites or when a new surface is added that would benefit from theme-variant coverage.
+- Status (2026-04-19): the tranche is now mostly landed. Shipped on top of the Phase A–D revamp: C.4 `ratatui-textarea` migration, C.6 spatial palette positioning, C.9 motion primitives, D.3 ThreadPicker, D.4 role-aware subagent/reviewer/extension accents, D.5 vim input mode, and D.7 mouse polish. Remaining follow-ups are below.
+- Shipped:
+  - C.4 editor dep migration — the fullscreen driver now owns a `ratatui_textarea::TextArea`, routes raw keys through `TextArea::input`, and keeps RIP-specific intercepts (`⌃K`, palette openers, submit semantics) in `crates/rip-cli/src/fullscreen.rs`. `crates/rip-tui/src/render/input.rs` renders the textarea-backed editor rather than a hand-rolled `String` buffer.
+  - C.6 spatial palette positioning — palette and modal overlays track their summoning zone (`TopCenter`, `TopRight`, `TopLeft`, `Center`, `BottomCenter`) so command/model/thread/options entry feels anchored to where it was invoked.
+  - C.9 motion primitives — the input gutter now has the idle breath dot, the canvas hero glyph cycles through the pre-first-token thinking states (`◐◓◑◒`), and active streaming gets a pulse tied to the existing frame cadence.
+  - D.3 ThreadPicker — a richer threads overlay now fronts `⌃T`, showing current-thread chips plus age/archived metadata and applying the selected continuity as the next-run target without inventing new thread semantics.
+  - D.4 Subagent color palette — canvas gutter glyphs now distinguish primary agent, subagents, reviewers, and extensions with dedicated accent tokens so multi-actor runs are easier to parse at a glance.
+  - D.5 Vim input mode — `Options → Vim input mode` now toggles a Normal/Insert state machine on top of `ratatui-textarea`. Normal mode supports `i / a / I / A / o / O`, `h j k l / w b e / 0 $`, `x / dd / yy / p / u / G / gg`, and two-key operators via `vim_pending`; Insert mode passes everything through to the textarea. Status bar surfaces the current mode when vim is active.
+  - D.7 Mouse polish — hero segments open their respective palettes, the activity strip/rail opens Activity, canvas clicks focus messages, and wheel input works against palette/thread-picker lists.
+- Remaining:
+  - B.9 snapshot matrix expansion — plan Part 14.1 called for 10 journeys × 3 breakpoints × 3 themes = 90 goldens. Current coverage is still the high-signal subset plus the new palette-origin + thread-picker snapshots; missing: `palette_models` and `xray_overlay` journeys, and ink/nocolor variants on most journeys. Add when the first layout regression bites or when a new surface is added that would benefit from theme-variant coverage.
   - D.1 Ink theme finalization — verify under iTerm2, Alacritty, Kitty, GNOME Terminal; 16-color + NO_COLOR visual QA.
   - D.2 ArtifactViewer — gated behind `tool.output_fetch` + `tool.output_store` flipping from planned → supported.
-  - D.3 ThreadPicker — richer than palette Threads: tags, size chips, age chips.
-  - D.4 Subagent color palette — per-agent accent tokens, gutter glyph `◈`, prepared in `AgentRole::Subagent`.
-  - D.5 Vim input mode — opt-in toggle; insert / command / visual modes with `i / a / o / dd / yy / p / gg / G`.
   - D.6 Canvas virtualization — gated on a 10k+ message bench regression; no evidence yet.
-  - D.7 Mouse polish — click hero segments to open palettes, click canvas items to focus, drag-select for copy, scroll-over activity strip to open overlay.
-- Ready: pick up any item independently; no ordering constraint between them.
-- Done: each item lands with its own unit + snapshot coverage where applicable.
+- Ready: pick up any remaining item independently; no ordering constraint between them.
+- Done: shipped items carry unit + snapshot coverage; remaining items should do the same when they land.
 
 ## TUI: UX v1 experience review journeys (conversational-first + drill-down) — superseded
 - Status (2026-04-18): **superseded by the TUI comprehensive revamp** (see "TUI: Comprehensive revamp (Phase A–D)" above).

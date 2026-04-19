@@ -14,6 +14,7 @@ pub enum Overlay {
     None,
     Activity,
     Palette(PaletteState),
+    ThreadPicker(ThreadPickerState),
     ToolDetail {
         tool_id: String,
     },
@@ -70,6 +71,15 @@ impl PaletteMode {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaletteOrigin {
+    TopCenter,
+    TopRight,
+    TopLeft,
+    Center,
+    BottomCenter,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PaletteEntry {
     pub value: String,
@@ -81,6 +91,7 @@ pub struct PaletteEntry {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PaletteState {
     pub mode: PaletteMode,
+    pub origin: PaletteOrigin,
     pub query: String,
     pub selected: usize,
     pub entries: Vec<PaletteEntry>,
@@ -92,6 +103,7 @@ pub struct PaletteState {
 impl PaletteState {
     pub fn new(
         mode: PaletteMode,
+        origin: PaletteOrigin,
         entries: Vec<PaletteEntry>,
         empty_message: String,
         allow_custom_value: bool,
@@ -99,6 +111,7 @@ impl PaletteState {
     ) -> Self {
         Self {
             mode,
+            origin,
             query: String::new(),
             selected: 0,
             entries,
@@ -151,6 +164,47 @@ impl PaletteState {
 
     fn move_selection(&mut self, delta: i32) {
         let len = self.filtered_indices().len();
+        if len == 0 {
+            self.selected = 0;
+            return;
+        }
+
+        if delta < 0 {
+            self.selected = self.selected.saturating_sub(delta.unsigned_abs() as usize);
+        } else {
+            self.selected = self.selected.saturating_add(delta as usize).min(len - 1);
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThreadPickerEntry {
+    pub thread_id: String,
+    pub title: String,
+    pub preview: String,
+    pub chips: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThreadPickerState {
+    pub entries: Vec<ThreadPickerEntry>,
+    pub selected: usize,
+}
+
+impl ThreadPickerState {
+    pub fn new(entries: Vec<ThreadPickerEntry>) -> Self {
+        Self {
+            entries,
+            selected: 0,
+        }
+    }
+
+    pub fn selected_entry(&self) -> Option<&ThreadPickerEntry> {
+        self.entries.get(self.selected)
+    }
+
+    fn move_selection(&mut self, delta: i32) {
+        let len = self.entries.len();
         if len == 0 {
             self.selected = 0;
             return;
@@ -261,6 +315,25 @@ pub enum ThemeId {
     DefaultLight,
 }
 
+/// Vim-style editor mode (D.5). Only consulted when
+/// `TuiState::vim_input_mode` is true; otherwise the textarea is
+/// driven directly by `Input::from(key)` with no mode layer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VimMode {
+    Normal,
+    #[default]
+    Insert,
+}
+
+impl VimMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Normal => "NORMAL",
+            Self::Insert => "INSERT",
+        }
+    }
+}
+
 impl ThemeId {
     pub fn toggle(&mut self) {
         *self = match self {
@@ -285,6 +358,23 @@ pub struct TuiState {
     pub canvas_scroll_from_bottom: u16,
     pub output_view: OutputViewMode,
     pub theme: ThemeId,
+    /// Opt-in vim bindings for the multi-line editor (D.5). When true,
+    /// the driver routes textarea keys through a minimal Normal/Insert
+    /// state machine (Esc → Normal, i/a/o → Insert, h/j/k/l/w/b/0/$ in
+    /// Normal, etc.). Default off so the textarea behaves like a normal
+    /// emacs-ish editor for new users; toggled via the Options palette.
+    pub vim_input_mode: bool,
+    /// Current vim mode when `vim_input_mode` is enabled. Irrelevant
+    /// otherwise. Toggling vim mode on drops the editor into Normal;
+    /// toggling it off resets back to Insert so the ambient textarea
+    /// behaviour is restored.
+    pub vim_mode: VimMode,
+    /// Pending prefix key for two-key vim Normal-mode operators (`dd`,
+    /// `yy`, `gg`). `None` means no operator is pending; any completed
+    /// action or unmatched follow-up clears it. Kept as a plain `char`
+    /// because the full vim count/register/motion grammar is
+    /// intentionally out of scope for the opt-in.
+    pub vim_pending: Option<char>,
     overlay_stack: OverlayStack,
     pub activity_pinned: bool,
     pub now_ms: Option<u64>,
@@ -341,6 +431,9 @@ impl TuiState {
             canvas_scroll_from_bottom: 0,
             output_view: OutputViewMode::Rendered,
             theme: ThemeId::DefaultDark,
+            vim_input_mode: false,
+            vim_mode: VimMode::Insert,
+            vim_pending: None,
             overlay_stack: OverlayStack::new(),
             activity_pinned: false,
             now_ms: None,
@@ -425,6 +518,7 @@ impl TuiState {
     pub fn open_palette(
         &mut self,
         mode: PaletteMode,
+        origin: PaletteOrigin,
         entries: Vec<PaletteEntry>,
         empty_message: impl Into<String>,
         allow_custom_value: bool,
@@ -432,11 +526,17 @@ impl TuiState {
     ) {
         self.overlay_stack.set(Overlay::Palette(PaletteState::new(
             mode,
+            origin,
             entries,
             empty_message.into(),
             allow_custom_value,
             custom_prompt.into(),
         )));
+    }
+
+    pub fn open_thread_picker(&mut self, entries: Vec<ThreadPickerEntry>) {
+        self.overlay_stack
+            .set(Overlay::ThreadPicker(ThreadPickerState::new(entries)));
     }
 
     pub fn is_palette_open(&self) -> bool {
@@ -522,6 +622,32 @@ impl TuiState {
     pub fn palette_state_clone(&self) -> Option<PaletteState> {
         match self.overlay_stack.top() {
             Overlay::Palette(palette) => Some(palette.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn palette_origin(&self) -> Option<PaletteOrigin> {
+        match self.overlay_stack.top() {
+            Overlay::Palette(palette) => Some(palette.origin),
+            _ => None,
+        }
+    }
+
+    pub fn is_thread_picker_open(&self) -> bool {
+        matches!(self.overlay_stack.top(), Overlay::ThreadPicker(_))
+    }
+
+    pub fn thread_picker_move_selection(&mut self, delta: i32) {
+        if let Some(Overlay::ThreadPicker(picker)) = self.overlay_stack.top_mut() {
+            picker.move_selection(delta);
+        }
+    }
+
+    pub fn thread_picker_selected_value(&self) -> Option<String> {
+        match self.overlay_stack.top() {
+            Overlay::ThreadPicker(picker) => {
+                picker.selected_entry().map(|entry| entry.thread_id.clone())
+            }
             _ => None,
         }
     }
@@ -1590,6 +1716,7 @@ mod tests {
         let mut state = TuiState::default();
         state.open_palette(
             PaletteMode::Model,
+            PaletteOrigin::TopCenter,
             vec![
                 PaletteEntry {
                     value: "openrouter/openai/gpt-oss-20b".to_string(),
@@ -2173,5 +2300,102 @@ mod tests {
         assert_eq!(ids.len(), 3);
         assert!(looks_like_artifact_id(&artifact('f')));
         assert!(!looks_like_artifact_id("artifact"));
+    }
+
+    #[test]
+    fn thread_picker_state_selection_wraps_and_clamps() {
+        let mut picker = ThreadPickerState::new(vec![
+            ThreadPickerEntry {
+                thread_id: "cont-1".into(),
+                title: "one".into(),
+                preview: "…".into(),
+                chips: vec![],
+            },
+            ThreadPickerEntry {
+                thread_id: "cont-2".into(),
+                title: "two".into(),
+                preview: "…".into(),
+                chips: vec![],
+            },
+            ThreadPickerEntry {
+                thread_id: "cont-3".into(),
+                title: "three".into(),
+                preview: "…".into(),
+                chips: vec![],
+            },
+        ]);
+        assert_eq!(picker.selected, 0);
+        picker.move_selection(1);
+        assert_eq!(picker.selected, 1);
+        picker.move_selection(5);
+        assert_eq!(picker.selected, 2, "move past end clamps to last");
+        picker.move_selection(-10);
+        assert_eq!(picker.selected, 0, "move past start clamps to first");
+        assert_eq!(
+            picker.selected_entry().map(|e| e.thread_id.as_str()),
+            Some("cont-1")
+        );
+
+        // Empty picker is a no-op.
+        let mut empty = ThreadPickerState::new(vec![]);
+        empty.move_selection(3);
+        assert_eq!(empty.selected, 0);
+        assert!(empty.selected_entry().is_none());
+    }
+
+    #[test]
+    fn thread_picker_state_helpers_round_trip_through_overlay_stack() {
+        let mut state = TuiState::default();
+        assert!(!state.is_thread_picker_open());
+        assert!(state.thread_picker_selected_value().is_none());
+
+        state.open_thread_picker(vec![
+            ThreadPickerEntry {
+                thread_id: "cont-a".into(),
+                title: "alpha".into(),
+                preview: "…".into(),
+                chips: vec![],
+            },
+            ThreadPickerEntry {
+                thread_id: "cont-b".into(),
+                title: "beta".into(),
+                preview: "…".into(),
+                chips: vec![],
+            },
+        ]);
+        assert!(state.is_thread_picker_open());
+        assert_eq!(
+            state.thread_picker_selected_value().as_deref(),
+            Some("cont-a")
+        );
+
+        state.thread_picker_move_selection(1);
+        assert_eq!(
+            state.thread_picker_selected_value().as_deref(),
+            Some("cont-b")
+        );
+
+        state.close_overlay();
+        assert!(!state.is_thread_picker_open());
+        assert!(state.thread_picker_selected_value().is_none());
+    }
+
+    #[test]
+    fn palette_origin_is_none_when_no_palette_is_open() {
+        let mut state = TuiState::default();
+        assert!(state.palette_origin().is_none());
+
+        state.open_palette(
+            PaletteMode::Command,
+            PaletteOrigin::TopCenter,
+            vec![],
+            "No matches".to_string(),
+            false,
+            String::new(),
+        );
+        assert_eq!(state.palette_origin(), Some(PaletteOrigin::TopCenter));
+
+        state.close_overlay();
+        assert!(state.palette_origin().is_none());
     }
 }

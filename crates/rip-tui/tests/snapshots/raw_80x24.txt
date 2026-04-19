@@ -20,5 +20,5 @@
 │  "session_id": "s1",                                                         │
 │  "stream_kind": "session",                                                   │
 └──────────────────────────────────────────────────────────────────────────────┘
-▎ › Continue the thread
+▎ · Continue the thread
    ? help   ⌘K command   ⌘M model   ⌘G go to

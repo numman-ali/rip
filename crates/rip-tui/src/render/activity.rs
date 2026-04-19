@@ -269,3 +269,177 @@ pub(super) fn build_activity_lines(state: &TuiState, max_lines: usize) -> Vec<Li
     lines.truncate(max_lines.max(1));
     lines
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::{JobStatus, JobSummary, TaskSummary, ToolStatus, ToolSummary};
+    use std::collections::BTreeSet;
+
+    fn seed() -> TuiState {
+        let mut state = TuiState::new(10);
+        state.now_ms = Some(1_000);
+        state.continuity_id = Some("cont-1".to_string());
+        state
+    }
+
+    fn tool(id: &str, name: &str, status: ToolStatus) -> ToolSummary {
+        ToolSummary {
+            tool_id: id.to_string(),
+            name: name.to_string(),
+            args: serde_json::Value::Null,
+            started_seq: 0,
+            started_at_ms: 1_000,
+            status,
+            stdout_preview: String::new(),
+            stderr_preview: String::new(),
+            artifact_ids: BTreeSet::new(),
+        }
+    }
+
+    fn task(title: &str, status: rip_kernel::ToolTaskStatus) -> TaskSummary {
+        TaskSummary {
+            task_id: "task-1".to_string(),
+            tool_name: "bash".to_string(),
+            args: serde_json::Value::Null,
+            cwd: None,
+            title: Some(title.to_string()),
+            execution_mode: rip_kernel::ToolTaskExecutionMode::Pipes,
+            status,
+            exit_code: None,
+            started_at_ms: Some(900),
+            ended_at_ms: None,
+            error: None,
+            stdout_preview: String::new(),
+            stderr_preview: String::new(),
+            pty_preview: String::new(),
+            artifact_ids: BTreeSet::new(),
+        }
+    }
+
+    fn running_job(kind: &str) -> JobSummary {
+        JobSummary {
+            job_id: "job-1".to_string(),
+            job_kind: kind.to_string(),
+            status: JobStatus::Running,
+        }
+    }
+
+    #[test]
+    fn collect_strip_items_mentions_every_ambient_state_source() {
+        let mut state = seed();
+        state.tools.insert(
+            "tool-1".to_string(),
+            tool("tool-1", "bash", ToolStatus::Running),
+        );
+        state.tools.insert(
+            "tool-2".to_string(),
+            tool("tool-2", "write", ToolStatus::Running),
+        );
+        state.tasks.insert(
+            "task-1".to_string(),
+            task("long running", rip_kernel::ToolTaskStatus::Running),
+        );
+        state
+            .jobs
+            .insert("job-1".to_string(), running_job("indexer"));
+        state.context = Some(crate::state::ContextSummary {
+            run_session_id: "r".to_string(),
+            compiler_strategy: "default".to_string(),
+            status: crate::ContextStatus::Compiled,
+            bundle_artifact_id: None,
+        });
+
+        let items = collect_strip_items(&state);
+        assert!(items.iter().any(|s| s.contains("bash +1")));
+        assert!(items.iter().any(|s| s.contains("long running")));
+        assert!(items.iter().any(|s| s.contains("indexer")));
+        assert!(items.iter().any(|s| s.contains("ctx compiled")));
+    }
+
+    #[test]
+    fn truncate_respects_char_limit_and_handles_zero() {
+        assert_eq!(truncate("hello", 0), "");
+        assert_eq!(truncate("hello", 10), "hello");
+        let out = truncate("abcdefgh", 5);
+        assert_eq!(out.chars().count(), 5);
+        assert!(out.ends_with('…'));
+    }
+
+    #[test]
+    fn strip_worst_style_escalates_to_danger_then_warn_then_muted() {
+        let theme = ThemeStyles::for_theme(crate::ThemeId::DefaultDark);
+        let mut state = seed();
+        assert_eq!(strip_worst_style(&state, &theme), theme.muted);
+
+        state.last_error_seq = Some(1);
+        assert_eq!(strip_worst_style(&state, &theme), theme.danger);
+
+        state.last_error_seq = None;
+        // is_stalled needs a last_event_ms far enough in the past.
+        state.last_event_ms = Some(0);
+        state.now_ms = Some(10_000);
+        assert_eq!(strip_worst_style(&state, &theme), theme.warn);
+    }
+
+    #[test]
+    fn build_strip_line_collapses_empty_running_unless_scrolled() {
+        let theme = ThemeStyles::for_theme(crate::ThemeId::DefaultDark);
+        let mut state = seed();
+        // Nothing to say, at-bottom: no line.
+        assert!(build_strip_line(&state, &theme, 80).is_none());
+
+        // Scrolled up with no items: surface the breadcrumb.
+        state.canvas_scroll_from_bottom = 3;
+        let line = build_strip_line(&state, &theme, 80).expect("breadcrumb");
+        let text: String = line
+            .spans
+            .iter()
+            .map(|s| s.content.to_string())
+            .collect::<String>();
+        assert!(text.contains("scrolled back"));
+    }
+
+    #[test]
+    fn build_strip_line_truncates_on_narrow_width() {
+        let theme = ThemeStyles::for_theme(crate::ThemeId::DefaultDark);
+        let mut state = seed();
+        for i in 0..3 {
+            state.tools.insert(
+                format!("tool-{i}"),
+                tool(
+                    &format!("tool-{i}"),
+                    &format!("tool{i}"),
+                    ToolStatus::Running,
+                ),
+            );
+        }
+        // Width of 5 forces a mid-chunk ellipsis: first item "⟡ tool0 +2"
+        // is ~10 chars so it can't fit even alone, and the truncation
+        // branch emits an ellipsis-capped prefix.
+        let line = build_strip_line(&state, &theme, 5).expect("truncated line");
+        let text: String = line
+            .spans
+            .iter()
+            .map(|s| s.content.to_string())
+            .collect::<String>();
+        assert!(
+            text.contains('…'),
+            "expected ellipsis in truncated strip: {text:?}",
+        );
+    }
+
+    #[test]
+    fn build_activity_lines_respects_max_lines_cap() {
+        let mut state = seed();
+        for i in 0..5 {
+            state.tools.insert(
+                format!("tool-{i}"),
+                tool(&format!("tool-{i}"), &format!("t{i}"), ToolStatus::Running),
+            );
+        }
+        let lines = build_activity_lines(&state, 2);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(build_activity_lines(&state, 0).len(), 1);
+    }
+}

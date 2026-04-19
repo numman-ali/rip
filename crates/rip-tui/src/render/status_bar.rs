@@ -32,6 +32,13 @@ use crate::TuiState;
 
 use super::theme::ThemeStyles;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeroClickTarget {
+    Thread,
+    Agent,
+    Model,
+}
+
 pub(super) fn render_status_bar(
     frame: &mut Frame<'_>,
     state: &TuiState,
@@ -45,6 +52,40 @@ pub(super) fn render_status_bar(
     let line = hero.render_line(theme, area.width as usize);
     let widget = Paragraph::new(line).style(theme.chrome);
     frame.render_widget(widget, area);
+}
+
+pub fn hero_click_target(state: &TuiState, width: u16, column: u16) -> Option<HeroClickTarget> {
+    if width == 0 {
+        return None;
+    }
+
+    let hero = HeroContent::from_state(state);
+    let right = right_segments(&hero);
+    let right_len: usize = right.iter().map(|s| s.text.chars().count()).sum();
+    let spacer_before_right = if right.is_empty() { 0 } else { 2 };
+    let budget = (width as usize)
+        .saturating_sub(right_len)
+        .saturating_sub(spacer_before_right);
+    let left = left_segments(&hero, budget);
+
+    let mut cursor = 0usize;
+    for seg in left {
+        let seg_len = seg.text.chars().count();
+        let start = cursor;
+        let end = cursor.saturating_add(seg_len);
+        let target = match seg.kind {
+            SegmentKind::Thread => Some(HeroClickTarget::Thread),
+            SegmentKind::Agent => Some(HeroClickTarget::Agent),
+            SegmentKind::Model => Some(HeroClickTarget::Model),
+            _ => None,
+        };
+        if target.is_some() && (column as usize) >= start && (column as usize) < end {
+            return target;
+        }
+        cursor = end;
+    }
+
+    None
 }
 
 /// Pull the hero's raw strings out of `TuiState`. Kept separate from
@@ -532,5 +573,27 @@ mod tests {
         let out = short_tail("openai:gpt-5-née", 6);
         assert!(out.starts_with('…'));
         assert!(out.ends_with("5-née"));
+    }
+
+    #[test]
+    fn hero_click_targets_left_segments() {
+        let mut state = TuiState::new(10);
+        state.continuity_id = Some("thread-alpha".to_string());
+        state.preferred_openresponses_endpoint =
+            Some("https://openrouter.ai/api/v1/responses".to_string());
+        state.preferred_openresponses_model = Some("nvidia/nemotron".to_string());
+
+        assert_eq!(
+            hero_click_target(&state, 80, 1),
+            Some(HeroClickTarget::Thread)
+        );
+        assert_eq!(
+            hero_click_target(&state, 80, 15),
+            Some(HeroClickTarget::Agent)
+        );
+        assert_eq!(
+            hero_click_target(&state, 80, 22),
+            Some(HeroClickTarget::Model)
+        );
     }
 }

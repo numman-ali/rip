@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 use ratatui::Terminal;
+use ratatui_textarea::TextArea;
 use rip_kernel::{Event, EventKind, ProviderEventStatus};
 use rip_tui::{render, OutputViewMode, Overlay, RenderMode, ThemeId, TuiState};
 
@@ -319,8 +320,12 @@ fn render_to_string_with_input(
     input: &str,
 ) -> String {
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
+    let mut textarea = TextArea::default();
+    if !input.is_empty() {
+        textarea.insert_str(input);
+    }
     terminal
-        .draw(|f| render(f, state, mode, input))
+        .draw(|f| render(f, state, mode, &textarea))
         .expect("draw");
     buffer_to_string(terminal.backend().buffer())
 }
@@ -423,6 +428,32 @@ fn journey_help_overlay_m_120x30() {
 }
 
 #[test]
+fn journey_thread_picker_m_120x30() {
+    // D.3: ThreadPicker overlay — summoned by Command > "Switch thread"
+    // (or the eventual ⌘T hotkey). Shows a list of continuities the
+    // runtime has exposed, with a single-line preview + chip strip per
+    // entry. Metadata the runtime does not yet surface renders as "—"
+    // rather than being synthesized from disk (surface-only posture).
+    let mut state = follow_run_state_tool_detail();
+    state.open_thread_picker(vec![
+        rip_tui::ThreadPickerEntry {
+            thread_id: "cont-001".to_string(),
+            title: "slide-prep".to_string(),
+            preview: "Draft a 5-slide outline for the product launch.".to_string(),
+            chips: vec!["size 42".to_string(), "actors 1".to_string()],
+        },
+        rip_tui::ThreadPickerEntry {
+            thread_id: "cont-002".to_string(),
+            title: "bugfix-run".to_string(),
+            preview: "Investigate the TTFT regression in the new cursor.".to_string(),
+            chips: vec![],
+        },
+    ]);
+    let rendered = render_to_string(120, 30, &state, RenderMode::Json);
+    assert_snapshot("journey_thread_picker_m_120x30.txt", rendered);
+}
+
+#[test]
 fn journey_error_recovery_overlay_m_120x30() {
     // C.10: ErrorRecovery overlay auto-opens on provider errors
     // (wired in a follow-up). The overlay itself is render-only; the
@@ -439,11 +470,12 @@ fn journey_palette_command_m_120x30() {
     // C.5: Command palette — the primary entry point. Mirrors the
     // driver's `open_command_palette` path (see rip-cli fullscreen).
     use rip_tui::palette::modes::command::CommandMode;
-    use rip_tui::{PaletteMode, PaletteSource};
+    use rip_tui::{PaletteMode, PaletteOrigin, PaletteSource};
     let mut state = basic_state();
     let mode = CommandMode::new();
     state.open_palette(
         PaletteMode::Command,
+        PaletteOrigin::TopCenter,
         mode.entries(),
         mode.empty_state().to_string(),
         false,
@@ -456,12 +488,13 @@ fn journey_palette_command_m_120x30() {
 #[test]
 fn journey_palette_go_to_m_120x30() {
     use rip_tui::palette::modes::go_to::GoToMode;
-    use rip_tui::{PaletteMode, PaletteSource};
+    use rip_tui::{PaletteMode, PaletteOrigin, PaletteSource};
     let mut state = follow_run_state_tool_detail();
     let mode = GoToMode::from_canvas(&state.canvas);
     let entries = mode.entries();
     state.open_palette(
         PaletteMode::Navigation,
+        PaletteOrigin::Center,
         entries,
         mode.empty_state().to_string(),
         false,

@@ -1,4 +1,5 @@
 use ratatui::Frame;
+use ratatui_textarea::TextArea;
 
 use crate::{OutputViewMode, Overlay, TuiState};
 
@@ -12,6 +13,8 @@ mod theme;
 mod util;
 mod xray;
 
+pub use self::canvas::canvas_hit_message_id;
+pub use self::status_bar::{hero_click_target, HeroClickTarget};
 use self::theme::ThemeStyles;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,7 +23,12 @@ pub enum RenderMode {
     Decoded,
 }
 
-pub fn render(frame: &mut Frame<'_>, state: &TuiState, mode: RenderMode, input: &str) {
+pub fn render(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    mode: RenderMode,
+    input: &TextArea<'static>,
+) {
     let theme = ThemeStyles::for_theme(state.theme);
     match state.output_view {
         OutputViewMode::Rendered => self::canvas::render_canvas_screen(frame, state, &theme, input),
@@ -64,7 +72,10 @@ mod tests {
 
     fn render_once(state: &TuiState, mode: RenderMode, width: u16) {
         let mut terminal = Terminal::new(TestBackend::new(width, 20)).expect("terminal");
-        terminal.draw(|f| render(f, state, mode, "")).expect("draw");
+        let input = TextArea::default();
+        terminal
+            .draw(|f| render(f, state, mode, &input))
+            .expect("draw");
     }
 
     #[test]
@@ -347,6 +358,7 @@ mod tests {
             Overlay::Activity,
             Overlay::Palette(crate::PaletteState::new(
                 crate::PaletteMode::Model,
+                crate::PaletteOrigin::TopCenter,
                 vec![
                     crate::PaletteEntry {
                         value: "openrouter/openai/gpt-oss-20b".to_string(),

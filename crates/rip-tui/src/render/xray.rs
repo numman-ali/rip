@@ -2,6 +2,7 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::text::{Line, Text};
 use ratatui::widgets::{Block, Borders, Paragraph, Row, Table, TableState, Tabs, Wrap};
 use ratatui::Frame;
+use ratatui_textarea::TextArea;
 use serde_json::Value;
 
 use crate::summary::{event_summary, event_type};
@@ -18,7 +19,7 @@ pub(super) fn render_xray_screen(
     state: &TuiState,
     theme: &ThemeStyles,
     mode: RenderMode,
-    input: &str,
+    input: &TextArea<'static>,
 ) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)

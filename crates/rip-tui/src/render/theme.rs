@@ -53,8 +53,14 @@ pub(crate) struct Theme {
     pub fg_quiet: Color,
     pub accent_user: Color,
     pub accent_agent: Color,
+    pub accent_subagent_a: Color,
+    pub accent_subagent_b: Color,
+    pub accent_subagent_c: Color,
+    pub accent_subagent_d: Color,
     pub accent_tool: Color,
     pub accent_task: Color,
+    pub accent_reviewer: Color,
+    pub accent_extension: Color,
     pub accent_warn: Color,
     pub accent_danger: Color,
     pub accent_success: Color,
@@ -72,8 +78,14 @@ impl Theme {
             fg_quiet: Color::DarkGray,
             accent_user: Color::LightBlue,
             accent_agent: Color::Cyan,
+            accent_subagent_a: Color::LightMagenta,
+            accent_subagent_b: Color::LightGreen,
+            accent_subagent_c: Color::LightYellow,
+            accent_subagent_d: Color::LightRed,
             accent_tool: Color::Cyan,
             accent_task: Color::Cyan,
+            accent_reviewer: Color::LightYellow,
+            accent_extension: Color::LightCyan,
             accent_warn: Color::Yellow,
             accent_danger: Color::Red,
             accent_success: Color::Green,
@@ -91,8 +103,14 @@ impl Theme {
             fg_quiet: Color::DarkGray,
             accent_user: Color::Blue,
             accent_agent: Color::Blue,
+            accent_subagent_a: Color::Magenta,
+            accent_subagent_b: Color::Green,
+            accent_subagent_c: Color::Yellow,
+            accent_subagent_d: Color::Red,
             accent_tool: Color::Blue,
             accent_task: Color::Blue,
+            accent_reviewer: Color::Yellow,
+            accent_extension: Color::Cyan,
             accent_warn: Color::Yellow,
             accent_danger: Color::Red,
             accent_success: Color::Green,
@@ -132,6 +150,9 @@ pub(super) struct ThemeStyles {
     pub(super) accent: Style,
     pub(super) prompt: Style,
     pub(super) prompt_label: Style,
+    pub(super) subagent_accents: [Style; 4],
+    pub(super) reviewer: Style,
+    pub(super) extension: Style,
     /// Secondary text: timestamps, model chip, separator dots.
     pub(super) muted: Style,
     /// Tertiary text: rules, bottom card corners, palette mode chips.
@@ -161,8 +182,14 @@ impl ThemeStyles {
             fg_quiet: raw.tint(raw.fg_quiet, depth),
             accent_user: raw.tint(raw.accent_user, depth),
             accent_agent: raw.tint(raw.accent_agent, depth),
+            accent_subagent_a: raw.tint(raw.accent_subagent_a, depth),
+            accent_subagent_b: raw.tint(raw.accent_subagent_b, depth),
+            accent_subagent_c: raw.tint(raw.accent_subagent_c, depth),
+            accent_subagent_d: raw.tint(raw.accent_subagent_d, depth),
             accent_tool: raw.tint(raw.accent_tool, depth),
             accent_task: raw.tint(raw.accent_task, depth),
+            accent_reviewer: raw.tint(raw.accent_reviewer, depth),
+            accent_extension: raw.tint(raw.accent_extension, depth),
             accent_warn: raw.tint(raw.accent_warn, depth),
             accent_danger: raw.tint(raw.accent_danger, depth),
             accent_success: raw.tint(raw.accent_success, depth),
@@ -188,6 +215,26 @@ impl ThemeStyles {
                     .fg(theme.accent_agent)
                     .bg(theme.prompt_ribbon)
                     .add_modifier(Modifier::BOLD),
+                subagent_accents: [
+                    Style::default()
+                        .fg(theme.accent_subagent_a)
+                        .add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(theme.accent_subagent_b)
+                        .add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(theme.accent_subagent_c)
+                        .add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(theme.accent_subagent_d)
+                        .add_modifier(Modifier::BOLD),
+                ],
+                reviewer: Style::default()
+                    .fg(theme.accent_reviewer)
+                    .add_modifier(Modifier::BOLD),
+                extension: Style::default()
+                    .fg(theme.accent_extension)
+                    .add_modifier(Modifier::BOLD),
                 muted: Style::default().fg(theme.fg_muted),
                 quiet: Style::default().fg(theme.fg_quiet),
                 warn: Style::default().fg(theme.accent_warn),
@@ -212,6 +259,26 @@ impl ThemeStyles {
                 prompt_label: Style::default()
                     .fg(theme.accent_agent)
                     .bg(theme.prompt_ribbon)
+                    .add_modifier(Modifier::BOLD),
+                subagent_accents: [
+                    Style::default()
+                        .fg(theme.accent_subagent_a)
+                        .add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(theme.accent_subagent_b)
+                        .add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(theme.accent_subagent_c)
+                        .add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(theme.accent_subagent_d)
+                        .add_modifier(Modifier::BOLD),
+                ],
+                reviewer: Style::default()
+                    .fg(theme.accent_reviewer)
+                    .add_modifier(Modifier::BOLD),
+                extension: Style::default()
+                    .fg(theme.accent_extension)
                     .add_modifier(Modifier::BOLD),
                 muted: Style::default().fg(theme.fg_muted),
                 quiet: Style::default().fg(theme.fg_quiet),

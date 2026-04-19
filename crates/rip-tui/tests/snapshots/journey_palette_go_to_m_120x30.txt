@@ -1,29 +1,29 @@
 - · rip · -                                                                                               idle  ttft 200
 ›  Add a slide outline for a product launch.
 
-◎  Got it. I┌Palette · Navigation──────────────────────────────────────────────────────────────────────────┐
-            │ Navigation                                                                                   │
-            │                                                                                              │
-⟡  ╭─ bash ─│┌Filter──────────────────────────────────────────────────────────────────────────────────────┐│ ✓ 100ms ─╮
-            ││> type to filter                                                                            ││
-     1 artif│└────────────────────────────────────────────────────────────────────────────────────────────┘│
-   ╰────────│› › Add a slide outline for a product launch.  USER                                           │──────────╯
-            │  ◉ (empty)  AGENT  [streaming]                                                               │
-            │  ⟡ tool · bash  TOOL                                                                         │
-            │                                                                                              │
-            │                                                                                              │
-            │                                                                                              │
-            │                                                                                              │
-            │                                                                                              │
-            │                                                                                              │
-            │                                                                                              │
-            │                                                                                              │
-            │                                                                                              │
-            │                                                                                              │
-            │                                                                                              │
-            │Enter apply  Esc close  Type to filter                                                        │
-            │Ctrl-K reopens model switching for future palette modes                                       │
-            └──────────────────────────────────────────────────────────────────────────────────────────────┘
+◎  Got it. I'll draft a ┌Palette · Navigation──────────────────────────────────────────────────┐
+                        │ Navigation                                                           │
+                        │                                                                      │
+⟡  ╭─ bash ─────────────│┌Filter──────────────────────────────────────────────────────────────┐│──────────── ✓ 100ms ─╮
+                        ││> type to filter                                                    ││
+     1 artifacts · ⏎ exp│└────────────────────────────────────────────────────────────────────┘│
+   ╰────────────────────│› › Add a slide outline for a product launch.  USER                   │──────────────────────╯
+                        │  ◉ (empty)  AGENT  [streaming]                                       │
+                        │  ⟡ tool · bash  TOOL                                                 │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │Enter apply  Esc close  Type to filter                                │
+                        │Ctrl-K reopens model switching for future palette modes               │
+                        └──────────────────────────────────────────────────────────────────────┘
 
 
 ▎ › Continue the thread

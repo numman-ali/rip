@@ -1,29 +1,29 @@
 - · rip · -                                                                                               idle  ttft 200
 ›  hi
+                        ┌Palette · Command─────────────────────────────────────────────────────┐
+◉  hello                │ Command                                                              │
+                        │                                                                      │
+⟡  ╭─ bash ─────────────│┌Filter──────────────────────────────────────────────────────────────┐│───────────── ✓ 50ms ─╮
+                        ││> type to filter                                                    ││
+     ⏎ expand · x raw   │└────────────────────────────────────────────────────────────────────┘│
+   ╰────────────────────│› Scroll to top  CANVAS                                               │──────────────────────╯
+                        │  Scroll to bottom  CANVAS                                            │
+                        │  Toggle follow-tail  CANVAS                                          │
+                        │  Previous message  CANVAS                                            │
+                        │  Next message  CANVAS                                                │
+                        │  Jump to previous error  CANVAS                                      │
+                        │  Copy last message  CANVAS                                           │
+                        │  Copy selection  CANVAS                                              │
+                        │  Clear selection  CANVAS                                             │
+                        │  New thread  THREADS  [unavailable]                                  │
+                        │  Switch thread  THREADS                                              │
+                        │  Branch current thread  THREADS                                      │
+                        │  Handoff to new thread  THREADS                                      │
+                        │  Rename current thread  THREADS  [unavailable]                       │
+                        │Enter apply  Esc close  Type to filter                                │
+                        │Ctrl-K reopens model switching for future palette modes               │
+                        └──────────────────────────────────────────────────────────────────────┘
 
-◉  hello    ┌Palette · Command─────────────────────────────────────────────────────────────────────────────┐
-            │ Command                                                                                      │
-⟡  ╭─ bash ─│                                                                                              │─ ✓ 50ms ─╮
-            │┌Filter──────────────────────────────────────────────────────────────────────────────────────┐│
-     ⏎ expan││> type to filter                                                                            ││
-   ╰────────│└────────────────────────────────────────────────────────────────────────────────────────────┘│──────────╯
-            │› Scroll to top  CANVAS                                                                       │
-            │  Scroll to bottom  CANVAS                                                                    │
-            │  Toggle follow-tail  CANVAS                                                                  │
-            │  Previous message  CANVAS                                                                    │
-            │  Next message  CANVAS                                                                        │
-            │  Jump to previous error  CANVAS                                                              │
-            │  Copy last message  CANVAS                                                                   │
-            │  Copy selection  CANVAS                                                                      │
-            │  Clear selection  CANVAS                                                                     │
-            │  New thread  THREADS  [unavailable]                                                          │
-            │  Switch thread  THREADS                                                                      │
-            │  Branch current thread  THREADS                                                              │
-            │  Handoff to new thread  THREADS                                                              │
-            │  Rename current thread  THREADS  [unavailable]                                               │
-            │Enter apply  Esc close  Type to filter                                                        │
-            │Ctrl-K reopens model switching for future palette modes                                       │
-            └──────────────────────────────────────────────────────────────────────────────────────────────┘
 
 
 ▎ › Continue the thread

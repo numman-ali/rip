@@ -285,4 +285,169 @@ mod tests {
         assert_eq!(entries[1].value, "a1");
         assert_eq!(entries[2].value, "t1");
     }
+
+    #[test]
+    fn surface_metadata_describes_go_to_mode() {
+        let mode = GoToMode::default();
+        assert_eq!(mode.id(), "go-to");
+        assert_eq!(mode.label(), "Go To");
+        assert!(!mode.placeholder().is_empty());
+        assert_eq!(mode.empty_state(), "canvas is empty");
+    }
+
+    #[test]
+    fn streaming_agent_turn_gets_streaming_chip_and_model_subtitle() {
+        use crate::canvas::JobLifecycle;
+
+        let mut canvas = CanvasModel::default();
+        canvas.messages.push(CanvasMessage::AgentTurn {
+            message_id: "a-stream".into(),
+            run_session_id: "r".into(),
+            agent_id: None,
+            role: AgentRole::Primary,
+            actor_id: "agent".into(),
+            model: None, // forces the "AGENT" fallback subtitle
+            blocks: vec![text_block("hi")],
+            streaming_tail: String::new(),
+            streaming: true,
+            started_at_ms: 0,
+            ended_at_ms: None,
+        });
+        canvas.messages.push(CanvasMessage::JobNotice {
+            message_id: "j1".into(),
+            job_id: "job-1".into(),
+            job_kind: "indexer".into(),
+            details: None,
+            status: JobLifecycle::Running,
+            actor_id: "agent".into(),
+            origin: "kernel".into(),
+            started_at_ms: None,
+            ended_at_ms: None,
+        });
+        let entries = GoToMode::from_canvas(&canvas).entries();
+        assert_eq!(entries[0].subtitle.as_deref(), Some("AGENT"));
+        assert!(entries[0].chips.iter().any(|c| c == "streaming"));
+        assert!(entries[1].title.contains("job · indexer"));
+    }
+
+    #[test]
+    fn task_notice_compaction_and_extension_variants_produce_entries() {
+        use crate::canvas::{ContextLifecycle, NoticeLevel, PanelPlacement, TaskCardStatus};
+        use rip_kernel::ToolTaskExecutionMode;
+
+        let mut canvas = CanvasModel::default();
+        canvas.messages.push(CanvasMessage::TaskCard {
+            message_id: "task-1".into(),
+            task_id: "task-1".into(),
+            tool_name: "bash".into(),
+            title: Some("smoke".into()),
+            execution_mode: ToolTaskExecutionMode::Pipes,
+            status: TaskCardStatus::Running,
+            body: Vec::new(),
+            expanded: false,
+            artifact_ids: Vec::new(),
+            started_at_ms: None,
+        });
+        canvas.messages.push(CanvasMessage::SystemNotice {
+            message_id: "n-1".into(),
+            level: NoticeLevel::Info,
+            text: "hello world".into(),
+            origin_event_kind: "".into(),
+            seq: 0,
+        });
+        canvas.messages.push(CanvasMessage::ContextNotice {
+            message_id: "ctx-1".into(),
+            run_session_id: "r".into(),
+            strategy: "retrieval".into(),
+            status: ContextLifecycle::Compiled,
+            bundle_artifact_id: None,
+            contributed_artifact_ids: Vec::new(),
+        });
+        canvas.messages.push(CanvasMessage::CompactionCheckpoint {
+            message_id: "cp-1".into(),
+            checkpoint_id: "cp".into(),
+            from_seq: 2,
+            to_seq: 7,
+            summary_artifact_id: "art".into(),
+        });
+        canvas.messages.push(CanvasMessage::ExtensionPanel {
+            message_id: "ext-1".into(),
+            panel_id: "panel".into(),
+            extension_id: "ext".into(),
+            title: "Panel".into(),
+            placement: PanelPlacement::Inline,
+            lines: Vec::new(),
+            keys: Vec::new(),
+            artifact_ids: Vec::new(),
+        });
+        let entries = GoToMode::from_canvas(&canvas).entries();
+        assert_eq!(entries.len(), 5);
+        assert!(entries[0].title.contains("task · bash"));
+        assert_eq!(entries[0].subtitle.as_deref(), Some("smoke"));
+        assert!(entries[1].title.contains("hello world"));
+        assert!(entries[2].title.contains("context · retrieval"));
+        assert!(entries[3].title.contains("seq 2–7"));
+        assert!(entries[4].title.contains("ext · Panel"));
+    }
+
+    #[test]
+    fn first_line_falls_back_to_empty_marker_and_truncate_respects_char_limit() {
+        // Empty blocks drop to the `"(empty)"` marker.
+        let mut canvas = CanvasModel::default();
+        canvas.messages.push(CanvasMessage::UserTurn {
+            message_id: "u".into(),
+            actor_id: "user".into(),
+            origin: "cli".into(),
+            blocks: vec![Block::Thematic],
+            submitted_at_ms: 0,
+        });
+        let entries = GoToMode::from_canvas(&canvas).entries();
+        assert!(entries[0].title.contains("(empty)"));
+
+        // `truncate` clips long strings and appends an ellipsis; short
+        // strings pass through verbatim.
+        assert_eq!(truncate("hi", 10), "hi");
+        let truncated = truncate("abcdefghij", 5);
+        assert_eq!(truncated.chars().count(), 5);
+        assert!(truncated.ends_with('…'));
+    }
+
+    #[test]
+    fn block_plain_text_walks_quote_list_and_structured_variants() {
+        let plain = text_block("hello");
+        assert_eq!(
+            block_plain_text(&plain).as_deref(),
+            Some("hello"),
+            "paragraph",
+        );
+        let heading = Block::Heading {
+            level: 1,
+            text: CachedText::plain("title"),
+        };
+        assert_eq!(block_plain_text(&heading).as_deref(), Some("title"));
+        let fence = Block::CodeFence {
+            lang: Some("rust".into()),
+            text: CachedText::plain("fn x() {}"),
+        };
+        assert_eq!(block_plain_text(&fence).as_deref(), Some("fn x() {}"));
+        let stderr = Block::ToolStderr(CachedText::plain("boom"));
+        assert_eq!(block_plain_text(&stderr).as_deref(), Some("boom"));
+        let stdout = Block::ToolStdout(CachedText::plain("out"));
+        assert_eq!(block_plain_text(&stdout).as_deref(), Some("out"));
+        let args = Block::ToolArgsJson(CachedText::plain("{}"));
+        assert_eq!(block_plain_text(&args).as_deref(), Some("{}"));
+        let quote = Block::BlockQuote(vec![text_block("inside")]);
+        assert_eq!(block_plain_text(&quote).as_deref(), Some("inside"));
+        let list = Block::List {
+            ordered: false,
+            items: vec![vec![text_block("bullet")]],
+        };
+        assert_eq!(block_plain_text(&list).as_deref(), Some("bullet"));
+        assert!(block_plain_text(&Block::Thematic).is_none());
+        assert!(block_plain_text(&Block::ArtifactChip {
+            artifact_id: "a".into(),
+            bytes: None,
+        })
+        .is_none());
+    }
 }

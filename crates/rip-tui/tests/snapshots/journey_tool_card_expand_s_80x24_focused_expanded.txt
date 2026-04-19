@@ -20,5 +20,5 @@
    ╰──────────────────────────────────────────────────────────────────────────╯
 
 
-▎ › Continue the thread
+▎ · Continue the thread
    ? help   ⌘K command   ⌘M model   ⌘G go to

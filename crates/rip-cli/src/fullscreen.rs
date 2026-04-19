@@ -7,15 +7,17 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crossterm::event::{
     DisableMouseCapture, EnableMouseCapture, Event as TermEvent, EventStream, KeyCode, KeyEvent,
-    KeyModifiers, MouseEvent, MouseEventKind,
+    KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use crossterm::terminal::{
-    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+    disable_raw_mode, enable_raw_mode, size as terminal_size, EnterAlternateScreen,
+    LeaveAlternateScreen,
 };
 use crossterm::{execute, ExecutableCommand};
 use futures_util::StreamExt;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
+use ratatui_textarea::{Input, TextArea};
 use reqwest::Client;
 use reqwest_eventsource::{
     Error as EventSourceError, Event as SseEvent, EventSource, RequestBuilderExt,
@@ -25,9 +27,10 @@ use rip_tui::palette::modes::models::{
     infer_provider_id_from_endpoint, push_route_from_string, upsert_model_route,
 };
 use rip_tui::{
-    render, ModelRoute, ModelsMode, PaletteMode, PaletteSource, RenderMode, ResolvedModelRoute,
-    TuiState,
+    canvas_hit_message_id, hero_click_target, render, HeroClickTarget, ModelRoute, ModelsMode,
+    PaletteMode, PaletteOrigin, PaletteSource, RenderMode, ResolvedModelRoute, TuiState,
 };
+use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::mpsc;
 
@@ -185,11 +188,12 @@ fn openresponses_override_input_from_json(
     }
 }
 
-fn open_model_palette(state: &mut TuiState, catalog: &ModelsMode) {
+fn open_model_palette(state: &mut TuiState, catalog: &ModelsMode, origin: PaletteOrigin) {
     let empty_message = catalog.empty_state().to_string();
     let custom_prompt = catalog.allow_custom().unwrap_or("").to_string();
     state.open_palette(
         PaletteMode::Model,
+        origin,
         catalog.entries(),
         empty_message,
         catalog.allow_custom().is_some(),
@@ -202,11 +206,12 @@ fn open_model_palette(state: &mut TuiState, catalog: &ModelsMode) {
 /// tagged with category subtitles and an `unavailable` chip for
 /// [deferred] entries whose backing capability is not yet in the
 /// registry.
-fn open_command_palette(state: &mut TuiState) {
+fn open_command_palette(state: &mut TuiState, origin: PaletteOrigin) {
     use rip_tui::palette::modes::command::CommandMode;
     let mode = CommandMode::new();
     state.open_palette(
         PaletteMode::Command,
+        origin,
         mode.entries(),
         mode.empty_state().to_string(),
         false,
@@ -215,13 +220,14 @@ fn open_command_palette(state: &mut TuiState) {
 }
 
 /// C.5: Go To palette — a fuzzy-search over canvas messages.
-fn open_go_to_palette(state: &mut TuiState) {
+fn open_go_to_palette(state: &mut TuiState, origin: PaletteOrigin) {
     use rip_tui::palette::modes::go_to::GoToMode;
     let mode = GoToMode::from_canvas(&state.canvas);
     let empty_message = mode.empty_state().to_string();
     let entries = mode.entries();
     state.open_palette(
         PaletteMode::Navigation,
+        origin,
         entries,
         empty_message,
         false,
@@ -231,7 +237,7 @@ fn open_go_to_palette(state: &mut TuiState) {
 
 /// C.5: Threads palette — minimal local-runtime form ships only the
 /// current thread until the driver wires up `thread.list` seeding.
-fn open_threads_palette(state: &mut TuiState) {
+fn open_threads_palette(state: &mut TuiState, origin: PaletteOrigin) {
     use rip_tui::palette::modes::threads::{ThreadSummary, ThreadsMode};
     let current = state
         .continuity_id
@@ -249,6 +255,7 @@ fn open_threads_palette(state: &mut TuiState) {
     let empty_message = mode.empty_state().to_string();
     state.open_palette(
         PaletteMode::Session,
+        origin,
         mode.entries(),
         empty_message,
         false,
@@ -258,19 +265,20 @@ fn open_threads_palette(state: &mut TuiState) {
 
 /// C.5: Options palette — toggles for UI-local prefs. Reads the
 /// current state so each entry's subtitle reflects the active value.
-fn open_options_palette(state: &mut TuiState) {
+fn open_options_palette(state: &mut TuiState, origin: PaletteOrigin) {
     use rip_tui::palette::modes::options::OptionsMode;
     let mode = OptionsMode {
         current_theme: Some(state.theme.as_str()),
         auto_follow: state.auto_follow,
         reasoning_visible: false,
-        vim_input_mode: false,
+        vim_input_mode: state.vim_input_mode,
         mouse_capture: true,
         activity_rail_pinned: state.activity_pinned,
     };
     let entries = mode.entries();
     state.open_palette(
         PaletteMode::Option,
+        origin,
         entries,
         mode.empty_state().to_string(),
         false,
@@ -282,6 +290,7 @@ fn open_options_palette(state: &mut TuiState) {
 /// palette. Order mirrors the visual ranking in the plan:
 /// Command → Models → Go To → Threads → Options → Command.
 fn cycle_palette_mode(state: &mut TuiState, catalog: &ModelsMode) {
+    let origin = state.palette_origin().unwrap_or(PaletteOrigin::TopCenter);
     let next = match state.overlay() {
         rip_tui::Overlay::Palette(p) => match p.mode {
             PaletteMode::Command => PaletteMode::Model,
@@ -293,11 +302,11 @@ fn cycle_palette_mode(state: &mut TuiState, catalog: &ModelsMode) {
         _ => return,
     };
     match next {
-        PaletteMode::Command => open_command_palette(state),
-        PaletteMode::Model => open_model_palette(state, catalog),
-        PaletteMode::Navigation => open_go_to_palette(state),
-        PaletteMode::Session => open_threads_palette(state),
-        PaletteMode::Option => open_options_palette(state),
+        PaletteMode::Command => open_command_palette(state, origin),
+        PaletteMode::Model => open_model_palette(state, catalog, origin),
+        PaletteMode::Navigation => open_go_to_palette(state, origin),
+        PaletteMode::Session => open_threads_palette(state, origin),
+        PaletteMode::Option => open_options_palette(state, origin),
     }
 }
 
@@ -394,6 +403,22 @@ fn apply_command_action(
         }
         A::ToggleTheme => state.toggle_theme(),
         A::ToggleAutoFollow => state.auto_follow = !state.auto_follow,
+        A::ToggleVimInputMode => {
+            state.vim_input_mode = !state.vim_input_mode;
+            // Canonical vim behaviour: entering vim mode drops you into
+            // Normal; leaving resets to Insert so the textarea's
+            // ambient keymap is what drives the buffer again.
+            state.vim_mode = if state.vim_input_mode {
+                rip_tui::VimMode::Normal
+            } else {
+                rip_tui::VimMode::Insert
+            };
+            state.vim_pending = None;
+            state.set_status_message(format!(
+                "vim input mode: {}",
+                if state.vim_input_mode { "on" } else { "off" }
+            ));
+        }
         A::ShowDebugInfo => state.set_overlay(rip_tui::Overlay::Debug),
         A::OpenXrayOnFocused => {
             if let Some(overlay) = focused_detail_overlay(state) {
@@ -401,7 +426,8 @@ fn apply_command_action(
             }
         }
         A::SwitchModel => {
-            open_model_palette(state, catalog);
+            let origin = state.palette_origin().unwrap_or(PaletteOrigin::TopCenter);
+            open_model_palette(state, catalog, origin);
         }
         A::Quit => {
             // Signalled via the global Quit action in the caller; the
@@ -450,6 +476,115 @@ fn apply_model_palette_selection(
     Ok(())
 }
 
+#[derive(Debug, Deserialize)]
+struct ThreadMetaResponse {
+    thread_id: String,
+    created_at_ms: u64,
+    title: Option<String>,
+    archived: bool,
+}
+
+async fn load_thread_picker_entries(
+    client: &Client,
+    server: &str,
+    current_thread_id: Option<&str>,
+) -> Result<Vec<rip_tui::ThreadPickerEntry>, String> {
+    let url = format!("{server}/threads");
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|err| format!("thread list failed: {err}"))?;
+    if !response.status().is_success() {
+        return Err(format!("thread list failed: {}", response.status()));
+    }
+
+    let mut threads = response
+        .json::<Vec<ThreadMetaResponse>>()
+        .await
+        .map_err(|err| format!("thread list parse failed: {err}"))?;
+
+    if let Some(current_id) = current_thread_id.filter(|id| !id.is_empty()) {
+        if !threads.iter().any(|thread| thread.thread_id == current_id) {
+            let url = format!("{server}/threads/{current_id}");
+            if let Ok(response) = client.get(url).send().await {
+                if response.status().is_success() {
+                    if let Ok(meta) = response.json::<ThreadMetaResponse>().await {
+                        threads.push(meta);
+                    }
+                }
+            }
+        }
+    }
+
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0);
+
+    threads.sort_by(|a, b| {
+        match (
+            current_thread_id == Some(a.thread_id.as_str()),
+            current_thread_id == Some(b.thread_id.as_str()),
+        ) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => b.created_at_ms.cmp(&a.created_at_ms),
+        }
+    });
+
+    Ok(threads
+        .into_iter()
+        .map(|thread| {
+            let mut chips = vec![
+                format!("age {}", relative_age_chip(now_ms, thread.created_at_ms)),
+                "size —".to_string(),
+                "actors —".to_string(),
+            ];
+            if current_thread_id == Some(thread.thread_id.as_str()) {
+                chips.insert(0, "current".to_string());
+            }
+            if thread.archived {
+                chips.push("archived".to_string());
+            }
+            rip_tui::ThreadPickerEntry {
+                thread_id: thread.thread_id.clone(),
+                title: thread
+                    .title
+                    .clone()
+                    .unwrap_or_else(|| short_thread_label(&thread.thread_id)),
+                preview: "preview —".to_string(),
+                chips,
+            }
+        })
+        .collect())
+}
+
+fn short_thread_label(thread_id: &str) -> String {
+    if thread_id.chars().count() <= 20 {
+        return thread_id.to_string();
+    }
+    let tail: String = thread_id.chars().rev().take(12).collect();
+    let tail: String = tail.chars().rev().collect();
+    format!("…{tail}")
+}
+
+fn relative_age_chip(now_ms: u64, created_at_ms: u64) -> String {
+    let age_ms = now_ms.saturating_sub(created_at_ms);
+    let minute = 60_000;
+    let hour = 60 * minute;
+    let day = 24 * hour;
+    if age_ms >= day {
+        format!("{}d", age_ms / day)
+    } else if age_ms >= hour {
+        format!("{}h", age_ms / hour)
+    } else if age_ms >= minute {
+        format!("{}m", age_ms / minute)
+    } else {
+        "now".to_string()
+    }
+}
+
 async fn run_fullscreen_tui_sse(
     client: &Client,
     server: String,
@@ -481,8 +616,10 @@ async fn run_fullscreen_tui_sse(
         model_catalog.current_model.clone(),
     );
 
-    if ui_mode == SseUiMode::Interactive && stream.is_none() && !input.trim().is_empty() {
-        let prompt = std::mem::take(&mut input);
+    if ui_mode == SseUiMode::Interactive && stream.is_none() && !buffer_is_effectively_empty(&input)
+    {
+        let prompt = buffer_trimmed_prompt(&input);
+        input.clear();
         state.begin_pending_turn(&prompt);
         terminal.draw(|f| render(f, &state, mode, &input))?;
         match start_remote_session(client, &server, prompt, current_overrides.clone()).await {
@@ -533,7 +670,7 @@ async fn run_fullscreen_tui_sse(
                     UiAction::Quit => break,
                     UiAction::Submit => {
                         if ui_mode == SseUiMode::Interactive && stream.is_none() {
-                            let prompt = input.trim().to_string();
+                            let prompt = buffer_trimmed_prompt(&input);
                             if !prompt.is_empty() {
                                 input.clear();
                                 state.begin_pending_turn(&prompt);
@@ -567,22 +704,40 @@ async fn run_fullscreen_tui_sse(
                             // (the primary entry point). Models stays
                             // one hotkey away (`M-m`) and one palette
                             // mode cycle (`Tab`) away.
-                            open_command_palette(&mut state);
+                            open_command_palette(&mut state, PaletteOrigin::TopCenter);
                         }
                     }
                     UiAction::OpenPaletteModels => {
                         if ui_mode == SseUiMode::Interactive {
-                            open_model_palette(&mut state, &model_catalog);
+                            open_model_palette(
+                                &mut state,
+                                &model_catalog,
+                                PaletteOrigin::TopRight,
+                            );
                         }
                     }
                     UiAction::OpenPaletteGoTo => {
-                        open_go_to_palette(&mut state);
+                        open_go_to_palette(&mut state, PaletteOrigin::Center);
                     }
                     UiAction::OpenPaletteThreads => {
-                        open_threads_palette(&mut state);
+                        if ui_mode == SseUiMode::Interactive {
+                            match load_thread_picker_entries(
+                                client,
+                                &server,
+                                state.continuity_id.as_deref(),
+                            )
+                            .await
+                            {
+                                Ok(entries) => state.open_thread_picker(entries),
+                                Err(err) => {
+                                    open_threads_palette(&mut state, PaletteOrigin::TopLeft);
+                                    state.set_status_message(err);
+                                }
+                            }
+                        }
                     }
                     UiAction::OpenPaletteOptions => {
-                        open_options_palette(&mut state);
+                        open_options_palette(&mut state, PaletteOrigin::BottomCenter);
                     }
                     UiAction::ShowHelp => {
                         state.set_overlay(rip_tui::Overlay::Help);
@@ -597,6 +752,17 @@ async fn run_fullscreen_tui_sse(
                             &mut model_catalog,
                         ) {
                             state.set_status_message(err);
+                        }
+                    }
+                    UiAction::ApplyThreadPicker => {
+                        if let Some(thread_id) = state.thread_picker_selected_value() {
+                            state.set_continuity_id(thread_id.clone());
+                            state.set_status_message(format!(
+                                "next run targets thread: {thread_id}"
+                            ));
+                            state.close_overlay();
+                        } else {
+                            state.set_status_message("thread picker: no thread selected");
                         }
                     }
                     UiAction::ToggleActivity => {
@@ -1108,7 +1274,11 @@ async fn run_fullscreen_tui_sse(
                             // Swap the error-recovery overlay for the
                             // Models palette so the operator picks a
                             // model, then invokes retry manually.
-                            open_model_palette(&mut state, &model_catalog);
+                            open_model_palette(
+                                &mut state,
+                                &model_catalog,
+                                PaletteOrigin::TopRight,
+                            );
                         }
                     }
                     UiAction::ErrorRecoveryXray => {
@@ -1269,6 +1439,7 @@ enum UiAction {
     /// toggle is retired per the plan).
     PaletteCycleMode,
     ApplyPalette,
+    ApplyThreadPicker,
     ToggleActivity,
     ToggleTasks,
     OpenSelectedDetail,
@@ -1303,14 +1474,19 @@ enum UiAction {
 struct InitState {
     state: TuiState,
     mode: RenderMode,
-    input: String,
+    input: TextArea<'static>,
     keymap: Keymap,
 }
 
 fn init_fullscreen_state(initial_prompt: Option<String>) -> InitState {
     let mut state = TuiState::default();
     let mode = RenderMode::Json;
-    let input = initial_prompt.unwrap_or_default();
+    let mut input = TextArea::default();
+    if let Some(prompt) = initial_prompt {
+        if !prompt.is_empty() {
+            input.insert_str(&prompt);
+        }
+    }
 
     let (keymap, keymap_warning) = Keymap::load();
     let mut warnings = Vec::new();
@@ -1338,7 +1514,7 @@ fn handle_term_event(
     event: TermEvent,
     state: &mut TuiState,
     mode: &mut RenderMode,
-    input: &mut String,
+    input: &mut TextArea<'static>,
     session_running: bool,
     keymap: &Keymap,
 ) -> UiAction {
@@ -1362,6 +1538,68 @@ fn handle_mouse_event(mouse: MouseEvent, state: &mut TuiState) -> UiAction {
                 return UiAction::None;
             }
             _ => {}
+        }
+        return UiAction::None;
+    }
+
+    if state.is_thread_picker_open() {
+        match mouse.kind {
+            MouseEventKind::ScrollUp => {
+                state.thread_picker_move_selection(-1);
+                return UiAction::None;
+            }
+            MouseEventKind::ScrollDown => {
+                state.thread_picker_move_selection(1);
+                return UiAction::None;
+            }
+            _ => {}
+        }
+        if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
+            return UiAction::ApplyThreadPicker;
+        }
+        return UiAction::None;
+    }
+
+    let (width, height) = match terminal_size() {
+        Ok(size) => size,
+        Err(_) => return UiAction::None,
+    };
+
+    if mouse.row == 0 && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
+        return match hero_click_target(state, width, mouse.column) {
+            Some(HeroClickTarget::Thread) => UiAction::OpenPaletteThreads,
+            Some(HeroClickTarget::Agent) => UiAction::TogglePalette,
+            Some(HeroClickTarget::Model) => UiAction::OpenPaletteModels,
+            None => UiAction::None,
+        };
+    }
+
+    if mouse_hits_activity_surface(state, width, height, mouse.column, mouse.row) {
+        return match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left)
+            | MouseEventKind::ScrollUp
+            | MouseEventKind::ScrollDown => {
+                state.set_overlay(rip_tui::Overlay::Activity);
+                UiAction::None
+            }
+            _ => UiAction::None,
+        };
+    }
+
+    if matches!(
+        mouse.kind,
+        MouseEventKind::Down(MouseButton::Left) | MouseEventKind::Drag(MouseButton::Left)
+    ) {
+        if let Some((viewport_width, viewport_height, row_in_canvas)) =
+            mouse_canvas_hit_geometry(state, width, height, mouse.column, mouse.row)
+        {
+            if let Some(message_id) =
+                canvas_hit_message_id(state, viewport_width, viewport_height, row_in_canvas)
+            {
+                state.focused_message_id = Some(message_id);
+                state.auto_follow = false;
+            }
+            return UiAction::None;
         }
     }
 
@@ -1388,11 +1626,63 @@ fn handle_mouse_event(mouse: MouseEvent, state: &mut TuiState) -> UiAction {
     }
 }
 
+fn mouse_hits_activity_surface(
+    state: &TuiState,
+    width: u16,
+    height: u16,
+    column: u16,
+    row: u16,
+) -> bool {
+    if state.activity_pinned && width >= 100 {
+        let rail_width = 32u16;
+        let rail_start = width.saturating_sub(rail_width);
+        if column >= rail_start && row > 0 && row < height.saturating_sub(2) {
+            return true;
+        }
+    }
+
+    let Some(activity_row) = mouse_footer_activity_row(height) else {
+        return false;
+    };
+    row == activity_row
+}
+
+fn mouse_footer_activity_row(height: u16) -> Option<u16> {
+    (height >= 4).then_some(height.saturating_sub(3))
+}
+
+fn mouse_canvas_hit_geometry(
+    state: &TuiState,
+    width: u16,
+    height: u16,
+    column: u16,
+    row: u16,
+) -> Option<(u16, u16, u16)> {
+    let body_top = 1u16;
+    let bottom_reserved = 3u16;
+    let body_height = height.saturating_sub(body_top + bottom_reserved);
+    if body_height == 0 || row < body_top || row >= body_top.saturating_add(body_height) {
+        return None;
+    }
+
+    let viewport_width = if state.activity_pinned && width >= 100 {
+        let canvas_width = width.saturating_sub(32);
+        if column >= canvas_width {
+            return None;
+        }
+        canvas_width
+    } else {
+        width
+    };
+
+    Some((viewport_width, body_height, row.saturating_sub(body_top)))
+}
+
 fn handle_key_event(
     key: KeyEvent,
     state: &mut TuiState,
     mode: &mut RenderMode,
-    input: &mut String,
+    input: &mut TextArea<'static>,
     session_running: bool,
     keymap: &Keymap,
 ) -> UiAction {
@@ -1409,6 +1699,34 @@ fn handle_key_event(
             KeyCode::Esc => UiAction::CloseOverlay,
             _ => UiAction::None,
         };
+    }
+
+    if state.is_thread_picker_open() {
+        if let Some(cmd) = keymap.command_for(key) {
+            return match cmd {
+                KeyCommand::Quit => UiAction::Quit,
+                KeyCommand::Submit => UiAction::ApplyThreadPicker,
+                KeyCommand::CloseOverlay | KeyCommand::TogglePalette => UiAction::CloseOverlay,
+                KeyCommand::SelectPrev => {
+                    state.thread_picker_move_selection(-1);
+                    UiAction::None
+                }
+                KeyCommand::SelectNext => {
+                    state.thread_picker_move_selection(1);
+                    UiAction::None
+                }
+                KeyCommand::ScrollCanvasUp => {
+                    state.thread_picker_move_selection(-5);
+                    UiAction::None
+                }
+                KeyCommand::ScrollCanvasDown => {
+                    state.thread_picker_move_selection(5);
+                    UiAction::None
+                }
+                _ => UiAction::None,
+            };
+        }
+        return UiAction::None;
     }
 
     if state.is_palette_open() {
@@ -1455,6 +1773,21 @@ fn handle_key_event(
         };
     }
 
+    // D.5: vim layer gets first refusal on non-overlay keys, but only
+    // when the session isn't streaming and no palette / overlay has
+    // already claimed the input. Normal mode fully owns plain-keyed
+    // input (letters, motions, Esc-as-no-op); Insert mode only takes
+    // Esc so the textarea's emacs-ish bindings still work for typing.
+    // We intercept BEFORE the global keymap consult so vim's Esc isn't
+    // eaten by the keymap's default `Esc → CloseOverlay` binding, and
+    // so Normal-mode letter keys can't fall through to bindings like
+    // `x = ToggleOutputView` that would otherwise fire.
+    if state.vim_input_mode && !session_running {
+        if let Some(action) = try_vim_intercept(key, state, input) {
+            return action;
+        }
+    }
+
     if let Some(cmd) = keymap.command_for(key) {
         return match cmd {
             KeyCommand::Quit => UiAction::Quit,
@@ -1464,7 +1797,7 @@ fn handle_key_event(
                 // toggles expand on that card. Otherwise: submit (when
                 // the editor is the focus) or open the detail overlay
                 // for the selected frame (when a run is active).
-                if input.trim().is_empty() && card_expand_target(state) {
+                if buffer_is_effectively_empty(input) && card_expand_target(state) {
                     UiAction::ExpandFocusedCard
                 } else if session_running {
                     UiAction::OpenSelectedDetail
@@ -1541,65 +1874,247 @@ fn handle_key_event(
         return UiAction::None;
     }
 
-    match key.code {
-        KeyCode::Backspace => {
-            input.pop();
-            UiAction::None
+    // Alt-Enter / Shift-Enter inserts a newline (Part 7: "multi-line
+    // with ⇧⏎ newline"). Alt is more reliable across terminals than
+    // Shift-Enter, which many terminals don't distinguish from Enter;
+    // accepting both is harmless and matches the keylight's advertised
+    // `⇧⏎ newline` affordance. The textarea's own `Enter` handler
+    // inserts a newline only when `input.input(...)` receives bare
+    // Enter, so we intercept the modifier combo and splice manually —
+    // bare Enter stays bound to `UiAction::Submit` via the keymap.
+    if key.code == KeyCode::Enter
+        && key
+            .modifiers
+            .intersects(KeyModifiers::ALT | KeyModifiers::SHIFT)
+    {
+        input.insert_newline();
+        return UiAction::None;
+    }
+
+    // Everything else the editor needs — Backspace, arrow keys,
+    // Home/End, Ctrl-A/E (BOL/EOL), Ctrl-U (kill-bol), Ctrl-W
+    // (kill-word), Char insertion — is already implemented by
+    // ratatui-textarea. Rather than re-implementing cursor math over a
+    // `String`, we hand the event off via `Input::from(key)` and let
+    // the textarea drive its own buffer + cursor + undo history.
+    let _ = input.input(Input::from(key));
+    UiAction::None
+}
+
+/// D.5: decides whether the vim layer owns a given key press. Returns
+/// `Some` when the vim dispatcher has consumed it, `None` to let the
+/// global keymap + textarea pipe continue. Normal mode claims all
+/// non-Ctrl keys (letters, motions, Esc-as-no-op). Insert mode only
+/// claims Esc so the ambient emacs-ish textarea bindings keep working
+/// for actual typing, which is the whole point of making Insert mode
+/// "the textarea's native mode" rather than an alternate keymap.
+fn try_vim_intercept(
+    key: KeyEvent,
+    state: &mut TuiState,
+    input: &mut TextArea<'static>,
+) -> Option<UiAction> {
+    match state.vim_mode {
+        rip_tui::VimMode::Insert => {
+            if key.code == KeyCode::Esc && key.modifiers.is_empty() {
+                state.vim_mode = rip_tui::VimMode::Normal;
+                state.vim_pending = None;
+                return Some(UiAction::None);
+            }
+            None
         }
-        // Alt-Enter / Shift-Enter inserts a newline (Part 7: "multi-line
-        // with ⇧⏎ newline"). Alt- is more reliable across terminals than
-        // Shift-Enter, which many terminals don't distinguish from Enter;
-        // accepting both is harmless and matches the keylight's advertised
-        // `⇧⏎ newline` affordance.
-        KeyCode::Enter
-            if key
-                .modifiers
-                .intersects(KeyModifiers::ALT | KeyModifiers::SHIFT) =>
-        {
-            input.push('\n');
-            UiAction::None
+        rip_tui::VimMode::Normal => {
+            // Ctrl-modified keys remain available to the outer keymap
+            // so Ctrl-C / Ctrl-K / etc. keep working in Normal mode.
+            // Shift is allowed through — `A`, `I`, `O`, `G`, `$` all
+            // need it, and vim treats shifted letters as first-class
+            // operators rather than as chord prefixes.
+            if key.modifiers.contains(KeyModifiers::CONTROL)
+                || key.modifiers.contains(KeyModifiers::ALT)
+            {
+                return None;
+            }
+            match key.code {
+                KeyCode::Char(_)
+                | KeyCode::Esc
+                | KeyCode::Up
+                | KeyCode::Down
+                | KeyCode::Left
+                | KeyCode::Right
+                | KeyCode::Home
+                | KeyCode::End
+                | KeyCode::Backspace => Some(handle_vim_normal_key(key, state, input)),
+                // Enter / Tab / function keys / everything else stays
+                // on the global keymap path — vim's own `:` command-
+                // line handling is out of scope, and Submit should
+                // still feel like Submit.
+                _ => None,
+            }
         }
-        KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            // Emacs BOL — with a plain String buffer we don't track
-            // cursor position, so this is a no-op for now. Left as a
-            // stub so the keybinding exists and a future
-            // ratatui-textarea swap can wire it up without another
-            // touch through this match arm.
-            UiAction::None
-        }
-        KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            // Emacs EOL — see `C-a` above.
-            UiAction::None
-        }
-        KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            // Emacs kill-bol → clear the whole buffer (no cursor model).
-            input.clear();
-            UiAction::None
-        }
-        KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            // Emacs kill-word (backwards).
-            kill_word_backward(input);
-            UiAction::None
-        }
-        KeyCode::Char(ch) => {
-            input.push(ch);
-            UiAction::None
-        }
-        _ => UiAction::None,
     }
 }
 
-/// Remove the last whitespace-delimited word (and any trailing
-/// whitespace) from `input`. Mirrors the Emacs `C-w` convention.
-fn kill_word_backward(input: &mut String) {
-    // Strip trailing whitespace first so repeated `C-w` keeps removing
-    // words instead of just whitespace.
-    while input.ends_with(|c: char| c.is_whitespace()) {
-        input.pop();
+/// D.5: dispatcher for vim Normal-mode keys. Covers the subset named
+/// in the revamp plan (Esc / i / a / o / dd / yy / p / gg / G) plus
+/// enough cursor motion (h/j/k/l, w/b, 0/$) and edit primitives (x, A,
+/// I, O) to make Normal mode actually usable. Anything we don't
+/// implement is silently swallowed rather than handed to the textarea
+/// — that way the user can't accidentally type text into the buffer
+/// while they think they're in Normal. The `vim_pending` field on
+/// `TuiState` tracks the waiting-for-second-char state for `dd`, `yy`,
+/// and `gg`; every path through this function must either set it or
+/// clear it so a stale prefix can't survive a completed action.
+fn handle_vim_normal_key(
+    key: KeyEvent,
+    state: &mut TuiState,
+    input: &mut TextArea<'static>,
+) -> UiAction {
+    use ratatui_textarea::CursorMove;
+
+    let pending = state.vim_pending.take();
+
+    let ch = match key.code {
+        KeyCode::Char(c) => c,
+        KeyCode::Esc => {
+            state.vim_pending = None;
+            return UiAction::None;
+        }
+        KeyCode::Up => {
+            input.move_cursor(CursorMove::Up);
+            return UiAction::None;
+        }
+        KeyCode::Down => {
+            input.move_cursor(CursorMove::Down);
+            return UiAction::None;
+        }
+        KeyCode::Left => {
+            input.move_cursor(CursorMove::Back);
+            return UiAction::None;
+        }
+        KeyCode::Right => {
+            input.move_cursor(CursorMove::Forward);
+            return UiAction::None;
+        }
+        KeyCode::Home => {
+            input.move_cursor(CursorMove::Head);
+            return UiAction::None;
+        }
+        KeyCode::End => {
+            input.move_cursor(CursorMove::End);
+            return UiAction::None;
+        }
+        KeyCode::Backspace => {
+            // Vim's Backspace in Normal mode is "move cursor left" —
+            // it never deletes. This matches the textarea only after
+            // we opt out of `Input::from(key)`'s delete behaviour.
+            input.move_cursor(CursorMove::Back);
+            return UiAction::None;
+        }
+        _ => return UiAction::None,
+    };
+
+    if let Some(prefix) = pending {
+        match (prefix, ch) {
+            ('d', 'd') => {
+                input.move_cursor(CursorMove::Head);
+                input.start_selection();
+                input.move_cursor(CursorMove::End);
+                let _ = input.cut();
+                // Leave the now-empty line behind so `p` pastes on the
+                // blank line — matches Vim's `dd` leaving a blank when
+                // it's the only line in the buffer. Multi-line buffers
+                // get the followup newline swallowed too so the cursor
+                // lands on the next logical line.
+                input.delete_next_char();
+                return UiAction::None;
+            }
+            ('y', 'y') => {
+                input.start_selection();
+                input.move_cursor(CursorMove::Head);
+                input.start_selection();
+                input.move_cursor(CursorMove::End);
+                input.copy();
+                input.cancel_selection();
+                return UiAction::None;
+            }
+            ('g', 'g') => {
+                input.move_cursor(CursorMove::Top);
+                return UiAction::None;
+            }
+            _ => {
+                // Unmatched follow-up: fall through so `ch` is
+                // interpreted as a fresh Normal-mode key rather than
+                // the second half of an operator.
+            }
+        }
     }
-    while input.ends_with(|c: char| !c.is_whitespace()) {
-        input.pop();
+
+    match ch {
+        'i' => state.vim_mode = rip_tui::VimMode::Insert,
+        'a' => {
+            input.move_cursor(CursorMove::Forward);
+            state.vim_mode = rip_tui::VimMode::Insert;
+        }
+        'I' => {
+            input.move_cursor(CursorMove::Head);
+            state.vim_mode = rip_tui::VimMode::Insert;
+        }
+        'A' => {
+            input.move_cursor(CursorMove::End);
+            state.vim_mode = rip_tui::VimMode::Insert;
+        }
+        'o' => {
+            input.move_cursor(CursorMove::End);
+            input.insert_newline();
+            state.vim_mode = rip_tui::VimMode::Insert;
+        }
+        'O' => {
+            input.move_cursor(CursorMove::Head);
+            input.insert_newline();
+            input.move_cursor(CursorMove::Up);
+            state.vim_mode = rip_tui::VimMode::Insert;
+        }
+        'h' => input.move_cursor(CursorMove::Back),
+        'l' => input.move_cursor(CursorMove::Forward),
+        'j' => input.move_cursor(CursorMove::Down),
+        'k' => input.move_cursor(CursorMove::Up),
+        'w' => input.move_cursor(CursorMove::WordForward),
+        'b' => input.move_cursor(CursorMove::WordBack),
+        'e' => input.move_cursor(CursorMove::WordEnd),
+        '0' => input.move_cursor(CursorMove::Head),
+        '$' => input.move_cursor(CursorMove::End),
+        'G' => input.move_cursor(CursorMove::Bottom),
+        'x' => {
+            input.delete_next_char();
+        }
+        'p' => {
+            input.paste();
+        }
+        'u' => {
+            input.undo();
+        }
+        'd' | 'y' | 'g' => {
+            state.vim_pending = Some(ch);
+        }
+        _ => {}
     }
+    UiAction::None
+}
+
+/// Whitespace-only buffer counts as empty for submit / expand-card
+/// gating — matches the keylight / placeholder rule in the renderer.
+/// Using `TextArea::is_empty` alone would flip to "typing" as soon as
+/// the user pressed space, which would swap the keylight mid-pause
+/// and let Enter submit an all-whitespace prompt.
+fn buffer_is_effectively_empty(input: &TextArea<'_>) -> bool {
+    input.lines().iter().all(|line| line.trim().is_empty())
+}
+
+/// Flatten the textarea's lines back into a `\n`-joined prompt and
+/// trim surrounding whitespace. Used whenever we need the user's
+/// typed input as a single `String` (sending to the kernel, copying,
+/// etc.).
+fn buffer_trimmed_prompt(input: &TextArea<'_>) -> String {
+    input.lines().join("\n").trim().to_string()
 }
 
 fn move_selected(state: &mut TuiState, delta: i64) {
@@ -1968,7 +2483,7 @@ mod tests {
         let keymap = Keymap::default();
         let mut state = seed_state();
         let mut mode = RenderMode::Json;
-        let mut input = String::new();
+        let mut input = TextArea::default();
 
         // Up selects previous event.
         assert_eq!(state.selected_seq, Some(2));
@@ -2048,6 +2563,7 @@ mod tests {
         let mut state = seed_state();
         state.open_palette(
             rip_tui::PaletteMode::Model,
+            rip_tui::PaletteOrigin::TopRight,
             vec![
                 rip_tui::PaletteEntry {
                     value: "openrouter/openai/gpt-oss-20b".to_string(),
@@ -2067,7 +2583,7 @@ mod tests {
             "Use typed route",
         );
         let mut mode = RenderMode::Json;
-        let mut input = String::new();
+        let mut input = TextArea::default();
 
         let action = handle_key_event(
             KeyEvent::new(KeyCode::Char('n'), KeyModifiers::empty()),
@@ -2120,7 +2636,7 @@ mod tests {
         let keymap = Keymap::default();
         let mut state = seed_state();
         let mut mode = RenderMode::Json;
-        let mut input = String::new();
+        let mut input = TextArea::default();
 
         let action = handle_key_event(
             KeyEvent::new(KeyCode::Char('a'), KeyModifiers::empty()),
@@ -2131,7 +2647,7 @@ mod tests {
             &keymap,
         );
         assert_eq!(action, UiAction::None);
-        assert_eq!(input, "a");
+        assert_eq!(input.lines(), &["a".to_string()]);
 
         let action = handle_key_event(
             KeyEvent::new(KeyCode::Backspace, KeyModifiers::empty()),
@@ -2142,7 +2658,7 @@ mod tests {
             &keymap,
         );
         assert_eq!(action, UiAction::None);
-        assert_eq!(input, "");
+        assert_eq!(input.lines(), &[String::new()]);
     }
 
     #[test]
@@ -2152,7 +2668,8 @@ mod tests {
         let keymap = Keymap::default();
         let mut state = seed_state();
         let mut mode = RenderMode::Json;
-        let mut input = "first".to_string();
+        let mut input = TextArea::default();
+        input.insert_str("first");
 
         let action = handle_key_event(
             KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT),
@@ -2163,7 +2680,7 @@ mod tests {
             &keymap,
         );
         assert_eq!(action, UiAction::None);
-        assert_eq!(input, "first\n");
+        assert_eq!(input.lines(), &["first".to_string(), String::new()]);
 
         let action = handle_key_event(
             KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT),
@@ -2174,50 +2691,549 @@ mod tests {
             &keymap,
         );
         assert_eq!(action, UiAction::None);
-        assert_eq!(input, "first\n\n");
+        assert_eq!(
+            input.lines(),
+            &["first".to_string(), String::new(), String::new()]
+        );
     }
 
     #[test]
-    fn handle_key_event_emacs_kill_bindings_trim_the_buffer() {
+    fn handle_key_event_routes_editor_keys_to_textarea() {
+        // After C.4 the driver hands raw key events to ratatui-textarea
+        // via `Input::from(key)`. We only assert that the pipe is wired
+        // up end-to-end — the specific binding set is the textarea's to
+        // define, not ours to duplicate. A Char insert and a Backspace
+        // are enough to prove the plumbing without coupling the test to
+        // ratatui-textarea's default shortcut table.
         let keymap = Keymap::default();
         let mut state = seed_state();
         let mut mode = RenderMode::Json;
-        let mut input = "hello world ".to_string();
+        let mut input = TextArea::default();
 
-        // C-w kills the trailing word + any trailing whitespace.
         handle_key_event(
-            KeyEvent::new(KeyCode::Char('w'), KeyModifiers::CONTROL),
+            KeyEvent::new(KeyCode::Char('h'), KeyModifiers::empty()),
             &mut state,
             &mut mode,
             &mut input,
             false,
             &keymap,
         );
-        assert_eq!(input, "hello ");
-
-        // C-u clears the whole buffer.
         handle_key_event(
-            KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL),
+            KeyEvent::new(KeyCode::Char('i'), KeyModifiers::empty()),
             &mut state,
             &mut mode,
             &mut input,
             false,
             &keymap,
         );
-        assert_eq!(input, "");
+        assert_eq!(input.lines(), &["hi".to_string()]);
+
+        handle_key_event(
+            KeyEvent::new(KeyCode::Backspace, KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(input.lines(), &["h".to_string()]);
     }
 
     #[test]
-    fn kill_word_backward_handles_whitespace_and_words() {
-        let mut buf = "  foo".to_string();
-        kill_word_backward(&mut buf);
-        assert_eq!(buf, "  ");
-        let mut buf = "foo bar  ".to_string();
-        kill_word_backward(&mut buf);
-        assert_eq!(buf, "foo ");
-        let mut buf = String::new();
-        kill_word_backward(&mut buf);
-        assert_eq!(buf, "");
+    fn vim_mode_off_passes_every_key_through_to_textarea() {
+        // D.5: the vim layer must stay fully out of the way when the
+        // Options toggle is off — pressing `i` or `Esc` while typing
+        // should not flip any mode, should not eat the key, and should
+        // leave the buffer in the same state it would be in without
+        // the layer wired at all.
+        let keymap = Keymap::default();
+        let mut state = seed_state();
+        assert!(!state.vim_input_mode);
+        let mut mode = RenderMode::Json;
+        let mut input = TextArea::default();
+
+        for ch in "hi".chars() {
+            handle_key_event(
+                KeyEvent::new(KeyCode::Char(ch), KeyModifiers::empty()),
+                &mut state,
+                &mut mode,
+                &mut input,
+                false,
+                &keymap,
+            );
+        }
+        handle_key_event(
+            KeyEvent::new(KeyCode::Esc, KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(input.lines(), &["hi".to_string()]);
+        assert_eq!(state.vim_mode, rip_tui::VimMode::Insert);
+    }
+
+    #[test]
+    fn vim_mode_esc_in_insert_switches_to_normal_and_i_returns_to_insert() {
+        let keymap = Keymap::default();
+        let mut state = seed_state();
+        state.vim_input_mode = true;
+        state.vim_mode = rip_tui::VimMode::Insert;
+        let mut mode = RenderMode::Json;
+        let mut input = TextArea::default();
+        input.insert_str("hello");
+
+        // Esc: Insert → Normal
+        handle_key_event(
+            KeyEvent::new(KeyCode::Esc, KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(state.vim_mode, rip_tui::VimMode::Normal);
+
+        // In Normal, `h` moves back — it does NOT insert text.
+        handle_key_event(
+            KeyEvent::new(KeyCode::Char('h'), KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(input.lines(), &["hello".to_string()]);
+
+        // `i` drops back into Insert, then a Char actually types.
+        handle_key_event(
+            KeyEvent::new(KeyCode::Char('i'), KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(state.vim_mode, rip_tui::VimMode::Insert);
+        handle_key_event(
+            KeyEvent::new(KeyCode::Char('X'), KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        // Cursor was at col 4 after the `h` moved it back from end; then
+        // Insert at that position splices `X` before the final `o`.
+        assert_eq!(input.lines(), &["hellXo".to_string()]);
+    }
+
+    #[test]
+    fn vim_mode_dd_yanks_line_and_p_pastes_it_back() {
+        // Two-key operator sanity check: `dd` cuts the current line and
+        // yanks it into the textarea's yank buffer, `p` then restores
+        // it. Also proves the pending-prefix clears between actions.
+        let keymap = Keymap::default();
+        let mut state = seed_state();
+        state.vim_input_mode = true;
+        state.vim_mode = rip_tui::VimMode::Normal;
+        let mut mode = RenderMode::Json;
+        let mut input = TextArea::default();
+        input.insert_str("first line\nsecond line");
+        // Move to the start of the first line.
+        input.move_cursor(ratatui_textarea::CursorMove::Top);
+
+        // `d` sets pending, `d` completes the operator.
+        handle_key_event(
+            KeyEvent::new(KeyCode::Char('d'), KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(state.vim_pending, Some('d'));
+        handle_key_event(
+            KeyEvent::new(KeyCode::Char('d'), KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(state.vim_pending, None);
+        assert_eq!(input.lines(), &["second line".to_string()]);
+        assert_eq!(input.yank_text(), "first line");
+
+        // `p` pastes on the current line. We don't assert exact
+        // position because Vim and textarea differ on where `p` lands
+        // for line yanks; what matters is that the yanked text is back
+        // in the buffer.
+        handle_key_event(
+            KeyEvent::new(KeyCode::Char('p'), KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        let joined = input.lines().join("\n");
+        assert!(joined.contains("first line"));
+        assert!(joined.contains("second line"));
+    }
+
+    #[test]
+    fn vim_mode_gg_unmatched_prefix_falls_through_on_third_key() {
+        // If the user presses `g` then anything other than `g`, the
+        // pending prefix must clear and the follow-up key must be
+        // interpreted fresh — otherwise typos strand the editor in a
+        // half-committed operator state.
+        let keymap = Keymap::default();
+        let mut state = seed_state();
+        state.vim_input_mode = true;
+        state.vim_mode = rip_tui::VimMode::Normal;
+        let mut mode = RenderMode::Json;
+        let mut input = TextArea::default();
+        input.insert_str("line one\nline two\nline three");
+        input.move_cursor(ratatui_textarea::CursorMove::Bottom);
+
+        handle_key_event(
+            KeyEvent::new(KeyCode::Char('g'), KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(state.vim_pending, Some('g'));
+        // Unmatched follow-up: `k` should move up one line and the
+        // pending prefix should clear.
+        handle_key_event(
+            KeyEvent::new(KeyCode::Char('k'), KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(state.vim_pending, None);
+        assert_eq!(input.cursor().0, 1);
+    }
+
+    #[test]
+    fn vim_normal_mode_motion_and_edit_primitives() {
+        // One sweep over every non-operator Normal-mode key we ship,
+        // plus the Ctrl-modifier escape hatch. The goal is to prove
+        // each branch is wired — not to re-test the textarea itself —
+        // so assertions are positional rather than string-equality
+        // checks that would duplicate the textarea's own test suite.
+        use ratatui_textarea::CursorMove;
+        let keymap = Keymap::default();
+        let mut state = seed_state();
+        state.vim_input_mode = true;
+        state.vim_mode = rip_tui::VimMode::Normal;
+        let mut mode = RenderMode::Json;
+        let mut input = TextArea::default();
+        input.insert_str("abc def\nghi jkl");
+
+        // Start at (0, 0) for a reproducible motion sequence.
+        input.move_cursor(CursorMove::Top);
+        input.move_cursor(CursorMove::Head);
+
+        // `l` forward, `h` back — basic horizontal motion.
+        handle_key_event(
+            KeyEvent::new(KeyCode::Char('l'), KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(input.cursor(), (0, 1));
+        handle_key_event(
+            KeyEvent::new(KeyCode::Char('h'), KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(input.cursor(), (0, 0));
+
+        // `w` word forward, `b` word back.
+        handle_key_event(
+            KeyEvent::new(KeyCode::Char('w'), KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(input.cursor().1, 4);
+        handle_key_event(
+            KeyEvent::new(KeyCode::Char('b'), KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(input.cursor().1, 0);
+
+        // `e` word end.
+        handle_key_event(
+            KeyEvent::new(KeyCode::Char('e'), KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert!(input.cursor().1 > 0);
+
+        // `$` end of line, `0` head of line.
+        handle_key_event(
+            KeyEvent::new(KeyCode::Char('$'), KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(input.cursor(), (0, 7));
+        handle_key_event(
+            KeyEvent::new(KeyCode::Char('0'), KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(input.cursor(), (0, 0));
+
+        // `j` down, `k` up.
+        handle_key_event(
+            KeyEvent::new(KeyCode::Char('j'), KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(input.cursor().0, 1);
+        handle_key_event(
+            KeyEvent::new(KeyCode::Char('k'), KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(input.cursor().0, 0);
+
+        // `G` bottom.
+        handle_key_event(
+            KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(input.cursor().0, 1);
+
+        // Arrow keys still move in Normal mode.
+        handle_key_event(
+            KeyEvent::new(KeyCode::Up, KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(input.cursor().0, 0);
+        handle_key_event(
+            KeyEvent::new(KeyCode::Down, KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(input.cursor().0, 1);
+        handle_key_event(
+            KeyEvent::new(KeyCode::Left, KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        handle_key_event(
+            KeyEvent::new(KeyCode::Right, KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        // Home/End both reach CursorMove::Head/End and stay in Normal.
+        handle_key_event(
+            KeyEvent::new(KeyCode::Home, KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(input.cursor().1, 0);
+        handle_key_event(
+            KeyEvent::new(KeyCode::End, KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        // Vim Normal-mode Backspace is "move cursor left", never delete.
+        let before = input.lines().concat();
+        handle_key_event(
+            KeyEvent::new(KeyCode::Backspace, KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(input.lines().concat(), before);
+        assert_eq!(state.vim_mode, rip_tui::VimMode::Normal);
+    }
+
+    #[test]
+    fn vim_normal_mode_insert_entry_keys_flip_to_insert() {
+        // `i / a / A / I / o / O` each drop into Insert mode at a
+        // different cursor landing spot.
+        let keymap = Keymap::default();
+        let mut mode = RenderMode::Json;
+
+        let cases: &[(char, KeyModifiers)] = &[
+            ('i', KeyModifiers::empty()),
+            ('a', KeyModifiers::empty()),
+            ('A', KeyModifiers::SHIFT),
+            ('I', KeyModifiers::SHIFT),
+            ('o', KeyModifiers::empty()),
+            ('O', KeyModifiers::SHIFT),
+        ];
+        for (ch, modifiers) in cases {
+            let mut state = seed_state();
+            state.vim_input_mode = true;
+            state.vim_mode = rip_tui::VimMode::Normal;
+            let mut input = TextArea::default();
+            input.insert_str("abc\ndef");
+            input.move_cursor(ratatui_textarea::CursorMove::Top);
+
+            handle_key_event(
+                KeyEvent::new(KeyCode::Char(*ch), *modifiers),
+                &mut state,
+                &mut mode,
+                &mut input,
+                false,
+                &keymap,
+            );
+            assert_eq!(
+                state.vim_mode,
+                rip_tui::VimMode::Insert,
+                "`{ch}` should flip Normal → Insert",
+            );
+        }
+    }
+
+    #[test]
+    fn vim_normal_mode_x_deletes_char_and_u_undoes() {
+        let keymap = Keymap::default();
+        let mut state = seed_state();
+        state.vim_input_mode = true;
+        state.vim_mode = rip_tui::VimMode::Normal;
+        let mut mode = RenderMode::Json;
+        let mut input = TextArea::default();
+        input.insert_str("abc");
+        input.move_cursor(ratatui_textarea::CursorMove::Top);
+        input.move_cursor(ratatui_textarea::CursorMove::Head);
+
+        handle_key_event(
+            KeyEvent::new(KeyCode::Char('x'), KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        assert_eq!(input.lines(), &["bc".to_string()]);
+
+        handle_key_event(
+            KeyEvent::new(KeyCode::Char('u'), KeyModifiers::empty()),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        // Undo restores the `a` — proves the `u` path reached
+        // textarea's undo stack.
+        assert_eq!(input.lines(), &["abc".to_string()]);
+    }
+
+    #[test]
+    fn vim_normal_mode_lets_ctrl_modified_keys_fall_through_to_keymap() {
+        // In Normal mode, Ctrl-modifier keys should still be able to
+        // reach the global keymap — otherwise Ctrl-K / Ctrl-C / scroll
+        // bindings would be unreachable until the user returned to
+        // Insert. We assert the palette hotkey still opens the palette.
+        let keymap = Keymap::default();
+        let mut state = seed_state();
+        state.vim_input_mode = true;
+        state.vim_mode = rip_tui::VimMode::Normal;
+        let mut mode = RenderMode::Json;
+        let mut input = TextArea::default();
+
+        let action = handle_key_event(
+            KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL),
+            &mut state,
+            &mut mode,
+            &mut input,
+            false,
+            &keymap,
+        );
+        // Default keymap binds Ctrl-K to TogglePalette.
+        assert_eq!(action, UiAction::TogglePalette);
+    }
+
+    #[test]
+    fn apply_command_action_toggles_vim_input_mode_and_resets_pending() {
+        // Toggling the Options entry must flip both the feature flag
+        // AND the starting mode (Normal when on, Insert when off) and
+        // clear any stale pending prefix so the new state is coherent.
+        let mut state = seed_state();
+        state.vim_pending = Some('d');
+        let catalog = ModelsMode::new(vec![], BTreeMap::new(), None, None, None);
+
+        apply_command_action(
+            rip_tui::palette::modes::command::CommandAction::ToggleVimInputMode,
+            &mut state,
+            &catalog,
+        );
+        assert!(state.vim_input_mode);
+        assert_eq!(state.vim_mode, rip_tui::VimMode::Normal);
+        assert_eq!(state.vim_pending, None);
+
+        apply_command_action(
+            rip_tui::palette::modes::command::CommandAction::ToggleVimInputMode,
+            &mut state,
+            &catalog,
+        );
+        assert!(!state.vim_input_mode);
+        assert_eq!(state.vim_mode, rip_tui::VimMode::Insert);
     }
 
     #[test]
@@ -2225,6 +3241,7 @@ mod tests {
         let mut state = seed_state();
         state.open_palette(
             rip_tui::PaletteMode::Model,
+            rip_tui::PaletteOrigin::TopRight,
             vec![rip_tui::PaletteEntry {
                 value: "openrouter/openai/gpt-oss-20b".to_string(),
                 title: "openrouter/openai/gpt-oss-20b".to_string(),
@@ -2293,7 +3310,7 @@ mod tests {
         let keymap = Keymap::default();
         let mut state = seed_state();
         let mut mode = RenderMode::Json;
-        let mut input = String::new();
+        let mut input = TextArea::default();
         let action = handle_term_event(
             TermEvent::Resize(10, 10),
             &mut state,
@@ -2310,7 +3327,7 @@ mod tests {
         let keymap = Keymap::default();
         let mut state = seed_state();
         let mut mode = RenderMode::Json;
-        let mut input = String::new();
+        let mut input = TextArea::default();
         let action = handle_term_event(
             TermEvent::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::empty())),
             &mut state,
@@ -2327,7 +3344,7 @@ mod tests {
         let keymap = Keymap::default();
         let mut state = seed_state();
         let mut mode = RenderMode::Json;
-        let mut input = String::new();
+        let mut input = TextArea::default();
         let action = handle_term_event(
             TermEvent::Mouse(MouseEvent {
                 kind: MouseEventKind::ScrollUp,
@@ -2345,6 +3362,258 @@ mod tests {
     }
 
     #[test]
+    fn mouse_clicks_hero_segments_open_expected_palettes() {
+        let mut state = seed_state();
+        state.set_continuity_id("thread-alpha");
+        state.set_preferred_openresponses_target(
+            Some("https://openrouter.ai/api/v1/responses".to_string()),
+            Some("nvidia/nemotron".to_string()),
+        );
+        let (width, _) = terminal_size().unwrap_or((80, 24));
+        let thread_column = (0..width)
+            .find(|column| {
+                hero_click_target(&state, width, *column) == Some(HeroClickTarget::Thread)
+            })
+            .expect("thread target column");
+        let agent_column = (0..width)
+            .find(|column| {
+                hero_click_target(&state, width, *column) == Some(HeroClickTarget::Agent)
+            })
+            .expect("agent target column");
+        let model_column = (0..width)
+            .find(|column| {
+                hero_click_target(&state, width, *column) == Some(HeroClickTarget::Model)
+            })
+            .expect("model target column");
+
+        let thread_action = handle_mouse_event(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: thread_column,
+                row: 0,
+                modifiers: KeyModifiers::empty(),
+            },
+            &mut state,
+        );
+        assert_eq!(thread_action, UiAction::OpenPaletteThreads);
+
+        let agent_action = handle_mouse_event(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: agent_column,
+                row: 0,
+                modifiers: KeyModifiers::empty(),
+            },
+            &mut state,
+        );
+        assert_eq!(agent_action, UiAction::TogglePalette);
+
+        let model_action = handle_mouse_event(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: model_column,
+                row: 0,
+                modifiers: KeyModifiers::empty(),
+            },
+            &mut state,
+        );
+        assert_eq!(model_action, UiAction::OpenPaletteModels);
+    }
+
+    #[test]
+    fn mouse_activity_row_opens_activity_overlay() {
+        let mut state = seed_state();
+        let (_, height) = terminal_size().unwrap_or((80, 24));
+        let row = mouse_footer_activity_row(height).expect("activity row");
+
+        let action = handle_mouse_event(
+            MouseEvent {
+                kind: MouseEventKind::ScrollDown,
+                column: 0,
+                row,
+                modifiers: KeyModifiers::empty(),
+            },
+            &mut state,
+        );
+
+        assert_eq!(action, UiAction::None);
+        assert_eq!(state.overlay(), &rip_tui::Overlay::Activity);
+    }
+
+    #[test]
+    fn mouse_scroll_with_palette_open_moves_selection_and_ignores_noise() {
+        // When the palette is the top of the overlay stack, mouse
+        // scrolling must drive selection (not the canvas). Click +
+        // scroll-horizontally must fall through to the no-op arm so
+        // stray middle/right buttons don't flicker the overlay.
+        let mut state = seed_state();
+        state.open_palette(
+            rip_tui::PaletteMode::Command,
+            rip_tui::PaletteOrigin::TopCenter,
+            (0..5)
+                .map(|i| rip_tui::PaletteEntry {
+                    value: format!("c-{i}"),
+                    title: format!("cmd {i}"),
+                    subtitle: None,
+                    chips: vec![],
+                })
+                .collect(),
+            "",
+            false,
+            String::new(),
+        );
+        let before = state.palette_selected_value().expect("selected");
+        assert_eq!(before, "c-0");
+        handle_mouse_event(
+            MouseEvent {
+                kind: MouseEventKind::ScrollDown,
+                column: 0,
+                row: 0,
+                modifiers: KeyModifiers::empty(),
+            },
+            &mut state,
+        );
+        let stepped = state.palette_selected_value().expect("selected");
+        assert_ne!(stepped, before);
+        handle_mouse_event(
+            MouseEvent {
+                kind: MouseEventKind::ScrollUp,
+                column: 0,
+                row: 0,
+                modifiers: KeyModifiers::empty(),
+            },
+            &mut state,
+        );
+        assert_eq!(
+            state.palette_selected_value().as_deref(),
+            Some(before.as_str())
+        );
+        // A non-scroll / non-left click with the palette open is a
+        // no-op — the palette intercepts but returns UiAction::None.
+        let action = handle_mouse_event(
+            MouseEvent {
+                kind: MouseEventKind::Moved,
+                column: 0,
+                row: 0,
+                modifiers: KeyModifiers::empty(),
+            },
+            &mut state,
+        );
+        assert_eq!(action, UiAction::None);
+    }
+
+    #[test]
+    fn mouse_events_with_thread_picker_open_route_to_picker_helpers() {
+        let mut state = seed_state();
+        state.open_thread_picker(vec![
+            rip_tui::ThreadPickerEntry {
+                thread_id: "cont-a".into(),
+                title: "alpha".into(),
+                preview: "…".into(),
+                chips: vec![],
+            },
+            rip_tui::ThreadPickerEntry {
+                thread_id: "cont-b".into(),
+                title: "beta".into(),
+                preview: "…".into(),
+                chips: vec![],
+            },
+        ]);
+        handle_mouse_event(
+            MouseEvent {
+                kind: MouseEventKind::ScrollDown,
+                column: 0,
+                row: 0,
+                modifiers: KeyModifiers::empty(),
+            },
+            &mut state,
+        );
+        assert_eq!(
+            state.thread_picker_selected_value().as_deref(),
+            Some("cont-b")
+        );
+        let action = handle_mouse_event(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: 0,
+                row: 0,
+                modifiers: KeyModifiers::empty(),
+            },
+            &mut state,
+        );
+        assert_eq!(action, UiAction::ApplyThreadPicker);
+    }
+
+    #[test]
+    fn mouse_click_focuses_canvas_message() {
+        let mut state = TuiState::new(10);
+        let first = state.canvas.push_user_turn("user", "tui", "hello", 0);
+        state.canvas.push_user_turn("user", "tui", "world", 1);
+        let (width, height) = terminal_size().unwrap_or((80, 24));
+        let (viewport_width, viewport_height, row_in_canvas) =
+            mouse_canvas_hit_geometry(&state, width, height, 0, 1).expect("canvas geometry");
+        let expected =
+            canvas_hit_message_id(&state, viewport_width, viewport_height, row_in_canvas);
+
+        let action = handle_mouse_event(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: 0,
+                row: 1,
+                modifiers: KeyModifiers::empty(),
+            },
+            &mut state,
+        );
+
+        assert_eq!(action, UiAction::None);
+        assert_eq!(expected.as_deref(), Some(first.as_str()));
+        assert_eq!(state.focused_message_id.as_deref(), Some(first.as_str()));
+        assert!(!state.auto_follow);
+    }
+
+    #[test]
+    fn thread_picker_mouse_scrolls_and_click_applies() {
+        let mut state = seed_state();
+        state.open_thread_picker(vec![
+            rip_tui::ThreadPickerEntry {
+                thread_id: "t1".to_string(),
+                title: "one".to_string(),
+                preview: "preview —".to_string(),
+                chips: vec!["current".to_string()],
+            },
+            rip_tui::ThreadPickerEntry {
+                thread_id: "t2".to_string(),
+                title: "two".to_string(),
+                preview: "preview —".to_string(),
+                chips: vec![],
+            },
+        ]);
+
+        let scroll = handle_mouse_event(
+            MouseEvent {
+                kind: MouseEventKind::ScrollDown,
+                column: 0,
+                row: 5,
+                modifiers: KeyModifiers::empty(),
+            },
+            &mut state,
+        );
+        assert_eq!(scroll, UiAction::None);
+        assert_eq!(state.thread_picker_selected_value().as_deref(), Some("t2"));
+
+        let click = handle_mouse_event(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: 5,
+                row: 5,
+                modifiers: KeyModifiers::empty(),
+            },
+            &mut state,
+        );
+        assert_eq!(click, UiAction::ApplyThreadPicker);
+    }
+
+    #[test]
     fn handle_key_event_toggles_follow_and_palette_cycle_is_noop_outside_palette() {
         // Phase C.5 retires Tab's legacy "details-mode toggle" role
         // and reassigns Tab to `PaletteCycleMode`. Outside of an open
@@ -2357,7 +3626,7 @@ mod tests {
         let keymap = Keymap::default();
         let mut state = seed_state();
         let mut mode = RenderMode::Json;
-        let mut input = String::new();
+        let mut input = TextArea::default();
 
         let action = handle_key_event(
             KeyEvent::new(KeyCode::Tab, KeyModifiers::empty()),
@@ -2391,7 +3660,7 @@ mod tests {
         let keymap = Keymap::default();
         let mut state = seed_state();
         let mut mode = RenderMode::Json;
-        let mut input = String::new();
+        let mut input = TextArea::default();
 
         let k = |ch: char, mods: KeyModifiers| KeyEvent::new(KeyCode::Char(ch), mods);
         assert_eq!(
@@ -2702,7 +3971,7 @@ mod tests {
             Some("openai/gpt-oss-20b".to_string()),
         );
 
-        open_model_palette(&mut state, &catalog);
+        open_model_palette(&mut state, &catalog, PaletteOrigin::TopRight);
         assert!(state.is_palette_open());
         assert_eq!(
             state.palette_selected_value().as_deref(),
@@ -2765,7 +4034,7 @@ mod tests {
         let _bad_theme = set_env("RIP_TUI_THEME", "unknown-theme");
         let init = init_fullscreen_state(Some("hello".to_string()));
         assert_eq!(init.mode, RenderMode::Json);
-        assert_eq!(init.input, "hello");
+        assert_eq!(init.input.lines(), &["hello".to_string()]);
         let status = init.state.status_message.unwrap_or_default();
         assert!(status.contains("theme:"));
     }

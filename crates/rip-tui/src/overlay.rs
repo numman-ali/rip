@@ -29,6 +29,7 @@ impl OverlayView for Overlay {
             Overlay::None => "none",
             Overlay::Activity => "activity",
             Overlay::Palette(_) => "palette",
+            Overlay::ThreadPicker(_) => "thread_picker",
             Overlay::TaskList => "task_list",
             Overlay::ToolDetail { .. } => "tool_detail",
             Overlay::TaskDetail { .. } => "task_detail",
@@ -45,6 +46,7 @@ impl OverlayView for Overlay {
             Overlay::None => "",
             Overlay::Activity => "Activity",
             Overlay::Palette(palette) => palette.mode.label(),
+            Overlay::ThreadPicker(_) => "Threads",
             Overlay::TaskList => "Tasks",
             Overlay::ToolDetail { .. } => "Tool Detail",
             Overlay::TaskDetail { .. } => "Task Detail",
@@ -113,5 +115,103 @@ impl OverlayStack {
 
     pub fn clear(&mut self) {
         self.items.clear();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::{PaletteEntry, PaletteMode, PaletteOrigin, PaletteState};
+
+    #[test]
+    fn overlay_view_ids_and_titles_cover_every_variant() {
+        // The id/title match arms are the only way the driver
+        // introspects the active overlay for debug + telemetry. Every
+        // variant must round-trip or the debug overlay silently shows
+        // the wrong slug. Keep this test as an exhaustive sweep so a
+        // new variant lands with a visible compile + test error.
+        let palette = PaletteState::new(
+            PaletteMode::Command,
+            PaletteOrigin::TopCenter,
+            vec![PaletteEntry {
+                value: "x".into(),
+                title: "x".into(),
+                subtitle: None,
+                chips: vec![],
+            }],
+            "empty".into(),
+            false,
+            String::new(),
+        );
+        let cases: &[(Overlay, &str, &str)] = &[
+            (Overlay::None, "none", ""),
+            (Overlay::Activity, "activity", "Activity"),
+            (Overlay::Palette(palette), "palette", "Command"),
+            (Overlay::TaskList, "task_list", "Tasks"),
+            (
+                Overlay::ToolDetail {
+                    tool_id: "t".into(),
+                },
+                "tool_detail",
+                "Tool Detail",
+            ),
+            (
+                Overlay::TaskDetail {
+                    task_id: "x".into(),
+                },
+                "task_detail",
+                "Task Detail",
+            ),
+            (
+                Overlay::ErrorDetail { seq: 1 },
+                "error_detail",
+                "Error Detail",
+            ),
+            (Overlay::StallDetail, "stall_detail", "Stalled"),
+            (Overlay::Debug, "debug", "Debug"),
+            (Overlay::Help, "help", "Help"),
+            (
+                Overlay::ErrorRecovery { seq: 1 },
+                "error_recovery",
+                "Recover",
+            ),
+        ];
+        for (overlay, expect_id, expect_title) in cases {
+            assert_eq!(overlay.id(), *expect_id, "id for {:?}", overlay);
+            assert_eq!(overlay.title(), *expect_title, "title for {:?}", overlay);
+        }
+    }
+
+    #[test]
+    fn overlay_stack_push_pop_set_and_clear_roundtrip() {
+        let mut stack = OverlayStack::new();
+        assert!(stack.is_empty());
+        assert_eq!(stack.len(), 0);
+        assert_eq!(stack.top(), &Overlay::None);
+        assert!(stack.top_mut().is_none());
+
+        stack.push(Overlay::None); // no-op
+        assert!(stack.is_empty());
+
+        stack.push(Overlay::Activity);
+        stack.push(Overlay::Help);
+        assert_eq!(stack.len(), 2);
+        assert_eq!(stack.top(), &Overlay::Help);
+        assert!(stack.top_mut().is_some());
+
+        let popped = stack.pop();
+        assert_eq!(popped, Some(Overlay::Help));
+        assert_eq!(stack.top(), &Overlay::Activity);
+
+        stack.set(Overlay::Debug);
+        assert_eq!(stack.len(), 1);
+        assert_eq!(stack.top(), &Overlay::Debug);
+
+        stack.set(Overlay::None);
+        assert!(stack.is_empty());
+
+        stack.push(Overlay::Activity);
+        stack.clear();
+        assert!(stack.is_empty());
     }
 }

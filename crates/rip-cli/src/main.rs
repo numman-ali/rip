@@ -1914,9 +1914,11 @@ mod tests {
         }
 
         fn render_to_string(width: u16, height: u16, state: &TuiState) -> String {
+            use ratatui_textarea::TextArea;
             let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
+            let input = TextArea::default();
             terminal
-                .draw(|f| render(f, state, RenderMode::Json, ""))
+                .draw(|f| render(f, state, RenderMode::Json, &input))
                 .expect("draw");
             buffer_to_string(terminal.backend().buffer())
         }

@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 rip-kernel = { path = "../rip-kernel" }
 ratatui = "0.30"
+ratatui-textarea = "0.9"
 serde_json = "1.0"
 supports-color = "3.0"
 pulldown-cmark = { version = "0.13", default-features = false }

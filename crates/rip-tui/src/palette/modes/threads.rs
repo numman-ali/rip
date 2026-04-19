@@ -105,6 +105,40 @@ mod tests {
     use super::*;
 
     #[test]
+    fn surface_metadata_and_empty_state_are_populated() {
+        let mode = ThreadsMode::default();
+        assert_eq!(mode.id(), "threads");
+        assert_eq!(mode.label(), "Threads");
+        assert!(!mode.placeholder().is_empty());
+        assert!(!mode.empty_state().is_empty());
+        // Default mode has no threads to surface.
+        assert!(mode.entries().is_empty());
+    }
+
+    #[test]
+    fn short_id_truncates_long_identifiers_but_leaves_short_ones_alone() {
+        assert_eq!(short_id("abc"), "abc");
+        assert_eq!(short_id("0123456789ab"), "0123456789ab");
+        assert_eq!(short_id("0123456789abcdef"), "0123456789ab…");
+    }
+
+    #[test]
+    fn untitled_thread_falls_back_to_short_id_and_no_preview_shows_dash() {
+        let mode = ThreadsMode::new(vec![ThreadSummary {
+            thread_id: "cont-0123456789-abc".to_string(),
+            title: None,
+            last_message_preview: None,
+            updated_at_ms: None,
+            is_current: false,
+        }]);
+        let entries = mode.entries();
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].title.ends_with('…'));
+        assert_eq!(entries[0].subtitle.as_deref(), Some("—"));
+        assert!(entries[0].chips.is_empty());
+    }
+
+    #[test]
     fn pins_current_thread_first() {
         let mode = ThreadsMode::new(vec![
             ThreadSummary {

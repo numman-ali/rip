@@ -3,10 +3,11 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Paragraph, Wrap};
 use ratatui::Frame;
+use ratatui_textarea::TextArea;
 
 use crate::canvas::{
-    Block as CanvasBlock, CachedText, CanvasMessage, ContextLifecycle, JobLifecycle, NoticeLevel,
-    TaskCardStatus, ToolCardStatus,
+    AgentRole, Block as CanvasBlock, CachedText, CanvasMessage, ContextLifecycle, JobLifecycle,
+    NoticeLevel, TaskCardStatus, ToolCardStatus,
 };
 use crate::TuiState;
 
@@ -14,7 +15,7 @@ use super::activity::{build_strip_line, render_activity_rail};
 use super::input::render_input;
 use super::status_bar::render_status_bar;
 use super::theme::ThemeStyles;
-use super::util::{canvas_scroll_offset, truncate};
+use super::util::{canvas_scroll_offset, truncate, wrapped_line_count};
 
 const GUTTER_WIDTH: usize = 3;
 const CARD_BODY_INDENT: usize = 2;
@@ -35,13 +36,13 @@ pub(super) fn render_canvas_screen(
     frame: &mut Frame<'_>,
     state: &TuiState,
     theme: &ThemeStyles,
-    input: &str,
+    input: &TextArea<'static>,
 ) {
     // Input block grows with multi-line input (C.4). `input_block_rows`
     // reserves enough vertical space for the editor + keylight: always
-    // 1 keylight + [1..6] editor rows, capped by the buffer's newlines.
-    // The activity strip hides when the editor exceeds 2 rows so we
-    // never triple-squeeze the canvas.
+    // 1 keylight + [1..6] editor rows, capped by the buffer's line
+    // count. The activity strip hides when the editor exceeds 2 rows
+    // so we never triple-squeeze the canvas.
     let editor_rows = editor_rows_needed(input, frame.area().height);
     let keylight_row = 1u16;
     let input_block = editor_rows + keylight_row;
@@ -66,13 +67,68 @@ pub(super) fn render_canvas_screen(
     render_input(frame, state, theme, chunks[3], input);
 }
 
-fn editor_rows_needed(input: &str, available: u16) -> u16 {
-    let newlines = input.chars().filter(|c| *c == '\n').count() as u16 + 1;
+pub fn canvas_hit_message_id(
+    state: &TuiState,
+    viewport_width: u16,
+    viewport_height: u16,
+    row: u16,
+) -> Option<String> {
+    if viewport_width == 0 || viewport_height == 0 {
+        return None;
+    }
+
+    let width = viewport_width as usize;
+    let full_text = build_canvas_text(state, &ThemeStyles::for_theme(state.theme), width);
+    let full_plain = plain_text(&full_text);
+    let scroll = canvas_scroll_offset(
+        state,
+        Rect {
+            x: 0,
+            y: 0,
+            width: viewport_width,
+            height: viewport_height,
+        },
+        &full_plain,
+    )
+    .0 as usize;
+    let target_row = scroll.saturating_add(row as usize);
+    let focused = state.focused_message_id.as_deref();
+    let styles = ThemeStyles::for_theme(state.theme);
+    let ctx = RenderCtx {
+        theme_id: state.theme,
+        styles: &styles,
+        motion: MotionCtx::from_state(state),
+    };
+    let card_width = card_width_for(width);
+    let mut cursor = 0usize;
+
+    for (idx, message) in state.canvas.messages.iter().enumerate() {
+        if idx > 0 {
+            if cursor == target_row {
+                return None;
+            }
+            cursor += 1;
+        }
+        let mut lines = Vec::new();
+        append_message(&mut lines, message, &ctx, focused, card_width);
+        let plain = plain_text(&Text::from(lines));
+        let wrapped = wrapped_line_count(&plain, width);
+        if target_row < cursor.saturating_add(wrapped) {
+            return Some(message.message_id().to_string());
+        }
+        cursor += wrapped;
+    }
+
+    None
+}
+
+fn editor_rows_needed(input: &TextArea<'static>, available: u16) -> u16 {
+    let lines = input.lines().len().max(1) as u16;
     let cap = 6u16;
     let keylight = 1u16;
     // Keep at least 3 rows for the canvas so we never zero it out.
     let max_input_block = available.saturating_sub(3 + keylight);
-    newlines.min(cap).min(max_input_block.max(1))
+    lines.min(cap).min(max_input_block.max(1))
 }
 
 pub(super) fn render_canvas_body(
@@ -135,6 +191,7 @@ pub(super) fn build_canvas_text(
     let ctx = RenderCtx {
         theme_id: state.theme,
         styles: theme,
+        motion: MotionCtx::from_state(state),
     };
 
     let mut lines: Vec<Line<'static>> = Vec::new();
@@ -151,10 +208,53 @@ pub(super) fn build_canvas_text(
 /// theme id is only needed by the `CodeFence` path (syntect theme
 /// selection); keeping it in a context struct means we don't have
 /// to change every helper signature.
+///
+/// `motion` carries the per-frame clock tokens that drive C.9's
+/// breath / thinking / streaming motion primitives. `now_ms` is the
+/// current tick (from `state.now_ms`, set by the driver each frame);
+/// `last_event_ms` is the wall-clock timestamp of the most recent
+/// frame ingested (used as a content-driven pulse source). Both
+/// default to `0` in tests — that pins the animation to a canonical
+/// phase so golden snapshots stay deterministic.
 #[derive(Clone, Copy)]
 struct RenderCtx<'a> {
     theme_id: crate::ThemeId,
     styles: &'a ThemeStyles,
+    motion: MotionCtx,
+}
+
+#[derive(Clone, Copy, Default)]
+struct MotionCtx {
+    now_ms: u64,
+    last_event_ms: u64,
+}
+
+impl MotionCtx {
+    fn from_state(state: &TuiState) -> Self {
+        Self {
+            now_ms: state.now_ms.unwrap_or(0),
+            last_event_ms: state.last_event_ms.unwrap_or(0),
+        }
+    }
+
+    /// 4-frame thinking cycle (◐ ◓ ◑ ◒) at ~400ms per frame. Pinned
+    /// at phase 0 when `now_ms == 0` so tests render `◐`.
+    fn thinking_glyph(&self) -> &'static str {
+        const FRAMES: [&str; 4] = ["◐", "◓", "◑", "◒"];
+        FRAMES[((self.now_ms / 400) % FRAMES.len() as u64) as usize]
+    }
+
+    /// Streaming pulse is content-driven — when a token arrived
+    /// recently (within 350ms, slightly longer than the thinking
+    /// cycle so the pulse feels reactive rather than strobing), the
+    /// agent glyph promotes to `fg_primary`; otherwise it relaxes
+    /// back to the base accent. If `now_ms == 0` the pulse never
+    /// triggers (tests see the base style).
+    fn streaming_is_hot(&self) -> bool {
+        self.now_ms > 0
+            && self.last_event_ms > 0
+            && self.now_ms.saturating_sub(self.last_event_ms) < 350
+    }
 }
 
 /// Card chrome occupies the canvas width minus the 3-col gutter (and
@@ -220,7 +320,7 @@ fn append_simple_message(
     ctx: &RenderCtx<'_>,
     focused: bool,
 ) {
-    let (glyph, glyph_style) = message_glyph(message, ctx.styles);
+    let (glyph, glyph_style) = message_glyph(message, ctx.styles, ctx.motion);
     let body_lines = message_body_lines(message, ctx);
 
     for (row, body_line) in body_lines.into_iter().enumerate() {
@@ -241,7 +341,7 @@ fn append_card_message(
     focused: bool,
     card_width: usize,
 ) {
-    let (glyph, glyph_style) = message_glyph(message, theme);
+    let (glyph, glyph_style) = message_glyph(message, theme, MotionCtx::default());
     let (title, meta, status_style, expanded, body_sections, artifact_count) =
         card_descriptor(message);
     let border_style = if focused {
@@ -704,17 +804,44 @@ fn cached_text_lines(cached: &CachedText) -> Vec<Line<'static>> {
     cached.text.lines.to_vec()
 }
 
-fn message_glyph(message: &CanvasMessage, theme: &ThemeStyles) -> (&'static str, Style) {
+fn message_glyph(
+    message: &CanvasMessage,
+    theme: &ThemeStyles,
+    motion: MotionCtx,
+) -> (&'static str, Style) {
     match message {
         CanvasMessage::UserTurn { .. } => ("›", theme.prompt_label),
-        CanvasMessage::AgentTurn { streaming, .. } => {
-            let base = theme.chrome.add_modifier(Modifier::BOLD);
-            if *streaming {
-                ("◎", base)
-            } else {
-                ("◉", base)
+        CanvasMessage::AgentTurn {
+            streaming,
+            role,
+            blocks,
+            streaming_tail,
+            ..
+        } => match role {
+            AgentRole::Primary => {
+                // C.9 motion: before any token arrives the glyph cycles
+                // through ◐ ◓ ◑ ◒ (thinking). Once tokens start flowing
+                // it becomes ◎ with a pulse — the style promotes to
+                // `fg_primary` while the last token is still recent and
+                // relaxes back to `accent_agent` between tokens. When
+                // streaming ends we snap to a solid ◉.
+                let base = theme.header;
+                if !*streaming {
+                    return ("◉", base);
+                }
+                let awaiting_first_token = blocks.is_empty() && streaming_tail.is_empty();
+                if awaiting_first_token {
+                    (motion.thinking_glyph(), base)
+                } else if motion.streaming_is_hot() {
+                    ("◎", base.add_modifier(Modifier::BOLD))
+                } else {
+                    ("◎", base)
+                }
             }
-        }
+            AgentRole::Subagent { parent_run_id } => ("◈", subagent_style(theme, parent_run_id)),
+            AgentRole::Reviewer { .. } => ("◌", theme.reviewer),
+            AgentRole::Extension { .. } => ("◈", theme.extension),
+        },
         CanvasMessage::ToolCard { .. } => ("⟡", muted_style()),
         CanvasMessage::TaskCard { .. } => ("⧉", muted_style()),
         CanvasMessage::JobNotice { .. } => ("⧉", muted_style()),
@@ -727,6 +854,18 @@ fn message_glyph(message: &CanvasMessage, theme: &ThemeStyles) -> (&'static str,
         CanvasMessage::CompactionCheckpoint { .. } => ("·", muted_style()),
         CanvasMessage::ExtensionPanel { .. } => ("◈", theme.chrome),
     }
+}
+
+fn subagent_style(theme: &ThemeStyles, parent_run_id: &str) -> Style {
+    theme.subagent_accents[subagent_slot(parent_run_id)]
+}
+
+fn subagent_slot(parent_run_id: &str) -> usize {
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    parent_run_id.hash(&mut hasher);
+    (hasher.finish() as usize) % 4
 }
 
 fn message_body_lines(message: &CanvasMessage, ctx: &RenderCtx<'_>) -> Vec<Line<'static>> {
@@ -893,6 +1032,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn canvas_hit_message_id_tracks_visible_rows() {
+        let mut state = TuiState::new(10);
+        let first = state.canvas.push_user_turn("user", "tui", "hello", 0);
+        let second = state.canvas.push_user_turn("user", "tui", "world", 1);
+
+        assert_eq!(
+            canvas_hit_message_id(&state, 40, 8, 0).as_deref(),
+            Some(first.as_str())
+        );
+        assert_eq!(
+            canvas_hit_message_id(&state, 40, 8, 2).as_deref(),
+            Some(second.as_str())
+        );
+    }
+
+    #[test]
     fn format_card_top_line_fills_dashes_when_meta_and_title_fit() {
         let top = format_card_top_line("write", Some("✓ 120ms"), 40);
         assert!(top.starts_with("╭─ write "));
@@ -913,5 +1068,60 @@ mod tests {
         let bot = format_card_bottom_line(10);
         assert_eq!(bot, "╰────────╯");
         assert_eq!(bot.chars().count(), 10);
+    }
+
+    #[test]
+    fn motion_thinking_glyph_cycles_every_four_hundred_ms() {
+        let mut ctx = MotionCtx {
+            now_ms: 0,
+            ..MotionCtx::default()
+        };
+        assert_eq!(ctx.thinking_glyph(), "◐");
+        ctx.now_ms = 400;
+        assert_eq!(ctx.thinking_glyph(), "◓");
+        ctx.now_ms = 800;
+        assert_eq!(ctx.thinking_glyph(), "◑");
+        ctx.now_ms = 1200;
+        assert_eq!(ctx.thinking_glyph(), "◒");
+        ctx.now_ms = 1600; // wraps back to ◐
+        assert_eq!(ctx.thinking_glyph(), "◐");
+    }
+
+    #[test]
+    fn subagent_slot_is_deterministic_and_bounded_by_four() {
+        // D.4: the subagent palette has 4 accent slots. Distinct parent
+        // run ids must map to *some* slot in [0, 4); identical ids must
+        // always map to the same slot so a subagent's color is stable
+        // across frames rather than flickering as new events arrive.
+        let ids = ["run-1", "run-2", "run-3", "run-4", "run-5", "run-6"];
+        for id in ids {
+            let slot = subagent_slot(id);
+            assert!(slot < 4, "slot must land in [0, 4) for {id}");
+            assert_eq!(
+                slot,
+                subagent_slot(id),
+                "slot must be deterministic across calls for {id}",
+            );
+        }
+    }
+
+    #[test]
+    fn motion_streaming_is_hot_requires_recent_token() {
+        // Both clocks pinned at 0 (tests): the pulse never fires so
+        // goldens stay deterministic.
+        let ctx = MotionCtx::default();
+        assert!(!ctx.streaming_is_hot());
+
+        let ctx = MotionCtx {
+            now_ms: 1_000,
+            last_event_ms: 900,
+        };
+        assert!(ctx.streaming_is_hot(), "100ms gap < 350ms threshold");
+
+        let ctx = MotionCtx {
+            now_ms: 1_000,
+            last_event_ms: 500,
+        };
+        assert!(!ctx.streaming_is_hot(), "500ms gap > 350ms threshold");
     }
 }

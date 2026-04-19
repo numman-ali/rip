@@ -534,6 +534,59 @@ mod tests {
     }
 
     #[test]
+    fn heading_level_to_u8_maps_each_level_to_its_index() {
+        // `HeadingLevel` has six variants and we flatten them into a
+        // compact u8 for `Block::Heading`. The mapping is boring but
+        // load-bearing — Part 2 of the plan key the heading shell off
+        // this exact integer, so regressions are silent misrenders.
+        assert_eq!(heading_level_to_u8(HeadingLevel::H1), 1);
+        assert_eq!(heading_level_to_u8(HeadingLevel::H2), 2);
+        assert_eq!(heading_level_to_u8(HeadingLevel::H3), 3);
+        assert_eq!(heading_level_to_u8(HeadingLevel::H4), 4);
+        assert_eq!(heading_level_to_u8(HeadingLevel::H5), 5);
+        assert_eq!(heading_level_to_u8(HeadingLevel::H6), 6);
+    }
+
+    #[test]
+    fn heading_blocks_capture_every_level_from_pulldown() {
+        for n in 1..=6 {
+            let markdown = format!("{} heading {n}\n", "#".repeat(n));
+            let blocks = parse_blocks(&markdown);
+            let Block::Heading { level, .. } = &blocks[0] else {
+                panic!("expected heading for `{markdown}`");
+            };
+            assert_eq!(*level, n as u8);
+        }
+    }
+
+    #[test]
+    fn ordered_and_unordered_lists_preserve_items() {
+        let ordered = parse_blocks("1. first\n2. second\n");
+        assert_eq!(ordered.len(), 1);
+        let Block::List {
+            ordered: is_ord,
+            items,
+        } = &ordered[0]
+        else {
+            panic!("expected list");
+        };
+        assert!(*is_ord);
+        assert_eq!(items.len(), 2);
+
+        let bullets = parse_blocks("- a\n- b\n- c\n");
+        assert_eq!(bullets.len(), 1);
+        let Block::List {
+            ordered: is_ord,
+            items,
+        } = &bullets[0]
+        else {
+            panic!("expected list");
+        };
+        assert!(!*is_ord);
+        assert_eq!(items.len(), 3);
+    }
+
+    #[test]
     fn source_hash_is_stable_across_identical_parses() {
         let a = parse_blocks("**bold** text");
         let b = parse_blocks("**bold** text");

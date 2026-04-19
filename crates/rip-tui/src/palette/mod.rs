@@ -41,3 +41,37 @@ pub trait PaletteSource {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct MinimalMode;
+
+    impl PaletteSource for MinimalMode {
+        fn id(&self) -> &'static str {
+            "minimal"
+        }
+        fn label(&self) -> &str {
+            "Minimal"
+        }
+        fn entries(&self) -> Vec<PaletteEntry> {
+            Vec::new()
+        }
+    }
+
+    #[test]
+    fn palette_source_default_methods_cover_unused_modes() {
+        // Most shipped modes override `placeholder`, `empty_state`, and
+        // `allow_custom`. The defaults exist so a new mode author can
+        // land a stub without wiring every knob. Exercise them here so
+        // they don't stay as dead code that skews coverage.
+        let mode = MinimalMode;
+        assert_eq!(mode.id(), "minimal");
+        assert_eq!(mode.label(), "Minimal");
+        assert!(mode.entries().is_empty());
+        assert_eq!(mode.placeholder(), "");
+        assert_eq!(mode.empty_state(), "No results");
+        assert!(mode.allow_custom().is_none());
+    }
+}
