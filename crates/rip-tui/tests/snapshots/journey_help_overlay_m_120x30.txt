@@ -2,12 +2,17 @@
 ›  Add a slide outline for a product launch.
 
 ◎  Got it. I┌Help──────────────────────────────────────────────────────────────────────────────────────────┐
-            │CANVAS                                                                                        │
+            │⌃K opens the searchable command palette. ? opens Help only when the composer is empty.        │
+            │The hero row is clickable: thread opens Threads, agent opens Commands, model opens Models.    │
+⟡  ╭─ bash ─│Mouse wheel scrolls the canvas. Focus a message, then Enter expands cards or opens detail v…  │ ✓ 100ms ─╮
+            │                                                                                              │
+     1 artif│                                                                                              │
+   ╰────────│CANVAS                                                                                        │──────────╯
             │  Scroll to top                                                                               │
-⟡  ╭─ bash ─│  Scroll to bottom                                                                            │ ✓ 100ms ─╮
+            │  Scroll to bottom                                                                            │
             │  Toggle follow-tail                                                                          │
-     1 artif│  Previous message                                                                            │
-   ╰────────│  Next message                                                                                │──────────╯
+            │  Previous message                                                                            │
+            │  Next message                                                                                │
             │  Jump to previous error                                                                      │
             │  Copy last message                                                                           │
             │  Copy selection                                                                              │
@@ -18,11 +23,6 @@
             │  Switch thread                                                                               │
             │  Branch current thread                                                                       │
             │  Handoff to new thread                                                                       │
-            │  Rename current thread  · unavailable                                                        │
-            │  Run compaction now                                                                          │
-            │  Schedule compaction                                                                         │
-            │  Compaction status                                                                           │
-            │                                                                                              │
             └──────────────────────────────────────────────────────────────────────────────────────────────┘
 
 

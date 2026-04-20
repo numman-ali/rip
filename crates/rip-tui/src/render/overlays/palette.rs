@@ -127,7 +127,7 @@ pub(super) fn render_palette_overlay(
 
     let footer = Paragraph::new(Text::from(vec![
         Line::from("Enter apply  Esc close  Type to filter"),
-        Line::from("Ctrl-K reopens model switching for future palette modes"),
+        Line::from("Tab cycle modes  Alt-M models  Ctrl-T threads  Alt-O options"),
     ]))
     .style(theme.chrome)
     .wrap(Wrap { trim: false });

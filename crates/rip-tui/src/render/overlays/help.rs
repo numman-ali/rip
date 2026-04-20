@@ -43,6 +43,29 @@ pub(super) fn render_help_overlay(
     let width = inner.width as usize;
     let mut current_category = "";
 
+    lines.push(Line::from(Span::styled(
+        truncate(
+            "⌃K opens the searchable command palette. ? opens Help only when the composer is empty.",
+            width.saturating_sub(2),
+        ),
+        theme.chrome,
+    )));
+    lines.push(Line::from(Span::styled(
+        truncate(
+            "The hero row is clickable: thread opens Threads, agent opens Commands, model opens Models.",
+            width.saturating_sub(2),
+        ),
+        theme.muted,
+    )));
+    lines.push(Line::from(Span::styled(
+        truncate(
+            "Mouse wheel scrolls the canvas. Focus a message, then Enter expands cards or opens detail views.",
+            width.saturating_sub(2),
+        ),
+        theme.muted,
+    )));
+    lines.push(Line::from(""));
+
     for action in CommandAction::ALL {
         if action.category() != current_category {
             if !lines.is_empty() {

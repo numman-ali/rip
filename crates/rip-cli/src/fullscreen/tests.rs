@@ -1662,7 +1662,7 @@ fn prepare_copy_selected_reports_no_selection() {
     assert_eq!(action, CopySelectedAction::None);
     assert_eq!(
         state.status_message.as_deref(),
-        Some("clipboard: no frame selected")
+        Some("clipboard: nothing copyable selected")
     );
 }
 
@@ -1673,6 +1673,23 @@ fn prepare_copy_selected_uses_osc52_for_small_payload() {
     let mut state = seed_state();
     let action = prepare_copy_selected(&mut state);
     assert!(matches!(action, CopySelectedAction::Osc52(_)));
+}
+
+#[test]
+fn prepare_copy_selected_falls_back_to_latest_copyable_canvas_message() {
+    let _lock = test_env::lock_env();
+    let _disable = remove_env("RIP_TUI_DISABLE_OSC52");
+    let mut state = seed_state();
+    state.selected_seq = None;
+
+    let action = prepare_copy_selected(&mut state);
+    match action {
+        CopySelectedAction::Osc52(payload) => assert!(
+            payload.contains("hi"),
+            "expected latest copyable canvas message, got {payload:?}"
+        ),
+        other => panic!("expected osc52 payload, got {other:?}"),
+    }
 }
 
 #[test]

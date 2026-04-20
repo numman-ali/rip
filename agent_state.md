@@ -1,6 +1,6 @@
 # Agent State (Working Log)
 
-Last updated: 2026-04-19
+Last updated: 2026-04-20
 
 How to use
 - Update this file whenever focus shifts, before ending a work session, and when blocked.
@@ -60,6 +60,7 @@ Current focus
 - Implemented: first provider-profile proof coverage for that seam. `config.doctor` and runtime validation now prove OpenAI/OpenRouter profile selection, and a loopback OpenRouter session smoke verifies that noncanonical endpoints can still consume OpenRouter-shaped streams without false provider errors when the provider identity is known.
 - Implemented: first outbound request-composition proof coverage at the OpenResponses boundary. Tests now prove bearer auth + custom headers, OpenRouter default-model insertion, request-body controls (`tool_choice`, `parallel_tool_calls`, `max_tool_calls`), and stateful `previous_response_id` follow-up composition.
 - Implemented (2026-04-20): first-class typed OpenResponses reasoning controls. RIP now resolves `reasoning.effort` and `reasoning.summary` through layered config, provider overlays, env compat overrides, and per-run overrides; emits the typed `reasoning` request object at the provider boundary; and surfaces both the effective value and its provenance in `config.doctor`.
+- Implemented (2026-04-20): TUI trust/ergonomics polish pass. `?` now opens Help only when the composer is empty (typing `why?` no longer hijacks the user into Help), the idle keylight now explicitly advertises the clickable hero row, the Help overlay explains palette/mouse/focus behavior in plain language, the Command palette footer now documents how to cycle modes and jump directly to models/threads/options, and copy now falls back to the focused/latest copyable Canvas message instead of requiring a selected raw frame. Live `rip-test` validation also confirmed that a recent “provider error after success” report was a stale local-authority process, not current OpenRouter compat behavior.
 - Known OpenResponses gap: compatibility profiles still describe multimodal/image/file/video request health, hosted tools, MCP rows, and `include` details such as `reasoning.encrypted_content`, but those are not yet first-class operator-configurable request fields in RIP’s runtime/config surface.
 - Implemented: context compiler perf v1.1: per-continuity sidecar seek indexes + bounded window reads for `recent_messages_v1` non-tail anchors (caches only; replay-safe fallbacks).
 - Implemented: context compiler perf v1.2: messages+runs-only continuity sidecar + indexes; `recent_messages_v1` window reads are O(k) even with dense `continuity_tool_side_effects` between messages (caches only; replay-safe fallbacks).

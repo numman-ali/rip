@@ -151,7 +151,14 @@ pub(in crate::fullscreen) fn handle_key_event(
             KeyCommand::PaletteGoTo => UiAction::OpenPaletteGoTo,
             KeyCommand::PaletteThreads => UiAction::OpenPaletteThreads,
             KeyCommand::PaletteOptions => UiAction::OpenPaletteOptions,
-            KeyCommand::ShowHelp => UiAction::ShowHelp,
+            KeyCommand::ShowHelp => {
+                if buffer_is_effectively_empty(input) {
+                    UiAction::ShowHelp
+                } else {
+                    let _ = input.input(Input::from(key));
+                    UiAction::None
+                }
+            }
             KeyCommand::PaletteCycleMode => UiAction::None,
             KeyCommand::ToggleActivity => UiAction::ToggleActivity,
             KeyCommand::ToggleTasks => UiAction::ToggleTasks,

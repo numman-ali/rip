@@ -13,6 +13,7 @@ use std::io::Write;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 
+use rip_tui::canvas::{Block as CanvasBlock, CachedText, CanvasMessage};
 use rip_tui::TuiState;
 
 pub(super) const OSC52_MAX_BYTES: usize = 10_000;
@@ -43,17 +44,19 @@ pub(super) enum CopySelectedAction {
 }
 
 pub(super) fn prepare_copy_selected(state: &mut TuiState) -> CopySelectedAction {
-    let Some(event) = state.selected_event() else {
-        state.set_status_message("clipboard: no frame selected");
-        return CopySelectedAction::None;
-    };
-
-    let payload = match serde_json::to_string_pretty(event) {
-        Ok(json) => json,
-        Err(_) => {
-            state.set_status_message("clipboard: failed to serialize frame");
-            return CopySelectedAction::None;
+    let payload = if let Some(event) = state.selected_event() {
+        match serde_json::to_string_pretty(event) {
+            Ok(json) => json,
+            Err(_) => {
+                state.set_status_message("clipboard: failed to serialize frame");
+                return CopySelectedAction::None;
+            }
         }
+    } else if let Some(message) = preferred_copyable_message(state) {
+        message
+    } else {
+        state.set_status_message("clipboard: nothing copyable selected");
+        return CopySelectedAction::None;
     };
 
     let osc52_disabled = std::env::var_os("RIP_TUI_DISABLE_OSC52").is_some();
@@ -68,6 +71,161 @@ pub(super) fn prepare_copy_selected(state: &mut TuiState) -> CopySelectedAction 
     }
 
     CopySelectedAction::Osc52(payload)
+}
+
+fn preferred_copyable_message(state: &TuiState) -> Option<String> {
+    state
+        .focused_message()
+        .and_then(copyable_message_text)
+        .or_else(|| {
+            state
+                .canvas
+                .messages
+                .iter()
+                .rev()
+                .find_map(copyable_message_text)
+        })
+}
+
+fn copyable_message_text(message: &CanvasMessage) -> Option<String> {
+    let text = match message {
+        CanvasMessage::UserTurn { blocks, .. } => blocks_to_text(blocks),
+        CanvasMessage::AgentTurn {
+            blocks,
+            streaming_tail,
+            ..
+        } => {
+            let mut text = blocks_to_text(blocks);
+            if !streaming_tail.trim().is_empty() {
+                if !text.is_empty() {
+                    text.push('\n');
+                }
+                text.push_str(streaming_tail);
+            }
+            text
+        }
+        CanvasMessage::ToolCard {
+            tool_name,
+            args_block,
+            body,
+            ..
+        } => {
+            let mut text = format!("tool: {tool_name}");
+            let args = block_to_text(args_block);
+            if !args.trim().is_empty() {
+                text.push_str("\n\nargs:\n");
+                text.push_str(args.trim_end());
+            }
+            let body_text = blocks_to_text(body);
+            if !body_text.trim().is_empty() {
+                text.push_str("\n\n");
+                text.push_str(body_text.trim_end());
+            }
+            text
+        }
+        CanvasMessage::TaskCard { title, body, .. } => {
+            let mut text = title.clone().unwrap_or_else(|| "task".to_string());
+            let body_text = blocks_to_text(body);
+            if !body_text.trim().is_empty() {
+                text.push_str("\n\n");
+                text.push_str(body_text.trim_end());
+            }
+            text
+        }
+        CanvasMessage::JobNotice { job_kind, .. } => job_kind.clone(),
+        CanvasMessage::SystemNotice { text, .. } => text.clone(),
+        CanvasMessage::ContextNotice {
+            strategy, status, ..
+        } => {
+            format!("context {strategy} · {status:?}")
+        }
+        CanvasMessage::CompactionCheckpoint {
+            from_seq, to_seq, ..
+        } => format!("compaction checkpoint · seq {from_seq}…{to_seq}"),
+        CanvasMessage::ExtensionPanel { title, .. } => title.clone(),
+    };
+
+    let trimmed = text.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
+fn blocks_to_text(blocks: &[CanvasBlock]) -> String {
+    let mut parts = Vec::new();
+    for block in blocks {
+        let text = block_to_text(block);
+        let trimmed = text.trim_end();
+        if !trimmed.is_empty() {
+            parts.push(trimmed.to_string());
+        }
+    }
+    parts.join("\n\n")
+}
+
+fn block_to_text(block: &CanvasBlock) -> String {
+    match block {
+        CanvasBlock::Paragraph(text)
+        | CanvasBlock::Markdown(text)
+        | CanvasBlock::ToolArgsJson(text)
+        | CanvasBlock::ToolStdout(text)
+        | CanvasBlock::ToolStderr(text) => cached_text_to_string(text),
+        CanvasBlock::Heading { level, text } => {
+            format!(
+                "{} {}",
+                "#".repeat((*level).clamp(1, 6) as usize),
+                cached_text_to_string(text)
+            )
+        }
+        CanvasBlock::CodeFence { lang, text } => {
+            let mut out = match lang {
+                Some(lang) if !lang.is_empty() => format!("```{lang}\n"),
+                _ => "```\n".to_string(),
+            };
+            out.push_str(&cached_text_to_string(text));
+            out.push_str("\n```");
+            out
+        }
+        CanvasBlock::BlockQuote(inner) => blocks_to_text(inner)
+            .lines()
+            .map(|line| format!("> {line}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        CanvasBlock::List { ordered, items } => items
+            .iter()
+            .enumerate()
+            .map(|(idx, item)| {
+                let marker = if *ordered {
+                    format!("{}. ", idx + 1)
+                } else {
+                    "- ".to_string()
+                };
+                let text = blocks_to_text(item);
+                if let Some((first, rest)) = text.split_once('\n') {
+                    format!("{marker}{first}\n{}", rest)
+                } else {
+                    format!("{marker}{text}")
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        CanvasBlock::Thematic => "────".to_string(),
+        CanvasBlock::ArtifactChip { artifact_id, .. } => {
+            let short: String = artifact_id.chars().take(8).collect();
+            format!("⧉ {short}")
+        }
+    }
+}
+
+fn cached_text_to_string(text: &CachedText) -> String {
+    let mut out = String::new();
+    for (idx, line) in text.text.lines.iter().enumerate() {
+        if idx > 0 {
+            out.push('\n');
+        }
+        for span in &line.spans {
+            out.push_str(span.content.as_ref());
+        }
+    }
+    out
 }
 
 pub(super) fn osc52_sequence(bytes: &[u8]) -> String {

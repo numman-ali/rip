@@ -22,7 +22,7 @@
                         │                                                                      │
                         │                                                                      │
                         │Enter apply  Esc close  Type to filter                                │
-                        │Ctrl-K reopens model switching for future palette modes               │
+                        │Tab cycle modes  Alt-M models  Ctrl-T threads  Alt-O options          │
                         └──────────────────────────────────────────────────────────────────────┘
 
 

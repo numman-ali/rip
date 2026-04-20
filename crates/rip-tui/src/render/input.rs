@@ -382,8 +382,8 @@ pub(super) fn keylight_for(state: &TuiState, typing: bool) -> Vec<(&'static str,
     vec![
         ("?", "help"),
         ("⌘K", "command"),
+        ("click", "hero"),
         ("⌘M", "model"),
-        ("⌘G", "go to"),
     ]
 }
 
@@ -424,7 +424,7 @@ mod tests {
     #[test]
     fn idle_state_shows_navigation_defaults() {
         let state = TuiState::new(10);
-        assert_eq!(keys(&state, false), vec!["?", "⌘K", "⌘M", "⌘G"]);
+        assert_eq!(keys(&state, false), vec!["?", "⌘K", "click", "⌘M"]);
     }
 
     #[test]

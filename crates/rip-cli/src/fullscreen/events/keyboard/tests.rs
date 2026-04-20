@@ -154,3 +154,31 @@ fn default_keymap_ctrl_f_toggles_auto_follow() {
     assert_eq!(action, UiAction::None);
     assert_ne!(state.auto_follow, before, "C-f should toggle auto_follow");
 }
+
+#[test]
+fn question_mark_opens_help_only_when_input_is_empty() {
+    let mut state = TuiState::new(100);
+    let mut input = TextArea::default();
+
+    let action = press(
+        &mut state,
+        &mut input,
+        KeyCode::Char('?'),
+        KeyModifiers::empty(),
+    );
+    assert_eq!(action, UiAction::ShowHelp);
+    assert_eq!(input.lines(), &[String::new()]);
+
+    let mut state = TuiState::new(100);
+    let mut input = TextArea::default();
+    input.insert_str("why");
+
+    let action = press(
+        &mut state,
+        &mut input,
+        KeyCode::Char('?'),
+        KeyModifiers::empty(),
+    );
+    assert_eq!(action, UiAction::None);
+    assert_eq!(input.lines(), &["why?".to_string()]);
+}
