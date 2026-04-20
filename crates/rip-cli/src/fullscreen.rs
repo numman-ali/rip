@@ -34,8 +34,9 @@ use events::{
 };
 use keymap::Keymap;
 use palette::{
-    apply_palette_selection, cycle_palette_mode, load_model_palette_catalog, open_command_palette,
-    open_go_to_palette, open_model_palette, open_options_palette, open_threads_palette,
+    apply_palette_selection, cycle_palette_mode_with_overrides, load_model_palette_catalog,
+    open_command_palette, open_go_to_palette, open_model_palette,
+    open_options_palette_with_overrides, open_threads_palette,
 };
 use terminal::TerminalGuard;
 use theme::load_theme;
@@ -212,13 +213,21 @@ async fn run_fullscreen_tui_sse(
                         }
                     }
                     UiAction::OpenPaletteOptions => {
-                        open_options_palette(&mut state, PaletteOrigin::BottomCenter);
+                        open_options_palette_with_overrides(
+                            &mut state,
+                            current_overrides.as_ref(),
+                            PaletteOrigin::BottomCenter,
+                        );
                     }
                     UiAction::ShowHelp => {
                         state.set_overlay(rip_tui::Overlay::Help);
                     }
                     UiAction::PaletteCycleMode => {
-                        cycle_palette_mode(&mut state, &model_catalog);
+                        cycle_palette_mode_with_overrides(
+                            &mut state,
+                            &model_catalog,
+                            current_overrides.as_ref(),
+                        );
                     }
                     UiAction::ApplyPalette => {
                         if let Err(err) = apply_palette_selection(

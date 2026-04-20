@@ -56,6 +56,8 @@ pub enum CommandAction {
     ToggleTheme,
     ToggleAutoFollow,
     ToggleReasoningVisibility,
+    CycleReasoningEffort,
+    CycleReasoningSummary,
     ToggleVimInputMode,
     ToggleMouseCapture,
     PinActivityRail,
@@ -99,6 +101,8 @@ impl CommandAction {
         CommandAction::ToggleTheme,
         CommandAction::ToggleAutoFollow,
         CommandAction::ToggleReasoningVisibility,
+        CommandAction::CycleReasoningEffort,
+        CommandAction::CycleReasoningSummary,
         CommandAction::ToggleVimInputMode,
         CommandAction::ToggleMouseCapture,
         CommandAction::PinActivityRail,
@@ -140,6 +144,8 @@ impl CommandAction {
             CommandAction::ToggleTheme => "options.theme",
             CommandAction::ToggleAutoFollow => "options.auto-follow",
             CommandAction::ToggleReasoningVisibility => "options.reasoning",
+            CommandAction::CycleReasoningEffort => "options.reasoning-effort",
+            CommandAction::CycleReasoningSummary => "options.reasoning-summary",
             CommandAction::ToggleVimInputMode => "options.vim",
             CommandAction::ToggleMouseCapture => "options.mouse",
             CommandAction::PinActivityRail => "options.pin-activity",
@@ -182,6 +188,8 @@ impl CommandAction {
             CommandAction::ToggleTheme => "Toggle theme (graphite / ink)",
             CommandAction::ToggleAutoFollow => "Toggle auto-follow",
             CommandAction::ToggleReasoningVisibility => "Toggle reasoning visibility",
+            CommandAction::CycleReasoningEffort => "Cycle reasoning effort",
+            CommandAction::CycleReasoningSummary => "Cycle reasoning summary",
             CommandAction::ToggleVimInputMode => "Toggle vim input mode",
             CommandAction::ToggleMouseCapture => "Toggle mouse capture",
             CommandAction::PinActivityRail => "Pin activity rail (L only)",
@@ -224,6 +232,8 @@ impl CommandAction {
             CommandAction::ToggleTheme
             | CommandAction::ToggleAutoFollow
             | CommandAction::ToggleReasoningVisibility
+            | CommandAction::CycleReasoningEffort
+            | CommandAction::CycleReasoningSummary
             | CommandAction::ToggleVimInputMode
             | CommandAction::ToggleMouseCapture
             | CommandAction::PinActivityRail => "OPTIONS",

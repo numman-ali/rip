@@ -97,6 +97,100 @@ fn override_input_handles_partial_object() {
 }
 
 #[test]
+fn current_reasoning_helpers_fall_back_to_override_input_without_resolved_route() {
+    let overrides = json!({
+        "reasoning": {
+            "effort": "high",
+            "summary": "detailed"
+        }
+    });
+    assert_eq!(
+        current_reasoning_effort(None, Some(&overrides)),
+        Some(ripd::ReasoningEffort::High)
+    );
+    assert_eq!(
+        current_reasoning_summary(None, Some(&overrides)),
+        Some(ripd::ReasoningSummary::Detailed)
+    );
+}
+
+#[test]
+fn next_reasoning_effort_cycles_through_inherit_and_explicit_none() {
+    use ripd::ReasoningEffort as Effort;
+
+    assert_eq!(next_reasoning_effort(None), Some(Effort::Minimal));
+    assert_eq!(
+        next_reasoning_effort(Some(Effort::Minimal)),
+        Some(Effort::Low)
+    );
+    assert_eq!(
+        next_reasoning_effort(Some(Effort::Low)),
+        Some(Effort::Medium)
+    );
+    assert_eq!(
+        next_reasoning_effort(Some(Effort::Medium)),
+        Some(Effort::High)
+    );
+    assert_eq!(
+        next_reasoning_effort(Some(Effort::High)),
+        Some(Effort::Xhigh)
+    );
+    assert_eq!(
+        next_reasoning_effort(Some(Effort::Xhigh)),
+        Some(Effort::None)
+    );
+    assert_eq!(next_reasoning_effort(Some(Effort::None)), None);
+}
+
+#[test]
+fn next_reasoning_summary_cycles_through_all_values() {
+    use ripd::ReasoningSummary as Summary;
+
+    assert_eq!(next_reasoning_summary(None), Some(Summary::Auto));
+    assert_eq!(
+        next_reasoning_summary(Some(Summary::Auto)),
+        Some(Summary::Concise)
+    );
+    assert_eq!(
+        next_reasoning_summary(Some(Summary::Concise)),
+        Some(Summary::Detailed)
+    );
+    assert_eq!(next_reasoning_summary(Some(Summary::Detailed)), None);
+}
+
+#[test]
+fn clearing_reasoning_summary_preserves_other_override_fields() {
+    let mut overrides = Some(json!({
+        "model": "gpt-5.4-mini",
+        "reasoning": {
+            "effort": "medium",
+            "summary": "detailed"
+        }
+    }));
+    set_reasoning_summary_override(&mut overrides, None);
+    assert_eq!(
+        overrides
+            .as_ref()
+            .and_then(|value| value.get("model"))
+            .and_then(Value::as_str),
+        Some("gpt-5.4-mini")
+    );
+    assert_eq!(
+        overrides
+            .as_ref()
+            .and_then(|value| value.get("reasoning"))
+            .and_then(|value| value.get("effort"))
+            .and_then(Value::as_str),
+        Some("medium")
+    );
+    assert!(overrides
+        .as_ref()
+        .and_then(|value| value.get("reasoning"))
+        .and_then(|value| value.get("summary"))
+        .is_none());
+}
+
+#[test]
 fn open_command_palette_mounts_command_mode() {
     let mut state = tui();
     open_command_palette(&mut state, PaletteOrigin::TopCenter);
@@ -134,6 +228,31 @@ fn open_options_palette_mounts_option_mode_with_entries() {
     let overlay = state.palette_state_clone().unwrap();
     assert_eq!(overlay.mode, PaletteMode::Option);
     assert!(!overlay.entries.is_empty());
+}
+
+#[test]
+fn open_options_palette_with_overrides_shows_effective_reasoning_values() {
+    let mut state = tui();
+    let overrides = json!({
+        "reasoning": {
+            "effort": "high",
+            "summary": "detailed"
+        }
+    });
+    open_options_palette_with_overrides(&mut state, Some(&overrides), PaletteOrigin::TopCenter);
+    let overlay = state.palette_state_clone().unwrap();
+    let effort = overlay
+        .entries
+        .iter()
+        .find(|entry| entry.value == "options.reasoning-effort")
+        .expect("reasoning effort entry");
+    let summary = overlay
+        .entries
+        .iter()
+        .find(|entry| entry.value == "options.reasoning-summary")
+        .expect("reasoning summary entry");
+    assert_eq!(effort.subtitle.as_deref(), Some("current: high"));
+    assert_eq!(summary.subtitle.as_deref(), Some("current: detailed"));
 }
 
 #[test]
@@ -208,6 +327,94 @@ fn command_action_toggle_auto_follow_flips_the_flag() {
         &catalog,
     );
     assert!(state.auto_follow);
+}
+
+#[test]
+fn command_action_cycle_reasoning_effort_updates_overrides() {
+    let mut state = tui();
+    let catalog = empty_catalog();
+    let mut overrides = Some(json!({
+        "reasoning": {
+            "effort": "medium",
+            "summary": "concise"
+        }
+    }));
+    apply_command_action_with_overrides(
+        rip_tui::palette::modes::command::CommandAction::CycleReasoningEffort,
+        &mut state,
+        &mut overrides,
+        &catalog,
+    );
+    assert_eq!(
+        overrides
+            .as_ref()
+            .and_then(|value| value.get("reasoning"))
+            .and_then(|value| value.get("effort"))
+            .and_then(Value::as_str),
+        Some("high")
+    );
+    assert_eq!(
+        overrides
+            .as_ref()
+            .and_then(|value| value.get("reasoning"))
+            .and_then(|value| value.get("summary"))
+            .and_then(Value::as_str),
+        Some("concise")
+    );
+}
+
+#[test]
+fn command_action_cycle_reasoning_effort_wraps_to_inherit_and_drops_empty_reasoning() {
+    let mut state = tui();
+    let catalog = empty_catalog();
+    let mut overrides = Some(json!({
+        "reasoning": {
+            "effort": "none"
+        }
+    }));
+    apply_command_action_with_overrides(
+        rip_tui::palette::modes::command::CommandAction::CycleReasoningEffort,
+        &mut state,
+        &mut overrides,
+        &catalog,
+    );
+    assert!(overrides
+        .as_ref()
+        .and_then(|value| value.get("reasoning"))
+        .is_none());
+}
+
+#[test]
+fn command_action_cycle_reasoning_summary_updates_overrides() {
+    let mut state = tui();
+    let catalog = empty_catalog();
+    let mut overrides = Some(json!({
+        "model": "gpt-5.4-mini",
+        "reasoning": {
+            "summary": "auto"
+        }
+    }));
+    apply_command_action_with_overrides(
+        rip_tui::palette::modes::command::CommandAction::CycleReasoningSummary,
+        &mut state,
+        &mut overrides,
+        &catalog,
+    );
+    assert_eq!(
+        overrides
+            .as_ref()
+            .and_then(|value| value.get("reasoning"))
+            .and_then(|value| value.get("summary"))
+            .and_then(Value::as_str),
+        Some("concise")
+    );
+    assert_eq!(
+        overrides
+            .as_ref()
+            .and_then(|value| value.get("model"))
+            .and_then(Value::as_str),
+        Some("gpt-5.4-mini")
+    );
 }
 
 #[test]

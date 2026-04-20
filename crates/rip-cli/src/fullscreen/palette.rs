@@ -255,12 +255,32 @@ pub(super) fn open_threads_palette(state: &mut TuiState, origin: PaletteOrigin) 
 
 /// C.5: Options palette — toggles for UI-local prefs. Reads the
 /// current state so each entry's subtitle reflects the active value.
+#[cfg(test)]
 pub(super) fn open_options_palette(state: &mut TuiState, origin: PaletteOrigin) {
+    open_options_palette_with_overrides(state, None, origin);
+}
+
+pub(super) fn open_options_palette_with_overrides(
+    state: &mut TuiState,
+    overrides: Option<&Value>,
+    origin: PaletteOrigin,
+) {
     use rip_tui::palette::modes::options::OptionsMode;
+    let resolved = resolve_openresponses_runtime_config(overrides);
     let mode = OptionsMode {
         current_theme: Some(state.theme.as_str()),
         auto_follow: state.auto_follow,
         reasoning_visible: false,
+        reasoning_effort: reasoning_effort_label(current_reasoning_effort(
+            resolved.as_ref(),
+            overrides,
+        ))
+        .to_string(),
+        reasoning_summary: reasoning_summary_label(current_reasoning_summary(
+            resolved.as_ref(),
+            overrides,
+        ))
+        .to_string(),
         vim_input_mode: state.vim_input_mode,
         mouse_capture: true,
         activity_rail_pinned: state.activity_pinned,
@@ -279,7 +299,16 @@ pub(super) fn open_options_palette(state: &mut TuiState, origin: PaletteOrigin) 
 /// C.5: cycle palette mode when `Tab` is pressed inside an open
 /// palette. Order mirrors the visual ranking in the plan:
 /// Command → Models → Go To → Threads → Options → Command.
+#[cfg(test)]
 pub(super) fn cycle_palette_mode(state: &mut TuiState, catalog: &ModelsMode) {
+    cycle_palette_mode_with_overrides(state, catalog, None);
+}
+
+pub(super) fn cycle_palette_mode_with_overrides(
+    state: &mut TuiState,
+    catalog: &ModelsMode,
+    overrides: Option<&Value>,
+) {
     let origin = state.palette_origin().unwrap_or(PaletteOrigin::TopCenter);
     let next = match state.overlay() {
         rip_tui::Overlay::Palette(p) => match p.mode {
@@ -296,7 +325,7 @@ pub(super) fn cycle_palette_mode(state: &mut TuiState, catalog: &ModelsMode) {
         PaletteMode::Model => open_model_palette(state, catalog, origin),
         PaletteMode::Navigation => open_go_to_palette(state, origin),
         PaletteMode::Session => open_threads_palette(state, origin),
-        PaletteMode::Option => open_options_palette(state, origin),
+        PaletteMode::Option => open_options_palette_with_overrides(state, overrides, origin),
     }
 }
 
@@ -352,7 +381,7 @@ pub(super) fn apply_palette_selection(
                 state.close_overlay();
                 return Ok(());
             }
-            apply_command_action(action, state, catalog);
+            apply_command_action_with_overrides(action, state, overrides, catalog);
             state.close_overlay();
             Ok(())
         }
@@ -368,9 +397,20 @@ pub(super) fn apply_palette_selection(
 /// lands — for Phase C.5 the table is: toggles apply immediately,
 /// palette openers re-open the right mode, everything else posts a
 /// "coming soon" status note pointing at the capability.
+#[cfg(test)]
 pub(super) fn apply_command_action(
     action: rip_tui::palette::modes::command::CommandAction,
     state: &mut TuiState,
+    catalog: &ModelsMode,
+) {
+    let mut overrides = None;
+    apply_command_action_with_overrides(action, state, &mut overrides, catalog);
+}
+
+pub(super) fn apply_command_action_with_overrides(
+    action: rip_tui::palette::modes::command::CommandAction,
+    state: &mut TuiState,
+    overrides: &mut Option<Value>,
     catalog: &ModelsMode,
 ) {
     use rip_tui::palette::modes::command::CommandAction as A;
@@ -393,6 +433,26 @@ pub(super) fn apply_command_action(
         }
         A::ToggleTheme => state.toggle_theme(),
         A::ToggleAutoFollow => state.auto_follow = !state.auto_follow,
+        A::CycleReasoningEffort => {
+            let resolved = resolve_openresponses_runtime_config(overrides.as_ref());
+            let current = current_reasoning_effort(resolved.as_ref(), overrides.as_ref());
+            let next = next_reasoning_effort(current);
+            set_reasoning_effort_override(overrides, next);
+            state.set_status_message(format!(
+                "next reasoning effort: {}",
+                reasoning_effort_label(next)
+            ));
+        }
+        A::CycleReasoningSummary => {
+            let resolved = resolve_openresponses_runtime_config(overrides.as_ref());
+            let current = current_reasoning_summary(resolved.as_ref(), overrides.as_ref());
+            let next = next_reasoning_summary(current);
+            set_reasoning_summary_override(overrides, next);
+            state.set_status_message(format!(
+                "next reasoning summary: {}",
+                reasoning_summary_label(next)
+            ));
+        }
         A::ToggleVimInputMode => {
             state.vim_input_mode = !state.vim_input_mode;
             state.vim_mode = if state.vim_input_mode {
@@ -426,6 +486,154 @@ pub(super) fn apply_command_action(
             ));
         }
     }
+}
+
+fn resolve_openresponses_runtime_config(
+    openresponses_overrides: Option<&Value>,
+) -> Option<ripd::OpenResponsesResolvedConfig> {
+    let workspace_root = crate::local_authority::default_workspace_root();
+    let (resolved, _) = ripd::resolve_openresponses_config(
+        &workspace_root,
+        openresponses_override_input_from_json(openresponses_overrides),
+    );
+    resolved
+}
+
+fn current_reasoning_effort(
+    resolved: Option<&ripd::OpenResponsesResolvedConfig>,
+    overrides: Option<&Value>,
+) -> Option<ripd::ReasoningEffort> {
+    resolved
+        .and_then(|cfg| {
+            cfg.reasoning
+                .as_ref()
+                .and_then(|reasoning| reasoning.effort)
+        })
+        .or_else(|| {
+            openresponses_override_input_from_json(overrides)
+                .reasoning
+                .and_then(|reasoning| reasoning.effort)
+        })
+}
+
+fn current_reasoning_summary(
+    resolved: Option<&ripd::OpenResponsesResolvedConfig>,
+    overrides: Option<&Value>,
+) -> Option<ripd::ReasoningSummary> {
+    resolved
+        .and_then(|cfg| {
+            cfg.reasoning
+                .as_ref()
+                .and_then(|reasoning| reasoning.summary)
+        })
+        .or_else(|| {
+            openresponses_override_input_from_json(overrides)
+                .reasoning
+                .and_then(|reasoning| reasoning.summary)
+        })
+}
+
+fn reasoning_effort_label(value: Option<ripd::ReasoningEffort>) -> &'static str {
+    match value {
+        None => "inherit",
+        Some(ripd::ReasoningEffort::None) => "none",
+        Some(ripd::ReasoningEffort::Minimal) => "minimal",
+        Some(ripd::ReasoningEffort::Low) => "low",
+        Some(ripd::ReasoningEffort::Medium) => "medium",
+        Some(ripd::ReasoningEffort::High) => "high",
+        Some(ripd::ReasoningEffort::Xhigh) => "xhigh",
+    }
+}
+
+fn reasoning_summary_label(value: Option<ripd::ReasoningSummary>) -> &'static str {
+    match value {
+        None => "inherit",
+        Some(ripd::ReasoningSummary::Auto) => "auto",
+        Some(ripd::ReasoningSummary::Concise) => "concise",
+        Some(ripd::ReasoningSummary::Detailed) => "detailed",
+    }
+}
+
+fn next_reasoning_effort(current: Option<ripd::ReasoningEffort>) -> Option<ripd::ReasoningEffort> {
+    use ripd::ReasoningEffort as Effort;
+
+    const ORDER: [Option<Effort>; 7] = [
+        None,
+        Some(Effort::Minimal),
+        Some(Effort::Low),
+        Some(Effort::Medium),
+        Some(Effort::High),
+        Some(Effort::Xhigh),
+        Some(Effort::None),
+    ];
+
+    cycle_optional_enum(&ORDER, current)
+}
+
+fn next_reasoning_summary(
+    current: Option<ripd::ReasoningSummary>,
+) -> Option<ripd::ReasoningSummary> {
+    use ripd::ReasoningSummary as Summary;
+
+    const ORDER: [Option<Summary>; 4] = [
+        None,
+        Some(Summary::Auto),
+        Some(Summary::Concise),
+        Some(Summary::Detailed),
+    ];
+
+    cycle_optional_enum(&ORDER, current)
+}
+
+fn cycle_optional_enum<T: Copy + PartialEq>(order: &[Option<T>], current: Option<T>) -> Option<T> {
+    let idx = order
+        .iter()
+        .position(|candidate| *candidate == current)
+        .unwrap_or(0);
+    order[(idx + 1) % order.len()]
+}
+
+fn set_reasoning_effort_override(
+    overrides: &mut Option<Value>,
+    next: Option<ripd::ReasoningEffort>,
+) {
+    let value = next.map(|value| Value::String(reasoning_effort_label(Some(value)).to_string()));
+    set_reasoning_override_field(overrides, "effort", value);
+}
+
+fn set_reasoning_summary_override(
+    overrides: &mut Option<Value>,
+    next: Option<ripd::ReasoningSummary>,
+) {
+    let value = next.map(|value| Value::String(reasoning_summary_label(Some(value)).to_string()));
+    set_reasoning_override_field(overrides, "summary", value);
+}
+
+fn set_reasoning_override_field(
+    overrides: &mut Option<Value>,
+    field: &'static str,
+    value: Option<Value>,
+) {
+    let mut root = match overrides.take() {
+        Some(Value::Object(map)) => map,
+        _ => serde_json::Map::new(),
+    };
+
+    if let Some(value) = value {
+        let reasoning = root
+            .entry("reasoning".to_string())
+            .or_insert_with(|| Value::Object(serde_json::Map::new()));
+        if let Value::Object(reasoning) = reasoning {
+            reasoning.insert(field.to_string(), value);
+        }
+    } else if let Some(Value::Object(reasoning)) = root.get_mut("reasoning") {
+        reasoning.remove(field);
+        if reasoning.is_empty() {
+            root.remove("reasoning");
+        }
+    }
+
+    *overrides = (!root.is_empty()).then_some(Value::Object(root));
 }
 
 #[cfg(test)]

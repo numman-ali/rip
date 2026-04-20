@@ -16,11 +16,13 @@ use crate::PaletteEntry;
 use super::super::PaletteSource;
 use super::command::CommandAction;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct OptionsMode {
     pub current_theme: Option<&'static str>,
     pub auto_follow: bool,
     pub reasoning_visible: bool,
+    pub reasoning_effort: String,
+    pub reasoning_summary: String,
     pub vim_input_mode: bool,
     pub mouse_capture: bool,
     pub activity_rail_pinned: bool,
@@ -29,6 +31,21 @@ pub struct OptionsMode {
 impl OptionsMode {
     pub fn new() -> Self {
         Self::default()
+    }
+}
+
+impl Default for OptionsMode {
+    fn default() -> Self {
+        Self {
+            current_theme: None,
+            auto_follow: false,
+            reasoning_visible: false,
+            reasoning_effort: "inherit".to_string(),
+            reasoning_summary: "inherit".to_string(),
+            vim_input_mode: false,
+            mouse_capture: false,
+            activity_rail_pinned: false,
+        }
     }
 }
 
@@ -58,6 +75,14 @@ impl PaletteSource for OptionsMode {
             (
                 CommandAction::ToggleReasoningVisibility,
                 on_off(self.reasoning_visible).to_string(),
+            ),
+            (
+                CommandAction::CycleReasoningEffort,
+                self.reasoning_effort.clone(),
+            ),
+            (
+                CommandAction::CycleReasoningSummary,
+                self.reasoning_summary.clone(),
             ),
             (
                 CommandAction::ToggleVimInputMode,
@@ -110,12 +135,14 @@ mod tests {
             current_theme: Some("ink"),
             auto_follow: true,
             reasoning_visible: false,
+            reasoning_effort: "inherit".to_string(),
+            reasoning_summary: "inherit".to_string(),
             vim_input_mode: false,
             mouse_capture: true,
             activity_rail_pinned: false,
         };
         let entries = mode.entries();
-        assert_eq!(entries.len(), 6);
+        assert_eq!(entries.len(), 8);
         assert_eq!(entries[0].value, "options.theme");
         let theme_sub = entries[0]
             .subtitle
@@ -140,8 +167,12 @@ mod tests {
         let entries = fresh.entries();
         // Theme defaults to "graphite" when `current_theme` is None.
         assert!(entries[0].subtitle.as_deref().unwrap().contains("graphite"));
-        // Every other toggle is off.
-        for entry in entries.iter().skip(1) {
+        // Auto-follow is off, reasoning fields inherit, and the rest are off.
+        assert!(entries[1].subtitle.as_deref().unwrap().contains("off"));
+        assert!(entries[2].subtitle.as_deref().unwrap().contains("off"));
+        assert!(entries[3].subtitle.as_deref().unwrap().contains("inherit"));
+        assert!(entries[4].subtitle.as_deref().unwrap().contains("inherit"));
+        for entry in entries.iter().skip(5) {
             assert!(entry.subtitle.as_deref().unwrap().contains("off"));
         }
     }

@@ -55,6 +55,8 @@ fn with_clean_env<F: FnOnce()>(f: F) {
         "RIP_OPENRESPONSES_STATELESS_HISTORY",
         "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
         "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
+        "RIP_OPENRESPONSES_REASONING_EFFORT",
+        "RIP_OPENRESPONSES_REASONING_SUMMARY",
         "RIP_OPENRESPONSES_API_KEY",
         "OPENAI_API_KEY",
         "OPENROUTER_API_KEY",
@@ -83,6 +85,8 @@ where
         "RIP_OPENRESPONSES_STATELESS_HISTORY",
         "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
         "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
+        "RIP_OPENRESPONSES_REASONING_EFFORT",
+        "RIP_OPENRESPONSES_REASONING_SUMMARY",
         "RIP_OPENRESPONSES_API_KEY",
         "OPENAI_API_KEY",
         "OPENROUTER_API_KEY",
@@ -323,6 +327,8 @@ async fn run_headless_with_interactive_flag() {
             stateless_history: false,
             parallel_tool_calls: false,
             followup_user_message: None,
+            reasoning_effort: None,
+            reasoning_summary: None,
             headless: false,
             view: OutputView::Raw,
         }),
@@ -366,6 +372,8 @@ async fn run_headless_remote() {
             stateless_history: false,
             parallel_tool_calls: false,
             followup_user_message: None,
+            reasoning_effort: None,
+            reasoning_summary: None,
             headless: true,
             view: OutputView::Raw,
         }),
@@ -467,6 +475,8 @@ async fn run_interactive_local_uses_env_paths() {
                 stateless_history: false,
                 parallel_tool_calls: false,
                 followup_user_message: None,
+                reasoning_effort: None,
+                reasoning_summary: None,
                 headless: false,
                 view: OutputView::Raw,
             }),
@@ -491,7 +501,7 @@ async fn run_accepts_openresponses_flags_with_server() {
     let _post = server.mock(|when, then| {
         when.method(POST)
             .path("/threads/t1/messages")
-            .json_body_partial(r#"{"openresponses":{"endpoint":"https://api.openai.com/v1/responses","model":"gpt-5-nano-2025-08-07","stateless_history":true,"parallel_tool_calls":true,"followup_user_message":"compat"}}"#);
+            .json_body_partial(r#"{"openresponses":{"endpoint":"https://api.openai.com/v1/responses","model":"gpt-5-nano-2025-08-07","stateless_history":true,"parallel_tool_calls":true,"followup_user_message":"compat","reasoning":{"effort":"medium","summary":"concise"}}}"#);
         then.status(202)
             .header("content-type", "application/json")
             .body(r#"{"thread_id":"t1","message_id":"m1","session_id":"abc"}"#);
@@ -516,6 +526,8 @@ async fn run_accepts_openresponses_flags_with_server() {
             stateless_history: true,
             parallel_tool_calls: true,
             followup_user_message: Some("compat".to_string()),
+            reasoning_effort: Some(ReasoningEffortArg::Medium),
+            reasoning_summary: Some(ReasoningSummaryArg::Concise),
             headless: true,
             view: OutputView::Raw,
         }),
@@ -561,6 +573,8 @@ async fn run_allows_model_override_without_provider() {
             stateless_history: false,
             parallel_tool_calls: false,
             followup_user_message: None,
+            reasoning_effort: None,
+            reasoning_summary: None,
             headless: true,
             view: OutputView::Raw,
         }),
@@ -629,6 +643,10 @@ fn cli_parses_openresponses_flags() {
         "--parallel-tool-calls",
         "--followup-user-message",
         "continue",
+        "--reasoning-effort",
+        "high",
+        "--reasoning-summary",
+        "detailed",
     ]);
     assert!(cli.prompt.is_none());
     assert!(cli.server.is_none());
@@ -641,6 +659,8 @@ fn cli_parses_openresponses_flags() {
             stateless_history,
             parallel_tool_calls,
             followup_user_message,
+            reasoning_effort,
+            reasoning_summary,
             ..
         }) => {
             assert_eq!(provider, Some(Provider::Openai));
@@ -648,6 +668,8 @@ fn cli_parses_openresponses_flags() {
             assert!(stateless_history);
             assert!(parallel_tool_calls);
             assert_eq!(followup_user_message.as_deref(), Some("continue"));
+            assert_eq!(reasoning_effort, Some(ReasoningEffortArg::High));
+            assert_eq!(reasoning_summary, Some(ReasoningSummaryArg::Detailed));
         }
         Some(Commands::Serve) => panic!("expected run"),
         Some(Commands::Tasks { .. }) => panic!("expected run"),
@@ -1118,6 +1140,30 @@ fn openresponses_overrides_from_env_reads_vars() {
         });
         assert_eq!(overrides, expected);
     });
+}
+
+#[test]
+fn insert_reasoning_overrides_skips_empty_inputs() {
+    let mut obj = serde_json::Map::new();
+    insert_reasoning_overrides(&mut obj, None, None);
+    assert!(obj.get("reasoning").is_none());
+}
+
+#[test]
+fn insert_reasoning_overrides_builds_nested_reasoning_object() {
+    let mut obj = serde_json::Map::new();
+    insert_reasoning_overrides(
+        &mut obj,
+        Some(ReasoningEffortArg::High),
+        Some(ReasoningSummaryArg::Auto),
+    );
+    assert_eq!(
+        obj.get("reasoning"),
+        Some(&serde_json::json!({
+            "effort": "high",
+            "summary": "auto"
+        }))
+    );
 }
 
 #[test]

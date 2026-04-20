@@ -63,6 +63,8 @@ OpenResponses overrides (`rip run` flags)
 - `--stateless-history` sets per-run `stateless_history=true`.
 - `--parallel-tool-calls` sets per-run `parallel_tool_calls=true` (request-only; execution remains sequential).
 - `--followup-user-message <text>` sets per-run `followup_user_message`.
+- `--reasoning-effort <none|minimal|low|medium|high|xhigh>` sets per-run `reasoning.effort`.
+- `--reasoning-summary <concise|detailed|auto>` sets per-run `reasoning.summary`.
 - Flags work in both local mode and `--server <url>` mode (sent as per-message `openresponses` overrides).
 - Local-only compat: when `RIP_OPENRESPONSES_ENDPOINT` is set in the *client* environment, local runs forward the env OpenResponses settings as per-run overrides (posted to the local authority) so changing `RIP_OPENRESPONSES_MODEL`/flags does not require restarting the authority.
 Examples:

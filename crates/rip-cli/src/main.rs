@@ -55,6 +55,10 @@ enum Commands {
         parallel_tool_calls: bool,
         #[arg(long)]
         followup_user_message: Option<String>,
+        #[arg(long, value_enum)]
+        reasoning_effort: Option<ReasoningEffortArg>,
+        #[arg(long, value_enum)]
+        reasoning_summary: Option<ReasoningSummaryArg>,
         #[arg(
             long,
             default_value_t = true,
@@ -112,6 +116,46 @@ struct OutputState {
 enum Provider {
     Openai,
     Openrouter,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum ReasoningEffortArg {
+    None,
+    Minimal,
+    Low,
+    Medium,
+    High,
+    Xhigh,
+}
+
+impl ReasoningEffortArg {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Minimal => "minimal",
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::Xhigh => "xhigh",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum ReasoningSummaryArg {
+    Concise,
+    Detailed,
+    Auto,
+}
+
+impl ReasoningSummaryArg {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Concise => "concise",
+            Self::Detailed => "detailed",
+            Self::Auto => "auto",
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -242,6 +286,8 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             stateless_history,
             parallel_tool_calls,
             followup_user_message,
+            reasoning_effort,
+            reasoning_summary,
             headless,
             view,
         }) => {
@@ -249,7 +295,9 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                 || model.is_some()
                 || stateless_history
                 || parallel_tool_calls
-                || followup_user_message.is_some();
+                || followup_user_message.is_some()
+                || reasoning_effort.is_some()
+                || reasoning_summary.is_some();
             let openresponses_overrides = if has_openresponses_flags {
                 let mut obj = serde_json::Map::new();
                 if let Some(provider) = provider {
@@ -275,6 +323,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                         obj.insert("followup_user_message".to_string(), Value::String(message));
                     }
                 }
+                insert_reasoning_overrides(&mut obj, reasoning_effort, reasoning_summary);
                 Some(Value::Object(obj))
             } else if server.is_none() {
                 // Local-only compat: allow env changes in the client to be forwarded as per-run
@@ -592,6 +641,29 @@ fn openresponses_overrides_from_env() -> Option<Value> {
     }
 
     Some(Value::Object(obj))
+}
+
+fn insert_reasoning_overrides(
+    obj: &mut serde_json::Map<String, Value>,
+    reasoning_effort: Option<ReasoningEffortArg>,
+    reasoning_summary: Option<ReasoningSummaryArg>,
+) {
+    let mut reasoning = serde_json::Map::new();
+    if let Some(value) = reasoning_effort {
+        reasoning.insert(
+            "effort".to_string(),
+            Value::String(value.as_str().to_string()),
+        );
+    }
+    if let Some(value) = reasoning_summary {
+        reasoning.insert(
+            "summary".to_string(),
+            Value::String(value.as_str().to_string()),
+        );
+    }
+    if !reasoning.is_empty() {
+        obj.insert("reasoning".to_string(), Value::Object(reasoning));
+    }
 }
 
 fn parse_env_bool(key: &str) -> Option<bool> {
