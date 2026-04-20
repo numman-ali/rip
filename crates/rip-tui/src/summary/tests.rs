@@ -278,6 +278,23 @@ fn event_summary_formats_provider_event_statuses() {
 }
 
 #[test]
+fn event_summary_uses_provider_payload_type_when_event_name_is_missing() {
+    let event = make_event(EventKind::ProviderEvent {
+        provider: "openresponses".to_string(),
+        status: ProviderEventStatus::Event,
+        event_name: None,
+        data: Some(serde_json::json!({
+            "type": "response.reasoning.delta",
+            "delta": "step"
+        })),
+        raw: None,
+        errors: vec![],
+        response_errors: vec![],
+    });
+    assert_eq!(event_summary(&event), "response.reasoning.delta");
+}
+
+#[test]
 fn event_summary_truncates_long_values() {
     let long = "a".repeat(70);
     let event = make_event(EventKind::SessionStarted { input: long });

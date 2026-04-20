@@ -259,6 +259,65 @@ fn provider_reasoning_events_append_to_agent_turn_without_error_notice() {
 }
 
 #[test]
+fn provider_reasoning_events_use_payload_type_when_event_name_is_missing() {
+    let mut canvas = CanvasModel::new();
+    canvas.ingest(&event(
+        0,
+        100,
+        EventKind::SessionStarted {
+            input: "think".to_string(),
+        },
+    ));
+    canvas.ingest(&event(
+        1,
+        110,
+        EventKind::ProviderEvent {
+            provider: "openresponses".to_string(),
+            status: ProviderEventStatus::Event,
+            event_name: None,
+            data: Some(json!({
+                "type": "response.reasoning_text.delta",
+                "delta": "step one"
+            })),
+            raw: None,
+            errors: Vec::new(),
+            response_errors: Vec::new(),
+        },
+    ));
+    canvas.ingest(&event(
+        2,
+        120,
+        EventKind::ProviderEvent {
+            provider: "openresponses".to_string(),
+            status: ProviderEventStatus::Event,
+            event_name: None,
+            data: Some(json!({
+                "type": "response.reasoning_text.done",
+                "text": "step one in full"
+            })),
+            raw: None,
+            errors: Vec::new(),
+            response_errors: Vec::new(),
+        },
+    ));
+
+    let agent = canvas
+        .messages
+        .iter()
+        .find_map(|message| match message {
+            CanvasMessage::AgentTurn {
+                reasoning_text,
+                reasoning_summary,
+                ..
+            } => Some((reasoning_text, reasoning_summary)),
+            _ => None,
+        })
+        .expect("agent turn");
+    assert_eq!(agent.0, "step one in full");
+    assert_eq!(agent.1, "");
+}
+
+#[test]
 fn continuity_jobs_spawn_as_running_then_resolve() {
     let mut canvas = CanvasModel::new();
     canvas.ingest(&event(

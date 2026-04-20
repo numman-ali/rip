@@ -2,6 +2,7 @@ pub mod canvas;
 mod frame_store;
 mod overlay;
 pub mod palette;
+mod provider_event;
 mod render;
 mod state;
 mod summary;

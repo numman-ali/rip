@@ -1,5 +1,7 @@
 use rip_kernel::{Event, EventKind, ProviderEventStatus};
 
+use crate::provider_event;
+
 pub fn event_type(event: &Event) -> &'static str {
     match &event.kind {
         EventKind::SessionStarted { .. } => "session_started",
@@ -220,6 +222,7 @@ pub fn event_summary(event: &Event) -> String {
         EventKind::ProviderEvent {
             status,
             event_name,
+            data,
             errors,
             response_errors,
             ..
@@ -233,7 +236,9 @@ pub fn event_summary(event: &Event) -> String {
             } else {
                 match status {
                     ProviderEventStatus::Event => {
-                        event_name.as_deref().unwrap_or("event").to_string()
+                        provider_event::event_type(event_name.as_deref(), data.as_ref())
+                            .unwrap_or("event")
+                            .to_string()
                     }
                     ProviderEventStatus::Done => "done".to_string(),
                     ProviderEventStatus::InvalidJson => "invalid_json".to_string(),

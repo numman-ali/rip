@@ -32,6 +32,7 @@ use serde_json::Value;
 #[cfg(test)]
 use super::model::*;
 use super::CanvasModel;
+use crate::provider_event;
 
 pub(super) fn apply(canvas: &mut CanvasModel, event: &Event) {
     match &event.kind {
@@ -218,12 +219,12 @@ fn ingest_reasoning_event(
     event_name: Option<&str>,
     data: Option<&Value>,
 ) -> bool {
-    let Some(event_name) = event_name else {
+    let Some(event_type) = provider_event::event_type(event_name, data) else {
         return false;
     };
     let payload = data.and_then(Value::as_object);
-    match event_name {
-        "response.reasoning.delta" => {
+    match event_type {
+        "response.reasoning.delta" | "response.reasoning_text.delta" => {
             if let Some(delta) = payload
                 .and_then(|value| value.get("delta"))
                 .and_then(Value::as_str)
@@ -232,7 +233,7 @@ fn ingest_reasoning_event(
                 return true;
             }
         }
-        "response.reasoning.done" => {
+        "response.reasoning.done" | "response.reasoning_text.done" => {
             let text = payload
                 .and_then(|value| value.get("text"))
                 .and_then(Value::as_str);
