@@ -61,6 +61,14 @@ enum SseUiMode {
     Attach,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TickMotionSignature {
+    IdleBreath(u8),
+    Thinking(u8),
+    StreamingPulse(bool),
+    Stalled,
+}
+
 async fn run_fullscreen_tui_sse(
     client: &Client,
     server: String,
@@ -108,14 +116,20 @@ async fn run_fullscreen_tui_sse(
     }
 
     let mut term_events = EventStream::new();
-    let mut tick = tokio::time::interval(Duration::from_millis(33));
+    // The old 33ms unconditional tick forced a full repaint ~30x/sec
+    // even when the only thing changing was a slow breath/thinking
+    // glyph. Keep a lightweight cadence, but only redraw when the
+    // visible animation phase actually changed.
+    let mut tick = tokio::time::interval(Duration::from_millis(125));
     let mut dirty = true;
+    let mut last_tick_signature = None;
     let (status_tx, mut status_rx) = mpsc::channel::<String>(16);
 
     loop {
-        state.set_now_ms(current_time_ms());
         if dirty {
+            state.set_now_ms(current_time_ms());
             terminal.draw(|f| render(f, &state, mode, &input))?;
+            last_tick_signature = tick_motion_signature(&state, &input);
             dirty = false;
         }
 
@@ -126,7 +140,12 @@ async fn run_fullscreen_tui_sse(
 
         tokio::select! {
             _ = tick.tick() => {
-                dirty = true;
+                state.set_now_ms(current_time_ms());
+                let signature = tick_motion_signature(&state, &input);
+                if signature != last_tick_signature {
+                    dirty = true;
+                    last_tick_signature = signature;
+                }
             }
             maybe_status = status_rx.recv() => {
                 if let Some(message) = maybe_status {
@@ -462,6 +481,74 @@ fn current_time_ms() -> u64 {
         .unwrap_or_default()
         .as_millis()
         .min(u128::from(u64::MAX)) as u64
+}
+
+fn tick_motion_signature(
+    state: &TuiState,
+    input: &TextArea<'static>,
+) -> Option<TickMotionSignature> {
+    let now_ms = state.now_ms.unwrap_or(0);
+
+    if primary_turn_is_thinking(state) {
+        return Some(TickMotionSignature::Thinking(((now_ms / 400) % 4) as u8));
+    }
+
+    if primary_turn_is_streaming(state) {
+        let hot = state
+            .last_event_ms
+            .is_some_and(|last_ms| now_ms.saturating_sub(last_ms) < 350);
+        return Some(TickMotionSignature::StreamingPulse(hot));
+    }
+
+    if state.is_stalled(5_000) {
+        return Some(TickMotionSignature::Stalled);
+    }
+
+    if input_is_fully_idle(state, input) {
+        let phase = if (800..1600).contains(&(now_ms % 2400)) {
+            1
+        } else {
+            0
+        };
+        return Some(TickMotionSignature::IdleBreath(phase));
+    }
+
+    None
+}
+
+fn input_is_fully_idle(state: &TuiState, input: &TextArea<'static>) -> bool {
+    matches!(state.overlay(), rip_tui::Overlay::None)
+        && !state.awaiting_response
+        && state.pending_prompt.is_none()
+        && buffer_is_effectively_empty(input)
+}
+
+fn primary_turn_is_thinking(state: &TuiState) -> bool {
+    state.canvas.messages.iter().rev().any(|message| {
+        matches!(
+            message,
+            rip_tui::CanvasMessage::AgentTurn {
+                role: rip_tui::AgentRole::Primary,
+                streaming: true,
+                blocks,
+                streaming_tail,
+                ..
+            } if blocks.is_empty() && streaming_tail.is_empty()
+        )
+    })
+}
+
+fn primary_turn_is_streaming(state: &TuiState) -> bool {
+    state.canvas.messages.iter().rev().any(|message| {
+        matches!(
+            message,
+            rip_tui::CanvasMessage::AgentTurn {
+                role: rip_tui::AgentRole::Primary,
+                streaming: true,
+                ..
+            }
+        )
+    })
 }
 
 pub async fn run_fullscreen_tui_remote(

@@ -106,6 +106,7 @@ fn render_block_into(
             let source = cached_source(text);
             let highlighted = super::super::syntax::highlight_fence(
                 &source,
+                text.source_hash,
                 lang.as_deref(),
                 ctx.theme_id,
                 ctx.styles,

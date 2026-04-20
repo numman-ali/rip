@@ -7,12 +7,13 @@ use crossterm::terminal::size as terminal_size;
 use httpmock::Method::GET;
 use httpmock::MockServer;
 use rip_kernel::{EventKind, ProviderEventStatus};
+use rip_tui::canvas::StreamCollector;
 use rip_tui::palette::modes::models::{
     default_endpoint_for_provider, infer_provider_id_from_endpoint, parse_model_route,
     push_route_from_string, upsert_model_route,
 };
 use rip_tui::{canvas_hit_message_id, hero_click_target, HeroClickTarget};
-use rip_tui::{ModelRoute, ModelsMode, PaletteSource};
+use rip_tui::{AgentRole, Block, CachedText, CanvasMessage, ModelRoute, ModelsMode, PaletteSource};
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 use tokio::time::timeout;
@@ -55,6 +56,25 @@ fn seed_state() -> TuiState {
     state
 }
 
+fn push_streaming_primary_turn(state: &mut TuiState, blocks: Vec<Block>, streaming_tail: &str) {
+    state.canvas.messages.push(CanvasMessage::AgentTurn {
+        message_id: "m-stream".to_string(),
+        run_session_id: "s1".to_string(),
+        agent_id: None,
+        role: AgentRole::Primary,
+        actor_id: "agent".to_string(),
+        model: None,
+        reasoning_text: String::new(),
+        reasoning_summary: String::new(),
+        blocks,
+        streaming_tail: streaming_tail.to_string(),
+        streaming_collector: StreamCollector::new(),
+        streaming: true,
+        started_at_ms: 0,
+        ended_at_ms: None,
+    });
+}
+
 #[test]
 fn parse_theme_accepts_known_values() {
     assert_eq!(
@@ -66,6 +86,67 @@ fn parse_theme_accepts_known_values() {
         Some(rip_tui::ThemeId::DefaultLight)
     );
     assert!(parse_theme("nope").is_err());
+}
+
+#[test]
+fn tick_motion_signature_tracks_idle_breath_phase_changes() {
+    let mut state = TuiState::new(100);
+    let input = TextArea::default();
+
+    state.set_now_ms(0);
+    assert_eq!(
+        tick_motion_signature(&state, &input),
+        Some(TickMotionSignature::IdleBreath(0))
+    );
+
+    state.set_now_ms(1_200);
+    assert_eq!(
+        tick_motion_signature(&state, &input),
+        Some(TickMotionSignature::IdleBreath(1))
+    );
+}
+
+#[test]
+fn tick_motion_signature_tracks_primary_thinking_frames() {
+    let mut state = TuiState::new(100);
+    let input = TextArea::default();
+    push_streaming_primary_turn(&mut state, Vec::new(), "");
+
+    state.set_now_ms(0);
+    assert_eq!(
+        tick_motion_signature(&state, &input),
+        Some(TickMotionSignature::Thinking(0))
+    );
+
+    state.set_now_ms(400);
+    assert_eq!(
+        tick_motion_signature(&state, &input),
+        Some(TickMotionSignature::Thinking(1))
+    );
+}
+
+#[test]
+fn tick_motion_signature_only_keeps_streaming_pulse_hot_briefly() {
+    let mut state = TuiState::new(100);
+    let input = TextArea::default();
+    push_streaming_primary_turn(
+        &mut state,
+        vec![Block::Paragraph(CachedText::plain("done"))],
+        "",
+    );
+    state.last_event_ms = Some(1_000);
+
+    state.set_now_ms(1_200);
+    assert_eq!(
+        tick_motion_signature(&state, &input),
+        Some(TickMotionSignature::StreamingPulse(true))
+    );
+
+    state.set_now_ms(1_400);
+    assert_eq!(
+        tick_motion_signature(&state, &input),
+        Some(TickMotionSignature::StreamingPulse(false))
+    );
 }
 
 #[test]
