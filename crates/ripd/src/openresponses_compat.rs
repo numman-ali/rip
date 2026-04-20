@@ -1,6 +1,9 @@
 use rip_provider_openresponses::ValidationOptions;
+use serde::Serialize;
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
 pub enum CompatLevel {
     Native,
     Compat,
@@ -8,21 +11,22 @@ pub enum CompatLevel {
     Unknown,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
 pub enum ConversationStrategy {
     PreviousResponseId,
     StatelessHistory,
     ConfigDriven,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
 pub struct ConversationSupport {
     pub previous_response_id: CompatLevel,
     pub stateless_history: CompatLevel,
     pub recommended: ConversationStrategy,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
 pub struct ModelCapabilityHealth {
     pub reasoning_parameter: CompatLevel,
     pub tool_calling: CompatLevel,
@@ -30,7 +34,7 @@ pub struct ModelCapabilityHealth {
     pub input_modalities: ModalityCapabilityHealth,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
 pub struct RequestCapabilityHealth {
     pub background: CompatLevel,
     pub store: CompatLevel,
@@ -39,7 +43,7 @@ pub struct RequestCapabilityHealth {
     pub reasoning_parameter: CompatLevel,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
 pub struct ToolCapabilityHealth {
     pub function_calling: CompatLevel,
     pub tool_choice: CompatLevel,
@@ -49,7 +53,7 @@ pub struct ToolCapabilityHealth {
     pub mcp_headers: CompatLevel,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
 pub struct ModalityCapabilityHealth {
     pub input_text: CompatLevel,
     pub input_image: CompatLevel,
@@ -57,7 +61,7 @@ pub struct ModalityCapabilityHealth {
     pub input_video: CompatLevel,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
 pub struct OpenResponsesProviderCompatProfile {
     pub version: &'static str,
     pub provider_id: &'static str,
@@ -70,7 +74,7 @@ pub struct OpenResponsesProviderCompatProfile {
     pub validation: ValidationProfile,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
 pub struct OpenResponsesModelCompatProfile {
     pub version: &'static str,
     pub provider_id: &'static str,
@@ -87,15 +91,28 @@ pub struct ResolvedOpenResponsesCompatProfile {
 
 impl ResolvedOpenResponsesCompatProfile {
     pub fn validation_options(self, stateless_history: bool) -> ValidationOptions {
-        let mut validation = self.provider.validation.to_validation_options();
+        self.effective_validation(stateless_history)
+            .to_validation_options()
+    }
+
+    pub fn effective_validation(self, stateless_history: bool) -> ValidationProfile {
+        let mut validation = self.provider.validation;
         if stateless_history {
-            validation = validation.with_missing_item_ids();
+            validation.missing_item_ids = true;
         }
         validation
     }
+
+    pub fn active_conversation_strategy(self, stateless_history: bool) -> ConversationStrategy {
+        if stateless_history {
+            ConversationStrategy::StatelessHistory
+        } else {
+            ConversationStrategy::PreviousResponseId
+        }
+    }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
 pub struct ValidationProfile {
     pub missing_item_ids: bool,
     pub missing_response_user: bool,
@@ -256,19 +273,35 @@ const OPENROUTER_MODEL_PROFILES: &[OpenResponsesModelCompatProfile] =
     &[OPENROUTER_NEMOTRON_3_NANO_30B_A3B_FREE];
 
 pub fn resolve_openresponses_compat_profile(
+    provider_id: Option<&str>,
     endpoint: &str,
     model: Option<&str>,
 ) -> ResolvedOpenResponsesCompatProfile {
-    let provider = if crate::provider_openresponses::is_openrouter_responses_endpoint(endpoint) {
-        &OPENROUTER_PROVIDER_PROFILE
-    } else if is_openai_responses_endpoint(endpoint) {
-        &OPENAI_PROVIDER_PROFILE
-    } else {
-        &GENERIC_PROVIDER_PROFILE
-    };
+    let provider = provider_id
+        .and_then(resolve_provider_profile_by_id)
+        .unwrap_or_else(|| {
+            if crate::provider_openresponses::is_openrouter_responses_endpoint(endpoint) {
+                &OPENROUTER_PROVIDER_PROFILE
+            } else if is_openai_responses_endpoint(endpoint) {
+                &OPENAI_PROVIDER_PROFILE
+            } else {
+                &GENERIC_PROVIDER_PROFILE
+            }
+        });
 
     let model = model.and_then(|model| resolve_model_profile(provider.provider_id, model));
     ResolvedOpenResponsesCompatProfile { provider, model }
+}
+
+fn resolve_provider_profile_by_id(
+    provider_id: &str,
+) -> Option<&'static OpenResponsesProviderCompatProfile> {
+    match provider_id.trim() {
+        "openai" => Some(&OPENAI_PROVIDER_PROFILE),
+        "openrouter" => Some(&OPENROUTER_PROVIDER_PROFILE),
+        "generic" => Some(&GENERIC_PROVIDER_PROFILE),
+        _ => None,
+    }
 }
 
 fn resolve_model_profile(

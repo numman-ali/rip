@@ -1,4 +1,5 @@
 use super::*;
+use crate::provider_openresponses::DEFAULT_OPENROUTER_MODEL;
 use crate::CompactionCheckpointCumulativeV1Request;
 use rip_provider_openresponses::ToolChoiceParam;
 use tempfile::tempdir;
@@ -632,6 +633,7 @@ async fn stream_openresponses_request_rejects_invalid_payload() {
     let (sender, _) = broadcast::channel(8);
     let sink = EventSink::new(&sender, &buffer, &log);
     let config = OpenResponsesConfig {
+        provider_id: None,
         endpoint: "http://example.test/v1/responses".to_string(),
         api_key: None,
         model: None,
@@ -674,7 +676,28 @@ async fn stream_openresponses_request_rejects_invalid_payload() {
 #[test]
 fn validation_options_for_stream_uses_openrouter_compat_profile() {
     let config = OpenResponsesConfig {
+        provider_id: None,
         endpoint: "https://openrouter.ai/api/v1/responses".to_string(),
+        api_key: None,
+        model: Some("nvidia/nemotron-3-nano-30b-a3b:free".to_string()),
+        headers: Vec::new(),
+        tool_choice: ToolChoiceParam::auto(),
+        followup_user_message: None,
+        stateless_history: false,
+        parallel_tool_calls: false,
+    };
+
+    assert_eq!(
+        super::openresponses::validation_options_for_stream(&config),
+        ValidationOptions::compat_openrouter()
+    );
+}
+
+#[test]
+fn validation_options_for_stream_prefers_provider_id_over_endpoint_heuristic() {
+    let config = OpenResponsesConfig {
+        provider_id: Some("openrouter".to_string()),
+        endpoint: "http://127.0.0.1:4010/v1/responses".to_string(),
         api_key: None,
         model: Some("nvidia/nemotron-3-nano-30b-a3b:free".to_string()),
         headers: Vec::new(),
@@ -693,6 +716,7 @@ fn validation_options_for_stream_uses_openrouter_compat_profile() {
 #[test]
 fn validation_options_for_stream_adds_missing_item_ids_for_stateless_history() {
     let config = OpenResponsesConfig {
+        provider_id: None,
         endpoint: "https://api.openai.com/v1/responses".to_string(),
         api_key: None,
         model: Some("gpt-5".to_string()),
@@ -839,6 +863,7 @@ async fn stream_openresponses_request_reports_transport_error() {
     let (sender, _) = broadcast::channel(8);
     let sink = EventSink::new(&sender, &buffer, &log);
     let config = OpenResponsesConfig {
+        provider_id: None,
         endpoint: "http://127.0.0.1:0/v1/responses".to_string(),
         api_key: None,
         model: Some("fixture-model".to_string()),
@@ -905,6 +930,7 @@ async fn stream_openresponses_request_reports_http_error() {
     let (sender, _) = broadcast::channel(8);
     let sink = EventSink::new(&sender, &buffer, &log);
     let config = OpenResponsesConfig {
+        provider_id: None,
         endpoint: format!("http://{addr}/v1/responses"),
         api_key: None,
         model: Some("fixture-model".to_string()),
@@ -955,6 +981,162 @@ async fn stream_openresponses_request_reports_http_error() {
         }
         _ => panic!("expected provider_event"),
     }
+}
+
+#[tokio::test]
+async fn stream_openresponses_request_sends_auth_headers_and_request_controls() {
+    use axum::extract::{Json, State};
+    use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
+    use axum::routing::post;
+    use axum::{response::IntoResponse, Router as AxumRouter};
+    use serde_json::Value;
+    use std::sync::{Arc, Mutex as StdMutex};
+    use tokio::net::TcpListener;
+
+    #[derive(Clone, Default)]
+    struct ProviderCapture {
+        auth: Arc<StdMutex<Option<String>>>,
+        content_type: Arc<StdMutex<Option<String>>>,
+        referer: Arc<StdMutex<Option<String>>>,
+        extra: Arc<StdMutex<Option<String>>>,
+        body: Arc<StdMutex<Option<Value>>>,
+    }
+
+    let capture = ProviderCapture::default();
+    let provider_app = AxumRouter::new()
+        .route(
+            "/v1/responses",
+            post(
+                |State(capture): State<ProviderCapture>,
+                 headers: axum::http::HeaderMap,
+                 Json(body): Json<Value>| async move {
+                    *capture.auth.lock().expect("auth") = headers
+                        .get(AUTHORIZATION)
+                        .and_then(|value| value.to_str().ok())
+                        .map(|value| value.to_string());
+                    *capture.content_type.lock().expect("content_type") = headers
+                        .get(CONTENT_TYPE)
+                        .and_then(|value| value.to_str().ok())
+                        .map(|value| value.to_string());
+                    *capture.referer.lock().expect("referer") = headers
+                        .get("http-referer")
+                        .and_then(|value| value.to_str().ok())
+                        .map(|value| value.to_string());
+                    *capture.extra.lock().expect("extra") = headers
+                        .get("x-rip-test")
+                        .and_then(|value| value.to_str().ok())
+                        .map(|value| value.to_string());
+                    *capture.body.lock().expect("body") = Some(body);
+
+                    let sse =
+                        "data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n\
+data: [DONE]\n\n";
+                    ([(CONTENT_TYPE, "text/event-stream")], sse).into_response()
+                },
+            ),
+        )
+        .with_state(capture.clone());
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    tokio::spawn(async move {
+        axum::serve(listener, provider_app).await.expect("serve");
+    });
+
+    let dir = tempdir().expect("tmp");
+    let log = EventLog::new(dir.path().join("events.jsonl")).expect("log");
+    let buffer = Arc::new(Mutex::new(Vec::new()));
+    let (sender, _) = broadcast::channel(8);
+    let sink = EventSink::new(&sender, &buffer, &log);
+    let config = OpenResponsesConfig {
+        provider_id: Some("openrouter".to_string()),
+        endpoint: format!("http://{addr}/v1/responses"),
+        api_key: Some("sk-test-openrouter".to_string()),
+        model: None,
+        headers: vec![
+            ("HTTP-Referer".to_string(), "https://rip.test".to_string()),
+            ("X-RIP-Test".to_string(), "alpha".to_string()),
+        ],
+        tool_choice: ToolChoiceParam::required(),
+        followup_user_message: None,
+        stateless_history: false,
+        parallel_tool_calls: true,
+    };
+    let payload = build_streaming_request(&config, "hi");
+    assert!(payload.errors().is_empty());
+
+    let mut seq = 0;
+    let mut collector = ToolCallCollector::default();
+    let http = reqwest::Client::new();
+    let result = stream_openresponses_request(OpenResponsesStreamRequest {
+        http: &http,
+        config: &config,
+        workspace_root: dir.path(),
+        session_id: "s1",
+        payload,
+        request_index: 0,
+        request_kind: "test",
+        seq: &mut seq,
+        sink,
+        collector: &mut collector,
+    })
+    .await;
+    assert_eq!(result, Ok(()));
+
+    assert_eq!(
+        capture.auth.lock().expect("auth").clone().as_deref(),
+        Some("Bearer sk-test-openrouter")
+    );
+    let content_type = capture
+        .content_type
+        .lock()
+        .expect("content_type")
+        .clone()
+        .unwrap_or_default();
+    assert!(
+        content_type.starts_with("application/json"),
+        "unexpected content-type: {content_type}"
+    );
+    assert_eq!(
+        capture.referer.lock().expect("referer").clone().as_deref(),
+        Some("https://rip.test")
+    );
+    assert_eq!(
+        capture.extra.lock().expect("extra").clone().as_deref(),
+        Some("alpha")
+    );
+
+    let body = capture
+        .body
+        .lock()
+        .expect("body")
+        .clone()
+        .expect("captured body");
+    assert_eq!(
+        body.get("model").and_then(|value| value.as_str()),
+        Some(DEFAULT_OPENROUTER_MODEL)
+    );
+    assert_eq!(
+        body.get("stream").and_then(|value| value.as_bool()),
+        Some(true)
+    );
+    assert_eq!(
+        body.get("parallel_tool_calls")
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
+    assert_eq!(
+        body.get("max_tool_calls").and_then(|value| value.as_u64()),
+        Some(DEFAULT_MAX_TOOL_CALLS)
+    );
+    assert_eq!(
+        body.get("tool_choice").and_then(|value| value.as_str()),
+        Some("required")
+    );
+    assert!(body
+        .get("tools")
+        .and_then(|value| value.as_array())
+        .is_some());
 }
 
 #[tokio::test]
@@ -1024,6 +1206,7 @@ data: [DONE]\n\n";
     .expect("continuities");
 
     let config = OpenResponsesConfig {
+        provider_id: None,
         endpoint: format!("http://{addr}/v1/responses"),
         api_key: None,
         model: Some("fixture-model".to_string()),
@@ -1145,6 +1328,7 @@ data: [DONE]\n\n";
     .expect("continuities");
 
     let config = OpenResponsesConfig {
+        provider_id: None,
         endpoint: format!("http://{addr}/v1/responses"),
         api_key: None,
         model: Some("fixture-model".to_string()),
@@ -1255,6 +1439,7 @@ data: [DONE]\n\n";
     .expect("continuities");
 
     let config = OpenResponsesConfig {
+        provider_id: None,
         endpoint: format!("http://{addr}/v1/responses"),
         api_key: None,
         model: Some("fixture-model".to_string()),
@@ -1394,6 +1579,7 @@ data: [DONE]\n\n";
     }));
     assert!(tool_choice.errors().is_empty());
     let config = OpenResponsesConfig {
+        provider_id: None,
         endpoint: format!("http://{addr}/v1/responses"),
         api_key: None,
         model: Some("fixture-model".to_string()),
@@ -1521,6 +1707,7 @@ data: [DONE]\n\n";
     .expect("continuities");
 
     let config = OpenResponsesConfig {
+        provider_id: None,
         endpoint: format!("http://{addr}/v1/responses"),
         api_key: None,
         model: Some("fixture-model".to_string()),
@@ -1678,6 +1865,7 @@ async fn run_session_ends_when_context_compile_fails_before_provider_loop() {
         workspace_lock,
         http_client: reqwest::Client::new(),
         openresponses: Some(OpenResponsesConfig {
+            provider_id: None,
             endpoint: "http://127.0.0.1:9/v1/responses".to_string(),
             api_key: None,
             model: Some("fixture-model".to_string()),

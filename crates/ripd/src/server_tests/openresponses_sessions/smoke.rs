@@ -94,6 +94,114 @@ async fn prompt_uses_openresponses_provider_when_configured() {
 }
 
 #[tokio::test]
+async fn prompt_uses_openrouter_profile_for_loopback_provider_when_provider_id_is_set() {
+    use axum::http::header::CONTENT_TYPE;
+    use axum::routing::post;
+    use axum::{response::IntoResponse, Router as AxumRouter};
+    use tokio::net::TcpListener;
+
+    let sse = "event: response.created\n\
+data: {\"type\":\"response.created\",\"sequence_number\":1,\"response\":{\"background\":false,\"completed_at\":null,\"created_at\":1776635696,\"error\":null,\"frequency_penalty\":0,\"id\":\"resp_1\",\"incomplete_details\":null,\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":32,\"metadata\":{},\"model\":\"nvidia/nemotron-3-nano-30b-a3b:free\",\"object\":\"response\",\"output\":[],\"parallel_tool_calls\":false,\"presence_penalty\":0,\"previous_response_id\":null,\"prompt_cache_key\":null,\"reasoning\":null,\"safety_identifier\":null,\"service_tier\":\"auto\",\"status\":\"in_progress\",\"store\":false,\"temperature\":1,\"text\":{\"format\":{\"type\":\"text\"}},\"tool_choice\":\"auto\",\"tools\":[],\"top_logprobs\":0,\"top_p\":1,\"truncation\":\"disabled\",\"usage\":null}}\n\n\
+event: response.reasoning_text.delta\n\
+data: {\"type\":\"response.reasoning_text.delta\",\"sequence_number\":2,\"item_id\":\"rs_tmp_1\",\"output_index\":0,\"content_index\":0,\"delta\":\"We\"}\n\n\
+event: response.output_text.delta\n\
+data: {\"type\":\"response.output_text.delta\",\"sequence_number\":3,\"item_id\":\"msg_1\",\"output_index\":1,\"content_index\":0,\"delta\":\"Hello! 👋\",\"logprobs\":[]}\n\n\
+event: response.completed\n\
+data: {\"type\":\"response.completed\",\"sequence_number\":4,\"response\":{\"background\":false,\"completed_at\":1776635696,\"created_at\":1776635696,\"error\":null,\"frequency_penalty\":0,\"id\":\"resp_1\",\"incomplete_details\":null,\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":32,\"metadata\":{},\"model\":\"nvidia/nemotron-3-nano-30b-a3b:free\",\"object\":\"response\",\"output\":[],\"parallel_tool_calls\":false,\"presence_penalty\":0,\"previous_response_id\":null,\"prompt_cache_key\":null,\"reasoning\":null,\"safety_identifier\":null,\"service_tier\":\"auto\",\"status\":\"completed\",\"store\":false,\"temperature\":1,\"text\":{\"format\":{\"type\":\"text\"}},\"tool_choice\":\"auto\",\"tools\":[],\"top_logprobs\":0,\"top_p\":1,\"truncation\":\"disabled\",\"usage\":null}}\n\n"
+        .to_string();
+    let provider_app = AxumRouter::new().route(
+        "/v1/responses",
+        post(move || {
+            let body = sse.clone();
+            async move { ([(CONTENT_TYPE, "text/event-stream")], body).into_response() }
+        }),
+    );
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    tokio::spawn(async move {
+        axum::serve(listener, provider_app).await.expect("serve");
+    });
+    let endpoint = format!("http://{addr}/v1/responses");
+
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app_with_openresponses_provider_profile(
+        &dir,
+        Some("openrouter"),
+        endpoint,
+        false,
+    );
+    let session_id = create_session_id(&app).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/sessions/{session_id}/events"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let mut reader = TestSseReader::new(response.into_body());
+
+    let send_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/sessions/{session_id}/input"))
+                .header("content-type", "application/json")
+                .body(Body::from("{\"input\":\"hi\"}"))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(send_response.status(), axum::http::StatusCode::ACCEPTED);
+
+    let mut saw_output_delta = false;
+    let mut saw_session_ended = false;
+    let mut provider_error_count = 0usize;
+
+    timeout(Duration::from_secs(2), async {
+        while let Some(message) = reader.next_data_message().await {
+            if let Some(value) = extract_data_json(&message) {
+                match value.get("type").and_then(|value| value.as_str()) {
+                    Some("provider_event") => {
+                        let has_errors = value
+                            .get("errors")
+                            .and_then(|value| value.as_array())
+                            .map(|errors| !errors.is_empty())
+                            .unwrap_or(false);
+                        let has_response_errors = value
+                            .get("response_errors")
+                            .and_then(|value| value.as_array())
+                            .map(|errors| !errors.is_empty())
+                            .unwrap_or(false);
+                        if has_errors || has_response_errors {
+                            provider_error_count += 1;
+                        }
+                    }
+                    Some("output_text_delta") => saw_output_delta = true,
+                    Some("session_ended") => {
+                        saw_session_ended = true;
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        }
+    })
+    .await
+    .expect("timeout");
+
+    assert_eq!(provider_error_count, 0, "unexpected provider errors");
+    assert!(saw_output_delta, "expected output_text_delta");
+    assert!(saw_session_ended, "expected session_ended");
+}
+
+#[tokio::test]
 #[ignore]
 async fn live_openresponses_smoke() {
     let endpoint = match std::env::var("RIP_OPENRESPONSES_ENDPOINT") {
@@ -135,6 +243,7 @@ async fn live_openresponses_smoke() {
         data_dir,
         workspace_dir,
         Some(OpenResponsesConfig {
+            provider_id: None,
             endpoint,
             api_key,
             model,

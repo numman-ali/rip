@@ -509,6 +509,10 @@ pub(super) async fn stream_openresponses_request<'a>(
 }
 
 pub(super) fn validation_options_for_stream(config: &OpenResponsesConfig) -> ValidationOptions {
-    resolve_openresponses_compat_profile(&config.endpoint, config.model.as_deref())
-        .validation_options(config.stateless_history)
+    resolve_openresponses_compat_profile(
+        config.provider_id.as_deref(),
+        &config.endpoint,
+        config.model.as_deref(),
+    )
+    .validation_options(config.stateless_history)
 }

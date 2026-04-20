@@ -75,6 +75,214 @@ async fn config_doctor_serves_resolved_configuration() {
             .and_then(|value| value.as_str()),
         Some("gpt-5-mini")
     );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("compat"))
+            .and_then(|value| value.get("provider"))
+            .and_then(|value| value.get("provider_id"))
+            .and_then(|value| value.as_str()),
+        Some("openai")
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("compat"))
+            .and_then(|value| value.get("active_conversation_strategy"))
+            .and_then(|value| value.as_str()),
+        Some("previous_response_id")
+    );
+}
+
+#[tokio::test]
+async fn config_doctor_surfaces_openrouter_compat_profile() {
+    let dir = tempdir().expect("tmp");
+    let data_dir = dir.path().join("data");
+    let workspace_dir = dir.path().join("workspace");
+    fs::create_dir_all(&workspace_dir).expect("workspace");
+    fs::write(
+        workspace_dir.join("rip.jsonc"),
+        r#"{
+  "provider": {
+    "openrouter": {
+      "endpoint": "https://openrouter.ai/api/v1/responses",
+      "api_key": { "env": "OPENROUTER_API_KEY" },
+      "openresponses": { "stateless_history": true }
+    }
+  },
+  "roles": {
+    "primary": {
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-nano-30b-a3b:free"
+    }
+  }
+}
+"#,
+    )
+    .expect("config");
+
+    let previous_api_key = std::env::var_os("OPENROUTER_API_KEY");
+    std::env::set_var("OPENROUTER_API_KEY", "sk-test-openrouter");
+
+    let app = build_app_with_workspace_root(data_dir, workspace_dir);
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/config/doctor")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+
+    match previous_api_key {
+        Some(value) => std::env::set_var("OPENROUTER_API_KEY", value),
+        None => std::env::remove_var("OPENROUTER_API_KEY"),
+    }
+
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let payload: serde_json::Value = serde_json::from_slice(&body).expect("json");
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("compat"))
+            .and_then(|value| value.get("provider"))
+            .and_then(|value| value.get("provider_id"))
+            .and_then(|value| value.as_str()),
+        Some("openrouter")
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("compat"))
+            .and_then(|value| value.get("active_conversation_strategy"))
+            .and_then(|value| value.as_str()),
+        Some("stateless_history")
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("compat"))
+            .and_then(|value| value.get("effective_validation"))
+            .and_then(|value| value.get("missing_response_user"))
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("compat"))
+            .and_then(|value| value.get("model"))
+            .and_then(|value| value.get("model_id"))
+            .and_then(|value| value.as_str()),
+        Some("nvidia/nemotron-3-nano-30b-a3b:free")
+    );
+}
+
+#[tokio::test]
+async fn config_doctor_prefers_provider_id_over_noncanonical_endpoint_for_openrouter() {
+    let dir = tempdir().expect("tmp");
+    let data_dir = dir.path().join("data");
+    let workspace_dir = dir.path().join("workspace");
+    fs::create_dir_all(&workspace_dir).expect("workspace");
+    fs::write(
+        workspace_dir.join("rip.jsonc"),
+        r#"{
+  "provider": {
+    "openrouter": {
+      "endpoint": "http://127.0.0.1:4010/v1/responses",
+      "api_key": { "env": "OPENROUTER_API_KEY" },
+      "openresponses": { "stateless_history": true }
+    }
+  },
+  "roles": {
+    "primary": {
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-nano-30b-a3b:free"
+    }
+  }
+}
+"#,
+    )
+    .expect("config");
+
+    let previous_api_key = std::env::var_os("OPENROUTER_API_KEY");
+    std::env::set_var("OPENROUTER_API_KEY", "sk-test-openrouter");
+
+    let app = build_app_with_workspace_root(data_dir, workspace_dir);
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/config/doctor")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+
+    match previous_api_key {
+        Some(value) => std::env::set_var("OPENROUTER_API_KEY", value),
+        None => std::env::remove_var("OPENROUTER_API_KEY"),
+    }
+
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let payload: serde_json::Value = serde_json::from_slice(&body).expect("json");
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("provider_id"))
+            .and_then(|value| value.as_str()),
+        Some("openrouter")
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("endpoint"))
+            .and_then(|value| value.as_str()),
+        Some("http://127.0.0.1:4010/v1/responses")
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("compat"))
+            .and_then(|value| value.get("provider"))
+            .and_then(|value| value.get("provider_id"))
+            .and_then(|value| value.as_str()),
+        Some("openrouter")
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("compat"))
+            .and_then(|value| value.get("active_conversation_strategy"))
+            .and_then(|value| value.as_str()),
+        Some("stateless_history")
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("compat"))
+            .and_then(|value| value.get("effective_validation"))
+            .and_then(|value| value.get("missing_response_user"))
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
 }
 
 #[tokio::test]

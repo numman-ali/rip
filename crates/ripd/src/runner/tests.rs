@@ -184,6 +184,7 @@ data: [DONE]\n\n";
         data_dir.clone(),
         workspace_dir.clone(),
         Some(OpenResponsesConfig {
+            provider_id: None,
             endpoint: format!("http://{addr}/v1/responses"),
             api_key: None,
             model: Some("fixture-model".to_string()),
@@ -410,6 +411,7 @@ data: [DONE]\n\n";
         data_dir.clone(),
         workspace_dir,
         Some(OpenResponsesConfig {
+            provider_id: None,
             endpoint: format!("http://{addr}/v1/responses"),
             api_key: None,
             model: Some("fixture-model".to_string()),
@@ -553,6 +555,7 @@ data: [DONE]\n\n";
         data_dir.clone(),
         workspace_dir.clone(),
         Some(OpenResponsesConfig {
+            provider_id: None,
             endpoint: format!("http://{addr}/v1/responses"),
             api_key: None,
             model: Some("fixture-model".to_string()),

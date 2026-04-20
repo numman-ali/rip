@@ -244,6 +244,37 @@ async fn rip_config_doctor_reports_layered_sources_and_effective_openresponses()
             .and_then(|value| value.as_str()),
         Some("env:RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE")
     );
+    assert_eq!(
+        openresponses
+            .get("compat")
+            .and_then(|value| value.get("active_conversation_strategy"))
+            .and_then(|value| value.as_str()),
+        Some("previous_response_id")
+    );
+    assert_eq!(
+        openresponses
+            .get("compat")
+            .and_then(|value| value.get("effective_validation"))
+            .and_then(|value| value.get("missing_item_ids"))
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    );
+    assert_eq!(
+        openresponses
+            .get("compat")
+            .and_then(|value| value.get("provider"))
+            .and_then(|value| value.get("provider_id"))
+            .and_then(|value| value.as_str()),
+        Some("openai")
+    );
+    assert_eq!(
+        openresponses
+            .get("compat")
+            .and_then(|value| value.get("provider"))
+            .and_then(|value| value.get("stream_shape"))
+            .and_then(|value| value.as_str()),
+        Some("native")
+    );
 
     let headers = openresponses
         .get("headers")

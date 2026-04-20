@@ -3,6 +3,7 @@ use super::*;
 #[test]
 fn resolves_openai_profile_strictly() {
     let resolved = resolve_openresponses_compat_profile(
+        None,
         "https://api.openai.com/v1/responses",
         Some("gpt-5-nano-2025-08-07"),
     );
@@ -30,6 +31,7 @@ fn resolves_openai_profile_strictly() {
 #[test]
 fn resolves_openrouter_profile_with_compat_validation() {
     let resolved = resolve_openresponses_compat_profile(
+        None,
         "https://openrouter.ai/api/v1/responses",
         Some("openai/gpt-oss-20b"),
     );
@@ -60,6 +62,7 @@ fn resolves_openrouter_profile_with_compat_validation() {
 #[test]
 fn stateless_history_adds_missing_item_id_normalization_even_for_strict_profiles() {
     let resolved = resolve_openresponses_compat_profile(
+        None,
         "https://api.openai.com/v1/responses",
         Some("gpt-5-nano-2025-08-07"),
     );
@@ -73,6 +76,7 @@ fn stateless_history_adds_missing_item_id_normalization_even_for_strict_profiles
 #[test]
 fn openrouter_model_overlay_matches_nemotron_free() {
     let resolved = resolve_openresponses_compat_profile(
+        None,
         "https://openrouter.ai/api/v1/responses",
         Some("nvidia/nemotron-3-nano-30b-a3b:free"),
     );
@@ -90,10 +94,33 @@ fn openrouter_model_overlay_matches_nemotron_free() {
 
 #[test]
 fn unknown_endpoint_resolves_generic_profile() {
-    let resolved =
-        resolve_openresponses_compat_profile("https://example.test/v1/responses", Some("foo"));
+    let resolved = resolve_openresponses_compat_profile(
+        None,
+        "https://example.test/v1/responses",
+        Some("foo"),
+    );
 
     assert_eq!(resolved.provider.provider_id, "generic");
     assert_eq!(resolved.provider.validation, ValidationProfile::STRICT);
     assert!(resolved.model.is_none());
+}
+
+#[test]
+fn provider_id_takes_precedence_over_noncanonical_endpoint() {
+    let resolved = resolve_openresponses_compat_profile(
+        Some("openrouter"),
+        "http://127.0.0.1:4010/v1/responses",
+        Some("nvidia/nemotron-3-nano-30b-a3b:free"),
+    );
+
+    assert_eq!(resolved.provider.provider_id, "openrouter");
+    assert_eq!(resolved.provider.validation, ValidationProfile::OPENROUTER);
+    assert_eq!(
+        resolved.provider.conversation.recommended,
+        ConversationStrategy::StatelessHistory
+    );
+    assert_eq!(
+        resolved.model.map(|model| model.model_id),
+        Some("nvidia/nemotron-3-nano-30b-a3b:free")
+    );
 }

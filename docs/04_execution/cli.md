@@ -47,7 +47,7 @@ Thread commands (local or remote)
 - Note: when using `--summary-markdown`, RIP also writes an artifact-backed handoff bundle and records it in `continuity_handoff_created.summary_artifact_id` (`docs/03_contracts/handoff_context_bundle.md`).
 
 Config commands (local or remote)
-- `rip config doctor` (sanitized resolved config summary; no secrets; includes effective route + per-field sources)
+- `rip config doctor` (sanitized resolved config summary; no secrets; includes effective route, per-field sources, and the resolved OpenResponses compatibility profile/model overlay for the active route)
 - Add `--server <url>` after `config` to target a remote server: `rip config --server <url> doctor`
 
 Headless mode (draft)

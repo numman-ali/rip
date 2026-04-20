@@ -1641,6 +1641,15 @@
           }
         }
       },
+      "CompatLevel": {
+        "type": "string",
+        "enum": [
+          "native",
+          "compat",
+          "unsupported",
+          "unknown"
+        ]
+      },
       "ConfigDoctorOpenResponses": {
         "type": "object",
         "required": [
@@ -1655,6 +1664,16 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "compat": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ConfigDoctorOpenResponsesCompat"
+              }
             ]
           },
           "effective_route": {
@@ -1740,6 +1759,35 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "ConfigDoctorOpenResponsesCompat": {
+        "type": "object",
+        "required": [
+          "active_conversation_strategy",
+          "effective_validation",
+          "provider"
+        ],
+        "properties": {
+          "active_conversation_strategy": {
+            "$ref": "#/components/schemas/ConversationStrategy"
+          },
+          "effective_validation": {
+            "$ref": "#/components/schemas/ValidationProfile"
+          },
+          "model": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/OpenResponsesModelCompatProfile"
+              }
+            ]
+          },
+          "provider": {
+            "$ref": "#/components/schemas/OpenResponsesProviderCompatProfile"
           }
         }
       },
@@ -1937,6 +1985,33 @@
           }
         }
       },
+      "ConversationStrategy": {
+        "type": "string",
+        "enum": [
+          "previous_response_id",
+          "stateless_history",
+          "config_driven"
+        ]
+      },
+      "ConversationSupport": {
+        "type": "object",
+        "required": [
+          "previous_response_id",
+          "stateless_history",
+          "recommended"
+        ],
+        "properties": {
+          "previous_response_id": {
+            "$ref": "#/components/schemas/CompatLevel"
+          },
+          "recommended": {
+            "$ref": "#/components/schemas/ConversationStrategy"
+          },
+          "stateless_history": {
+            "$ref": "#/components/schemas/CompatLevel"
+          }
+        }
+      },
       "InputPayload": {
         "type": "object",
         "required": [
@@ -1944,6 +2019,122 @@
         ],
         "properties": {
           "input": {
+            "type": "string"
+          }
+        }
+      },
+      "ModalityCapabilityHealth": {
+        "type": "object",
+        "required": [
+          "input_text",
+          "input_image",
+          "input_file",
+          "input_video"
+        ],
+        "properties": {
+          "input_file": {
+            "$ref": "#/components/schemas/CompatLevel"
+          },
+          "input_image": {
+            "$ref": "#/components/schemas/CompatLevel"
+          },
+          "input_text": {
+            "$ref": "#/components/schemas/CompatLevel"
+          },
+          "input_video": {
+            "$ref": "#/components/schemas/CompatLevel"
+          }
+        }
+      },
+      "ModelCapabilityHealth": {
+        "type": "object",
+        "required": [
+          "reasoning_parameter",
+          "tool_calling",
+          "structured_outputs",
+          "input_modalities"
+        ],
+        "properties": {
+          "input_modalities": {
+            "$ref": "#/components/schemas/ModalityCapabilityHealth"
+          },
+          "reasoning_parameter": {
+            "$ref": "#/components/schemas/CompatLevel"
+          },
+          "structured_outputs": {
+            "$ref": "#/components/schemas/CompatLevel"
+          },
+          "tool_calling": {
+            "$ref": "#/components/schemas/CompatLevel"
+          }
+        }
+      },
+      "OpenResponsesModelCompatProfile": {
+        "type": "object",
+        "required": [
+          "version",
+          "provider_id",
+          "model_id",
+          "label",
+          "health"
+        ],
+        "properties": {
+          "health": {
+            "$ref": "#/components/schemas/ModelCapabilityHealth"
+          },
+          "label": {
+            "type": "string"
+          },
+          "model_id": {
+            "type": "string"
+          },
+          "provider_id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "OpenResponsesProviderCompatProfile": {
+        "type": "object",
+        "required": [
+          "version",
+          "provider_id",
+          "label",
+          "stream_shape",
+          "conversation",
+          "request",
+          "tools",
+          "input_modalities",
+          "validation"
+        ],
+        "properties": {
+          "conversation": {
+            "$ref": "#/components/schemas/ConversationSupport"
+          },
+          "input_modalities": {
+            "$ref": "#/components/schemas/ModalityCapabilityHealth"
+          },
+          "label": {
+            "type": "string"
+          },
+          "provider_id": {
+            "type": "string"
+          },
+          "request": {
+            "$ref": "#/components/schemas/RequestCapabilityHealth"
+          },
+          "stream_shape": {
+            "$ref": "#/components/schemas/CompatLevel"
+          },
+          "tools": {
+            "$ref": "#/components/schemas/ToolCapabilityHealth"
+          },
+          "validation": {
+            "$ref": "#/components/schemas/ValidationProfile"
+          },
+          "version": {
             "type": "string"
           }
         }
@@ -2118,6 +2309,33 @@
           },
           "thread_id": {
             "type": "string"
+          }
+        }
+      },
+      "RequestCapabilityHealth": {
+        "type": "object",
+        "required": [
+          "background",
+          "store",
+          "service_tier",
+          "response_include",
+          "reasoning_parameter"
+        ],
+        "properties": {
+          "background": {
+            "$ref": "#/components/schemas/CompatLevel"
+          },
+          "reasoning_parameter": {
+            "$ref": "#/components/schemas/CompatLevel"
+          },
+          "response_include": {
+            "$ref": "#/components/schemas/CompatLevel"
+          },
+          "service_tier": {
+            "$ref": "#/components/schemas/CompatLevel"
+          },
+          "store": {
+            "$ref": "#/components/schemas/CompatLevel"
           }
         }
       },
@@ -2690,6 +2908,56 @@
           },
           "thread_id": {
             "type": "string"
+          }
+        }
+      },
+      "ToolCapabilityHealth": {
+        "type": "object",
+        "required": [
+          "function_calling",
+          "tool_choice",
+          "allowed_tools",
+          "hosted_tools",
+          "mcp_servers",
+          "mcp_headers"
+        ],
+        "properties": {
+          "allowed_tools": {
+            "$ref": "#/components/schemas/CompatLevel"
+          },
+          "function_calling": {
+            "$ref": "#/components/schemas/CompatLevel"
+          },
+          "hosted_tools": {
+            "$ref": "#/components/schemas/CompatLevel"
+          },
+          "mcp_headers": {
+            "$ref": "#/components/schemas/CompatLevel"
+          },
+          "mcp_servers": {
+            "$ref": "#/components/schemas/CompatLevel"
+          },
+          "tool_choice": {
+            "$ref": "#/components/schemas/CompatLevel"
+          }
+        }
+      },
+      "ValidationProfile": {
+        "type": "object",
+        "required": [
+          "missing_item_ids",
+          "missing_response_user",
+          "reasoning_text_events"
+        ],
+        "properties": {
+          "missing_item_ids": {
+            "type": "boolean"
+          },
+          "missing_response_user": {
+            "type": "boolean"
+          },
+          "reasoning_text_events": {
+            "type": "boolean"
           }
         }
       }

@@ -11,6 +11,10 @@ use tokio::sync::Mutex;
 use utoipa::{OpenApi, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
+use crate::openresponses_compat::{
+    ConversationStrategy, OpenResponsesModelCompatProfile, OpenResponsesProviderCompatProfile,
+    ValidationProfile,
+};
 use crate::provider_openresponses::OpenResponsesConfig;
 use crate::runner::{SessionEngine, SessionHandle};
 use crate::tasks::TaskHandle;
@@ -199,6 +203,17 @@ pub(crate) struct ConfigDoctorOpenResponses {
     pub(crate) followup_user_message: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) followup_user_message_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) compat: Option<ConfigDoctorOpenResponsesCompat>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct ConfigDoctorOpenResponsesCompat {
+    pub(crate) active_conversation_strategy: ConversationStrategy,
+    pub(crate) effective_validation: ValidationProfile,
+    pub(crate) provider: OpenResponsesProviderCompatProfile,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) model: Option<OpenResponsesModelCompatProfile>,
 }
 
 #[derive(OpenApi)]

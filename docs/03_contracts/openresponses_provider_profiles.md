@@ -109,11 +109,13 @@ Profile shape (v1)
 Runtime ownership
 - Code: `crates/ripd/src/openresponses_compat.rs`
 - Runtime use today:
-  - `crates/ripd/src/session/openresponses.rs` resolves the compatibility profile from `{endpoint, model}` and derives validation behavior from that profile plus the explicit `stateless_history` run config.
+  - `crates/ripd/src/session/openresponses.rs` resolves the compatibility profile from `{provider_id, endpoint, model}` and derives validation behavior from that profile plus the explicit `stateless_history` run config.
+  - The resolved `provider_id` is the primary selector when RIP knows it from config/route resolution; endpoint heuristics are only a fallback for generic direct-provider wiring and env-only setups.
+  - `GET /config/doctor` and `rip config doctor` now surface the resolved provider profile, active conversation strategy, effective validation posture, and any curated model overlay for the active route.
 - This slice is intentionally modest in runtime effect:
   - current runtime selection is used for boundary validation behavior first
   - the wider request/tool/modality matrix is now versioned and inspectable, even where the runtime does not act on every field yet
-  - future slices can extend the same profile to drive request defaults, doctor output, model-picker capability chips, and provider health reporting
+  - future slices can extend the same profile to drive request defaults, model-picker capability chips, and provider health reporting
 
 ## Provider profiles (seed set)
 
@@ -221,8 +223,16 @@ Runtime ownership
   - add tests that prove the real payload is accepted without losing raw fidelity
   - document the difference in this matrix
 - Static request headers belong in config, but whether a provider/model route needs or tolerates them should be captured here as compatibility knowledge rather than rediscovered ad hoc.
+- Provider/model capability curation should cover request composition too: custom/static headers, hosted tools, MCP headers, reasoning flags, and multimodal/image/file/video support belong in this matrix even when config remains the place that injects the actual values.
+- Current proof coverage now includes:
+  - OpenAI and OpenRouter route resolution in `config.doctor`
+  - provider-id-over-endpoint selection for noncanonical/loopback OpenRouter endpoints
+  - a loopback OpenRouter session smoke proving an OpenRouter-shaped stream can complete without false provider errors when the OpenRouter profile is explicitly selected
+  - outbound request composition proof for auth + custom headers + tool-choice/max-tool-call controls at the HTTP boundary
 - The next expansion should cover:
   - request-field quirks (`store`, `background`, `service_tier`, `include`, `parallel_tool_calls`)
   - tool/runtime quirks (`tool_choice`, `allowed_tools`, hosted-tool behavior, tool schema strictness, MCP headers)
   - model capability overlays for reasoning, tool calling, structured outputs, and multimodal input
   - operator-facing surfacing in `config.doctor`, the TUI model selector, and SDK diagnostics
+- Known current gap:
+  - reasoning parameters, multimodal/image/file/video request controls, and hosted-tool/MCP request composition are curated in the compatibility matrix but are not yet exposed as first-class operator-configurable request fields in RIP’s runtime/config surface.

@@ -5,6 +5,7 @@ use serde_json::{json, Value};
 
 #[derive(Clone, Debug)]
 pub struct OpenResponsesConfig {
+    pub provider_id: Option<String>,
     pub endpoint: String,
     pub api_key: Option<String>,
     pub model: Option<String>,
@@ -53,6 +54,7 @@ impl OpenResponsesConfig {
             })
             .unwrap_or(false);
         Some(Self {
+            provider_id: None,
             endpoint,
             api_key,
             model,
@@ -126,7 +128,9 @@ fn base_streaming_builder(config: &OpenResponsesConfig) -> CreateResponseBuilder
     if let Some(model) = config.model.as_deref() {
         return builder.model(model.to_string());
     }
-    if is_openrouter_responses_endpoint(&config.endpoint) {
+    if config.provider_id.as_deref() == Some("openrouter")
+        || is_openrouter_responses_endpoint(&config.endpoint)
+    {
         return builder.model(DEFAULT_OPENROUTER_MODEL.to_string());
     }
     builder
@@ -333,6 +337,7 @@ mod tests {
 
     fn config_with_followup(followup_user_message: Option<String>) -> OpenResponsesConfig {
         OpenResponsesConfig {
+            provider_id: None,
             endpoint: "http://example.test/v1/responses".to_string(),
             api_key: None,
             model: None,
@@ -413,6 +418,26 @@ mod tests {
     }
 
     #[test]
+    fn followup_request_includes_previous_response_id_when_present() {
+        let config = config_with_followup(None);
+        let payload = build_streaming_followup_request(
+            &config,
+            Some("resp_prev"),
+            vec![ItemParam::function_call_output(
+                "call_1",
+                Value::String("ok".to_string()),
+            )],
+        );
+        assert_eq!(
+            payload
+                .body()
+                .get("previous_response_id")
+                .and_then(|value| value.as_str()),
+            Some("resp_prev")
+        );
+    }
+
+    #[test]
     fn parse_tool_choice_env_defaults_to_auto() {
         let parsed = parse_tool_choice_env("   ").expect("auto");
         assert_eq!(parsed.value(), ToolChoiceParam::auto().value());
@@ -467,6 +492,7 @@ mod tests {
     #[test]
     fn build_streaming_request_includes_model_and_stream() {
         let config = OpenResponsesConfig {
+            provider_id: None,
             endpoint: "http://example.test/v1/responses".to_string(),
             api_key: None,
             model: Some("gpt-5-nano-2025-08-07".to_string()),
@@ -496,7 +522,28 @@ mod tests {
     #[test]
     fn build_streaming_request_defaults_model_for_openrouter_when_unset() {
         let config = OpenResponsesConfig {
+            provider_id: None,
             endpoint: "https://openrouter.ai/api/v1/responses".to_string(),
+            api_key: None,
+            model: None,
+            headers: Vec::new(),
+            tool_choice: ToolChoiceParam::auto(),
+            followup_user_message: None,
+            stateless_history: false,
+            parallel_tool_calls: false,
+        };
+        let payload = build_streaming_request(&config, "hi");
+        assert_eq!(
+            payload.body().get("model").and_then(|v| v.as_str()),
+            Some(DEFAULT_OPENROUTER_MODEL)
+        );
+    }
+
+    #[test]
+    fn build_streaming_request_defaults_model_for_openrouter_provider_id_when_unset() {
+        let config = OpenResponsesConfig {
+            provider_id: Some("openrouter".to_string()),
+            endpoint: "http://127.0.0.1:4010/v1/responses".to_string(),
             api_key: None,
             model: None,
             headers: Vec::new(),

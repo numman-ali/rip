@@ -42,6 +42,15 @@ fn build_test_app_with_openresponses_provider(
     endpoint: String,
     stateless_history: bool,
 ) -> Router {
+    build_test_app_with_openresponses_provider_profile(dir, None, endpoint, stateless_history)
+}
+
+fn build_test_app_with_openresponses_provider_profile(
+    dir: &tempfile::TempDir,
+    provider_id: Option<&str>,
+    endpoint: String,
+    stateless_history: bool,
+) -> Router {
     let data_dir = dir.path().join("data");
     let workspace_dir = dir.path().join("workspace");
     fs::create_dir_all(&workspace_dir).expect("workspace dir");
@@ -49,6 +58,7 @@ fn build_test_app_with_openresponses_provider(
         data_dir,
         workspace_dir,
         Some(OpenResponsesConfig {
+            provider_id: provider_id.map(str::to_string),
             endpoint,
             api_key: None,
             model: Some("fixture-model".to_string()),

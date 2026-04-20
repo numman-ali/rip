@@ -114,6 +114,7 @@ pub(crate) async fn thread_post_message(
         },
     );
     let openresponses_override = resolved_openresponses.map(|cfg| OpenResponsesConfig {
+        provider_id: cfg.provider_id,
         endpoint: cfg.endpoint,
         api_key: cfg.api_key,
         model: cfg.model,
