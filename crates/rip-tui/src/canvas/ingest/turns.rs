@@ -2,10 +2,8 @@
 //!
 //! Turns the `SessionStarted` / `OutputTextDelta` / `SessionEnded` triple
 //! into `UserTurn` / `AgentTurn` messages. The streaming collector
-//! re-homes here every delta — see `StreamCollector::from_tail` /
-//! `into_tail` — because a single `CanvasMessage` can't own an enum-
-//! variant-scoped collector without significant API churn, and the
-//! rebuild is O(tail) in the worst case.
+//! lives on the `AgentTurn` itself so long code blocks only scan newly
+//! appended lines instead of rebuilding from the whole tail every time.
 
 use rip_kernel::Event;
 
@@ -45,6 +43,7 @@ pub(super) fn on_session_started(canvas: &mut CanvasModel, event: &Event, input:
         reasoning_summary: String::new(),
         blocks: Vec::new(),
         streaming_tail: String::new(),
+        streaming_collector: StreamCollector::new(),
         streaming: true,
         started_at_ms: event.timestamp_ms,
         ended_at_ms: None,
@@ -64,6 +63,7 @@ pub(super) fn append_agent_delta(canvas: &mut CanvasModel, delta: &str) {
             reasoning_summary: _,
             streaming,
             streaming_tail,
+            streaming_collector,
             ..
         } = message
         else {
@@ -72,10 +72,8 @@ pub(super) fn append_agent_delta(canvas: &mut CanvasModel, delta: &str) {
         if !*streaming {
             continue;
         }
-        let mut collector = StreamCollector::from_tail(std::mem::take(streaming_tail));
-        let step = collector.push(delta);
+        let step = streaming_collector.push(streaming_tail, delta);
         blocks.extend(step.new_stable);
-        *streaming_tail = collector.into_tail();
         return;
     }
 }
@@ -161,6 +159,7 @@ pub(super) fn finalize_agent_turn(canvas: &mut CanvasModel, now_ms: u64) {
         let CanvasMessage::AgentTurn {
             streaming,
             streaming_tail,
+            streaming_collector,
             ended_at_ms,
             blocks,
             ..
@@ -171,9 +170,7 @@ pub(super) fn finalize_agent_turn(canvas: &mut CanvasModel, now_ms: u64) {
         if !*streaming {
             continue;
         }
-        let mut collector = StreamCollector::from_tail(std::mem::take(streaming_tail));
-        blocks.extend(collector.finalize());
-        *streaming_tail = String::new();
+        blocks.extend(streaming_collector.finalize(streaming_tail));
         *streaming = false;
         *ended_at_ms = Some(now_ms);
         return;

@@ -9,7 +9,7 @@ use super::*;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui_textarea::TextArea;
 use rip_kernel::ToolTaskExecutionMode;
-use rip_tui::canvas::{Block, CachedText, CanvasMessage};
+use rip_tui::canvas::{Block, CachedText, CanvasMessage, StreamCollector};
 use rip_tui::{AgentRole, RenderMode, TaskCardStatus, ToolCardStatus, TuiState};
 
 fn cached(text: &str) -> CachedText {
@@ -183,6 +183,7 @@ fn last_user_prompt_finds_most_recent_user_turn() {
         reasoning_summary: String::new(),
         blocks: vec![Block::Paragraph(cached("answer"))],
         streaming_tail: String::new(),
+        streaming_collector: StreamCollector::new(),
         streaming: false,
         started_at_ms: 0,
         ended_at_ms: None,

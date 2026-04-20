@@ -8,7 +8,7 @@
 
 use super::*;
 use rip_kernel::ToolTaskExecutionMode;
-use rip_tui::canvas::{AgentRole, NoticeLevel, TaskCardStatus, ToolCardStatus};
+use rip_tui::canvas::{AgentRole, NoticeLevel, StreamCollector, TaskCardStatus, ToolCardStatus};
 use rip_tui::CachedText;
 
 #[test]
@@ -104,6 +104,7 @@ fn copyable_message_text_covers_remaining_canvas_variants() {
         reasoning_summary: String::new(),
         blocks: vec![CanvasBlock::Paragraph(CachedText::plain("final answer"))],
         streaming_tail: "tail".to_string(),
+        streaming_collector: StreamCollector::new(),
         streaming: true,
         started_at_ms: 0,
         ended_at_ms: None,

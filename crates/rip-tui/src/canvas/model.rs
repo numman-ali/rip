@@ -12,6 +12,8 @@ use ratatui::text::{Line, Text};
 use rip_kernel::ToolTaskExecutionMode;
 use serde_json::Value;
 
+use super::stream_collector::StreamCollector;
+
 /// Pre-rendered ratatui `Text` with a hash of its source for cache
 /// invalidation.
 ///
@@ -172,6 +174,10 @@ pub enum CanvasMessage {
         /// `SessionEnded` flushes it into a final `Block::Paragraph`.
         /// Populated only while `streaming == true`.
         streaming_tail: String,
+        /// Incremental markdown scan state for the in-flight tail.
+        /// Keeps streaming code blocks from rescanning the whole tail
+        /// on every delta.
+        streaming_collector: StreamCollector,
         streaming: bool,
         started_at_ms: u64,
         ended_at_ms: Option<u64>,
