@@ -267,20 +267,13 @@ pub(super) fn open_options_palette_with_overrides(
 ) {
     use rip_tui::palette::modes::options::OptionsMode;
     let resolved = resolve_openresponses_runtime_config(overrides);
+    let reasoning = resolve_runtime_reasoning_state(resolved.as_ref(), overrides);
     let mode = OptionsMode {
         current_theme: Some(state.theme.as_str()),
         auto_follow: state.auto_follow,
         reasoning_visible: state.reasoning_visible,
-        reasoning_effort: reasoning_effort_label(current_reasoning_effort(
-            resolved.as_ref(),
-            overrides,
-        ))
-        .to_string(),
-        reasoning_summary: reasoning_summary_label(current_reasoning_summary(
-            resolved.as_ref(),
-            overrides,
-        ))
-        .to_string(),
+        reasoning_effort: reasoning_effort_state_label(&reasoning),
+        reasoning_summary: reasoning_summary_state_label(&reasoning),
         vim_input_mode: state.vim_input_mode,
         mouse_capture: true,
         activity_rail_pinned: state.activity_pinned,
@@ -442,24 +435,34 @@ pub(super) fn apply_command_action_with_overrides(
         }
         A::CycleReasoningEffort => {
             let resolved = resolve_openresponses_runtime_config(overrides.as_ref());
-            let current = current_reasoning_effort(resolved.as_ref(), overrides.as_ref());
-            let next = next_reasoning_effort(current);
+            let reasoning = resolve_runtime_reasoning_state(resolved.as_ref(), overrides.as_ref());
+            let current = reasoning.effective.as_ref().and_then(|cfg| cfg.effort);
+            let next = next_reasoning_effort(current, &reasoning.support.supported_efforts);
             set_reasoning_effort_override(overrides, next);
             sync_preferred_openresponses_state(state, overrides.as_ref(), catalog);
             state.set_status_message(format!(
-                "next reasoning effort: {}",
-                reasoning_effort_label(next)
+                "next reasoning effort: {}{}",
+                reasoning_effort_label(next),
+                reasoning_support_suffix(
+                    reasoning.support.effort,
+                    &reasoning.support.supported_efforts,
+                )
             ));
         }
         A::CycleReasoningSummary => {
             let resolved = resolve_openresponses_runtime_config(overrides.as_ref());
-            let current = current_reasoning_summary(resolved.as_ref(), overrides.as_ref());
-            let next = next_reasoning_summary(current);
+            let reasoning = resolve_runtime_reasoning_state(resolved.as_ref(), overrides.as_ref());
+            let current = reasoning.effective.as_ref().and_then(|cfg| cfg.summary);
+            let next = next_reasoning_summary(current, &reasoning.support.supported_summaries);
             set_reasoning_summary_override(overrides, next);
             sync_preferred_openresponses_state(state, overrides.as_ref(), catalog);
             state.set_status_message(format!(
-                "next reasoning summary: {}",
-                reasoning_summary_label(next)
+                "next reasoning summary: {}{}",
+                reasoning_summary_label(next),
+                reasoning_summary_support_suffix(
+                    reasoning.support.summary,
+                    &reasoning.support.supported_summaries,
+                )
             ));
         }
         A::ToggleVimInputMode => {
@@ -525,6 +528,7 @@ pub(super) fn sync_preferred_openresponses_state(
     catalog: &ModelsMode,
 ) {
     let resolved = resolve_openresponses_runtime_config(openresponses_overrides);
+    let reasoning = resolve_runtime_reasoning_state(resolved.as_ref(), openresponses_overrides);
     let endpoint = resolved
         .as_ref()
         .map(|cfg| cfg.endpoint.clone())
@@ -535,45 +539,97 @@ pub(super) fn sync_preferred_openresponses_state(
         .or_else(|| catalog.current_model.clone());
     state.set_preferred_openresponses_target(endpoint, model);
     state.set_preferred_openresponses_reasoning(
-        current_reasoning_effort(resolved.as_ref(), openresponses_overrides)
+        reasoning
+            .effective
+            .as_ref()
+            .and_then(|cfg| cfg.effort)
             .map(|value| reasoning_effort_label(Some(value)).to_string()),
-        current_reasoning_summary(resolved.as_ref(), openresponses_overrides)
+        reasoning
+            .effective
+            .as_ref()
+            .and_then(|cfg| cfg.summary)
             .map(|value| reasoning_summary_label(Some(value)).to_string()),
     );
 }
 
-fn current_reasoning_effort(
+fn resolve_runtime_reasoning_state(
     resolved: Option<&ripd::OpenResponsesResolvedConfig>,
     overrides: Option<&Value>,
-) -> Option<ripd::ReasoningEffort> {
-    resolved
-        .and_then(|cfg| {
-            cfg.reasoning
-                .as_ref()
-                .and_then(|reasoning| reasoning.effort)
-        })
-        .or_else(|| {
-            openresponses_override_input_from_json(overrides)
-                .reasoning
-                .and_then(|reasoning| reasoning.effort)
-        })
+) -> ripd::ResolvedOpenResponsesReasoning {
+    if let Some(cfg) = resolved {
+        return ripd::resolve_openresponses_compat_profile(
+            cfg.provider_id.as_deref(),
+            &cfg.endpoint,
+            cfg.model.as_deref(),
+        )
+        .reasoning(cfg.reasoning.as_ref());
+    }
+
+    let overrides = openresponses_override_input_from_json(overrides);
+    ripd::resolve_openresponses_compat_profile(
+        None,
+        overrides.endpoint.as_deref().unwrap_or(""),
+        overrides.model.as_deref(),
+    )
+    .reasoning(overrides.reasoning.as_ref())
 }
 
-fn current_reasoning_summary(
-    resolved: Option<&ripd::OpenResponsesResolvedConfig>,
-    overrides: Option<&Value>,
-) -> Option<ripd::ReasoningSummary> {
-    resolved
-        .and_then(|cfg| {
-            cfg.reasoning
-                .as_ref()
-                .and_then(|reasoning| reasoning.summary)
-        })
-        .or_else(|| {
-            openresponses_override_input_from_json(overrides)
-                .reasoning
-                .and_then(|reasoning| reasoning.summary)
-        })
+fn reasoning_effort_state_label(reasoning: &ripd::ResolvedOpenResponsesReasoning) -> String {
+    reasoning_state_label(
+        reasoning
+            .effective
+            .as_ref()
+            .and_then(|cfg| cfg.effort)
+            .map(|value| reasoning_effort_label(Some(value)).to_string())
+            .unwrap_or_else(|| "inherit".to_string()),
+        reasoning
+            .requested
+            .as_ref()
+            .and_then(|cfg| cfg.effort)
+            .map(|value| reasoning_effort_label(Some(value)).to_string()),
+        reasoning.support.effort,
+        format_reasoning_efforts(&reasoning.support.supported_efforts),
+    )
+}
+
+fn reasoning_summary_state_label(reasoning: &ripd::ResolvedOpenResponsesReasoning) -> String {
+    reasoning_state_label(
+        reasoning
+            .effective
+            .as_ref()
+            .and_then(|cfg| cfg.summary)
+            .map(|value| reasoning_summary_label(Some(value)).to_string())
+            .unwrap_or_else(|| "inherit".to_string()),
+        reasoning
+            .requested
+            .as_ref()
+            .and_then(|cfg| cfg.summary)
+            .map(|value| reasoning_summary_label(Some(value)).to_string()),
+        reasoning.support.summary,
+        format_reasoning_summaries(&reasoning.support.supported_summaries),
+    )
+}
+
+fn reasoning_state_label(
+    effective: String,
+    requested: Option<String>,
+    support_level: ripd::CompatLevel,
+    supported_values: Option<String>,
+) -> String {
+    let mut parts = vec![effective];
+    if requested
+        .as_deref()
+        .filter(|requested| *requested != parts[0].as_str())
+        .is_some()
+    {
+        parts.push(format!("requested: {}", requested.unwrap()));
+    }
+    if let Some(values) = supported_values {
+        parts.push(format!("route: {values}"));
+    } else if support_level == ripd::CompatLevel::Unknown {
+        parts.push("route: unverified".to_string());
+    }
+    parts.join(" • ")
 }
 
 fn reasoning_effort_label(value: Option<ripd::ReasoningEffort>) -> &'static str {
@@ -597,35 +653,51 @@ fn reasoning_summary_label(value: Option<ripd::ReasoningSummary>) -> &'static st
     }
 }
 
-fn next_reasoning_effort(current: Option<ripd::ReasoningEffort>) -> Option<ripd::ReasoningEffort> {
+fn next_reasoning_effort(
+    current: Option<ripd::ReasoningEffort>,
+    supported: &[ripd::ReasoningEffort],
+) -> Option<ripd::ReasoningEffort> {
     use ripd::ReasoningEffort as Effort;
 
-    const ORDER: [Option<Effort>; 7] = [
-        None,
-        Some(Effort::Minimal),
-        Some(Effort::Low),
-        Some(Effort::Medium),
-        Some(Effort::High),
-        Some(Effort::Xhigh),
-        Some(Effort::None),
-    ];
+    let order = if supported.is_empty() {
+        vec![
+            None,
+            Some(Effort::Minimal),
+            Some(Effort::Low),
+            Some(Effort::Medium),
+            Some(Effort::High),
+            Some(Effort::Xhigh),
+            Some(Effort::None),
+        ]
+    } else {
+        std::iter::once(None)
+            .chain(supported.iter().copied().map(Some))
+            .collect()
+    };
 
-    cycle_optional_enum(&ORDER, current)
+    cycle_optional_enum(&order, current)
 }
 
 fn next_reasoning_summary(
     current: Option<ripd::ReasoningSummary>,
+    supported: &[ripd::ReasoningSummary],
 ) -> Option<ripd::ReasoningSummary> {
     use ripd::ReasoningSummary as Summary;
 
-    const ORDER: [Option<Summary>; 4] = [
-        None,
-        Some(Summary::Auto),
-        Some(Summary::Concise),
-        Some(Summary::Detailed),
-    ];
+    let order = if supported.is_empty() {
+        vec![
+            None,
+            Some(Summary::Auto),
+            Some(Summary::Concise),
+            Some(Summary::Detailed),
+        ]
+    } else {
+        std::iter::once(None)
+            .chain(supported.iter().copied().map(Some))
+            .collect()
+    };
 
-    cycle_optional_enum(&ORDER, current)
+    cycle_optional_enum(&order, current)
 }
 
 fn cycle_optional_enum<T: Copy + PartialEq>(order: &[Option<T>], current: Option<T>) -> Option<T> {
@@ -650,6 +722,54 @@ fn set_reasoning_summary_override(
 ) {
     let value = next.map(|value| Value::String(reasoning_summary_label(Some(value)).to_string()));
     set_reasoning_override_field(overrides, "summary", value);
+}
+
+fn reasoning_support_suffix(
+    level: ripd::CompatLevel,
+    supported: &[ripd::ReasoningEffort],
+) -> String {
+    match format_reasoning_efforts(supported) {
+        Some(values) => format!(" (route: {values})"),
+        None if level == ripd::CompatLevel::Unknown => " (route support unverified)".to_string(),
+        _ => String::new(),
+    }
+}
+
+fn reasoning_summary_support_suffix(
+    level: ripd::CompatLevel,
+    supported: &[ripd::ReasoningSummary],
+) -> String {
+    match format_reasoning_summaries(supported) {
+        Some(values) => format!(" (route: {values})"),
+        None if level == ripd::CompatLevel::Unknown => " (route support unverified)".to_string(),
+        _ => String::new(),
+    }
+}
+
+fn format_reasoning_efforts(values: &[ripd::ReasoningEffort]) -> Option<String> {
+    if values.is_empty() {
+        return None;
+    }
+    Some(
+        values
+            .iter()
+            .map(|value| reasoning_effort_label(Some(*value)))
+            .collect::<Vec<_>>()
+            .join("/"),
+    )
+}
+
+fn format_reasoning_summaries(values: &[ripd::ReasoningSummary]) -> Option<String> {
+    if values.is_empty() {
+        return None;
+    }
+    Some(
+        values
+            .iter()
+            .map(|value| reasoning_summary_label(Some(*value)))
+            .collect::<Vec<_>>()
+            .join("/"),
+    )
 }
 
 fn set_reasoning_override_field(

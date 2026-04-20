@@ -111,8 +111,8 @@ Runtime ownership
 - Runtime use today:
   - `crates/ripd/src/session/openresponses.rs` resolves the compatibility profile from `{provider_id, endpoint, model}` and derives validation behavior from that profile plus the explicit `stateless_history` run config.
   - The resolved `provider_id` is the primary selector when RIP knows it from config/route resolution; endpoint heuristics are only a fallback for generic direct-provider wiring and env-only setups.
-  - `GET /config/doctor` and `rip config doctor` now surface the resolved provider profile, active conversation strategy, effective validation posture, and any curated model overlay for the active route.
-  - `crates/ripd/src/provider_openresponses.rs` now consumes the typed reasoning config surface (`reasoning.effort`, `reasoning.summary`) and emits the corresponding OpenResponses `reasoning` request object at the provider boundary.
+  - `GET /config/doctor` and `rip config doctor` now surface the resolved provider profile, active conversation strategy, effective validation posture, any curated model overlay for the active route, and a route-specific reasoning support object with requested vs effective values plus downgrade/unverified warnings.
+  - `crates/ripd/src/provider_openresponses.rs` now consumes the typed reasoning config surface (`reasoning.effort`, `reasoning.summary`) through the compatibility layer, so the emitted OpenResponses `reasoning` request object is the effective route-safe value rather than the raw requested value.
 - This slice is intentionally modest in runtime effect:
   - current runtime selection is used for boundary validation behavior first
   - the wider request/tool/modality matrix is now versioned and inspectable, even where the runtime does not act on every field yet
@@ -215,6 +215,42 @@ Runtime ownership
 - Notes:
   - Current OpenRouter model page advertises reasoning support for this model.
   - RIP still treats stream-shape quirks as provider-boundary concerns until model-specific differences are observed and curated.
+
+### `openrouter / google/gemma-4-26b-a4b-it`
+- Reasoning parameter: `native`
+- Tool calling: `unknown`
+- Structured outputs: `unknown`
+- Input modalities:
+  - `input_text`: `native`
+  - `input_image`: `unknown`
+  - `input_file`: `unknown`
+  - `input_video`: `unknown`
+- Notes:
+  - This is the current default OpenRouter reasoning route in the local operator config.
+  - RIP has live proof that detailed reasoning summaries render on this route in the fullscreen TUI; the provider stream still arrives through the OpenRouter `reasoning_text` compat event family, so summary visibility is tracked as `compat` at the boundary rather than a UI special case.
+
+## Route-specific reasoning support (v0.1)
+
+- The global typed request grammar is still broader than any single provider/model route.
+- RIP therefore treats reasoning in three layers:
+  - request grammar: what the OpenResponses/OpenAI-style surface can express
+  - compatibility support: what a resolved provider/model route is known to accept
+  - effective request: what RIP will actually send after applying route support/degradation rules
+- Current curated route rules:
+  - OpenAI `gpt-5.4-mini` / `gpt-5.4-nano`
+    - `reasoning.effort`: `none|low|medium|high|xhigh`
+    - `reasoning.summary`: `auto|concise|detailed`
+  - OpenRouter generic Responses Beta
+    - `reasoning.effort`: `minimal|low|medium|high`
+    - `reasoning.summary`: unverified unless a curated model overlay says otherwise
+  - OpenRouter `google/gemma-4-26b-a4b-it`
+    - `reasoning.summary`: `compat` with current live proof for `auto|concise|detailed`
+- Happy-path handling:
+  - when a requested value is in the curated route set, RIP forwards it unchanged
+  - when the route is uncurated for a field, RIP forwards it but marks the field `unknown` / unverified
+- Unhappy-path handling:
+  - when a requested value is outside a curated supported set, RIP omits that field from the actual request and records a downgrade warning in `config.doctor`
+  - this keeps the OpenResponses spec canonical while preventing known-bad provider/model values from leaking through as avoidable downstream errors
 
 ## Immediate implications
 

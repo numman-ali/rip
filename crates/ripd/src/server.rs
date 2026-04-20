@@ -13,7 +13,7 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::openresponses_compat::{
     ConversationStrategy, OpenResponsesModelCompatProfile, OpenResponsesProviderCompatProfile,
-    ValidationProfile,
+    ResolvedOpenResponsesReasoning, ValidationProfile,
 };
 use crate::provider_openresponses::{OpenResponsesConfig, OpenResponsesReasoningConfig};
 use crate::runner::{SessionEngine, SessionHandle};
@@ -222,6 +222,7 @@ pub(crate) struct ConfigDoctorOpenResponsesCompat {
     pub(crate) provider: OpenResponsesProviderCompatProfile,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) model: Option<OpenResponsesModelCompatProfile>,
+    pub(crate) reasoning: ResolvedOpenResponsesReasoning,
 }
 
 #[derive(OpenApi)]

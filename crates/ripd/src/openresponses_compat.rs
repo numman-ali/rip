@@ -1,3 +1,6 @@
+use crate::provider_openresponses::{
+    OpenResponsesReasoningConfig, ReasoningEffort, ReasoningSummary,
+};
 use rip_provider_openresponses::ValidationOptions;
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -89,6 +92,26 @@ pub struct ResolvedOpenResponsesCompatProfile {
     pub model: Option<&'static OpenResponsesModelCompatProfile>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct OpenResponsesReasoningSupport {
+    pub parameter: CompatLevel,
+    pub effort: CompatLevel,
+    pub summary: CompatLevel,
+    pub supported_efforts: Vec<ReasoningEffort>,
+    pub supported_summaries: Vec<ReasoningSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct ResolvedOpenResponsesReasoning {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested: Option<OpenResponsesReasoningConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effective: Option<OpenResponsesReasoningConfig>,
+    pub support: OpenResponsesReasoningSupport,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+}
+
 impl ResolvedOpenResponsesCompatProfile {
     pub fn validation_options(self, stateless_history: bool) -> ValidationOptions {
         self.effective_validation(stateless_history)
@@ -110,6 +133,97 @@ impl ResolvedOpenResponsesCompatProfile {
             ConversationStrategy::PreviousResponseId
         }
     }
+
+    pub fn reasoning(
+        self,
+        requested: Option<&OpenResponsesReasoningConfig>,
+    ) -> ResolvedOpenResponsesReasoning {
+        let support = self.reasoning_support();
+        let requested = requested
+            .cloned()
+            .and_then(OpenResponsesReasoningConfig::normalized);
+        let mut effective = requested.clone().unwrap_or_default();
+        let mut warnings = Vec::new();
+
+        if support.parameter == CompatLevel::Unsupported {
+            if requested.is_some() {
+                warnings.push(format!(
+                    "{} does not support the OpenResponses reasoning parameter; omitting reasoning.",
+                    route_label(self)
+                ));
+            }
+            return ResolvedOpenResponsesReasoning {
+                requested,
+                effective: None,
+                support,
+                warnings,
+            };
+        }
+
+        if let Some(effort) = effective.effort {
+            if !support.supported_efforts.is_empty() && !support.supported_efforts.contains(&effort)
+            {
+                warnings.push(format!(
+                    "reasoning.effort={} is not supported on {}; omitting effort.",
+                    reasoning_effort_label(effort),
+                    route_label(self)
+                ));
+                effective.effort = None;
+            } else if support.effort == CompatLevel::Unknown {
+                warnings.push(format!(
+                    "reasoning.effort={} is unverified on {}; forwarding as requested.",
+                    reasoning_effort_label(effort),
+                    route_label(self)
+                ));
+            }
+        }
+
+        if let Some(summary) = effective.summary {
+            if !support.supported_summaries.is_empty()
+                && !support.supported_summaries.contains(&summary)
+            {
+                warnings.push(format!(
+                    "reasoning.summary={} is not supported on {}; omitting summary.",
+                    reasoning_summary_label(summary),
+                    route_label(self)
+                ));
+                effective.summary = None;
+            } else if support.summary == CompatLevel::Unknown {
+                warnings.push(format!(
+                    "reasoning.summary={} is unverified on {}; forwarding as requested.",
+                    reasoning_summary_label(summary),
+                    route_label(self)
+                ));
+            }
+        }
+
+        ResolvedOpenResponsesReasoning {
+            requested,
+            effective: effective.normalized(),
+            support,
+            warnings,
+        }
+    }
+
+    pub fn reasoning_support(self) -> OpenResponsesReasoningSupport {
+        let rule = reasoning_support_rule(self);
+        OpenResponsesReasoningSupport {
+            parameter: rule.parameter,
+            effort: rule.effort,
+            summary: rule.summary,
+            supported_efforts: rule.supported_efforts.to_vec(),
+            supported_summaries: rule.supported_summaries.to_vec(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ReasoningSupportRule {
+    parameter: CompatLevel,
+    effort: CompatLevel,
+    summary: CompatLevel,
+    supported_efforts: &'static [ReasoningEffort],
+    supported_summaries: &'static [ReasoningSummary],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
@@ -148,6 +262,27 @@ impl ValidationProfile {
 }
 
 pub const OPENRESPONSES_COMPAT_PROFILE_VERSION: &str = "2026-04-19.v1";
+
+const OPENAI_REASONING_SUMMARIES: &[ReasoningSummary] = &[
+    ReasoningSummary::Auto,
+    ReasoningSummary::Concise,
+    ReasoningSummary::Detailed,
+];
+
+const OPENAI_GPT_54_REASONING_EFFORTS: &[ReasoningEffort] = &[
+    ReasoningEffort::None,
+    ReasoningEffort::Low,
+    ReasoningEffort::Medium,
+    ReasoningEffort::High,
+    ReasoningEffort::Xhigh,
+];
+
+const OPENROUTER_REASONING_EFFORTS: &[ReasoningEffort] = &[
+    ReasoningEffort::Minimal,
+    ReasoningEffort::Low,
+    ReasoningEffort::Medium,
+    ReasoningEffort::High,
+];
 
 const UNKNOWN_REQUEST_CAPABILITIES: RequestCapabilityHealth = RequestCapabilityHealth {
     background: CompatLevel::Unknown,
@@ -269,8 +404,96 @@ const OPENROUTER_NEMOTRON_3_NANO_30B_A3B_FREE: OpenResponsesModelCompatProfile =
         },
     };
 
-const OPENROUTER_MODEL_PROFILES: &[OpenResponsesModelCompatProfile] =
-    &[OPENROUTER_NEMOTRON_3_NANO_30B_A3B_FREE];
+const OPENROUTER_GEMMA_4_26B_A4B_IT: OpenResponsesModelCompatProfile =
+    OpenResponsesModelCompatProfile {
+        version: OPENRESPONSES_COMPAT_PROFILE_VERSION,
+        provider_id: "openrouter",
+        model_id: "google/gemma-4-26b-a4b-it",
+        label: "Google Gemma 4 26B A4B IT",
+        health: ModelCapabilityHealth {
+            reasoning_parameter: CompatLevel::Native,
+            tool_calling: CompatLevel::Unknown,
+            structured_outputs: CompatLevel::Unknown,
+            input_modalities: TEXT_ONLY_MODALITIES,
+        },
+    };
+
+const OPENROUTER_NEMOTRON_3_SUPER_120B_A12B_FREE: OpenResponsesModelCompatProfile =
+    OpenResponsesModelCompatProfile {
+        version: OPENRESPONSES_COMPAT_PROFILE_VERSION,
+        provider_id: "openrouter",
+        model_id: "nvidia/nemotron-3-super-120b-a12b:free",
+        label: "NVIDIA Nemotron 3 Super 120B A12B (free)",
+        health: ModelCapabilityHealth {
+            reasoning_parameter: CompatLevel::Native,
+            tool_calling: CompatLevel::Unknown,
+            structured_outputs: CompatLevel::Unknown,
+            input_modalities: TEXT_ONLY_MODALITIES,
+        },
+    };
+
+const OPENAI_GPT_5_4_NANO: OpenResponsesModelCompatProfile = OpenResponsesModelCompatProfile {
+    version: OPENRESPONSES_COMPAT_PROFILE_VERSION,
+    provider_id: "openai",
+    model_id: "gpt-5.4-nano",
+    label: "GPT-5.4 nano",
+    health: ModelCapabilityHealth {
+        reasoning_parameter: CompatLevel::Native,
+        tool_calling: CompatLevel::Native,
+        structured_outputs: CompatLevel::Native,
+        input_modalities: ModalityCapabilityHealth {
+            input_text: CompatLevel::Native,
+            input_image: CompatLevel::Native,
+            input_file: CompatLevel::Native,
+            input_video: CompatLevel::Unsupported,
+        },
+    },
+};
+
+const OPENAI_GPT_5_4_MINI: OpenResponsesModelCompatProfile = OpenResponsesModelCompatProfile {
+    version: OPENRESPONSES_COMPAT_PROFILE_VERSION,
+    provider_id: "openai",
+    model_id: "gpt-5.4-mini",
+    label: "GPT-5.4 mini",
+    health: ModelCapabilityHealth {
+        reasoning_parameter: CompatLevel::Native,
+        tool_calling: CompatLevel::Native,
+        structured_outputs: CompatLevel::Native,
+        input_modalities: ModalityCapabilityHealth {
+            input_text: CompatLevel::Native,
+            input_image: CompatLevel::Native,
+            input_file: CompatLevel::Native,
+            input_video: CompatLevel::Unsupported,
+        },
+    },
+};
+
+const OPENAI_GPT_5_NANO: OpenResponsesModelCompatProfile = OpenResponsesModelCompatProfile {
+    version: OPENRESPONSES_COMPAT_PROFILE_VERSION,
+    provider_id: "openai",
+    model_id: "gpt-5-nano",
+    label: "GPT-5 nano",
+    health: ModelCapabilityHealth {
+        reasoning_parameter: CompatLevel::Native,
+        tool_calling: CompatLevel::Native,
+        structured_outputs: CompatLevel::Native,
+        input_modalities: ModalityCapabilityHealth {
+            input_text: CompatLevel::Native,
+            input_image: CompatLevel::Native,
+            input_file: CompatLevel::Native,
+            input_video: CompatLevel::Unsupported,
+        },
+    },
+};
+
+const OPENAI_MODEL_PROFILES: &[OpenResponsesModelCompatProfile] =
+    &[OPENAI_GPT_5_4_NANO, OPENAI_GPT_5_4_MINI, OPENAI_GPT_5_NANO];
+
+const OPENROUTER_MODEL_PROFILES: &[OpenResponsesModelCompatProfile] = &[
+    OPENROUTER_NEMOTRON_3_NANO_30B_A3B_FREE,
+    OPENROUTER_GEMMA_4_26B_A4B_IT,
+    OPENROUTER_NEMOTRON_3_SUPER_120B_A12B_FREE,
+];
 
 pub fn resolve_openresponses_compat_profile(
     provider_id: Option<&str>,
@@ -309,10 +532,90 @@ fn resolve_model_profile(
     model: &str,
 ) -> Option<&'static OpenResponsesModelCompatProfile> {
     match provider_id {
+        "openai" => OPENAI_MODEL_PROFILES
+            .iter()
+            .find(|profile| profile.model_id == model),
         "openrouter" => OPENROUTER_MODEL_PROFILES
             .iter()
             .find(|profile| profile.model_id == model),
         _ => None,
+    }
+}
+
+fn reasoning_support_rule(resolved: ResolvedOpenResponsesCompatProfile) -> ReasoningSupportRule {
+    let provider_parameter = resolved
+        .model
+        .map(|model| model.health.reasoning_parameter)
+        .unwrap_or(resolved.provider.request.reasoning_parameter);
+
+    match (
+        resolved.provider.provider_id,
+        resolved.model.map(|model| model.model_id),
+    ) {
+        ("openai", Some("gpt-5.4-nano" | "gpt-5.4-mini")) => ReasoningSupportRule {
+            parameter: provider_parameter,
+            effort: CompatLevel::Native,
+            summary: CompatLevel::Native,
+            supported_efforts: OPENAI_GPT_54_REASONING_EFFORTS,
+            supported_summaries: OPENAI_REASONING_SUMMARIES,
+        },
+        ("openrouter", Some("google/gemma-4-26b-a4b-it")) => ReasoningSupportRule {
+            parameter: provider_parameter,
+            effort: CompatLevel::Native,
+            summary: CompatLevel::Compat,
+            supported_efforts: OPENROUTER_REASONING_EFFORTS,
+            supported_summaries: OPENAI_REASONING_SUMMARIES,
+        },
+        ("openrouter", _) => ReasoningSupportRule {
+            parameter: provider_parameter,
+            effort: CompatLevel::Native,
+            summary: CompatLevel::Unknown,
+            supported_efforts: OPENROUTER_REASONING_EFFORTS,
+            supported_summaries: &[],
+        },
+        ("openai", _) => ReasoningSupportRule {
+            parameter: provider_parameter,
+            effort: CompatLevel::Unknown,
+            summary: CompatLevel::Unknown,
+            supported_efforts: &[],
+            supported_summaries: &[],
+        },
+        _ => ReasoningSupportRule {
+            parameter: provider_parameter,
+            effort: CompatLevel::Unknown,
+            summary: CompatLevel::Unknown,
+            supported_efforts: &[],
+            supported_summaries: &[],
+        },
+    }
+}
+
+fn reasoning_effort_label(value: ReasoningEffort) -> &'static str {
+    match value {
+        ReasoningEffort::None => "none",
+        ReasoningEffort::Minimal => "minimal",
+        ReasoningEffort::Low => "low",
+        ReasoningEffort::Medium => "medium",
+        ReasoningEffort::High => "high",
+        ReasoningEffort::Xhigh => "xhigh",
+    }
+}
+
+fn reasoning_summary_label(value: ReasoningSummary) -> &'static str {
+    match value {
+        ReasoningSummary::Auto => "auto",
+        ReasoningSummary::Concise => "concise",
+        ReasoningSummary::Detailed => "detailed",
+    }
+}
+
+fn route_label(resolved: ResolvedOpenResponsesCompatProfile) -> String {
+    match (
+        resolved.provider.provider_id,
+        resolved.model.map(|model| model.model_id),
+    ) {
+        (provider_id, Some(model_id)) => format!("{provider_id}/{model_id}"),
+        (provider_id, None) => provider_id.to_string(),
     }
 }
 

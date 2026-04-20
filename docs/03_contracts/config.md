@@ -98,4 +98,9 @@ Diagnostics
   - effective validation normalizations
   - any curated model overlay attached to the resolved route
 - Doctor also surfaces the resolved `reasoning` object and per-field provenance, so operators can see both what RIP is asking for and what the compatibility matrix says that route supports.
+- Doctor now separates requested vs effective reasoning for the resolved route:
+  - `openresponses.reasoning`: the layered request preference RIP resolved from config/env/per-run overrides
+  - `openresponses.compat.reasoning.effective`: the sanitized reasoning object RIP will actually send after applying route support/degradation rules
+  - `openresponses.compat.reasoning.support`: known effort/summary support for the route plus curated value subsets when proven
+  - `openresponses.compat.reasoning.warnings`: explicit downgrade / unverified-forwarding notes for unhappy-path debugging
 - Compatibility resolution prefers the resolved `provider_id` from route/config selection and falls back to endpoint heuristics only when RIP has no canonical provider id for the route. This keeps custom proxies and loopback/provider-fixture endpoints aligned with the intended provider profile.

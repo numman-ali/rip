@@ -306,6 +306,24 @@ async fn rip_config_doctor_reports_layered_sources_and_effective_openresponses()
             .and_then(|value| value.as_str()),
         Some("native")
     );
+    assert_eq!(
+        openresponses
+            .get("compat")
+            .and_then(|value| value.get("reasoning"))
+            .and_then(|value| value.get("effective"))
+            .and_then(|value| value.get("effort"))
+            .and_then(|value| value.as_str()),
+        Some("high")
+    );
+    assert_eq!(
+        openresponses
+            .get("compat")
+            .and_then(|value| value.get("reasoning"))
+            .and_then(|value| value.get("support"))
+            .and_then(|value| value.get("effort"))
+            .and_then(|value| value.as_str()),
+        Some("unknown")
+    );
 
     let headers = openresponses
         .get("headers")

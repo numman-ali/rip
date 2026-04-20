@@ -40,6 +40,10 @@ pub use local_authority::{
     try_cleanup_stale_authority_files, AuthorityLockGuard, AuthorityLockRecord, AuthorityMeta,
     PidLiveness,
 };
+pub use openresponses_compat::{
+    resolve_openresponses_compat_profile, CompatLevel, OpenResponsesReasoningSupport,
+    ResolvedOpenResponsesCompatProfile, ResolvedOpenResponsesReasoning,
+};
 pub use provider_openresponses::{
     parse_reasoning_effort, parse_reasoning_summary, OpenResponsesReasoningConfig, ReasoningEffort,
     ReasoningSummary,

@@ -197,15 +197,22 @@ fn base_streaming_builder(config: &OpenResponsesConfig) -> CreateResponseBuilder
         None => CreateResponseBuilder::new(),
     };
 
-    if let Some(reasoning) = config
-        .reasoning
-        .as_ref()
-        .and_then(OpenResponsesReasoningConfig::to_value)
+    if let Some(reasoning) = effective_reasoning(config).and_then(|reasoning| reasoning.to_value())
     {
         builder.insert_raw("reasoning", reasoning)
     } else {
         builder
     }
+}
+
+fn effective_reasoning(config: &OpenResponsesConfig) -> Option<OpenResponsesReasoningConfig> {
+    crate::openresponses_compat::resolve_openresponses_compat_profile(
+        config.provider_id.as_deref(),
+        &config.endpoint,
+        config.model.as_deref(),
+    )
+    .reasoning(config.reasoning.as_ref())
+    .effective
 }
 
 pub(crate) fn is_openrouter_responses_endpoint(endpoint: &str) -> bool {
@@ -721,8 +728,8 @@ mod tests {
     #[test]
     fn build_streaming_request_includes_reasoning_when_configured() {
         let config = OpenResponsesConfig {
-            provider_id: None,
-            endpoint: "http://example.test/v1/responses".to_string(),
+            provider_id: Some("openai".to_string()),
+            endpoint: "https://api.openai.com/v1/responses".to_string(),
             api_key: None,
             model: Some("gpt-5.4-nano".to_string()),
             headers: Vec::new(),
@@ -743,6 +750,68 @@ mod tests {
                 .and_then(|value| value.as_str()),
             Some("high")
         );
+        assert_eq!(
+            body.get("reasoning")
+                .and_then(|value| value.get("summary"))
+                .and_then(|value| value.as_str()),
+            Some("detailed")
+        );
+    }
+
+    #[test]
+    fn build_streaming_request_drops_reasoning_effort_when_route_does_not_support_it() {
+        let config = OpenResponsesConfig {
+            provider_id: Some("openai".to_string()),
+            endpoint: "https://api.openai.com/v1/responses".to_string(),
+            api_key: None,
+            model: Some("gpt-5.4-nano".to_string()),
+            headers: Vec::new(),
+            tool_choice: ToolChoiceParam::auto(),
+            reasoning: Some(OpenResponsesReasoningConfig {
+                effort: Some(ReasoningEffort::Minimal),
+                summary: Some(ReasoningSummary::Detailed),
+            }),
+            followup_user_message: None,
+            stateless_history: false,
+            parallel_tool_calls: false,
+        };
+        let payload = build_streaming_request(&config, "hi");
+        let body = payload.body();
+        assert!(body
+            .get("reasoning")
+            .and_then(|value| value.get("effort"))
+            .is_none());
+        assert_eq!(
+            body.get("reasoning")
+                .and_then(|value| value.get("summary"))
+                .and_then(|value| value.as_str()),
+            Some("detailed")
+        );
+    }
+
+    #[test]
+    fn build_streaming_request_uses_openrouter_effort_subset() {
+        let config = OpenResponsesConfig {
+            provider_id: Some("openrouter".to_string()),
+            endpoint: "https://openrouter.ai/api/v1/responses".to_string(),
+            api_key: None,
+            model: Some("nvidia/nemotron-3-super-120b-a12b:free".to_string()),
+            headers: Vec::new(),
+            tool_choice: ToolChoiceParam::auto(),
+            reasoning: Some(OpenResponsesReasoningConfig {
+                effort: Some(ReasoningEffort::Xhigh),
+                summary: Some(ReasoningSummary::Detailed),
+            }),
+            followup_user_message: None,
+            stateless_history: true,
+            parallel_tool_calls: false,
+        };
+        let payload = build_streaming_request(&config, "hi");
+        let body = payload.body();
+        assert!(body
+            .get("reasoning")
+            .and_then(|value| value.get("effort"))
+            .is_none());
         assert_eq!(
             body.get("reasoning")
                 .and_then(|value| value.get("summary"))

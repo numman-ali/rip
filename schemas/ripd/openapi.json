@@ -1789,7 +1789,8 @@
         "required": [
           "active_conversation_strategy",
           "effective_validation",
-          "provider"
+          "provider",
+          "reasoning"
         ],
         "properties": {
           "active_conversation_strategy": {
@@ -1810,6 +1811,9 @@
           },
           "provider": {
             "$ref": "#/components/schemas/OpenResponsesProviderCompatProfile"
+          },
+          "reasoning": {
+            "$ref": "#/components/schemas/ResolvedOpenResponsesReasoning"
           }
         }
       },
@@ -2186,6 +2190,39 @@
           }
         }
       },
+      "OpenResponsesReasoningSupport": {
+        "type": "object",
+        "required": [
+          "parameter",
+          "effort",
+          "summary",
+          "supported_efforts",
+          "supported_summaries"
+        ],
+        "properties": {
+          "effort": {
+            "$ref": "#/components/schemas/CompatLevel"
+          },
+          "parameter": {
+            "$ref": "#/components/schemas/CompatLevel"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/CompatLevel"
+          },
+          "supported_efforts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReasoningEffort"
+            }
+          },
+          "supported_summaries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReasoningSummary"
+            }
+          }
+        }
+      },
       "ProviderCursorRotateV1Request": {
         "type": "object",
         "required": [
@@ -2402,6 +2439,43 @@
           },
           "store": {
             "$ref": "#/components/schemas/CompatLevel"
+          }
+        }
+      },
+      "ResolvedOpenResponsesReasoning": {
+        "type": "object",
+        "required": [
+          "support"
+        ],
+        "properties": {
+          "effective": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/OpenResponsesReasoningConfig"
+              }
+            ]
+          },
+          "requested": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/OpenResponsesReasoningConfig"
+              }
+            ]
+          },
+          "support": {
+            "$ref": "#/components/schemas/OpenResponsesReasoningSupport"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

@@ -104,12 +104,13 @@ fn current_reasoning_helpers_fall_back_to_override_input_without_resolved_route(
             "summary": "detailed"
         }
     });
+    let reasoning = resolve_runtime_reasoning_state(None, Some(&overrides));
     assert_eq!(
-        current_reasoning_effort(None, Some(&overrides)),
+        reasoning.effective.as_ref().and_then(|value| value.effort),
         Some(ripd::ReasoningEffort::High)
     );
     assert_eq!(
-        current_reasoning_summary(None, Some(&overrides)),
+        reasoning.effective.as_ref().and_then(|value| value.summary),
         Some(ripd::ReasoningSummary::Detailed)
     );
 }
@@ -118,44 +119,79 @@ fn current_reasoning_helpers_fall_back_to_override_input_without_resolved_route(
 fn next_reasoning_effort_cycles_through_inherit_and_explicit_none() {
     use ripd::ReasoningEffort as Effort;
 
-    assert_eq!(next_reasoning_effort(None), Some(Effort::Minimal));
+    assert_eq!(next_reasoning_effort(None, &[]), Some(Effort::Minimal));
     assert_eq!(
-        next_reasoning_effort(Some(Effort::Minimal)),
+        next_reasoning_effort(Some(Effort::Minimal), &[]),
         Some(Effort::Low)
     );
     assert_eq!(
-        next_reasoning_effort(Some(Effort::Low)),
+        next_reasoning_effort(Some(Effort::Low), &[]),
         Some(Effort::Medium)
     );
     assert_eq!(
-        next_reasoning_effort(Some(Effort::Medium)),
+        next_reasoning_effort(Some(Effort::Medium), &[]),
         Some(Effort::High)
     );
     assert_eq!(
-        next_reasoning_effort(Some(Effort::High)),
+        next_reasoning_effort(Some(Effort::High), &[]),
         Some(Effort::Xhigh)
     );
     assert_eq!(
-        next_reasoning_effort(Some(Effort::Xhigh)),
+        next_reasoning_effort(Some(Effort::Xhigh), &[]),
         Some(Effort::None)
     );
-    assert_eq!(next_reasoning_effort(Some(Effort::None)), None);
+    assert_eq!(next_reasoning_effort(Some(Effort::None), &[]), None);
+}
+
+#[test]
+fn next_reasoning_effort_obeys_route_supported_subset() {
+    use ripd::ReasoningEffort as Effort;
+
+    let supported = [Effort::Minimal, Effort::Low, Effort::Medium, Effort::High];
+    assert_eq!(
+        next_reasoning_effort(None, &supported),
+        Some(Effort::Minimal)
+    );
+    assert_eq!(next_reasoning_effort(Some(Effort::High), &supported), None);
+    assert_eq!(
+        next_reasoning_effort(Some(Effort::Xhigh), &supported),
+        Some(Effort::Minimal)
+    );
 }
 
 #[test]
 fn next_reasoning_summary_cycles_through_all_values() {
     use ripd::ReasoningSummary as Summary;
 
-    assert_eq!(next_reasoning_summary(None), Some(Summary::Auto));
+    assert_eq!(next_reasoning_summary(None, &[]), Some(Summary::Auto));
     assert_eq!(
-        next_reasoning_summary(Some(Summary::Auto)),
+        next_reasoning_summary(Some(Summary::Auto), &[]),
         Some(Summary::Concise)
     );
     assert_eq!(
-        next_reasoning_summary(Some(Summary::Concise)),
+        next_reasoning_summary(Some(Summary::Concise), &[]),
         Some(Summary::Detailed)
     );
-    assert_eq!(next_reasoning_summary(Some(Summary::Detailed)), None);
+    assert_eq!(next_reasoning_summary(Some(Summary::Detailed), &[]), None);
+}
+
+#[test]
+fn next_reasoning_summary_obeys_route_supported_subset() {
+    use ripd::ReasoningSummary as Summary;
+
+    let supported = [Summary::Auto, Summary::Detailed];
+    assert_eq!(
+        next_reasoning_summary(None, &supported),
+        Some(Summary::Auto)
+    );
+    assert_eq!(
+        next_reasoning_summary(Some(Summary::Auto), &supported),
+        Some(Summary::Detailed)
+    );
+    assert_eq!(
+        next_reasoning_summary(Some(Summary::Detailed), &supported),
+        None
+    );
 }
 
 #[test]
@@ -234,6 +270,8 @@ fn open_options_palette_mounts_option_mode_with_entries() {
 fn open_options_palette_with_overrides_shows_effective_reasoning_values() {
     let mut state = tui();
     let overrides = json!({
+        "endpoint": "https://api.openai.com/v1/responses",
+        "model": "gpt-5.4-mini",
         "reasoning": {
             "effort": "high",
             "summary": "detailed"
@@ -251,8 +289,14 @@ fn open_options_palette_with_overrides_shows_effective_reasoning_values() {
         .iter()
         .find(|entry| entry.value == "options.reasoning-summary")
         .expect("reasoning summary entry");
-    assert_eq!(effort.subtitle.as_deref(), Some("current: high"));
-    assert_eq!(summary.subtitle.as_deref(), Some("current: detailed"));
+    assert_eq!(
+        effort.subtitle.as_deref(),
+        Some("current: high • route: none/low/medium/high/xhigh")
+    );
+    assert_eq!(
+        summary.subtitle.as_deref(),
+        Some("current: detailed • route: auto/concise/detailed")
+    );
 }
 
 #[test]
@@ -368,8 +412,10 @@ fn command_action_cycle_reasoning_effort_wraps_to_inherit_and_drops_empty_reason
     let mut state = tui();
     let catalog = empty_catalog();
     let mut overrides = Some(json!({
+        "endpoint": "https://api.openai.com/v1/responses",
+        "model": "gpt-5.4-nano",
         "reasoning": {
-            "effort": "none"
+            "effort": "xhigh"
         }
     }));
     apply_command_action_with_overrides(
@@ -436,6 +482,79 @@ fn command_action_cycle_reasoning_effort_syncs_state_label() {
         state.preferred_openresponses_reasoning_effort.as_deref(),
         Some("high")
     );
+}
+
+#[test]
+fn command_action_cycle_reasoning_effort_uses_route_supported_subset() {
+    let mut state = tui();
+    let catalog = empty_catalog();
+    let mut overrides = Some(json!({
+        "endpoint": "https://api.openai.com/v1/responses",
+        "model": "gpt-5.4-nano",
+        "reasoning": {
+            "effort": "minimal"
+        }
+    }));
+    apply_command_action_with_overrides(
+        rip_tui::palette::modes::command::CommandAction::CycleReasoningEffort,
+        &mut state,
+        &mut overrides,
+        &catalog,
+    );
+    assert_eq!(
+        overrides
+            .as_ref()
+            .and_then(|value| value.get("reasoning"))
+            .and_then(|value| value.get("effort"))
+            .and_then(Value::as_str),
+        Some("none")
+    );
+    assert_eq!(
+        state.preferred_openresponses_reasoning_effort.as_deref(),
+        Some("none")
+    );
+}
+
+#[test]
+fn open_options_palette_shows_effective_reasoning_and_route_support() {
+    let mut state = tui();
+    let overrides = json!({
+        "endpoint": "https://openrouter.ai/api/v1/responses",
+        "model": "nvidia/nemotron-3-super-120b-a12b:free",
+        "reasoning": {
+            "effort": "xhigh",
+            "summary": "detailed"
+        }
+    });
+
+    open_options_palette_with_overrides(&mut state, Some(&overrides), PaletteOrigin::TopCenter);
+    let overlay = state.palette_state_clone().expect("palette");
+    let effort_entry = overlay
+        .entries
+        .iter()
+        .find(|entry| entry.value == "options.reasoning-effort")
+        .expect("effort entry");
+    let summary_entry = overlay
+        .entries
+        .iter()
+        .find(|entry| entry.value == "options.reasoning-summary")
+        .expect("summary entry");
+
+    assert!(effort_entry
+        .subtitle
+        .as_deref()
+        .unwrap_or("")
+        .contains("requested: xhigh"));
+    assert!(effort_entry
+        .subtitle
+        .as_deref()
+        .unwrap_or("")
+        .contains("route: minimal/low/medium/high"));
+    assert!(summary_entry
+        .subtitle
+        .as_deref()
+        .unwrap_or("")
+        .contains("route: unverified"));
 }
 
 #[test]

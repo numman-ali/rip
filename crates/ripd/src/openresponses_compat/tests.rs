@@ -124,3 +124,101 @@ fn provider_id_takes_precedence_over_noncanonical_endpoint() {
         Some("nvidia/nemotron-3-nano-30b-a3b:free")
     );
 }
+
+#[test]
+fn openai_gpt_54_models_constrain_reasoning_effort_and_keep_supported_summary() {
+    let resolved = resolve_openresponses_compat_profile(
+        Some("openai"),
+        "https://api.openai.com/v1/responses",
+        Some("gpt-5.4-nano"),
+    );
+
+    let reasoning = resolved.reasoning(Some(&OpenResponsesReasoningConfig {
+        effort: Some(ReasoningEffort::Minimal),
+        summary: Some(ReasoningSummary::Detailed),
+    }));
+
+    assert_eq!(reasoning.support.parameter, CompatLevel::Native);
+    assert_eq!(reasoning.support.effort, CompatLevel::Native);
+    assert_eq!(reasoning.support.summary, CompatLevel::Native);
+    assert_eq!(
+        reasoning.support.supported_efforts,
+        OPENAI_GPT_54_REASONING_EFFORTS.to_vec()
+    );
+    assert_eq!(
+        reasoning.effective,
+        Some(OpenResponsesReasoningConfig {
+            effort: None,
+            summary: Some(ReasoningSummary::Detailed),
+        })
+    );
+    assert!(reasoning
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("reasoning.effort=minimal")));
+}
+
+#[test]
+fn openrouter_generic_route_drops_unsupported_effort_and_flags_summary_unverified() {
+    let resolved = resolve_openresponses_compat_profile(
+        Some("openrouter"),
+        "https://openrouter.ai/api/v1/responses",
+        Some("nvidia/nemotron-3-super-120b-a12b:free"),
+    );
+
+    let reasoning = resolved.reasoning(Some(&OpenResponsesReasoningConfig {
+        effort: Some(ReasoningEffort::Xhigh),
+        summary: Some(ReasoningSummary::Detailed),
+    }));
+
+    assert_eq!(reasoning.support.parameter, CompatLevel::Native);
+    assert_eq!(reasoning.support.effort, CompatLevel::Native);
+    assert_eq!(reasoning.support.summary, CompatLevel::Unknown);
+    assert_eq!(
+        reasoning.support.supported_efforts,
+        OPENROUTER_REASONING_EFFORTS.to_vec()
+    );
+    assert_eq!(
+        reasoning.effective,
+        Some(OpenResponsesReasoningConfig {
+            effort: None,
+            summary: Some(ReasoningSummary::Detailed),
+        })
+    );
+    assert!(reasoning
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("reasoning.effort=xhigh")));
+    assert!(reasoning
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("reasoning.summary=detailed is unverified")));
+}
+
+#[test]
+fn gemma_route_marks_reasoning_summary_as_compat_supported() {
+    let resolved = resolve_openresponses_compat_profile(
+        Some("openrouter"),
+        "https://openrouter.ai/api/v1/responses",
+        Some("google/gemma-4-26b-a4b-it"),
+    );
+
+    let reasoning = resolved.reasoning(Some(&OpenResponsesReasoningConfig {
+        effort: Some(ReasoningEffort::High),
+        summary: Some(ReasoningSummary::Detailed),
+    }));
+
+    assert_eq!(reasoning.support.summary, CompatLevel::Compat);
+    assert_eq!(
+        reasoning.support.supported_summaries,
+        OPENAI_REASONING_SUMMARIES.to_vec()
+    );
+    assert_eq!(
+        reasoning.effective,
+        Some(OpenResponsesReasoningConfig {
+            effort: Some(ReasoningEffort::High),
+            summary: Some(ReasoningSummary::Detailed),
+        })
+    );
+    assert!(reasoning.warnings.is_empty());
+}

@@ -203,6 +203,16 @@ async fn config_doctor_surfaces_openrouter_compat_profile() {
             .and_then(|value| value.as_str()),
         Some("nvidia/nemotron-3-nano-30b-a3b:free")
     );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("compat"))
+            .and_then(|value| value.get("reasoning"))
+            .and_then(|value| value.get("support"))
+            .and_then(|value| value.get("effort"))
+            .and_then(|value| value.as_str()),
+        Some("native")
+    );
 }
 
 #[tokio::test]
@@ -300,6 +310,17 @@ async fn config_doctor_prefers_provider_id_over_noncanonical_endpoint_for_openro
             .and_then(|value| value.get("missing_response_user"))
             .and_then(|value| value.as_bool()),
         Some(true)
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("compat"))
+            .and_then(|value| value.get("reasoning"))
+            .and_then(|value| value.get("support"))
+            .and_then(|value| value.get("supported_efforts"))
+            .and_then(|value| value.as_array())
+            .map(|values| values.len()),
+        Some(4)
     );
 }
 
