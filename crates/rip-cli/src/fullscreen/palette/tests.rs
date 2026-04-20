@@ -418,6 +418,46 @@ fn command_action_cycle_reasoning_summary_updates_overrides() {
 }
 
 #[test]
+fn command_action_cycle_reasoning_effort_syncs_state_label() {
+    let mut state = tui();
+    let catalog = empty_catalog();
+    let mut overrides = Some(json!({
+        "reasoning": {
+            "effort": "medium"
+        }
+    }));
+    apply_command_action_with_overrides(
+        rip_tui::palette::modes::command::CommandAction::CycleReasoningEffort,
+        &mut state,
+        &mut overrides,
+        &catalog,
+    );
+    assert_eq!(
+        state.preferred_openresponses_reasoning_effort.as_deref(),
+        Some("high")
+    );
+}
+
+#[test]
+fn command_action_toggle_reasoning_visibility_flips_state() {
+    let mut state = tui();
+    let catalog = empty_catalog();
+    assert!(state.reasoning_visible);
+    apply_command_action(
+        rip_tui::palette::modes::command::CommandAction::ToggleReasoningVisibility,
+        &mut state,
+        &catalog,
+    );
+    assert!(!state.reasoning_visible);
+    apply_command_action(
+        rip_tui::palette::modes::command::CommandAction::ToggleReasoningVisibility,
+        &mut state,
+        &catalog,
+    );
+    assert!(state.reasoning_visible);
+}
+
+#[test]
 fn command_action_scroll_bottom_resets_scroll_and_follows() {
     let mut state = tui();
     let catalog = empty_catalog();

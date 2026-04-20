@@ -190,12 +190,72 @@ fn provider_error_pushes_system_notice_danger() {
         .find(|m| matches!(m, CanvasMessage::SystemNotice { .. }))
         .expect("notice");
     match notice {
-        CanvasMessage::SystemNotice { level, seq, .. } => {
+        CanvasMessage::SystemNotice {
+            level, seq, text, ..
+        } => {
             assert_eq!(*level, NoticeLevel::Danger);
             assert_eq!(*seq, 5);
+            assert_eq!(text, "Provider error: bad");
         }
         _ => unreachable!(),
     }
+}
+
+#[test]
+fn provider_reasoning_events_append_to_agent_turn_without_error_notice() {
+    let mut canvas = CanvasModel::new();
+    canvas.ingest(&event(
+        0,
+        100,
+        EventKind::SessionStarted {
+            input: "think".to_string(),
+        },
+    ));
+    canvas.ingest(&event(
+        1,
+        110,
+        EventKind::ProviderEvent {
+            provider: "openresponses".to_string(),
+            status: ProviderEventStatus::Event,
+            event_name: Some("response.reasoning.delta".to_string()),
+            data: Some(json!({ "delta": "step one" })),
+            raw: None,
+            errors: Vec::new(),
+            response_errors: Vec::new(),
+        },
+    ));
+    canvas.ingest(&event(
+        2,
+        120,
+        EventKind::ProviderEvent {
+            provider: "openresponses".to_string(),
+            status: ProviderEventStatus::Event,
+            event_name: Some("response.reasoning_summary_text.done".to_string()),
+            data: Some(json!({ "text": "concise summary" })),
+            raw: None,
+            errors: Vec::new(),
+            response_errors: Vec::new(),
+        },
+    ));
+
+    let agent = canvas
+        .messages
+        .iter()
+        .find_map(|message| match message {
+            CanvasMessage::AgentTurn {
+                reasoning_text,
+                reasoning_summary,
+                ..
+            } => Some((reasoning_text, reasoning_summary)),
+            _ => None,
+        })
+        .expect("agent turn");
+    assert_eq!(agent.0, "step one");
+    assert_eq!(agent.1, "concise summary");
+    assert!(!canvas
+        .messages
+        .iter()
+        .any(|message| matches!(message, CanvasMessage::SystemNotice { .. })));
 }
 
 #[test]

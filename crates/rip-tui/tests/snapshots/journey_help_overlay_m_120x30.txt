@@ -2,7 +2,7 @@
 ›  Add a slide outline for a product launch.
 
 ◎  Got it. I┌Help──────────────────────────────────────────────────────────────────────────────────────────┐
-            │⌃K opens the searchable command palette. ? opens Help only when the composer is empty.        │
+            │⌃K opens the searchable command palette. Tabs across the top show which palette mode is act…  │
             │The hero row is clickable: thread opens Threads, agent opens Commands, model opens Models.    │
 ⟡  ╭─ bash ─│Mouse wheel scrolls the canvas. Focus a message, then Enter expands cards or opens detail v…  │ ✓ 100ms ─╮
             │                                                                                              │

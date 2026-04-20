@@ -258,7 +258,9 @@ impl CommandAction {
             // are not in the capability registry today (Part 17 of
             // the plan), so these ride as [deferred] until the
             // runtime ships them.
-            CommandAction::NewThread | CommandAction::RenameThread
+            CommandAction::NewThread
+                | CommandAction::RenameThread
+                | CommandAction::ToggleMouseCapture
         )
     }
 

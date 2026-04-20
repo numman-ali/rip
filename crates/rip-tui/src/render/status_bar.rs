@@ -99,6 +99,9 @@ pub(super) struct HeroContent {
     /// Model label, already formatted as `<provider>:<model>` or just
     /// `<provider>` when the model id isn't known. `None` → `-`.
     pub model: Option<String>,
+    /// Active reasoning posture for the next/current turn, rendered as
+    /// a compact `r high/concise` chip when present.
+    pub reasoning: Option<String>,
     /// Aggregate run state.
     pub state: HeroState,
     /// Latest TTFT in ms (if known).
@@ -170,6 +173,10 @@ impl HeroContent {
             (None, Some(model)) => Some(model.to_string()),
             (None, None) => None,
         };
+        let reasoning = format_reasoning_label(
+            state.preferred_openresponses_reasoning_effort.as_deref(),
+            state.preferred_openresponses_reasoning_summary.as_deref(),
+        );
 
         let hero_state = classify_state(state);
         let ttft_ms = state.ttft_ms();
@@ -178,6 +185,7 @@ impl HeroContent {
             thread,
             agent,
             model,
+            reasoning,
             state: hero_state,
             ttft_ms,
             status_message: state.status_message.clone(),
@@ -227,6 +235,7 @@ enum SegmentKind {
     Model,
     Separator,
     State(HeroState),
+    Reasoning,
     Status,
     Ttft,
     Muted,
@@ -239,6 +248,7 @@ fn styled_segment(seg: &HeroSegment, theme: &ThemeStyles) -> Span<'static> {
         SegmentKind::Model => theme.muted,
         SegmentKind::Separator => theme.quiet,
         SegmentKind::State(state) => state.style(theme),
+        SegmentKind::Reasoning => theme.accent,
         SegmentKind::Status => theme.muted,
         SegmentKind::Ttft => theme.muted,
         SegmentKind::Muted => theme.muted,
@@ -368,6 +378,16 @@ fn right_segments(hero: &HeroContent) -> Vec<HeroSegment> {
         text: hero.state.as_str().to_string(),
         kind: SegmentKind::State(hero.state),
     });
+    if let Some(reasoning) = hero.reasoning.as_deref().filter(|value| !value.is_empty()) {
+        segs.push(HeroSegment {
+            text: "  ".to_string(),
+            kind: SegmentKind::Muted,
+        });
+        segs.push(HeroSegment {
+            text: reasoning.to_string(),
+            kind: SegmentKind::Reasoning,
+        });
+    }
     if let Some(msg) = hero.status_message.as_deref().filter(|m| !m.is_empty()) {
         let trimmed = truncate(msg, 24);
         segs.push(HeroSegment {
@@ -390,6 +410,21 @@ fn right_segments(hero: &HeroContent) -> Vec<HeroSegment> {
         });
     }
     segs
+}
+
+fn format_reasoning_label(effort: Option<&str>, summary: Option<&str>) -> Option<String> {
+    let effort = effort
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "inherit");
+    let summary = summary
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "inherit");
+    match (effort, summary) {
+        (Some(effort), Some(summary)) => Some(format!("r {effort}/{summary}")),
+        (Some(effort), None) => Some(format!("r {effort}")),
+        (None, Some(summary)) => Some(format!("r {summary}")),
+        (None, None) => None,
+    }
 }
 
 fn classify_state(state: &TuiState) -> HeroState {
@@ -482,6 +517,7 @@ mod tests {
             thread: thread.map(|s| s.to_string()),
             agent: Some(agent.to_string()),
             model: model.map(|s| s.to_string()),
+            reasoning: None,
             state: HeroState::Idle,
             ttft_ms: None,
             status_message: None,
@@ -566,6 +602,15 @@ mod tests {
         let text = line.to_string();
         assert!(text.ends_with("ttft 120"));
         assert!(text.contains("streaming"));
+    }
+
+    #[test]
+    fn reasoning_label_renders_when_present() {
+        let mut h = hero(Some("t"), "rip", Some("o:g"));
+        h.reasoning = Some("r high/concise".to_string());
+        let line = h.render_line(&ThemeStyles::for_theme(ThemeId::DefaultDark), 48);
+        let text = line.to_string();
+        assert!(text.contains("r high/concise"), "{text}");
     }
 
     #[test]

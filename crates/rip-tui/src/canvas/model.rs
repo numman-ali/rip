@@ -164,6 +164,8 @@ pub enum CanvasMessage {
         role: AgentRole,
         actor_id: String,
         model: Option<String>,
+        reasoning_text: String,
+        reasoning_summary: String,
         blocks: Vec<Block>,
         /// Transient in-flight text held by the StreamCollector (B.5).
         /// The renderer shows this beneath `blocks` while streaming;

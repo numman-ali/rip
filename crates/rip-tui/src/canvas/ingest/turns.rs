@@ -41,6 +41,8 @@ pub(super) fn on_session_started(canvas: &mut CanvasModel, event: &Event, input:
         role: AgentRole::Primary,
         actor_id: "agent".to_string(),
         model: None,
+        reasoning_text: String::new(),
+        reasoning_summary: String::new(),
         blocks: Vec::new(),
         streaming_tail: String::new(),
         streaming: true,
@@ -58,6 +60,8 @@ pub(super) fn append_agent_delta(canvas: &mut CanvasModel, delta: &str) {
     for message in canvas.messages.iter_mut().rev() {
         let CanvasMessage::AgentTurn {
             blocks,
+            reasoning_text: _,
+            reasoning_summary: _,
             streaming,
             streaming_tail,
             ..
@@ -73,6 +77,82 @@ pub(super) fn append_agent_delta(canvas: &mut CanvasModel, delta: &str) {
         blocks.extend(step.new_stable);
         *streaming_tail = collector.into_tail();
         return;
+    }
+}
+
+pub(super) fn append_agent_reasoning_delta(canvas: &mut CanvasModel, delta: &str) {
+    if delta.is_empty() {
+        return;
+    }
+    if let Some(CanvasMessage::AgentTurn { reasoning_text, .. }) =
+        canvas.messages.iter_mut().rev().find(|message| {
+            matches!(
+                message,
+                CanvasMessage::AgentTurn {
+                    streaming: true,
+                    ..
+                }
+            )
+        })
+    {
+        reasoning_text.push_str(delta);
+    }
+}
+
+pub(super) fn finalize_agent_reasoning(canvas: &mut CanvasModel, text: Option<&str>) {
+    if let Some(CanvasMessage::AgentTurn { reasoning_text, .. }) =
+        canvas.messages.iter_mut().rev().find(|message| {
+            matches!(
+                message,
+                CanvasMessage::AgentTurn {
+                    streaming: true,
+                    ..
+                }
+            )
+        })
+    {
+        if let Some(text) = text.filter(|value| !value.trim().is_empty()) {
+            reasoning_text.clear();
+            reasoning_text.push_str(text);
+        }
+    }
+}
+
+pub(super) fn append_agent_reasoning_summary_delta(canvas: &mut CanvasModel, delta: &str) {
+    if delta.is_empty() {
+        return;
+    }
+    if let Some(CanvasMessage::AgentTurn {
+        reasoning_summary, ..
+    }) = canvas.messages.iter_mut().rev().find(|message| {
+        matches!(
+            message,
+            CanvasMessage::AgentTurn {
+                streaming: true,
+                ..
+            }
+        )
+    }) {
+        reasoning_summary.push_str(delta);
+    }
+}
+
+pub(super) fn finalize_agent_reasoning_summary(canvas: &mut CanvasModel, text: Option<&str>) {
+    if let Some(CanvasMessage::AgentTurn {
+        reasoning_summary, ..
+    }) = canvas.messages.iter_mut().rev().find(|message| {
+        matches!(
+            message,
+            CanvasMessage::AgentTurn {
+                streaming: true,
+                ..
+            }
+        )
+    }) {
+        if let Some(text) = text.filter(|value| !value.trim().is_empty()) {
+            reasoning_summary.clear();
+            reasoning_summary.push_str(text);
+        }
     }
 }
 

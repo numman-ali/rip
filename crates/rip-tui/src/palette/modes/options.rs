@@ -39,7 +39,7 @@ impl Default for OptionsMode {
         Self {
             current_theme: None,
             auto_follow: false,
-            reasoning_visible: false,
+            reasoning_visible: true,
             reasoning_effort: "inherit".to_string(),
             reasoning_summary: "inherit".to_string(),
             vim_input_mode: false,
@@ -167,9 +167,10 @@ mod tests {
         let entries = fresh.entries();
         // Theme defaults to "graphite" when `current_theme` is None.
         assert!(entries[0].subtitle.as_deref().unwrap().contains("graphite"));
-        // Auto-follow is off, reasoning fields inherit, and the rest are off.
+        // Auto-follow is off, reasoning visibility defaults on, the
+        // reasoning selectors inherit, and the rest are off.
         assert!(entries[1].subtitle.as_deref().unwrap().contains("off"));
-        assert!(entries[2].subtitle.as_deref().unwrap().contains("off"));
+        assert!(entries[2].subtitle.as_deref().unwrap().contains("on"));
         assert!(entries[3].subtitle.as_deref().unwrap().contains("inherit"));
         assert!(entries[4].subtitle.as_deref().unwrap().contains("inherit"));
         for entry in entries.iter().skip(5) {
@@ -188,19 +189,18 @@ mod tests {
 
     #[test]
     fn options_mode_chips_mark_unavailable_actions() {
-        // PinActivityRail is flagged unavailable in the current
-        // Command registry (it surfaces at the L breakpoint only).
-        // The palette relies on that flag to show a "unavailable"
-        // chip so the entry dims appropriately.
+        // Mouse capture is still always-on in the fullscreen driver,
+        // so the entry stays visible but unavailable until the
+        // runtime can truly toggle it.
         let mode = OptionsMode::new();
         let entries = mode.entries();
-        let pin_rail = entries
+        let mouse_capture = entries
             .iter()
-            .find(|e| e.value == CommandAction::PinActivityRail.id())
-            .expect("pin-rail entry");
+            .find(|e| e.value == CommandAction::ToggleMouseCapture.id())
+            .expect("mouse-capture entry");
         // It is fine for the chip list to be empty OR carry the
         // unavailable badge — we just assert the control flow through
         // `is_available` is exercised.
-        let _ = &pin_rail.chips;
+        let _ = &mouse_capture.chips;
     }
 }

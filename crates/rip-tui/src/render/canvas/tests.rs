@@ -111,6 +111,7 @@ fn render_blocks_handles_heading_lists_quotes_code_and_artifacts() {
         theme_id: ThemeId::DefaultDark,
         styles: &styles,
         motion: MotionCtx::default(),
+        reasoning_visible: true,
     };
     let blocks = vec![
         CanvasBlock::Heading {
@@ -159,6 +160,7 @@ fn message_body_lines_cover_notice_and_summary_variants() {
         theme_id: ThemeId::DefaultDark,
         styles: &styles,
         motion: MotionCtx::default(),
+        reasoning_visible: true,
     };
 
     let job = CanvasMessage::JobNotice {
@@ -243,6 +245,8 @@ fn message_body_lines_cover_notice_and_summary_variants() {
         },
         actor_id: "reviewer".to_string(),
         model: Some("gpt".to_string()),
+        reasoning_text: String::new(),
+        reasoning_summary: String::new(),
         blocks: vec![CanvasBlock::Paragraph(CachedText::plain("review"))],
         streaming_tail: String::new(),
         streaming: false,
@@ -253,4 +257,66 @@ fn message_body_lines_cover_notice_and_summary_variants() {
         message_glyph(&reviewer, &styles, MotionCtx::default()).0,
         "◌"
     );
+}
+
+#[test]
+fn message_body_lines_render_reasoning_when_visible() {
+    let styles = ThemeStyles::for_theme(ThemeId::DefaultDark);
+    let ctx = RenderCtx {
+        theme_id: ThemeId::DefaultDark,
+        styles: &styles,
+        motion: MotionCtx::default(),
+        reasoning_visible: true,
+    };
+    let agent = CanvasMessage::AgentTurn {
+        message_id: "m7".to_string(),
+        run_session_id: "run-3".to_string(),
+        agent_id: None,
+        role: AgentRole::Primary,
+        actor_id: "rip".to_string(),
+        model: Some("gpt".to_string()),
+        reasoning_text: "hidden chain".to_string(),
+        reasoning_summary: "brief reasoning".to_string(),
+        blocks: vec![CanvasBlock::Paragraph(CachedText::plain("final answer"))],
+        streaming_tail: String::new(),
+        streaming: false,
+        started_at_ms: 0,
+        ended_at_ms: Some(1),
+    };
+
+    let text = plain_text(&ratatui::text::Text::from(message_body_lines(&agent, &ctx)));
+    assert!(text.contains("reasoning summary"), "{text}");
+    assert!(text.contains("brief reasoning"), "{text}");
+    assert!(text.contains("final answer"), "{text}");
+}
+
+#[test]
+fn message_body_lines_hide_reasoning_when_disabled() {
+    let styles = ThemeStyles::for_theme(ThemeId::DefaultDark);
+    let ctx = RenderCtx {
+        theme_id: ThemeId::DefaultDark,
+        styles: &styles,
+        motion: MotionCtx::default(),
+        reasoning_visible: false,
+    };
+    let agent = CanvasMessage::AgentTurn {
+        message_id: "m8".to_string(),
+        run_session_id: "run-4".to_string(),
+        agent_id: None,
+        role: AgentRole::Primary,
+        actor_id: "rip".to_string(),
+        model: Some("gpt".to_string()),
+        reasoning_text: "hidden chain".to_string(),
+        reasoning_summary: "brief reasoning".to_string(),
+        blocks: vec![CanvasBlock::Paragraph(CachedText::plain("final answer"))],
+        streaming_tail: String::new(),
+        streaming: false,
+        started_at_ms: 0,
+        ended_at_ms: Some(1),
+    };
+
+    let text = plain_text(&ratatui::text::Text::from(message_body_lines(&agent, &ctx)));
+    assert!(!text.contains("reasoning summary"), "{text}");
+    assert!(!text.contains("brief reasoning"), "{text}");
+    assert!(text.contains("final answer"), "{text}");
 }

@@ -270,7 +270,7 @@ pub(super) fn open_options_palette_with_overrides(
     let mode = OptionsMode {
         current_theme: Some(state.theme.as_str()),
         auto_follow: state.auto_follow,
-        reasoning_visible: false,
+        reasoning_visible: state.reasoning_visible,
         reasoning_effort: reasoning_effort_label(current_reasoning_effort(
             resolved.as_ref(),
             overrides,
@@ -433,11 +433,19 @@ pub(super) fn apply_command_action_with_overrides(
         }
         A::ToggleTheme => state.toggle_theme(),
         A::ToggleAutoFollow => state.auto_follow = !state.auto_follow,
+        A::ToggleReasoningVisibility => {
+            state.toggle_reasoning_visibility();
+            state.set_status_message(format!(
+                "reasoning visibility: {}",
+                if state.reasoning_visible { "on" } else { "off" }
+            ));
+        }
         A::CycleReasoningEffort => {
             let resolved = resolve_openresponses_runtime_config(overrides.as_ref());
             let current = current_reasoning_effort(resolved.as_ref(), overrides.as_ref());
             let next = next_reasoning_effort(current);
             set_reasoning_effort_override(overrides, next);
+            sync_preferred_openresponses_state(state, overrides.as_ref(), catalog);
             state.set_status_message(format!(
                 "next reasoning effort: {}",
                 reasoning_effort_label(next)
@@ -448,6 +456,7 @@ pub(super) fn apply_command_action_with_overrides(
             let current = current_reasoning_summary(resolved.as_ref(), overrides.as_ref());
             let next = next_reasoning_summary(current);
             set_reasoning_summary_override(overrides, next);
+            sync_preferred_openresponses_state(state, overrides.as_ref(), catalog);
             state.set_status_message(format!(
                 "next reasoning summary: {}",
                 reasoning_summary_label(next)
@@ -476,6 +485,17 @@ pub(super) fn apply_command_action_with_overrides(
             let origin = state.palette_origin().unwrap_or(PaletteOrigin::TopCenter);
             open_model_palette(state, catalog, origin);
         }
+        A::PinActivityRail => {
+            state.activity_pinned = !state.activity_pinned;
+            state.set_status_message(format!(
+                "activity rail: {}",
+                if state.activity_pinned {
+                    "pinned"
+                } else {
+                    "auto"
+                }
+            ));
+        }
         A::Quit => {
             state.set_status_message("press Ctrl-C to quit".to_string());
         }
@@ -497,6 +517,29 @@ fn resolve_openresponses_runtime_config(
         openresponses_override_input_from_json(openresponses_overrides),
     );
     resolved
+}
+
+pub(super) fn sync_preferred_openresponses_state(
+    state: &mut TuiState,
+    openresponses_overrides: Option<&Value>,
+    catalog: &ModelsMode,
+) {
+    let resolved = resolve_openresponses_runtime_config(openresponses_overrides);
+    let endpoint = resolved
+        .as_ref()
+        .map(|cfg| cfg.endpoint.clone())
+        .or_else(|| catalog.current_endpoint.clone());
+    let model = resolved
+        .as_ref()
+        .and_then(|cfg| cfg.model.clone())
+        .or_else(|| catalog.current_model.clone());
+    state.set_preferred_openresponses_target(endpoint, model);
+    state.set_preferred_openresponses_reasoning(
+        current_reasoning_effort(resolved.as_ref(), openresponses_overrides)
+            .map(|value| reasoning_effort_label(Some(value)).to_string()),
+        current_reasoning_summary(resolved.as_ref(), openresponses_overrides)
+            .map(|value| reasoning_summary_label(Some(value)).to_string()),
+    );
 }
 
 fn current_reasoning_effort(
@@ -659,7 +702,7 @@ pub(super) fn apply_model_palette_selection(
     map.insert("model".to_string(), Value::String(resolved.model.clone()));
     *overrides = Some(Value::Object(map));
     catalog.record_resolution(&resolved);
-    state.set_preferred_openresponses_target(Some(resolved.endpoint), Some(resolved.model));
+    sync_preferred_openresponses_state(state, overrides.as_ref(), catalog);
     state.close_overlay();
     state.set_status_message(format!("next model: {}", resolved.route));
     Ok(())

@@ -3,7 +3,7 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs, Wrap};
 use ratatui::Frame;
 
-use crate::{Overlay, TuiState};
+use crate::{Overlay, PaletteMode, TuiState};
 
 use super::super::theme::ThemeStyles;
 use super::super::util::truncate;
@@ -37,10 +37,22 @@ pub(super) fn render_palette_overlay(
         ])
         .split(inner);
 
-    let tabs = Tabs::new(vec![Line::from(palette.mode.label())])
-        .select(0)
-        .highlight_style(theme.highlight)
-        .style(theme.chrome);
+    let tabs = Tabs::new(vec![
+        Line::from("Command"),
+        Line::from("Models"),
+        Line::from("Go To"),
+        Line::from("Threads"),
+        Line::from("Options"),
+    ])
+    .select(match palette.mode {
+        PaletteMode::Command => 0,
+        PaletteMode::Model => 1,
+        PaletteMode::Navigation => 2,
+        PaletteMode::Session => 3,
+        PaletteMode::Option => 4,
+    })
+    .highlight_style(theme.highlight)
+    .style(theme.chrome);
     frame.render_widget(tabs, sections[0]);
 
     let query_text = if palette.query.trim().is_empty() {
@@ -127,7 +139,7 @@ pub(super) fn render_palette_overlay(
 
     let footer = Paragraph::new(Text::from(vec![
         Line::from("Enter apply  Esc close  Type to filter"),
-        Line::from("Tab cycle modes  Alt-M models  Ctrl-T threads  Alt-O options"),
+        Line::from("Tab cycle modes  Ctrl-K command  Alt-M models  Ctrl-T threads  Alt-O options"),
     ]))
     .style(theme.chrome)
     .wrap(Wrap { trim: false });

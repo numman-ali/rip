@@ -107,6 +107,7 @@ pub fn canvas_hit_message_id(
         theme_id: state.theme,
         styles: &styles,
         motion: MotionCtx::from_state(state),
+        reasoning_visible: state.reasoning_visible,
     };
     let card_width = card_width_for(width);
     let mut cursor = 0usize;
@@ -201,6 +202,7 @@ pub(super) fn build_canvas_text(
         theme_id: state.theme,
         styles: theme,
         motion: MotionCtx::from_state(state),
+        reasoning_visible: state.reasoning_visible,
     };
 
     let mut lines: Vec<Line<'static>> = Vec::new();
@@ -230,6 +232,7 @@ struct RenderCtx<'a> {
     theme_id: crate::ThemeId,
     styles: &'a ThemeStyles,
     motion: MotionCtx,
+    reasoning_visible: bool,
 }
 
 #[derive(Clone, Copy, Default)]

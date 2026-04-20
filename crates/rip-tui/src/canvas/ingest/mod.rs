@@ -27,6 +27,7 @@ mod turns;
 #[cfg(test)]
 use rip_kernel::ToolTaskStatus;
 use rip_kernel::{Event, EventKind, ProviderEventStatus};
+use serde_json::Value;
 
 #[cfg(test)]
 use super::model::*;
@@ -110,17 +111,22 @@ pub(super) fn apply(canvas: &mut CanvasModel, event: &Event) {
             cards::append_task_body(canvas, task_id, kind, chunk);
         }
         EventKind::ProviderEvent {
+            event_name,
+            data,
             status,
             errors,
             response_errors,
             ..
         } => {
+            if ingest_reasoning_event(canvas, event_name.as_deref(), data.as_ref()) {
+                return;
+            }
             if is_provider_error(status, errors, response_errors) {
                 notices::push_system_notice(
                     canvas,
                     event,
                     super::model::NoticeLevel::Danger,
-                    "Provider error".to_string(),
+                    provider_error_notice_text(errors, response_errors),
                     "provider_event",
                 );
             }
@@ -205,6 +211,65 @@ pub(super) fn apply(canvas: &mut CanvasModel, event: &Event) {
 enum ToolStream {
     Stdout,
     Stderr,
+}
+
+fn ingest_reasoning_event(
+    canvas: &mut CanvasModel,
+    event_name: Option<&str>,
+    data: Option<&Value>,
+) -> bool {
+    let Some(event_name) = event_name else {
+        return false;
+    };
+    let payload = data.and_then(Value::as_object);
+    match event_name {
+        "response.reasoning.delta" => {
+            if let Some(delta) = payload
+                .and_then(|value| value.get("delta"))
+                .and_then(Value::as_str)
+            {
+                turns::append_agent_reasoning_delta(canvas, delta);
+                return true;
+            }
+        }
+        "response.reasoning.done" => {
+            let text = payload
+                .and_then(|value| value.get("text"))
+                .and_then(Value::as_str);
+            turns::finalize_agent_reasoning(canvas, text);
+            return true;
+        }
+        "response.reasoning_summary_text.delta" => {
+            if let Some(delta) = payload
+                .and_then(|value| value.get("delta"))
+                .and_then(Value::as_str)
+            {
+                turns::append_agent_reasoning_summary_delta(canvas, delta);
+                return true;
+            }
+        }
+        "response.reasoning_summary_text.done" => {
+            let text = payload
+                .and_then(|value| value.get("text"))
+                .and_then(Value::as_str);
+            turns::finalize_agent_reasoning_summary(canvas, text);
+            return true;
+        }
+        _ => {}
+    }
+    false
+}
+
+fn provider_error_notice_text(errors: &[String], response_errors: &[String]) -> String {
+    let first = errors
+        .iter()
+        .chain(response_errors.iter())
+        .find(|value| !value.trim().is_empty())
+        .cloned();
+    match first {
+        Some(message) => format!("Provider error: {message}"),
+        None => "Provider error".to_string(),
+    }
 }
 
 fn is_provider_error(

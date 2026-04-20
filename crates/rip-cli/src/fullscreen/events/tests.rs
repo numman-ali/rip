@@ -179,6 +179,8 @@ fn last_user_prompt_finds_most_recent_user_turn() {
         role: AgentRole::Primary,
         actor_id: "agent".to_string(),
         model: None,
+        reasoning_text: String::new(),
+        reasoning_summary: String::new(),
         blocks: vec![Block::Paragraph(cached("answer"))],
         streaming_tail: String::new(),
         streaming: false,

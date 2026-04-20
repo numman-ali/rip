@@ -144,6 +144,8 @@ fn focus_ring_walks_focusable_messages_and_toggles_expand_on_cards() {
         role: crate::canvas::AgentRole::Primary,
         actor_id: "agent".into(),
         model: None,
+        reasoning_text: String::new(),
+        reasoning_summary: String::new(),
         blocks: Vec::new(),
         streaming_tail: String::new(),
         streaming: false,
@@ -214,6 +216,39 @@ fn focus_ring_walks_focusable_messages_and_toggles_expand_on_cards() {
 }
 
 #[test]
+fn rendered_agent_text_includes_reasoning_only_when_visible() {
+    use crate::canvas::{Block, CachedText, CanvasMessage};
+
+    let mut state = TuiState::new(80);
+    state.canvas.messages.push(CanvasMessage::AgentTurn {
+        message_id: "a1".into(),
+        run_session_id: "run-1".into(),
+        agent_id: None,
+        role: crate::canvas::AgentRole::Primary,
+        actor_id: "agent".into(),
+        model: Some("gpt".into()),
+        reasoning_text: "private chain".into(),
+        reasoning_summary: "safe summary".into(),
+        blocks: vec![Block::Paragraph(CachedText::plain("final answer"))],
+        streaming_tail: String::new(),
+        streaming: false,
+        started_at_ms: 0,
+        ended_at_ms: Some(1),
+    });
+
+    let visible = state.rendered_agent_text();
+    assert!(visible.contains("Reasoning summary"));
+    assert!(visible.contains("safe summary"));
+    assert!(visible.contains("final answer"));
+
+    state.reasoning_visible = false;
+    let hidden = state.rendered_agent_text();
+    assert!(!hidden.contains("Reasoning summary"));
+    assert!(!hidden.contains("safe summary"));
+    assert!(hidden.contains("final answer"));
+}
+
+#[test]
 fn set_continuity_id_updates_state() {
     let mut state = TuiState::new(100);
     state.set_continuity_id("thread-2");
@@ -256,11 +291,14 @@ fn session_started_does_not_duplicate_pending_prompt() {
 fn canvas_scroll_helpers_clamp_at_zero() {
     let mut state = TuiState::default();
     state.scroll_canvas_up(12);
+    assert!(!state.auto_follow);
     state.scroll_canvas_down(5);
     assert_eq!(state.canvas_scroll_from_bottom, 7);
+    assert!(!state.auto_follow);
 
     state.scroll_canvas_down(99);
     assert_eq!(state.canvas_scroll_from_bottom, 0);
+    assert!(state.auto_follow);
 }
 
 fn artifact(fill: char) -> String {

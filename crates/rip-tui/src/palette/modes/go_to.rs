@@ -253,6 +253,8 @@ mod tests {
             role: AgentRole::Primary,
             actor_id: "agent".to_string(),
             model: Some("gpt-5".to_string()),
+            reasoning_text: String::new(),
+            reasoning_summary: String::new(),
             blocks: vec![text_block("world")],
             streaming_tail: String::new(),
             streaming: false,
@@ -307,6 +309,8 @@ mod tests {
             role: AgentRole::Primary,
             actor_id: "agent".into(),
             model: None, // forces the "AGENT" fallback subtitle
+            reasoning_text: String::new(),
+            reasoning_summary: String::new(),
             blocks: vec![text_block("hi")],
             streaming_tail: String::new(),
             streaming: true,

@@ -296,11 +296,27 @@ pub(super) fn message_body_lines(
             style_block_lines(&text, theme.prompt)
         }
         CanvasMessage::AgentTurn {
+            reasoning_text,
+            reasoning_summary,
             blocks,
             streaming_tail,
+            streaming,
             ..
         } => {
-            let mut lines = render_blocks(blocks, ctx);
+            let mut lines = Vec::new();
+            if ctx.reasoning_visible {
+                lines.extend(reasoning_lines(
+                    reasoning_text,
+                    reasoning_summary,
+                    *streaming,
+                    blocks.is_empty() && streaming_tail.is_empty(),
+                    theme,
+                ));
+                if !lines.is_empty() && (!blocks.is_empty() || !streaming_tail.is_empty()) {
+                    lines.push(Line::default());
+                }
+            }
+            lines.extend(render_blocks(blocks, ctx));
             if !streaming_tail.is_empty() {
                 for segment in streaming_tail.split('\n') {
                     lines.push(Line::from(Span::styled(segment.to_string(), theme.chrome)));
@@ -342,6 +358,45 @@ pub(super) fn message_body_lines(
         }
         CanvasMessage::ToolCard { .. } | CanvasMessage::TaskCard { .. } => Vec::new(),
     }
+}
+
+fn reasoning_lines(
+    reasoning_text: &str,
+    reasoning_summary: &str,
+    streaming: bool,
+    awaiting_first_token: bool,
+    theme: &ThemeStyles,
+) -> Vec<Line<'static>> {
+    let body = if !reasoning_summary.trim().is_empty() {
+        Some(("reasoning summary", reasoning_summary))
+    } else if !reasoning_text.trim().is_empty() {
+        Some(("thinking", reasoning_text))
+    } else {
+        None
+    };
+
+    let Some((label, body)) = body else {
+        return Vec::new();
+    };
+
+    let label = if streaming && awaiting_first_token {
+        "thinking"
+    } else {
+        label
+    };
+
+    let mut out = Vec::new();
+    out.push(Line::from(Span::styled(
+        label.to_string(),
+        theme.quiet.add_modifier(Modifier::BOLD),
+    )));
+    for segment in body.split('\n') {
+        out.push(Line::from(vec![
+            Span::styled("│ ".to_string(), theme.quiet),
+            Span::styled(segment.to_string(), theme.muted),
+        ]));
+    }
+    out
 }
 
 fn paragraph_source(blocks: &[CanvasBlock]) -> String {

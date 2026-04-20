@@ -5,7 +5,7 @@
 //! X-ray window scoped to that error. Actions map to capabilities:
 //!
 //! - `r` → `thread.post_message` (re-posts the last user turn; the
-//!   kernel spawns the retry run per the capability contract).
+//!   kernel spawns a fresh follow-up run per the capability contract).
 //! - `c` → `thread.provider_cursor.rotate`.
 //! - `m` → opens the Models palette so the operator can switch
 //!   before retrying.
@@ -85,7 +85,11 @@ pub(super) fn render_error_recovery_overlay(
         ])
     };
 
-    lines.push(action("r", "retry turn", "re-posts last user message"));
+    lines.push(action(
+        "r",
+        "resend message",
+        "posts the last user message again",
+    ));
     lines.push(action(
         "c",
         "rotate cursor",

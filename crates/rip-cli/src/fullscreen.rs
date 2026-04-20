@@ -36,7 +36,7 @@ use keymap::Keymap;
 use palette::{
     apply_palette_selection, cycle_palette_mode_with_overrides, load_model_palette_catalog,
     open_command_palette, open_go_to_palette, open_model_palette,
-    open_options_palette_with_overrides, open_threads_palette,
+    open_options_palette_with_overrides, open_threads_palette, sync_preferred_openresponses_state,
 };
 use terminal::TerminalGuard;
 use theme::load_theme;
@@ -87,10 +87,7 @@ async fn run_fullscreen_tui_sse(
     } = init_fullscreen_state(initial_prompt);
     let mut current_overrides = openresponses_overrides;
     let mut model_catalog = load_model_palette_catalog(current_overrides.as_ref());
-    state.set_preferred_openresponses_target(
-        model_catalog.current_endpoint.clone(),
-        model_catalog.current_model.clone(),
-    );
+    sync_preferred_openresponses_state(&mut state, current_overrides.as_ref(), &model_catalog);
 
     if ui_mode == SseUiMode::Interactive && stream.is_none() && !buffer_is_effectively_empty(&input)
     {

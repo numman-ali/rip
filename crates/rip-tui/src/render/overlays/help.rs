@@ -45,7 +45,7 @@ pub(super) fn render_help_overlay(
 
     lines.push(Line::from(Span::styled(
         truncate(
-            "⌃K opens the searchable command palette. ? opens Help only when the composer is empty.",
+            "⌃K opens the searchable command palette. Tabs across the top show which palette mode is active. ? opens Help only when the composer is empty.",
             width.saturating_sub(2),
         ),
         theme.chrome,

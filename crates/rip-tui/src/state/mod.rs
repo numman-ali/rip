@@ -62,6 +62,9 @@ pub struct TuiState {
     pub openresponses_model: Option<String>,
     pub preferred_openresponses_endpoint: Option<String>,
     pub preferred_openresponses_model: Option<String>,
+    pub preferred_openresponses_reasoning_effort: Option<String>,
+    pub preferred_openresponses_reasoning_summary: Option<String>,
+    pub reasoning_visible: bool,
     /// Structured canvas model — the sole source of truth for agent
     /// text, tool cards, notices, and everything else the renderer
     /// walks. Streaming deltas flow through the per-AgentTurn
@@ -121,6 +124,9 @@ impl TuiState {
             openresponses_model: None,
             preferred_openresponses_endpoint: None,
             preferred_openresponses_model: None,
+            preferred_openresponses_reasoning_effort: None,
+            preferred_openresponses_reasoning_summary: None,
+            reasoning_visible: true,
             canvas: CanvasModel::new(),
             focused_message_id: None,
             pending_prompt: None,
@@ -246,6 +252,8 @@ impl TuiState {
         let mut out = String::new();
         for message in &self.canvas.messages {
             let CanvasMessage::AgentTurn {
+                reasoning_text,
+                reasoning_summary,
                 blocks,
                 streaming_tail,
                 ..
@@ -253,6 +261,22 @@ impl TuiState {
             else {
                 continue;
             };
+            if self.reasoning_visible {
+                let reasoning = if !reasoning_summary.trim().is_empty() {
+                    Some(("Reasoning summary", reasoning_summary.as_str()))
+                } else if !reasoning_text.trim().is_empty() {
+                    Some(("Reasoning", reasoning_text.as_str()))
+                } else {
+                    None
+                };
+                if let Some((label, text)) = reasoning {
+                    out.push_str(label);
+                    out.push('\n');
+                    out.push_str(text);
+                    out.push('\n');
+                    out.push('\n');
+                }
+            }
             for block in blocks {
                 if let Block::Paragraph(cached) = block {
                     for line in &cached.text.lines {
@@ -330,6 +354,21 @@ impl TuiState {
     ) {
         self.preferred_openresponses_endpoint = endpoint.filter(|value| !value.trim().is_empty());
         self.preferred_openresponses_model = model.filter(|value| !value.trim().is_empty());
+    }
+
+    pub fn set_preferred_openresponses_reasoning(
+        &mut self,
+        effort: Option<String>,
+        summary: Option<String>,
+    ) {
+        self.preferred_openresponses_reasoning_effort =
+            effort.filter(|value| !value.trim().is_empty());
+        self.preferred_openresponses_reasoning_summary =
+            summary.filter(|value| !value.trim().is_empty());
+    }
+
+    pub fn toggle_reasoning_visibility(&mut self) {
+        self.reasoning_visible = !self.reasoning_visible;
     }
 
     pub fn open_selected_detail(&mut self) {
@@ -416,6 +455,8 @@ impl TuiState {
         self.openresponses_first_provider_event_ms = None;
         self.openresponses_endpoint = None;
         self.openresponses_model = None;
+        self.preferred_openresponses_reasoning_effort = None;
+        self.preferred_openresponses_reasoning_summary = None;
         self.pending_prompt = None;
         self.awaiting_response = false;
         self.status_message = None;
@@ -472,11 +513,15 @@ impl TuiState {
     }
 
     pub fn scroll_canvas_up(&mut self, lines: u16) {
+        self.auto_follow = false;
         self.canvas_scroll_from_bottom = self.canvas_scroll_from_bottom.saturating_add(lines);
     }
 
     pub fn scroll_canvas_down(&mut self, lines: u16) {
         self.canvas_scroll_from_bottom = self.canvas_scroll_from_bottom.saturating_sub(lines);
+        if self.canvas_scroll_from_bottom == 0 {
+            self.auto_follow = true;
+        }
     }
 
     /// Move the canvas focus to the previous/next focusable message.
