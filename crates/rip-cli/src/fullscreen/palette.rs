@@ -157,6 +157,20 @@ pub(super) fn openresponses_override_input_from_json(
             .get("followup_user_message")
             .and_then(|value| value.as_str())
             .map(|value| value.to_string()),
+        reasoning: obj
+            .get("reasoning")
+            .and_then(|value| value.as_object())
+            .and_then(|reasoning| {
+                let effort = reasoning
+                    .get("effort")
+                    .and_then(|value| value.as_str())
+                    .and_then(|value| ripd::parse_reasoning_effort(value).ok());
+                let summary = reasoning
+                    .get("summary")
+                    .and_then(|value| value.as_str())
+                    .and_then(|value| ripd::parse_reasoning_summary(value).ok());
+                ripd::OpenResponsesReasoningConfig { effort, summary }.normalized()
+            }),
     }
 }
 

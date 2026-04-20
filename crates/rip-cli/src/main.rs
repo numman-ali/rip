@@ -574,6 +574,23 @@ fn openresponses_overrides_from_env() -> Option<Value> {
         }
     }
 
+    let mut reasoning = serde_json::Map::new();
+    if let Ok(value) = std::env::var("RIP_OPENRESPONSES_REASONING_EFFORT") {
+        let trimmed = value.trim().to_string();
+        if !trimmed.is_empty() {
+            reasoning.insert("effort".to_string(), Value::String(trimmed));
+        }
+    }
+    if let Ok(value) = std::env::var("RIP_OPENRESPONSES_REASONING_SUMMARY") {
+        let trimmed = value.trim().to_string();
+        if !trimmed.is_empty() {
+            reasoning.insert("summary".to_string(), Value::String(trimmed));
+        }
+    }
+    if !reasoning.is_empty() {
+        obj.insert("reasoning".to_string(), Value::Object(reasoning));
+    }
+
     Some(Value::Object(obj))
 }
 

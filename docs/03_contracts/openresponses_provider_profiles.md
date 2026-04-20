@@ -112,6 +112,7 @@ Runtime ownership
   - `crates/ripd/src/session/openresponses.rs` resolves the compatibility profile from `{provider_id, endpoint, model}` and derives validation behavior from that profile plus the explicit `stateless_history` run config.
   - The resolved `provider_id` is the primary selector when RIP knows it from config/route resolution; endpoint heuristics are only a fallback for generic direct-provider wiring and env-only setups.
   - `GET /config/doctor` and `rip config doctor` now surface the resolved provider profile, active conversation strategy, effective validation posture, and any curated model overlay for the active route.
+  - `crates/ripd/src/provider_openresponses.rs` now consumes the typed reasoning config surface (`reasoning.effort`, `reasoning.summary`) and emits the corresponding OpenResponses `reasoning` request object at the provider boundary.
 - This slice is intentionally modest in runtime effect:
   - current runtime selection is used for boundary validation behavior first
   - the wider request/tool/modality matrix is now versioned and inspectable, even where the runtime does not act on every field yet
@@ -235,4 +236,4 @@ Runtime ownership
   - model capability overlays for reasoning, tool calling, structured outputs, and multimodal input
   - operator-facing surfacing in `config.doctor`, the TUI model selector, and SDK diagnostics
 - Known current gap:
-  - reasoning parameters, multimodal/image/file/video request controls, and hosted-tool/MCP request composition are curated in the compatibility matrix but are not yet exposed as first-class operator-configurable request fields in RIP’s runtime/config surface.
+  - typed reasoning controls are now first-class for `effort` and `summary`, but multimodal/image/file/video request controls, hosted-tool/MCP request composition, and `include`-level details such as `reasoning.encrypted_content` are still curated in the compatibility matrix before they are lifted into the same runtime/config surface.

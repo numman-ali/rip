@@ -15,7 +15,7 @@ use crate::openresponses_compat::{
     ConversationStrategy, OpenResponsesModelCompatProfile, OpenResponsesProviderCompatProfile,
     ValidationProfile,
 };
-use crate::provider_openresponses::OpenResponsesConfig;
+use crate::provider_openresponses::{OpenResponsesConfig, OpenResponsesReasoningConfig};
 use crate::runner::{SessionEngine, SessionHandle};
 use crate::tasks::TaskHandle;
 #[cfg(not(test))]
@@ -84,6 +84,8 @@ pub(crate) struct ThreadOpenResponsesOverrides {
     pub(crate) parallel_tool_calls: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) followup_user_message: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) reasoning: Option<OpenResponsesReasoningConfig>,
 }
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
@@ -203,6 +205,12 @@ pub(crate) struct ConfigDoctorOpenResponses {
     pub(crate) followup_user_message: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) followup_user_message_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) reasoning: Option<OpenResponsesReasoningConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) reasoning_effort_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) reasoning_summary_source: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) compat: Option<ConfigDoctorOpenResponsesCompat>,
 }

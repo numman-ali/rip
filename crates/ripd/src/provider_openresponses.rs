@@ -1,7 +1,67 @@
 use rip_provider_openresponses::{
     CreateResponseBuilder, CreateResponsePayload, ItemParam, ToolChoiceParam,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use utoipa::ToSchema;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ReasoningEffort {
+    None,
+    Minimal,
+    Low,
+    Medium,
+    High,
+    Xhigh,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ReasoningSummary {
+    Concise,
+    Detailed,
+    Auto,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct OpenResponsesReasoningConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<ReasoningEffort>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<ReasoningSummary>,
+}
+
+impl OpenResponsesReasoningConfig {
+    pub fn is_empty(&self) -> bool {
+        self.effort.is_none() && self.summary.is_none()
+    }
+
+    pub fn normalized(self) -> Option<Self> {
+        (!self.is_empty()).then_some(self)
+    }
+
+    fn to_value(&self) -> Option<Value> {
+        if self.is_empty() {
+            return None;
+        }
+
+        let mut obj = serde_json::Map::new();
+        if let Some(effort) = self.effort {
+            obj.insert(
+                "effort".to_string(),
+                serde_json::to_value(effort).expect("reasoning effort serializes"),
+            );
+        }
+        if let Some(summary) = self.summary {
+            obj.insert(
+                "summary".to_string(),
+                serde_json::to_value(summary).expect("reasoning summary serializes"),
+            );
+        }
+        Some(Value::Object(obj))
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct OpenResponsesConfig {
@@ -11,6 +71,7 @@ pub struct OpenResponsesConfig {
     pub model: Option<String>,
     pub headers: Vec<(String, String)>,
     pub tool_choice: ToolChoiceParam,
+    pub reasoning: Option<OpenResponsesReasoningConfig>,
     pub followup_user_message: Option<String>,
     pub stateless_history: bool,
     pub parallel_tool_calls: bool,
@@ -34,6 +95,7 @@ impl OpenResponsesConfig {
             },
             Err(_) => ToolChoiceParam::auto(),
         };
+        let reasoning = openresponses_reasoning_from_env();
         let followup_user_message = std::env::var("RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE").ok();
         let stateless_history = std::env::var("RIP_OPENRESPONSES_STATELESS_HISTORY")
             .ok()
@@ -60,6 +122,7 @@ impl OpenResponsesConfig {
             model,
             headers: Vec::new(),
             tool_choice,
+            reasoning,
             followup_user_message,
             stateless_history,
             parallel_tool_calls,
@@ -124,16 +187,25 @@ pub fn build_streaming_followup_request(
 }
 
 fn base_streaming_builder(config: &OpenResponsesConfig) -> CreateResponseBuilder {
-    let builder = CreateResponseBuilder::new();
-    if let Some(model) = config.model.as_deref() {
-        return builder.model(model.to_string());
-    }
-    if config.provider_id.as_deref() == Some("openrouter")
-        || is_openrouter_responses_endpoint(&config.endpoint)
+    let builder = match config.model.as_deref() {
+        Some(model) => CreateResponseBuilder::new().model(model.to_string()),
+        None if config.provider_id.as_deref() == Some("openrouter")
+            || is_openrouter_responses_endpoint(&config.endpoint) =>
+        {
+            CreateResponseBuilder::new().model(DEFAULT_OPENROUTER_MODEL.to_string())
+        }
+        None => CreateResponseBuilder::new(),
+    };
+
+    if let Some(reasoning) = config
+        .reasoning
+        .as_ref()
+        .and_then(OpenResponsesReasoningConfig::to_value)
     {
-        return builder.model(DEFAULT_OPENROUTER_MODEL.to_string());
+        builder.insert_raw("reasoning", reasoning)
+    } else {
+        builder
     }
-    builder
 }
 
 pub(crate) fn is_openrouter_responses_endpoint(endpoint: &str) -> bool {
@@ -188,6 +260,52 @@ pub(crate) fn parse_tool_choice_env(value: &str) -> Result<ToolChoiceParam, Stri
                 .to_string())
         }
     }
+}
+
+pub fn parse_reasoning_effort(value: &str) -> Result<ReasoningEffort, String> {
+    match value.trim() {
+        "none" => Ok(ReasoningEffort::None),
+        "minimal" => Ok(ReasoningEffort::Minimal),
+        "low" => Ok(ReasoningEffort::Low),
+        "medium" => Ok(ReasoningEffort::Medium),
+        "high" => Ok(ReasoningEffort::High),
+        "xhigh" => Ok(ReasoningEffort::Xhigh),
+        _ => Err("unsupported value (expected none|minimal|low|medium|high|xhigh)".to_string()),
+    }
+}
+
+pub fn parse_reasoning_summary(value: &str) -> Result<ReasoningSummary, String> {
+    match value.trim() {
+        "concise" => Ok(ReasoningSummary::Concise),
+        "detailed" => Ok(ReasoningSummary::Detailed),
+        "auto" => Ok(ReasoningSummary::Auto),
+        _ => Err("unsupported value (expected concise|detailed|auto)".to_string()),
+    }
+}
+
+#[cfg(not(test))]
+fn openresponses_reasoning_from_env() -> Option<OpenResponsesReasoningConfig> {
+    let mut reasoning = OpenResponsesReasoningConfig::default();
+
+    if let Ok(value) = std::env::var("RIP_OPENRESPONSES_REASONING_EFFORT") {
+        match parse_reasoning_effort(&value) {
+            Ok(effort) => reasoning.effort = Some(effort),
+            Err(err) => {
+                eprintln!("invalid RIP_OPENRESPONSES_REASONING_EFFORT={value:?}: {err}; ignoring")
+            }
+        }
+    }
+
+    if let Ok(value) = std::env::var("RIP_OPENRESPONSES_REASONING_SUMMARY") {
+        match parse_reasoning_summary(&value) {
+            Ok(summary) => reasoning.summary = Some(summary),
+            Err(err) => {
+                eprintln!("invalid RIP_OPENRESPONSES_REASONING_SUMMARY={value:?}: {err}; ignoring")
+            }
+        }
+    }
+
+    reasoning.normalized()
 }
 
 fn builtin_function_tools() -> Vec<Value> {
@@ -343,6 +461,7 @@ mod tests {
             model: None,
             headers: Vec::new(),
             tool_choice: ToolChoiceParam::auto(),
+            reasoning: None,
             followup_user_message,
             stateless_history: false,
             parallel_tool_calls: false,
@@ -498,6 +617,7 @@ mod tests {
             model: Some("gpt-5-nano-2025-08-07".to_string()),
             headers: Vec::new(),
             tool_choice: ToolChoiceParam::required(),
+            reasoning: None,
             followup_user_message: None,
             stateless_history: false,
             parallel_tool_calls: true,
@@ -528,6 +648,7 @@ mod tests {
             model: None,
             headers: Vec::new(),
             tool_choice: ToolChoiceParam::auto(),
+            reasoning: None,
             followup_user_message: None,
             stateless_history: false,
             parallel_tool_calls: false,
@@ -548,6 +669,7 @@ mod tests {
             model: None,
             headers: Vec::new(),
             tool_choice: ToolChoiceParam::auto(),
+            reasoning: None,
             followup_user_message: None,
             stateless_history: false,
             parallel_tool_calls: false,
@@ -573,6 +695,59 @@ mod tests {
         assert_eq!(
             input[0].get("type").and_then(|v| v.as_str()),
             Some("message")
+        );
+    }
+
+    #[test]
+    fn parse_reasoning_helpers_accept_known_values() {
+        assert_eq!(
+            parse_reasoning_effort("minimal"),
+            Ok(ReasoningEffort::Minimal)
+        );
+        assert_eq!(parse_reasoning_effort("xhigh"), Ok(ReasoningEffort::Xhigh));
+        assert_eq!(parse_reasoning_summary("auto"), Ok(ReasoningSummary::Auto));
+        assert_eq!(
+            parse_reasoning_summary("detailed"),
+            Ok(ReasoningSummary::Detailed)
+        );
+    }
+
+    #[test]
+    fn parse_reasoning_helpers_reject_unknown_values() {
+        assert!(parse_reasoning_effort("turbo").is_err());
+        assert!(parse_reasoning_summary("full").is_err());
+    }
+
+    #[test]
+    fn build_streaming_request_includes_reasoning_when_configured() {
+        let config = OpenResponsesConfig {
+            provider_id: None,
+            endpoint: "http://example.test/v1/responses".to_string(),
+            api_key: None,
+            model: Some("gpt-5.4-nano".to_string()),
+            headers: Vec::new(),
+            tool_choice: ToolChoiceParam::auto(),
+            reasoning: Some(OpenResponsesReasoningConfig {
+                effort: Some(ReasoningEffort::High),
+                summary: Some(ReasoningSummary::Detailed),
+            }),
+            followup_user_message: None,
+            stateless_history: false,
+            parallel_tool_calls: false,
+        };
+        let payload = build_streaming_request(&config, "hi");
+        let body = payload.body();
+        assert_eq!(
+            body.get("reasoning")
+                .and_then(|value| value.get("effort"))
+                .and_then(|value| value.as_str()),
+            Some("high")
+        );
+        assert_eq!(
+            body.get("reasoning")
+                .and_then(|value| value.get("summary"))
+                .and_then(|value| value.as_str()),
+            Some("detailed")
         );
     }
 

@@ -42,6 +42,7 @@ fn override_input_returns_default_when_value_is_none() {
     assert!(out.stateless_history.is_none());
     assert!(out.parallel_tool_calls.is_none());
     assert!(out.followup_user_message.is_none());
+    assert!(out.reasoning.is_none());
 }
 
 #[test]
@@ -60,6 +61,10 @@ fn override_input_extracts_all_known_fields() {
         "stateless_history": true,
         "parallel_tool_calls": false,
         "followup_user_message": "continue",
+        "reasoning": {
+            "effort": "high",
+            "summary": "detailed"
+        },
         "unknown_field": 42,
     });
     let out = openresponses_override_input_from_json(Some(&value));
@@ -71,6 +76,14 @@ fn override_input_extracts_all_known_fields() {
     assert_eq!(out.stateless_history, Some(true));
     assert_eq!(out.parallel_tool_calls, Some(false));
     assert_eq!(out.followup_user_message.as_deref(), Some("continue"));
+    assert_eq!(
+        out.reasoning.as_ref().and_then(|value| value.effort),
+        Some(ripd::ReasoningEffort::High)
+    );
+    assert_eq!(
+        out.reasoning.as_ref().and_then(|value| value.summary),
+        Some(ripd::ReasoningSummary::Detailed)
+    );
 }
 
 #[test]
@@ -80,6 +93,7 @@ fn override_input_handles_partial_object() {
     assert!(out.endpoint.is_none());
     assert_eq!(out.model.as_deref(), Some("openai/gpt-5-pro"));
     assert!(out.stateless_history.is_none());
+    assert!(out.reasoning.is_none());
 }
 
 #[test]

@@ -32,7 +32,11 @@ Config shape (v1)
       },
       // Provider-scoped OpenResponses defaults (optional; overlays the global defaults).
       "openresponses": {
-        "stateless_history": true
+        "stateless_history": true,
+        "reasoning": {
+          "effort": "medium",
+          "summary": "concise"
+        }
       }
     },
     "openai": {
@@ -54,7 +58,10 @@ Config shape (v1)
 
   // Default OpenResponses behavior (optional).
   "openresponses": {
-    "parallel_tool_calls": false
+    "parallel_tool_calls": false,
+    "reasoning": {
+      "summary": "concise"
+    }
   }
 }
 ```
@@ -77,9 +84,18 @@ Diagnostics
   - `route`: the default route chosen from config (`roles.primary` or `model`)
   - `effective_route`: the provider/model actually used after endpoint/model overrides are applied
 - Doctor also reports per-field provenance where relevant (`*_source`), so it is obvious whether endpoint/model/OpenResponses defaults came from config, env compat, or per-run overrides.
+- The first typed reasoning controls now live in that same OpenResponses surface:
+  - `reasoning.effort`: `none|minimal|low|medium|high|xhigh`
+  - `reasoning.summary`: `concise|detailed|auto`
+- They resolve through the same layered path as the other OpenResponses fields:
+  - global config
+  - provider-scoped overlay
+  - env compat overrides (`RIP_OPENRESPONSES_REASONING_EFFORT`, `RIP_OPENRESPONSES_REASONING_SUMMARY`)
+  - per-run overrides
 - Doctor now also surfaces the resolved OpenResponses compatibility profile for the active route:
   - provider profile health (`native` / `compat` / `unsupported` / `unknown`)
   - active vs recommended conversation strategy
   - effective validation normalizations
   - any curated model overlay attached to the resolved route
+- Doctor also surfaces the resolved `reasoning` object and per-field provenance, so operators can see both what RIP is asking for and what the compatibility matrix says that route supports.
 - Compatibility resolution prefers the resolved `provider_id` from route/config selection and falls back to endpoint heuristics only when RIP has no canonical provider id for the route. This keeps custom proxies and loopback/provider-fixture endpoints aligned with the intended provider profile.

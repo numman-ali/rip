@@ -89,13 +89,14 @@ Supporting (non-OpenResponses) capabilities referenced by the spec
   - outbound bearer auth + custom/static headers on the actual HTTP request
   - default-model selection for OpenRouter routes when the operator omits `model`
   - `tool_choice`, `parallel_tool_calls`, and `max_tool_calls` in the emitted request body
+  - typed reasoning request composition (`reasoning.effort`, `reasoning.summary`)
   - stateful follow-up composition with `previous_response_id`
 - Provider validation supports compatibility normalization for missing item `id` fields (opt-in via `RIP_OPENRESPONSES_STATELESS_HISTORY`; raw events preserved) to keep schema validation strict while accommodating non-compliant streams.
 - Provider validation supports OpenRouter-specific compatibility normalization for missing `response.user` and `response.reasoning_text.{delta,done}` stream events (raw events preserved; validation copy only), so successful OpenRouter runs do not surface false provider errors.
 - Config remains layered separately from compatibility truth: provider-level auth/static headers/defaults resolve the route, and the compatibility profile records what that resolved route actually supports or degrades.
 - Tool schemas are emitted with `strict: false` for broad provider compatibility; runtime still validates tool args locally.
 - Tool schema validation uses split component schemas for `ResponsesToolParam` and `ToolChoiceParam`, validating optional fields and nested structures; bundled OpenAPI still only includes function tool variants.
-- Current explicit gap: provider/model profiles may record `reasoning`, multimodal/image/file/video, hosted tools, and MCP rows, but RIP does not yet expose those as first-class operator-configurable request fields in its own OpenResponses runtime/config surface. They are curated in docs/profile state first and must not be described as shipped runtime request controls yet.
+- Current explicit gap: provider/model profiles may record multimodal/image/file/video, hosted tools, MCP rows, and `include` details such as `reasoning.encrypted_content`, but RIP does not yet expose those as first-class operator-configurable request fields in its own OpenResponses runtime/config surface. Typed reasoning controls (`effort`, `summary`) are now shipped; the rest remain curated in docs/profile state first and must not be described as shipped runtime request controls yet.
 - Split component schemas are vendored in `schemas/openresponses/split_components.json`; split paths schema is vendored in `schemas/openresponses/paths_responses.json`.
 - Input item variants are mapped via `ItemParam` constructors in the provider request builder; runtime request-frame integration remains pending.
 - ItemParam validation covers all input variants using required-field checks (message role/item reference handling included); runtime mapping remains pending.

@@ -40,6 +40,10 @@ pub use local_authority::{
     try_cleanup_stale_authority_files, AuthorityLockGuard, AuthorityLockRecord, AuthorityMeta,
     PidLiveness,
 };
+pub use provider_openresponses::{
+    parse_reasoning_effort, parse_reasoning_summary, OpenResponsesReasoningConfig, ReasoningEffort,
+    ReasoningSummary,
+};
 pub use runner::{SessionEngine, SessionHandle};
 
 #[cfg(not(test))]

@@ -111,6 +111,7 @@ pub(crate) async fn thread_post_message(
             followup_user_message: openresponses
                 .as_ref()
                 .and_then(|cfg| cfg.followup_user_message.clone()),
+            reasoning: openresponses.as_ref().and_then(|cfg| cfg.reasoning.clone()),
         },
     );
     let openresponses_override = resolved_openresponses.map(|cfg| OpenResponsesConfig {
@@ -120,6 +121,7 @@ pub(crate) async fn thread_post_message(
         model: cfg.model,
         headers: cfg.headers,
         tool_choice: ToolChoiceParam::auto(),
+        reasoning: cfg.reasoning,
         followup_user_message: cfg.followup_user_message,
         stateless_history: cfg.stateless_history,
         parallel_tool_calls: cfg.parallel_tool_calls,

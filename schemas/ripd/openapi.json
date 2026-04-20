@@ -1739,6 +1739,28 @@
               "null"
             ]
           },
+          "reasoning": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/OpenResponsesReasoningConfig"
+              }
+            ]
+          },
+          "reasoning_effort_source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reasoning_summary_source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "route": {
             "type": [
               "string",
@@ -2139,6 +2161,31 @@
           }
         }
       },
+      "OpenResponsesReasoningConfig": {
+        "type": "object",
+        "properties": {
+          "effort": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReasoningEffort"
+              }
+            ]
+          },
+          "summary": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReasoningSummary"
+              }
+            ]
+          }
+        }
+      },
       "ProviderCursorRotateV1Request": {
         "type": "object",
         "required": [
@@ -2311,6 +2358,25 @@
             "type": "string"
           }
         }
+      },
+      "ReasoningEffort": {
+        "type": "string",
+        "enum": [
+          "none",
+          "minimal",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      },
+      "ReasoningSummary": {
+        "type": "string",
+        "enum": [
+          "concise",
+          "detailed",
+          "auto"
+        ]
       },
       "RequestCapabilityHealth": {
         "type": "object",
@@ -2849,6 +2915,16 @@
             "type": [
               "boolean",
               "null"
+            ]
+          },
+          "reasoning": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/OpenResponsesReasoningConfig"
+              }
             ]
           },
           "stateless_history": {

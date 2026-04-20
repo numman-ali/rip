@@ -53,6 +53,9 @@ pub(crate) async fn config_doctor(State(state): State<AppState>) -> impl IntoRes
             parallel_tool_calls_source: cfg.parallel_tool_calls_source,
             followup_user_message: cfg.followup_user_message,
             followup_user_message_source: cfg.followup_user_message_source,
+            reasoning: cfg.reasoning,
+            reasoning_effort_source: cfg.reasoning_effort_source,
+            reasoning_summary_source: cfg.reasoning_summary_source,
             compat: Some(ConfigDoctorOpenResponsesCompat {
                 active_conversation_strategy: compat
                     .active_conversation_strategy(cfg.stateless_history),

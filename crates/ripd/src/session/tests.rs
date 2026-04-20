@@ -1,5 +1,7 @@
 use super::*;
-use crate::provider_openresponses::DEFAULT_OPENROUTER_MODEL;
+use crate::provider_openresponses::{
+    OpenResponsesReasoningConfig, ReasoningEffort, ReasoningSummary, DEFAULT_OPENROUTER_MODEL,
+};
 use crate::CompactionCheckpointCumulativeV1Request;
 use rip_provider_openresponses::ToolChoiceParam;
 use tempfile::tempdir;
@@ -639,6 +641,7 @@ async fn stream_openresponses_request_rejects_invalid_payload() {
         model: None,
         headers: Vec::new(),
         tool_choice: ToolChoiceParam::auto(),
+        reasoning: None,
         followup_user_message: None,
         stateless_history: false,
         parallel_tool_calls: false,
@@ -682,6 +685,7 @@ fn validation_options_for_stream_uses_openrouter_compat_profile() {
         model: Some("nvidia/nemotron-3-nano-30b-a3b:free".to_string()),
         headers: Vec::new(),
         tool_choice: ToolChoiceParam::auto(),
+        reasoning: None,
         followup_user_message: None,
         stateless_history: false,
         parallel_tool_calls: false,
@@ -702,6 +706,7 @@ fn validation_options_for_stream_prefers_provider_id_over_endpoint_heuristic() {
         model: Some("nvidia/nemotron-3-nano-30b-a3b:free".to_string()),
         headers: Vec::new(),
         tool_choice: ToolChoiceParam::auto(),
+        reasoning: None,
         followup_user_message: None,
         stateless_history: false,
         parallel_tool_calls: false,
@@ -722,6 +727,7 @@ fn validation_options_for_stream_adds_missing_item_ids_for_stateless_history() {
         model: Some("gpt-5".to_string()),
         headers: Vec::new(),
         tool_choice: ToolChoiceParam::auto(),
+        reasoning: None,
         followup_user_message: None,
         stateless_history: true,
         parallel_tool_calls: false,
@@ -869,6 +875,7 @@ async fn stream_openresponses_request_reports_transport_error() {
         model: Some("fixture-model".to_string()),
         headers: Vec::new(),
         tool_choice: ToolChoiceParam::auto(),
+        reasoning: None,
         followup_user_message: None,
         stateless_history: false,
         parallel_tool_calls: false,
@@ -936,6 +943,7 @@ async fn stream_openresponses_request_reports_http_error() {
         model: Some("fixture-model".to_string()),
         headers: Vec::new(),
         tool_choice: ToolChoiceParam::auto(),
+        reasoning: None,
         followup_user_message: None,
         stateless_history: false,
         parallel_tool_calls: false,
@@ -1058,6 +1066,10 @@ data: [DONE]\n\n";
             ("X-RIP-Test".to_string(), "alpha".to_string()),
         ],
         tool_choice: ToolChoiceParam::required(),
+        reasoning: Some(OpenResponsesReasoningConfig {
+            effort: Some(ReasoningEffort::High),
+            summary: Some(ReasoningSummary::Detailed),
+        }),
         followup_user_message: None,
         stateless_history: false,
         parallel_tool_calls: true,
@@ -1132,6 +1144,18 @@ data: [DONE]\n\n";
     assert_eq!(
         body.get("tool_choice").and_then(|value| value.as_str()),
         Some("required")
+    );
+    assert_eq!(
+        body.get("reasoning")
+            .and_then(|value| value.get("effort"))
+            .and_then(|value| value.as_str()),
+        Some("high")
+    );
+    assert_eq!(
+        body.get("reasoning")
+            .and_then(|value| value.get("summary"))
+            .and_then(|value| value.as_str()),
+        Some("detailed")
     );
     assert!(body
         .get("tools")
@@ -1212,6 +1236,7 @@ data: [DONE]\n\n";
         model: Some("fixture-model".to_string()),
         headers: Vec::new(),
         tool_choice: ToolChoiceParam::auto(),
+        reasoning: None,
         followup_user_message: None,
         stateless_history: true,
         parallel_tool_calls: false,
@@ -1334,6 +1359,7 @@ data: [DONE]\n\n";
         model: Some("fixture-model".to_string()),
         headers: Vec::new(),
         tool_choice: ToolChoiceParam::none(),
+        reasoning: None,
         followup_user_message: None,
         stateless_history: true,
         parallel_tool_calls: false,
@@ -1445,6 +1471,7 @@ data: [DONE]\n\n";
         model: Some("fixture-model".to_string()),
         headers: Vec::new(),
         tool_choice: ToolChoiceParam::auto(),
+        reasoning: None,
         followup_user_message: None,
         stateless_history: false,
         parallel_tool_calls: false,
@@ -1585,6 +1612,7 @@ data: [DONE]\n\n";
         model: Some("fixture-model".to_string()),
         headers: Vec::new(),
         tool_choice,
+        reasoning: None,
         followup_user_message: None,
         stateless_history: true,
         parallel_tool_calls: false,
@@ -1713,6 +1741,7 @@ data: [DONE]\n\n";
         model: Some("fixture-model".to_string()),
         headers: Vec::new(),
         tool_choice: ToolChoiceParam::auto(),
+        reasoning: None,
         followup_user_message: None,
         stateless_history: false,
         parallel_tool_calls: false,
@@ -1871,6 +1900,7 @@ async fn run_session_ends_when_context_compile_fails_before_provider_loop() {
             model: Some("fixture-model".to_string()),
             headers: Vec::new(),
             tool_choice: ToolChoiceParam::auto(),
+            reasoning: None,
             followup_user_message: None,
             stateless_history: false,
             parallel_tool_calls: false,

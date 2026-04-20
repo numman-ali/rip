@@ -1101,6 +1101,8 @@ fn openresponses_overrides_from_env_reads_vars() {
         std::env::set_var("RIP_OPENRESPONSES_STATELESS_HISTORY", "yes");
         std::env::set_var("RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS", "true");
         std::env::set_var("RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE", "continue");
+        std::env::set_var("RIP_OPENRESPONSES_REASONING_EFFORT", "high");
+        std::env::set_var("RIP_OPENRESPONSES_REASONING_SUMMARY", "detailed");
 
         let overrides = openresponses_overrides_from_env().expect("overrides");
         let expected = serde_json::json!({
@@ -1109,6 +1111,10 @@ fn openresponses_overrides_from_env_reads_vars() {
             "stateless_history": true,
             "parallel_tool_calls": true,
             "followup_user_message": "continue",
+            "reasoning": {
+                "effort": "high",
+                "summary": "detailed"
+            }
         });
         assert_eq!(overrides, expected);
     });

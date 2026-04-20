@@ -18,6 +18,9 @@ async fn config_doctor_serves_resolved_configuration() {
     fs::write(
         workspace_dir.join("rip.jsonc"),
         r#"{
+  "openresponses": {
+    "reasoning": { "summary": "concise" }
+  },
   "provider": {
     "openai": {
       "endpoint": "https://api.openai.com/v1/responses",
@@ -74,6 +77,21 @@ async fn config_doctor_serves_resolved_configuration() {
             .and_then(|value| value.get("model"))
             .and_then(|value| value.as_str()),
         Some("gpt-5-mini")
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("reasoning"))
+            .and_then(|value| value.get("summary"))
+            .and_then(|value| value.as_str()),
+        Some("concise")
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("reasoning_summary_source"))
+            .and_then(|value| value.as_str()),
+        Some("config:openresponses.reasoning.summary")
     );
     assert_eq!(
         payload

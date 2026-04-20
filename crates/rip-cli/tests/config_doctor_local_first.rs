@@ -70,12 +70,15 @@ async fn rip_config_doctor_reports_layered_sources_and_effective_openresponses()
         global_dir.join("config.jsonc"),
         r#"{
   // global defaults
-  "provider": {
+      "provider": {
     "openai": {
       "endpoint": "https://api.openai.com/v1/responses",
       "api_key": { "env": "OPENAI_API_KEY" },
       "headers": { "x-global": "1" },
-      "openresponses": { "stateless_history": true }
+      "openresponses": {
+        "stateless_history": true,
+        "reasoning": { "summary": "concise" }
+      }
     }
   },
   "roles": {
@@ -120,6 +123,8 @@ async fn rip_config_doctor_reports_layered_sources_and_effective_openresponses()
         .env("RIP_OPENRESPONSES_STATELESS_HISTORY", "off")
         .env("RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS", "yes")
         .env("RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE", "env followup")
+        .env("RIP_OPENRESPONSES_REASONING_EFFORT", "high")
+        .env("RIP_OPENRESPONSES_REASONING_SUMMARY", "detailed")
         .env_remove("RIP_OPENRESPONSES_ENDPOINT")
         .env_remove("RIP_OPENRESPONSES_API_KEY")
         .env_remove("RIP_OPENRESPONSES_TOOL_CHOICE")
@@ -243,6 +248,32 @@ async fn rip_config_doctor_reports_layered_sources_and_effective_openresponses()
             .get("followup_user_message_source")
             .and_then(|value| value.as_str()),
         Some("env:RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE")
+    );
+    assert_eq!(
+        openresponses
+            .get("reasoning")
+            .and_then(|value| value.get("effort"))
+            .and_then(|value| value.as_str()),
+        Some("high")
+    );
+    assert_eq!(
+        openresponses
+            .get("reasoning")
+            .and_then(|value| value.get("summary"))
+            .and_then(|value| value.as_str()),
+        Some("detailed")
+    );
+    assert_eq!(
+        openresponses
+            .get("reasoning_effort_source")
+            .and_then(|value| value.as_str()),
+        Some("env:RIP_OPENRESPONSES_REASONING_EFFORT")
+    );
+    assert_eq!(
+        openresponses
+            .get("reasoning_summary_source")
+            .and_then(|value| value.as_str()),
+        Some("env:RIP_OPENRESPONSES_REASONING_SUMMARY")
     );
     assert_eq!(
         openresponses

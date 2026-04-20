@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::provider_openresponses::OpenResponsesReasoningConfig;
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RipConfig {
     #[serde(rename = "$schema")]
@@ -132,6 +134,8 @@ pub struct OpenResponsesDefaults {
     pub parallel_tool_calls: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub followup_user_message: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<OpenResponsesReasoningConfig>,
 }
 
 /// An overlay for OpenResponses defaults where fields are optional.
@@ -145,6 +149,8 @@ pub struct OpenResponsesDefaultsOverlay {
     pub parallel_tool_calls: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub followup_user_message: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<OpenResponsesReasoningConfig>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -154,6 +160,7 @@ pub struct OpenResponsesOverrideInput {
     pub stateless_history: Option<bool>,
     pub parallel_tool_calls: Option<bool>,
     pub followup_user_message: Option<String>,
+    pub reasoning: Option<OpenResponsesReasoningConfig>,
 }
 
 #[derive(Debug, Clone)]
@@ -175,6 +182,9 @@ pub struct OpenResponsesResolvedConfig {
     pub parallel_tool_calls_source: Option<String>,
     pub followup_user_message: Option<String>,
     pub followup_user_message_source: Option<String>,
+    pub reasoning: Option<OpenResponsesReasoningConfig>,
+    pub reasoning_effort_source: Option<String>,
+    pub reasoning_summary_source: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -402,6 +412,19 @@ pub fn resolve_openresponses_config(
             .map(|_| "config:openresponses.followup_user_message".to_string())
             .unwrap_or_else(|| "default:followup_user_message=none".to_string()),
     );
+    let mut reasoning = config
+        .openresponses
+        .as_ref()
+        .and_then(|cfg| cfg.reasoning.clone())
+        .and_then(OpenResponsesReasoningConfig::normalized);
+    let mut reasoning_effort_source = reasoning
+        .as_ref()
+        .and_then(|cfg| cfg.effort)
+        .map(|_| "config:openresponses.reasoning.effort".to_string());
+    let mut reasoning_summary_source = reasoning
+        .as_ref()
+        .and_then(|cfg| cfg.summary)
+        .map(|_| "config:openresponses.reasoning.summary".to_string());
 
     if let (Some(provider_id), Some(provider_cfg)) = (provider_id.as_deref(), provider_cfg) {
         if let Some(overlay) = provider_cfg.openresponses.as_ref() {
@@ -427,6 +450,22 @@ pub fn resolve_openresponses_config(
                     "config:provider.{provider_id}.openresponses.followup_user_message"
                 ));
             }
+            if let Some(value) = overlay.reasoning.as_ref().and_then(|cfg| cfg.effort) {
+                let reasoning_cfg =
+                    reasoning.get_or_insert_with(OpenResponsesReasoningConfig::default);
+                reasoning_cfg.effort = Some(value);
+                reasoning_effort_source = Some(format!(
+                    "config:provider.{provider_id}.openresponses.reasoning.effort"
+                ));
+            }
+            if let Some(value) = overlay.reasoning.as_ref().and_then(|cfg| cfg.summary) {
+                let reasoning_cfg =
+                    reasoning.get_or_insert_with(OpenResponsesReasoningConfig::default);
+                reasoning_cfg.summary = Some(value);
+                reasoning_summary_source = Some(format!(
+                    "config:provider.{provider_id}.openresponses.reasoning.summary"
+                ));
+            }
         }
     }
 
@@ -446,6 +485,34 @@ pub fn resolve_openresponses_config(
                 Some("env:RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE".to_string());
         }
     }
+    if let Some(value) = env_var("RIP_OPENRESPONSES_REASONING_EFFORT") {
+        match crate::provider_openresponses::parse_reasoning_effort(&value) {
+            Ok(effort) => {
+                let reasoning_cfg =
+                    reasoning.get_or_insert_with(OpenResponsesReasoningConfig::default);
+                reasoning_cfg.effort = Some(effort);
+                reasoning_effort_source =
+                    Some("env:RIP_OPENRESPONSES_REASONING_EFFORT".to_string());
+            }
+            Err(err) => {
+                eprintln!("invalid RIP_OPENRESPONSES_REASONING_EFFORT={value:?}: {err}; ignoring")
+            }
+        }
+    }
+    if let Some(value) = env_var("RIP_OPENRESPONSES_REASONING_SUMMARY") {
+        match crate::provider_openresponses::parse_reasoning_summary(&value) {
+            Ok(summary) => {
+                let reasoning_cfg =
+                    reasoning.get_or_insert_with(OpenResponsesReasoningConfig::default);
+                reasoning_cfg.summary = Some(summary);
+                reasoning_summary_source =
+                    Some("env:RIP_OPENRESPONSES_REASONING_SUMMARY".to_string());
+            }
+            Err(err) => {
+                eprintln!("invalid RIP_OPENRESPONSES_REASONING_SUMMARY={value:?}: {err}; ignoring")
+            }
+        }
+    }
 
     if let Some(stateless_history) = overrides.stateless_history {
         defaults.stateless_history = stateless_history;
@@ -459,6 +526,20 @@ pub fn resolve_openresponses_config(
         defaults.followup_user_message = overrides.followup_user_message.clone();
         followup_user_message_source = Some("override:followup_user_message".to_string());
     }
+    if let Some(override_reasoning) = overrides.reasoning.as_ref() {
+        if let Some(value) = override_reasoning.effort {
+            let reasoning_cfg = reasoning.get_or_insert_with(OpenResponsesReasoningConfig::default);
+            reasoning_cfg.effort = Some(value);
+            reasoning_effort_source = Some("override:reasoning.effort".to_string());
+        }
+        if let Some(value) = override_reasoning.summary {
+            let reasoning_cfg = reasoning.get_or_insert_with(OpenResponsesReasoningConfig::default);
+            reasoning_cfg.summary = Some(value);
+            reasoning_summary_source = Some("override:reasoning.summary".to_string());
+        }
+    }
+
+    reasoning = reasoning.and_then(OpenResponsesReasoningConfig::normalized);
 
     let effective_route = match (provider_id.as_deref(), model.as_deref()) {
         (Some(provider_id), Some(model)) => Some(format!("{provider_id}/{model}")),
@@ -484,6 +565,9 @@ pub fn resolve_openresponses_config(
             parallel_tool_calls_source,
             followup_user_message: defaults.followup_user_message,
             followup_user_message_source,
+            reasoning,
+            reasoning_effort_source,
+            reasoning_summary_source,
         }),
         loaded,
     )
@@ -783,6 +867,7 @@ fn merge_json_value(target: &mut Value, overlay: &Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{ReasoningEffort, ReasoningSummary};
     use std::fs;
 
     #[test]
@@ -917,12 +1002,16 @@ mod tests {
                   "endpoint": "https://api.openai.com/v1/responses",
                   "openresponses": {
                     "stateless_history": true,
-                    "followup_user_message": "compat"
+                    "followup_user_message": "compat",
+                    "reasoning": { "effort": "medium" }
                   }
                 }
               },
               "model": "openrouter/openai/gpt-oss-20b",
-              "openresponses": { "parallel_tool_calls": true }
+              "openresponses": {
+                "parallel_tool_calls": true,
+                "reasoning": { "summary": "concise" }
+              }
             }
             "#,
         )
@@ -934,6 +1023,10 @@ mod tests {
                 endpoint: Some("https://api.openai.com/v1/responses".to_string()),
                 model: Some("gpt-5-nano-2025-08-07".to_string()),
                 parallel_tool_calls: Some(false),
+                reasoning: Some(OpenResponsesReasoningConfig {
+                    effort: None,
+                    summary: Some(ReasoningSummary::Auto),
+                }),
                 ..OpenResponsesOverrideInput::default()
             },
         );
@@ -964,6 +1057,22 @@ mod tests {
         assert_eq!(
             resolved.followup_user_message_source.as_deref(),
             Some("config:provider.openai.openresponses.followup_user_message")
+        );
+        assert_eq!(
+            resolved.reasoning.as_ref().and_then(|value| value.effort),
+            Some(ReasoningEffort::Medium)
+        );
+        assert_eq!(
+            resolved.reasoning.as_ref().and_then(|value| value.summary),
+            Some(ReasoningSummary::Auto)
+        );
+        assert_eq!(
+            resolved.reasoning_effort_source.as_deref(),
+            Some("config:provider.openai.openresponses.reasoning.effort")
+        );
+        assert_eq!(
+            resolved.reasoning_summary_source.as_deref(),
+            Some("override:reasoning.summary")
         );
 
         let _ = fs::remove_dir_all(&dir);
