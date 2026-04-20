@@ -3097,10 +3097,14 @@
         "required": [
           "missing_item_ids",
           "missing_response_user",
-          "reasoning_text_events"
+          "reasoning_text_events",
+          "missing_reasoning_summary"
         ],
         "properties": {
           "missing_item_ids": {
+            "type": "boolean"
+          },
+          "missing_reasoning_summary": {
             "type": "boolean"
           },
           "missing_response_user": {

@@ -20,6 +20,7 @@ pub struct ValidationOptions {
     normalize_missing_item_ids: bool,
     normalize_missing_response_user: bool,
     normalize_reasoning_text_events: bool,
+    normalize_missing_reasoning_summary: bool,
 }
 
 impl ValidationOptions {
@@ -36,6 +37,7 @@ impl ValidationOptions {
             .with_missing_item_ids()
             .with_missing_response_user()
             .with_reasoning_text_events()
+            .with_missing_reasoning_summary()
     }
 
     pub fn with_missing_item_ids(mut self) -> Self {
@@ -50,6 +52,11 @@ impl ValidationOptions {
 
     pub fn with_reasoning_text_events(mut self) -> Self {
         self.normalize_reasoning_text_events = true;
+        self
+    }
+
+    pub fn with_missing_reasoning_summary(mut self) -> Self {
+        self.normalize_missing_reasoning_summary = true;
         self
     }
 }
@@ -104,6 +111,7 @@ impl ParsedEvent {
         let validation_data = if validation.normalize_missing_item_ids
             || validation.normalize_missing_response_user
             || validation.normalize_reasoning_text_events
+            || validation.normalize_missing_reasoning_summary
         {
             normalize_event_for_validation(&data, validation)
         } else {
@@ -284,6 +292,9 @@ fn normalize_response_resource(response: &mut Value, validation: ValidationOptio
     if validation.normalize_missing_response_user && !obj.contains_key("user") {
         obj.insert("user".to_string(), Value::Null);
     }
+    if validation.normalize_missing_reasoning_summary {
+        normalize_response_reasoning_metadata(obj);
+    }
     let Some(output) = obj.get_mut("output") else {
         return;
     };
@@ -292,6 +303,19 @@ fn normalize_response_resource(response: &mut Value, validation: ValidationOptio
     };
     for (idx, item) in items.iter_mut().enumerate() {
         normalize_output_item(item, Some(idx as u64));
+    }
+}
+
+fn normalize_response_reasoning_metadata(obj: &mut serde_json::Map<String, Value>) {
+    let Some(reasoning) = obj.get_mut("reasoning").and_then(Value::as_object_mut) else {
+        return;
+    };
+
+    if !reasoning.contains_key("effort") {
+        reasoning.insert("effort".to_string(), Value::Null);
+    }
+    if !reasoning.contains_key("summary") {
+        reasoning.insert("summary".to_string(), Value::Null);
     }
 }
 
@@ -845,6 +869,83 @@ data: {\"type\":\"response.output_item.added\",\"sequence_number\":1,\"output_in
             .and_then(|v| v.get("user"))
             .unwrap()
             .is_null());
+    }
+
+    #[test]
+    fn compat_openrouter_fills_missing_reasoning_summary_with_null() {
+        let value = serde_json::json!({
+            "type": "response.created",
+            "sequence_number": 1,
+            "response": {
+                "background": false,
+                "completed_at": null,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0,
+                "id": "resp_1",
+                "incomplete_details": null,
+                "instructions": null,
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {},
+                "model": "fixture-model",
+                "object": "response",
+                "output": [],
+                "parallel_tool_calls": false,
+                "presence_penalty": 0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "reasoning": { "effort": "high" },
+                "safety_identifier": null,
+                "service_tier": "auto",
+                "status": "in_progress",
+                "store": false,
+                "temperature": 0,
+                "text": { "format": { "type": "text" } },
+                "tool_choice": "auto",
+                "tools": [],
+                "top_logprobs": 0,
+                "top_p": 0,
+                "truncation": "auto",
+                "usage": null
+            }
+        });
+        let normalized =
+            normalize_event_for_validation(&value, ValidationOptions::compat_openrouter());
+        let reasoning = normalized
+            .get("response")
+            .and_then(|v| v.get("reasoning"))
+            .and_then(|v| v.as_object())
+            .expect("reasoning object");
+        assert_eq!(
+            reasoning.get("effort").and_then(|v| v.as_str()),
+            Some("high")
+        );
+        assert!(reasoning.get("summary").is_some());
+        assert!(reasoning.get("summary").unwrap().is_null());
+    }
+
+    #[test]
+    fn compat_openrouter_accepts_response_reasoning_without_summary() {
+        let mut decoder = SseDecoder::new_with_validation(ValidationOptions::compat_openrouter());
+        let payload = "event: response.created\n\
+                      data: {\"type\":\"response.created\",\"sequence_number\":1,\"response\":{\"background\":false,\"completed_at\":null,\"created_at\":1776635696,\"error\":null,\"frequency_penalty\":0,\"id\":\"resp_1\",\"incomplete_details\":null,\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":32,\"metadata\":{},\"model\":\"google/gemma-4-26b-a4b-it-20260403\",\"object\":\"response\",\"output\":[],\"parallel_tool_calls\":false,\"presence_penalty\":0,\"previous_response_id\":null,\"prompt_cache_key\":null,\"reasoning\":{\"effort\":\"high\"},\"safety_identifier\":null,\"service_tier\":\"auto\",\"status\":\"in_progress\",\"store\":false,\"temperature\":1,\"text\":{\"format\":{\"type\":\"text\"}},\"tool_choice\":\"auto\",\"tools\":[],\"top_logprobs\":0,\"top_p\":1,\"truncation\":\"disabled\",\"usage\":null}}\n\n\
+                      event: response.completed\n\
+                      data: {\"type\":\"response.completed\",\"sequence_number\":6,\"response\":{\"background\":false,\"completed_at\":1776635696,\"created_at\":1776635696,\"error\":null,\"frequency_penalty\":0,\"id\":\"resp_1\",\"incomplete_details\":null,\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":32,\"metadata\":{},\"model\":\"google/gemma-4-26b-a4b-it-20260403\",\"object\":\"response\",\"output\":[{\"content\":[{\"text\":\"planning\",\"type\":\"reasoning_text\"}],\"format\":\"unknown\",\"id\":\"rs_tmp_1\",\"status\":\"completed\",\"summary\":[],\"type\":\"reasoning\"},{\"content\":[{\"annotations\":[],\"logprobs\":[],\"text\":\"done\",\"type\":\"output_text\"}],\"id\":\"msg_1\",\"role\":\"assistant\",\"status\":\"completed\",\"type\":\"message\"}],\"parallel_tool_calls\":false,\"presence_penalty\":0,\"previous_response_id\":null,\"prompt_cache_key\":null,\"reasoning\":{\"effort\":\"high\"},\"safety_identifier\":null,\"service_tier\":\"auto\",\"status\":\"completed\",\"store\":false,\"temperature\":1,\"text\":{\"format\":{\"type\":\"text\"}},\"tool_choice\":\"auto\",\"tools\":[],\"top_logprobs\":0,\"top_p\":1,\"truncation\":\"disabled\",\"usage\":{\"input_tokens\":1,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens\":2,\"output_tokens_details\":{\"reasoning_tokens\":1},\"total_tokens\":3}}}\n\n";
+        let events = decoder.push(payload);
+        assert_eq!(events.len(), 2);
+        for event in events {
+            assert!(
+                event.errors.is_empty(),
+                "unexpected event errors: {:?}",
+                event.errors
+            );
+            assert!(
+                event.response_errors.is_empty(),
+                "unexpected response errors: {:?}",
+                event.response_errors
+            );
+        }
     }
 
     #[test]

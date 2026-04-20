@@ -231,6 +231,7 @@ pub struct ValidationProfile {
     pub missing_item_ids: bool,
     pub missing_response_user: bool,
     pub reasoning_text_events: bool,
+    pub missing_reasoning_summary: bool,
 }
 
 impl ValidationProfile {
@@ -238,12 +239,14 @@ impl ValidationProfile {
         missing_item_ids: false,
         missing_response_user: false,
         reasoning_text_events: false,
+        missing_reasoning_summary: false,
     };
 
     const OPENROUTER: Self = Self {
         missing_item_ids: true,
         missing_response_user: true,
         reasoning_text_events: true,
+        missing_reasoning_summary: true,
     };
 
     fn to_validation_options(self) -> ValidationOptions {
@@ -256,6 +259,9 @@ impl ValidationProfile {
         }
         if self.reasoning_text_events {
             options = options.with_reasoning_text_events();
+        }
+        if self.missing_reasoning_summary {
+            options = options.with_missing_reasoning_summary();
         }
         options
     }

@@ -95,6 +95,7 @@ Profile shape (v1)
     - `missing_item_ids`
     - `missing_response_user`
     - `reasoning_text_events`
+    - `missing_reasoning_summary`
 - Model overlay:
   - `version`
   - `provider_id`
