@@ -273,6 +273,10 @@ fn open_options_palette_mounts_option_mode_with_entries() {
     let overlay = state.palette_state_clone().unwrap();
     assert_eq!(overlay.mode, PaletteMode::Option);
     assert!(!overlay.entries.is_empty());
+    assert!(overlay
+        .entries
+        .iter()
+        .any(|entry| entry.value == "options.include.reasoning.encrypted_content"));
 }
 
 #[test]
@@ -567,6 +571,44 @@ fn open_options_palette_shows_effective_reasoning_and_route_support() {
 }
 
 #[test]
+fn open_options_palette_shows_include_state_and_route_support() {
+    let mut state = tui();
+    let overrides = json!({
+        "endpoint": "https://openrouter.ai/api/v1/responses",
+        "model": "nvidia/nemotron-3-super-120b-a12b:free",
+        "include": [
+            "reasoning.encrypted_content",
+            "message.output_text.logprobs"
+        ]
+    });
+
+    open_options_palette_with_overrides(&mut state, Some(&overrides), PaletteOrigin::TopCenter);
+    let overlay = state.palette_state_clone().expect("palette");
+    let native_entry = overlay
+        .entries
+        .iter()
+        .find(|entry| entry.value == "options.include.reasoning.encrypted_content")
+        .expect("native include entry");
+    let unsupported_entry = overlay
+        .entries
+        .iter()
+        .find(|entry| entry.value == "options.include.message.output_text.logprobs")
+        .expect("unsupported include entry");
+
+    assert_eq!(
+        native_entry.subtitle.as_deref(),
+        Some("effective: on • route: native")
+    );
+    assert!(unsupported_entry
+        .subtitle
+        .as_deref()
+        .unwrap_or("")
+        .contains("effective: off • requested: on • route: unsupported"));
+    assert_eq!(native_entry.chips, vec!["native".to_string()]);
+    assert_eq!(unsupported_entry.chips, vec!["unsupported".to_string()]);
+}
+
+#[test]
 fn command_action_toggle_reasoning_visibility_flips_state() {
     let mut state = tui();
     let catalog = empty_catalog();
@@ -840,6 +882,82 @@ fn apply_palette_selection_in_command_mode_with_known_action_routes_and_closes()
     assert!(result.is_ok());
     assert_eq!(*state.overlay(), Overlay::None);
     assert!(state.auto_follow);
+}
+
+#[test]
+fn apply_palette_selection_in_option_mode_toggles_include_override_and_closes() {
+    let mut state = tui();
+    let mut overrides = Some(json!({
+        "endpoint": "https://openrouter.ai/api/v1/responses",
+        "model": "google/gemma-4-26b-a4b-it"
+    }));
+    let mut catalog = empty_catalog();
+
+    state.open_palette(
+        PaletteMode::Option,
+        PaletteOrigin::TopCenter,
+        vec![rip_tui::PaletteEntry {
+            value: "options.include.reasoning.encrypted_content".to_string(),
+            title: "Include reasoning.encrypted_content".to_string(),
+            subtitle: None,
+            chips: vec!["native".to_string()],
+        }],
+        "no options".to_string(),
+        false,
+        String::new(),
+    );
+
+    let result = apply_palette_selection(&mut state, &mut overrides, &mut catalog);
+    assert!(result.is_ok());
+    assert_eq!(*state.overlay(), Overlay::None);
+    assert_eq!(
+        overrides
+            .as_ref()
+            .and_then(|value| value.get("include"))
+            .and_then(|value| value.as_array())
+            .map(|values| values.len()),
+        Some(1)
+    );
+}
+
+#[test]
+fn apply_palette_selection_in_option_mode_can_request_unsupported_include() {
+    let mut state = tui();
+    let mut overrides = Some(json!({
+        "endpoint": "https://openrouter.ai/api/v1/responses",
+        "model": "google/gemma-4-26b-a4b-it"
+    }));
+    let mut catalog = empty_catalog();
+
+    state.open_palette(
+        PaletteMode::Option,
+        PaletteOrigin::TopCenter,
+        vec![rip_tui::PaletteEntry {
+            value: "options.include.message.output_text.logprobs".to_string(),
+            title: "Include message.output_text.logprobs".to_string(),
+            subtitle: None,
+            chips: vec!["unsupported".to_string()],
+        }],
+        "no options".to_string(),
+        false,
+        String::new(),
+    );
+
+    let result = apply_palette_selection(&mut state, &mut overrides, &mut catalog);
+    assert!(result.is_ok());
+    assert_eq!(
+        overrides
+            .as_ref()
+            .and_then(|value| value.get("include"))
+            .and_then(|value| value.as_array())
+            .map(|values| values.len()),
+        Some(1)
+    );
+    assert!(state
+        .status_message
+        .as_deref()
+        .unwrap_or("")
+        .contains("route unsupported drops it"));
 }
 
 #[test]

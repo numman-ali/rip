@@ -5,6 +5,7 @@ import type { RipEventFrame } from "./frames.js";
 import type { RipFetch, RipHttpConfig } from "./http.js";
 import { httpJson, httpRequest, sseDataMessages } from "./http.js";
 import {
+  buildRipConfigDoctorArgs,
   buildRipRunArgs,
   buildRipThreadBranchArgs,
   buildRipThreadCompactionCheckpointArgs,
@@ -43,10 +44,166 @@ export type RipRunOptions = {
   unsetEnv?: readonly string[];
   executablePath?: string;
   signal?: AbortSignal;
+  include?: readonly RipOpenResponsesInclude[];
   extraArgs?: string[];
   transport?: RipTransport;
   headers?: Record<string, string>;
   fetch?: RipFetch;
+};
+
+export type RipOpenResponsesInclude =
+  | "file_search_call.results"
+  | "web_search_call.results"
+  | "web_search_call.action.sources"
+  | "message.input_image.image_url"
+  | "computer_call_output.output.image_url"
+  | "code_interpreter_call.outputs"
+  | "reasoning.encrypted_content"
+  | "message.output_text.logprobs";
+
+export type RipCompatLevel = "native" | "compat" | "unsupported" | "unknown";
+export type RipConversationStrategy = "previous_response_id" | "stateless_history" | "config_driven";
+export type RipReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type RipReasoningSummary = "concise" | "detailed" | "auto";
+
+export type RipOpenResponsesReasoningConfig = {
+  effort?: RipReasoningEffort;
+  summary?: RipReasoningSummary;
+};
+
+export type RipConfigDoctorSource = {
+  path: string;
+  status: string;
+  error?: string | null;
+};
+
+export type RipConfigDoctorOpenResponsesConversationSupport = {
+  previous_response_id: RipCompatLevel;
+  stateless_history: RipCompatLevel;
+  recommended: RipConversationStrategy;
+};
+
+export type RipConfigDoctorValidationProfile = {
+  missing_item_ids: boolean;
+  missing_response_user: boolean;
+  reasoning_text_events: boolean;
+  missing_reasoning_summary: boolean;
+};
+
+export type RipConfigDoctorProviderCompatProfile = {
+  version: string;
+  provider_id: string;
+  label: string;
+  stream_shape: RipCompatLevel;
+  conversation: RipConfigDoctorOpenResponsesConversationSupport;
+  request: {
+    background: RipCompatLevel;
+    store: RipCompatLevel;
+    service_tier: RipCompatLevel;
+    response_include: RipCompatLevel;
+    reasoning_parameter: RipCompatLevel;
+  };
+  tools: {
+    function_calling: RipCompatLevel;
+    tool_choice: RipCompatLevel;
+    allowed_tools: RipCompatLevel;
+    hosted_tools: RipCompatLevel;
+    mcp_servers: RipCompatLevel;
+    mcp_headers: RipCompatLevel;
+  };
+  input_modalities: {
+    input_text: RipCompatLevel;
+    input_image: RipCompatLevel;
+    input_file: RipCompatLevel;
+    input_video: RipCompatLevel;
+  };
+  validation: RipConfigDoctorValidationProfile;
+};
+
+export type RipConfigDoctorModelCompatProfile = {
+  version: string;
+  provider_id: string;
+  model_id: string;
+  label: string;
+  health: {
+    reasoning_parameter: RipCompatLevel;
+    tool_calling: RipCompatLevel;
+    structured_outputs: RipCompatLevel;
+    input_modalities: {
+      input_text: RipCompatLevel;
+      input_image: RipCompatLevel;
+      input_file: RipCompatLevel;
+      input_video: RipCompatLevel;
+    };
+  };
+};
+
+export type RipConfigDoctorOpenResponsesCompat = {
+  active_conversation_strategy: RipConversationStrategy;
+  conversation: {
+    requested: RipConversationStrategy;
+    effective: RipConversationStrategy;
+    support: RipConfigDoctorOpenResponsesConversationSupport;
+    warnings: string[];
+  };
+  effective_validation: RipConfigDoctorValidationProfile;
+  provider: RipConfigDoctorProviderCompatProfile;
+  model?: RipConfigDoctorModelCompatProfile | null;
+  include: {
+    requested: RipOpenResponsesInclude[];
+    effective: RipOpenResponsesInclude[];
+    support: {
+      request: RipCompatLevel;
+      native_values: RipOpenResponsesInclude[];
+      compat_values: RipOpenResponsesInclude[];
+      unknown_values: RipOpenResponsesInclude[];
+      unsupported_values: RipOpenResponsesInclude[];
+    };
+    warnings: string[];
+  };
+  reasoning: {
+    requested?: RipOpenResponsesReasoningConfig | null;
+    effective?: RipOpenResponsesReasoningConfig | null;
+    support: {
+      parameter: RipCompatLevel;
+      effort: RipCompatLevel;
+      summary: RipCompatLevel;
+      supported_efforts: RipReasoningEffort[];
+      supported_summaries: RipReasoningSummary[];
+    };
+    warnings: string[];
+  };
+};
+
+export type RipConfigDoctorOpenResponses = {
+  provider_id?: string | null;
+  route?: string | null;
+  effective_route?: string | null;
+  route_source?: string | null;
+  endpoint: string;
+  endpoint_source?: string | null;
+  model?: string | null;
+  model_source?: string | null;
+  has_api_key: boolean;
+  api_key_source?: string | null;
+  headers: string[];
+  stateless_history: boolean;
+  stateless_history_source?: string | null;
+  parallel_tool_calls: boolean;
+  parallel_tool_calls_source?: string | null;
+  include: RipOpenResponsesInclude[];
+  include_source?: string | null;
+  followup_user_message?: string | null;
+  followup_user_message_source?: string | null;
+  reasoning?: RipOpenResponsesReasoningConfig | null;
+  reasoning_effort_source?: string | null;
+  reasoning_summary_source?: string | null;
+  compat?: RipConfigDoctorOpenResponsesCompat | null;
+};
+
+export type RipConfigDoctorResponse = {
+  sources: RipConfigDoctorSource[];
+  openresponses?: RipConfigDoctorOpenResponses | null;
 };
 
 export type RipTaskOptions = {
@@ -437,7 +594,11 @@ export class Rip {
     const env = mergeEnv(process.env, this.base.env, options.env);
     unsetEnvVars(env, this.base.unsetEnv);
     unsetEnvVars(env, options.unsetEnv);
-    const args = buildRipRunArgs(prompt, { server: options.server, extraArgs: options.extraArgs });
+    const args = buildRipRunArgs(prompt, {
+      server: options.server,
+      include: options.include,
+      extraArgs: options.extraArgs,
+    });
 
     const child = spawn(executablePath, args, {
       cwd,
@@ -572,7 +733,10 @@ export class Rip {
       headers: { accept: "text/event-stream" },
     });
 
-    const inputBody = JSON.stringify({ input: prompt });
+    const inputBody = JSON.stringify({
+      input: prompt,
+      openresponses: options.include?.length ? { include: [...options.include] } : undefined,
+    });
     await httpRequest(config, `/sessions/${sessionId}/input`, {
       method: "POST",
       signal: controller.signal,
@@ -670,6 +834,19 @@ export class Rip {
     }
     const out = await this.execJson(buildRipThreadEnsureArgs({ server: options.server }), options);
     return out as RipThreadEnsureResponse;
+  }
+
+  async configDoctor(options: RipThreadOptions = {}): Promise<RipConfigDoctorResponse> {
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("configDoctor with http transport requires server");
+      const config = this.httpConfig(server, options);
+      const out = await httpJson(config, "/config/doctor", { method: "GET", signal: options.signal });
+      return out as RipConfigDoctorResponse;
+    }
+    const out = await this.execJson(buildRipConfigDoctorArgs(options.server), options);
+    return out as RipConfigDoctorResponse;
   }
 
   async threadList(options: RipThreadOptions = {}): Promise<RipThreadMeta[]> {

@@ -32,7 +32,15 @@ test("Rip SDK http transport runs sessions and parses SSE frames", async () => {
       ]);
     }
     if (method === "POST" && pathname === "/sessions/s1/input") {
-      assert.equal(body, JSON.stringify({ input: "hello" }));
+      assert.equal(
+        body,
+        JSON.stringify({
+          input: "hello",
+          openresponses: {
+            include: ["reasoning.encrypted_content"],
+          },
+        }),
+      );
       return new Response("", { status: 202 });
     }
 
@@ -40,7 +48,7 @@ test("Rip SDK http transport runs sessions and parses SSE frames", async () => {
   };
 
   const rip = new Rip({ transport: "http", server: "http://rip.test", fetch: fakeFetch });
-  const turn = await rip.run("hello");
+  const turn = await rip.run("hello", { include: ["reasoning.encrypted_content"] });
   assert.equal(turn.exitCode, 0);
   assert.equal(turn.finalOutput, "ack: hello");
   assert.ok(turn.frames.some((frame) => frame.type === "session_started"));
@@ -51,6 +59,119 @@ test("Rip SDK http transport runs sessions and parses SSE frames", async () => {
     calls.map((call) => `${call.method} ${call.path}`),
     ["POST /sessions", "GET /sessions/s1/events", "POST /sessions/s1/input"],
   );
+});
+
+test("Rip SDK http transport exposes configDoctor", async () => {
+  const fakeFetch: typeof fetch = async (input, init = {}) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const { pathname } = new URL(url);
+    const method = (init.method ?? "GET").toUpperCase();
+
+    if (method === "GET" && pathname === "/config/doctor") {
+      return new Response(
+        JSON.stringify({
+          sources: [],
+          openresponses: {
+            endpoint: "https://openrouter.ai/api/v1/responses",
+            has_api_key: true,
+            headers: [],
+            stateless_history: true,
+            parallel_tool_calls: false,
+            include: ["reasoning.encrypted_content"],
+            compat: {
+              active_conversation_strategy: "stateless_history",
+              conversation: {
+                requested: "previous_response_id",
+                effective: "stateless_history",
+                support: {
+                  previous_response_id: "unsupported",
+                  stateless_history: "native",
+                  recommended: "stateless_history",
+                },
+                warnings: ["coerced"],
+              },
+              effective_validation: {
+                missing_item_ids: true,
+                missing_response_user: true,
+                reasoning_text_events: true,
+                missing_reasoning_summary: true,
+              },
+              provider: {
+                version: "2026-04-21.v1",
+                provider_id: "openrouter",
+                label: "OpenRouter Responses API Beta",
+                stream_shape: "compat",
+                conversation: {
+                  previous_response_id: "unsupported",
+                  stateless_history: "native",
+                  recommended: "stateless_history",
+                },
+                request: {
+                  background: "unknown",
+                  store: "unsupported",
+                  service_tier: "unknown",
+                  response_include: "compat",
+                  reasoning_parameter: "native",
+                },
+                tools: {
+                  function_calling: "native",
+                  tool_choice: "native",
+                  allowed_tools: "unknown",
+                  hosted_tools: "compat",
+                  mcp_servers: "unknown",
+                  mcp_headers: "unknown",
+                },
+                input_modalities: {
+                  input_text: "native",
+                  input_image: "unknown",
+                  input_file: "unknown",
+                  input_video: "unknown",
+                },
+                validation: {
+                  missing_item_ids: true,
+                  missing_response_user: true,
+                  reasoning_text_events: true,
+                  missing_reasoning_summary: true,
+                },
+              },
+              include: {
+                requested: ["reasoning.encrypted_content", "message.output_text.logprobs"],
+                effective: ["reasoning.encrypted_content"],
+                support: {
+                  request: "compat",
+                  native_values: ["reasoning.encrypted_content"],
+                  compat_values: ["file_search_call.results", "code_interpreter_call.outputs"],
+                  unknown_values: [],
+                  unsupported_values: ["message.output_text.logprobs"],
+                },
+                warnings: ["message.output_text.logprobs omitted"],
+              },
+              reasoning: {
+                support: {
+                  parameter: "native",
+                  effort: "native",
+                  summary: "unknown",
+                  supported_efforts: ["minimal", "low", "medium", "high"],
+                  supported_summaries: [],
+                },
+                warnings: [],
+              },
+            },
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+
+    return new Response("not found", { status: 404 });
+  };
+
+  const rip = new Rip({ transport: "http", server: "http://rip.test", fetch: fakeFetch });
+  const doctor = await rip.configDoctor();
+
+  assert.equal(doctor.openresponses?.compat?.include.requested.length, 2);
+  assert.equal(doctor.openresponses?.compat?.include.effective.length, 1);
+  assert.equal(doctor.openresponses?.compat?.include.support.unsupported_values[0], "message.output_text.logprobs");
 });
 
 test("Rip SDK http transport supports thread.* and task.* surfaces", async () => {

@@ -99,35 +99,8 @@ pub(crate) async fn thread_post_message(
     let origin = origin.unwrap_or_else(|| "server".to_string());
 
     let store = state.engine.continuities();
-    let (resolved_openresponses, _loaded) = crate::config::resolve_openresponses_config(
-        store.workspace_root(),
-        crate::config::OpenResponsesOverrideInput {
-            endpoint: openresponses.as_ref().and_then(|cfg| cfg.endpoint.clone()),
-            model: openresponses.as_ref().and_then(|cfg| cfg.model.clone()),
-            stateless_history: openresponses.as_ref().and_then(|cfg| cfg.stateless_history),
-            parallel_tool_calls: openresponses
-                .as_ref()
-                .and_then(|cfg| cfg.parallel_tool_calls),
-            include: openresponses.as_ref().and_then(|cfg| cfg.include.clone()),
-            followup_user_message: openresponses
-                .as_ref()
-                .and_then(|cfg| cfg.followup_user_message.clone()),
-            reasoning: openresponses.as_ref().and_then(|cfg| cfg.reasoning.clone()),
-        },
-    );
-    let openresponses_override = resolved_openresponses.map(|cfg| OpenResponsesConfig {
-        provider_id: cfg.provider_id,
-        endpoint: cfg.endpoint,
-        api_key: cfg.api_key,
-        model: cfg.model,
-        headers: cfg.headers,
-        tool_choice: ToolChoiceParam::auto(),
-        include: cfg.include,
-        reasoning: cfg.reasoning,
-        followup_user_message: cfg.followup_user_message,
-        stateless_history: cfg.stateless_history,
-        parallel_tool_calls: cfg.parallel_tool_calls,
-    });
+    let openresponses_override =
+        resolve_session_openresponses_override(store.workspace_root(), openresponses.as_ref());
     let message_id = match store.append_message(
         &thread_id,
         actor_id.clone(),

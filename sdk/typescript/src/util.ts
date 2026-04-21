@@ -2,6 +2,7 @@ import type { RipEventFrame } from "./frames.js";
 
 export type RipRunArgsOptions = {
   server?: string;
+  include?: readonly string[];
   extraArgs?: string[];
 };
 
@@ -9,6 +10,9 @@ export function buildRipRunArgs(prompt: string, options: RipRunArgsOptions = {})
   const args: string[] = ["run", prompt, "--headless", "true", "--view", "raw"];
   if (options.server) {
     args.push("--server", options.server);
+  }
+  for (const include of options.include ?? []) {
+    args.push("--include", include);
   }
   if (options.extraArgs?.length) {
     args.push(...options.extraArgs);
@@ -19,6 +23,15 @@ export function buildRipRunArgs(prompt: string, options: RipRunArgsOptions = {})
 export type RipThreadsArgsOptions = {
   server?: string;
 };
+
+export function buildRipConfigDoctorArgs(server?: string): string[] {
+  const args = ["config"];
+  if (server) {
+    args.push("--server", server);
+  }
+  args.push("doctor");
+  return args;
+}
 
 function buildRipThreadsBaseArgs(options: RipThreadsArgsOptions): string[] {
   const args: string[] = ["threads"];

@@ -1,6 +1,6 @@
 # Agent State (Working Log)
 
-Last updated: 2026-04-20
+Last updated: 2026-04-21
 
 How to use
 - Update this file whenever focus shifts, before ending a work session, and when blocked.
@@ -70,6 +70,7 @@ Current focus
 - Implemented (2026-04-20): markdown streaming hot-path fix. Agent turns now retain incremental `StreamCollector` scan state instead of rebuilding and rescanning the entire in-flight markdown tail on every `output_text_delta`. Long streamed code fences now scan only newly completed lines, which removes the worst markdown CPU spike during big code answers while preserving the same rendered transcript and finalized blocks.
 - Implemented (2026-04-21): typed OpenResponses `include` selection is now first-class through the same layered surface as reasoning. Config/env/per-run overrides resolve `include`, `rip run` accepts repeatable `--include` flags, the provider boundary composes the effective include array via the compat layer, `config.doctor` exposes requested vs effective include plus support/warnings, and live runs emit `rip.compat.warning` when a route can only forward an unverified include request or must drop it.
 - Implemented (2026-04-21): compat profiles now seed finer-grained per-value include subsets instead of a single route-wide include status. OpenRouter currently distinguishes native (`reasoning.encrypted_content`), compat (`file_search_call.results`, `code_interpreter_call.outputs`), unknown (`message.input_image.image_url`, `computer_call_output.output.image_url`), and unsupported (`web_search_call.results`, `web_search_call.action.sources`, `message.output_text.logprobs`) values in both `config.doctor` and runtime warnings.
+- Implemented (2026-04-21): `execution.response_include` parity is now closed on the active surfaces. The fullscreen TUI Options palette exposes typed include toggles with effective-vs-requested state and route support chips, the server session-input API accepts the same typed OpenResponses override seam as `thread.post_message`, and the TypeScript SDK now supports typed `include` on `run()` plus first-class `configDoctor()` diagnostics over both exec and HTTP transports.
 - Known OpenResponses gap: compatibility profiles still describe multimodal/image/file/video request health, hosted tools, MCP rows, and broader provider/model per-value include support, but those are not yet fully modeled as first-class operator-facing request families in RIP’s runtime/config surface.
 - Implemented: context compiler perf v1.1: per-continuity sidecar seek indexes + bounded window reads for `recent_messages_v1` non-tail anchors (caches only; replay-safe fallbacks).
 - Implemented: context compiler perf v1.2: messages+runs-only continuity sidecar + indexes; `recent_messages_v1` window reads are O(k) even with dense `continuity_tool_side_effects` between messages (caches only; replay-safe fallbacks).

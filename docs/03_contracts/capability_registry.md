@@ -86,7 +86,7 @@ Notes
 ## Configuration & Policy
 | id | v | phase | cli_i | cli_h | server | sdk | tui | mcp | intent |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| config.doctor | v1 | P1 | planned | supported | supported | planned | planned | planned | Inspect resolved config (providers/models/auth presence), source provenance, and resolved OpenResponses compatibility/profile health (no secrets). |
+| config.doctor | v1 | P1 | planned | supported | supported | supported | planned | planned | Inspect resolved config (providers/models/auth presence), source provenance, and resolved OpenResponses compatibility/profile health (no secrets). |
 | config.scopes | v1 | P2 | planned | planned | planned | planned | planned | planned | Layered settings scopes with precedence. |
 | config.merge | v1 | P2 | planned | planned | planned | planned | planned | planned | Non-destructive config merging. |
 | config.json_schema | v1 | P2 | planned | planned | planned | planned | planned | planned | JSON/JSONC config + schema validation. |
@@ -126,7 +126,7 @@ Notes
 | execution.resume_session | v1 | P2 | planned | planned | planned | planned | planned | planned | Resume sessions by id. |
 | execution.output_format | v1 | P2 | planned | planned | planned | planned | planned | planned | Output format control for text/JSON/streaming. |
 | execution.structured_output | v1 | P2 | planned | planned | planned | planned | planned | planned | Structured output using JSON Schema. |
-| execution.response_include | v1 | P1 | planned | supported | supported | planned | planned | planned | Response include/extras selection (logprobs/sources/tool outputs). |
+| execution.response_include | v1 | P1 | planned | supported | supported | supported | supported | planned | Response include/extras selection (logprobs/sources/tool outputs). |
 
 ## OpenResponses Boundary
 | id | v | phase | cli_i | cli_h | server | sdk | tui | mcp | intent |

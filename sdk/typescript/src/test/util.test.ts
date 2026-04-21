@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildRipConfigDoctorArgs,
   buildRipRunArgs,
   buildRipThreadEnsureArgs,
   buildRipThreadBranchArgs,
@@ -37,6 +38,29 @@ test("buildRipRunArgs includes --server when provided", () => {
     "--server",
     "http://127.0.0.1:7341",
   ]);
+});
+
+test("buildRipRunArgs includes repeated --include values when provided", () => {
+  const args = buildRipRunArgs("hello", {
+    include: ["reasoning.encrypted_content", "message.output_text.logprobs"],
+  });
+  assert.deepEqual(args, [
+    "run",
+    "hello",
+    "--headless",
+    "true",
+    "--view",
+    "raw",
+    "--include",
+    "reasoning.encrypted_content",
+    "--include",
+    "message.output_text.logprobs",
+  ]);
+});
+
+test("buildRipConfigDoctorArgs includes --server when provided", () => {
+  const args = buildRipConfigDoctorArgs("http://127.0.0.1:7341");
+  assert.deepEqual(args, ["config", "--server", "http://127.0.0.1:7341", "doctor"]);
 });
 
 test("buildRipThreadEnsureArgs includes subcommand", () => {

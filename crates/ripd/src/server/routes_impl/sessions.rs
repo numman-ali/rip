@@ -40,6 +40,10 @@ pub(crate) async fn send_input(
     State(state): State<AppState>,
     Json(payload): Json<InputPayload>,
 ) -> impl IntoResponse {
+    let InputPayload {
+        input,
+        openresponses,
+    } = payload;
     let handle = {
         let sessions = state.sessions.lock().await;
         match sessions.get(&session_id) {
@@ -47,10 +51,14 @@ pub(crate) async fn send_input(
             None => return StatusCode::NOT_FOUND.into_response(),
         }
     };
+    let openresponses_override = resolve_session_openresponses_override(
+        state.engine.continuities().workspace_root(),
+        openresponses.as_ref(),
+    );
 
     state
         .engine
-        .spawn_session(handle, payload.input, None, None);
+        .spawn_session(handle, input, None, openresponses_override);
 
     StatusCode::ACCEPTED.into_response()
 }

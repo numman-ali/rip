@@ -12,9 +12,46 @@ use rip_tui::palette::modes::models::{
     infer_provider_id_from_endpoint, push_route_from_string, upsert_model_route,
 };
 use rip_tui::{
-    ModelRoute, ModelsMode, PaletteMode, PaletteOrigin, PaletteSource, ResolvedModelRoute, TuiState,
+    ModelRoute, ModelsMode, PaletteEntry, PaletteMode, PaletteOrigin, PaletteSource,
+    ResolvedModelRoute, TuiState,
 };
 use serde_json::Value;
+
+const OPTION_INCLUDE_PREFIX: &str = "options.include.";
+const ALL_RESPONSE_INCLUDE_OPTIONS: &[(ripd::OpenResponsesInclude, &str)] = &[
+    (
+        ripd::OpenResponsesInclude::ReasoningEncryptedContent,
+        "Include reasoning.encrypted_content",
+    ),
+    (
+        ripd::OpenResponsesInclude::CodeInterpreterCallOutputs,
+        "Include code_interpreter_call.outputs",
+    ),
+    (
+        ripd::OpenResponsesInclude::FileSearchCallResults,
+        "Include file_search_call.results",
+    ),
+    (
+        ripd::OpenResponsesInclude::MessageInputImageImageUrl,
+        "Include message.input_image.image_url",
+    ),
+    (
+        ripd::OpenResponsesInclude::ComputerCallOutputOutputImageUrl,
+        "Include computer_call_output.output.image_url",
+    ),
+    (
+        ripd::OpenResponsesInclude::WebSearchCallResults,
+        "Include web_search_call.results",
+    ),
+    (
+        ripd::OpenResponsesInclude::WebSearchCallActionSources,
+        "Include web_search_call.action.sources",
+    ),
+    (
+        ripd::OpenResponsesInclude::MessageOutputTextLogprobs,
+        "Include message.output_text.logprobs",
+    ),
+];
 
 pub(super) fn load_model_palette_catalog(openresponses_overrides: Option<&Value>) -> ModelsMode {
     let workspace_root = crate::local_authority::default_workspace_root();
@@ -283,6 +320,7 @@ pub(super) fn open_options_palette_with_overrides(
     use rip_tui::palette::modes::options::OptionsMode;
     let resolved = resolve_openresponses_runtime_config(overrides);
     let reasoning = resolve_runtime_reasoning_state(resolved.as_ref(), overrides);
+    let include = resolve_runtime_include_state(resolved.as_ref(), overrides);
     let mode = OptionsMode {
         current_theme: Some(state.theme.as_str()),
         auto_follow: state.auto_follow,
@@ -292,6 +330,7 @@ pub(super) fn open_options_palette_with_overrides(
         vim_input_mode: state.vim_input_mode,
         mouse_capture: true,
         activity_rail_pinned: state.activity_pinned,
+        extra_entries: build_include_option_entries(&include),
     };
     let entries = mode.entries();
     state.open_palette(
@@ -378,6 +417,13 @@ pub(super) fn apply_palette_selection(
             let Some(value) = state.palette_selected_value() else {
                 return Err("palette: no entry selected".to_string());
             };
+            if overlay.mode == PaletteMode::Option {
+                if let Some(include) = parse_include_option_value(&value) {
+                    toggle_response_include_with_overrides(state, overrides, catalog, include);
+                    state.close_overlay();
+                    return Ok(());
+                }
+            }
             let Some(action) = CommandAction::from_value(&value) else {
                 return Err(format!("palette: unknown action '{value}'"));
             };
@@ -589,6 +635,28 @@ fn resolve_runtime_reasoning_state(
     .reasoning(overrides.reasoning.as_ref())
 }
 
+fn resolve_runtime_include_state(
+    resolved: Option<&ripd::OpenResponsesResolvedConfig>,
+    overrides: Option<&Value>,
+) -> ripd::ResolvedOpenResponsesInclude {
+    if let Some(cfg) = resolved {
+        return ripd::resolve_openresponses_compat_profile(
+            cfg.provider_id.as_deref(),
+            &cfg.endpoint,
+            cfg.model.as_deref(),
+        )
+        .include(&cfg.include);
+    }
+
+    let overrides = openresponses_override_input_from_json(overrides);
+    ripd::resolve_openresponses_compat_profile(
+        None,
+        overrides.endpoint.as_deref().unwrap_or(""),
+        overrides.model.as_deref(),
+    )
+    .include(overrides.include.as_deref().unwrap_or(&[]))
+}
+
 fn reasoning_effort_state_label(reasoning: &ripd::ResolvedOpenResponsesReasoning) -> String {
     reasoning_state_label(
         reasoning
@@ -623,6 +691,100 @@ fn reasoning_summary_state_label(reasoning: &ripd::ResolvedOpenResponsesReasonin
         reasoning.support.summary,
         format_reasoning_summaries(&reasoning.support.supported_summaries),
     )
+}
+
+fn build_include_option_entries(include: &ripd::ResolvedOpenResponsesInclude) -> Vec<PaletteEntry> {
+    ALL_RESPONSE_INCLUDE_OPTIONS
+        .iter()
+        .map(|(value, title)| PaletteEntry {
+            value: include_option_value(*value),
+            title: (*title).to_string(),
+            subtitle: Some(include_state_label(include, *value)),
+            chips: vec![include_support_chip(include, *value).to_string()],
+        })
+        .collect()
+}
+
+fn include_state_label(
+    include: &ripd::ResolvedOpenResponsesInclude,
+    value: ripd::OpenResponsesInclude,
+) -> String {
+    let requested = include.requested.contains(&value);
+    let effective = include.effective.contains(&value);
+    let support = include_support_level(include, value);
+
+    let mut parts = vec![format!("effective: {}", on_off_label(effective))];
+    if requested != effective {
+        parts.push(format!("requested: {}", on_off_label(requested)));
+    }
+    parts.push(format!("route: {}", include_support_label(support)));
+    parts.join(" • ")
+}
+
+fn include_option_value(value: ripd::OpenResponsesInclude) -> String {
+    format!("{}{}", OPTION_INCLUDE_PREFIX, include_value_label(value))
+}
+
+fn parse_include_option_value(value: &str) -> Option<ripd::OpenResponsesInclude> {
+    value
+        .strip_prefix(OPTION_INCLUDE_PREFIX)
+        .and_then(|value| ripd::parse_openresponses_include(value).ok())
+}
+
+fn include_value_label(value: ripd::OpenResponsesInclude) -> &'static str {
+    match value {
+        ripd::OpenResponsesInclude::FileSearchCallResults => "file_search_call.results",
+        ripd::OpenResponsesInclude::WebSearchCallResults => "web_search_call.results",
+        ripd::OpenResponsesInclude::WebSearchCallActionSources => "web_search_call.action.sources",
+        ripd::OpenResponsesInclude::MessageInputImageImageUrl => "message.input_image.image_url",
+        ripd::OpenResponsesInclude::ComputerCallOutputOutputImageUrl => {
+            "computer_call_output.output.image_url"
+        }
+        ripd::OpenResponsesInclude::CodeInterpreterCallOutputs => "code_interpreter_call.outputs",
+        ripd::OpenResponsesInclude::ReasoningEncryptedContent => "reasoning.encrypted_content",
+        ripd::OpenResponsesInclude::MessageOutputTextLogprobs => "message.output_text.logprobs",
+    }
+}
+
+fn include_support_level(
+    include: &ripd::ResolvedOpenResponsesInclude,
+    value: ripd::OpenResponsesInclude,
+) -> ripd::CompatLevel {
+    if include.support.native_values.contains(&value) {
+        ripd::CompatLevel::Native
+    } else if include.support.compat_values.contains(&value) {
+        ripd::CompatLevel::Compat
+    } else if include.support.unsupported_values.contains(&value) {
+        ripd::CompatLevel::Unsupported
+    } else if include.support.unknown_values.contains(&value) {
+        ripd::CompatLevel::Unknown
+    } else {
+        include.support.request
+    }
+}
+
+fn include_support_chip(
+    include: &ripd::ResolvedOpenResponsesInclude,
+    value: ripd::OpenResponsesInclude,
+) -> &'static str {
+    include_support_label(include_support_level(include, value))
+}
+
+fn include_support_label(value: ripd::CompatLevel) -> &'static str {
+    match value {
+        ripd::CompatLevel::Native => "native",
+        ripd::CompatLevel::Compat => "compat",
+        ripd::CompatLevel::Unsupported => "unsupported",
+        ripd::CompatLevel::Unknown => "unverified",
+    }
+}
+
+fn on_off_label(flag: bool) -> &'static str {
+    if flag {
+        "on"
+    } else {
+        "off"
+    }
 }
 
 fn reasoning_state_label(
@@ -723,6 +885,39 @@ fn cycle_optional_enum<T: Copy + PartialEq>(order: &[Option<T>], current: Option
     order[(idx + 1) % order.len()]
 }
 
+fn toggle_response_include_with_overrides(
+    state: &mut TuiState,
+    overrides: &mut Option<Value>,
+    catalog: &ModelsMode,
+    include_value: ripd::OpenResponsesInclude,
+) {
+    let resolved = resolve_openresponses_runtime_config(overrides.as_ref());
+    let current = resolve_runtime_include_state(resolved.as_ref(), overrides.as_ref());
+    let requested = current.requested.contains(&include_value);
+    set_include_override(overrides, include_value, !requested);
+    sync_preferred_openresponses_state(state, overrides.as_ref(), catalog);
+
+    let resolved = resolve_openresponses_runtime_config(overrides.as_ref());
+    let updated = resolve_runtime_include_state(resolved.as_ref(), overrides.as_ref());
+    let effective = updated.effective.contains(&include_value);
+    let support = include_support_level(&updated, include_value);
+    let message = if !requested && !effective {
+        format!(
+            "requested include {} but route {} drops it",
+            include_value_label(include_value),
+            include_support_label(support)
+        )
+    } else {
+        format!(
+            "include {}: {} (route: {})",
+            include_value_label(include_value),
+            on_off_label(!requested),
+            include_support_label(support)
+        )
+    };
+    state.set_status_message(message);
+}
+
 fn set_reasoning_effort_override(
     overrides: &mut Option<Value>,
     next: Option<ripd::ReasoningEffort>,
@@ -737,6 +932,36 @@ fn set_reasoning_summary_override(
 ) {
     let value = next.map(|value| Value::String(reasoning_summary_label(Some(value)).to_string()));
     set_reasoning_override_field(overrides, "summary", value);
+}
+
+fn set_include_override(
+    overrides: &mut Option<Value>,
+    include_value: ripd::OpenResponsesInclude,
+    enabled: bool,
+) {
+    let mut root = match overrides.take() {
+        Some(Value::Object(map)) => map,
+        _ => serde_json::Map::new(),
+    };
+
+    let mut include = root
+        .get("include")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let include_json = serde_json::to_value(include_value).expect("include serializes");
+    include.retain(|value| value != &include_json);
+    if enabled {
+        include.push(include_json);
+    }
+
+    if include.is_empty() {
+        root.remove("include");
+    } else {
+        root.insert("include".to_string(), Value::Array(include));
+    }
+
+    *overrides = (!root.is_empty()).then_some(Value::Object(root));
 }
 
 fn reasoning_support_suffix(

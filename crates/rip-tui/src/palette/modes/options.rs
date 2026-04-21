@@ -26,6 +26,7 @@ pub struct OptionsMode {
     pub vim_input_mode: bool,
     pub mouse_capture: bool,
     pub activity_rail_pinned: bool,
+    pub extra_entries: Vec<PaletteEntry>,
 }
 
 impl OptionsMode {
@@ -45,6 +46,7 @@ impl Default for OptionsMode {
             vim_input_mode: false,
             mouse_capture: false,
             activity_rail_pinned: false,
+            extra_entries: Vec::new(),
         }
     }
 }
@@ -97,7 +99,7 @@ impl PaletteSource for OptionsMode {
                 on_off(self.activity_rail_pinned).to_string(),
             ),
         ];
-        toggles
+        let mut entries: Vec<PaletteEntry> = toggles
             .into_iter()
             .map(|(action, state)| PaletteEntry {
                 value: action.id().to_string(),
@@ -109,7 +111,9 @@ impl PaletteSource for OptionsMode {
                     vec!["unavailable".to_string()]
                 },
             })
-            .collect()
+            .collect();
+        entries.extend(self.extra_entries.clone());
+        entries
     }
 
     fn empty_state(&self) -> &str {
@@ -140,6 +144,7 @@ mod tests {
             vim_input_mode: false,
             mouse_capture: true,
             activity_rail_pinned: false,
+            extra_entries: Vec::new(),
         };
         let entries = mode.entries();
         assert_eq!(entries.len(), 8);
@@ -176,6 +181,26 @@ mod tests {
         for entry in entries.iter().skip(5) {
             assert!(entry.subtitle.as_deref().unwrap().contains("off"));
         }
+    }
+
+    #[test]
+    fn options_mode_appends_extra_entries_after_core_toggles() {
+        let mut mode = OptionsMode::new();
+        mode.extra_entries.push(PaletteEntry {
+            value: "options.include.reasoning.encrypted_content".to_string(),
+            title: "Include reasoning.encrypted_content".to_string(),
+            subtitle: Some("effective: on • route: native".to_string()),
+            chips: vec!["native".to_string()],
+        });
+
+        let entries = mode.entries();
+        assert_eq!(entries.len(), 9);
+        let last = entries.last().expect("extra entry appended");
+        assert_eq!(last.value, "options.include.reasoning.encrypted_content");
+        assert!(last
+            .subtitle
+            .as_deref()
+            .is_some_and(|subtitle| subtitle.contains("route: native")));
     }
 
     #[test]

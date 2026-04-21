@@ -2066,6 +2066,16 @@
         "properties": {
           "input": {
             "type": "string"
+          },
+          "openresponses": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThreadOpenResponsesOverrides"
+              }
+            ]
           }
         }
       },

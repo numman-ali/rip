@@ -93,6 +93,20 @@ pub(crate) struct ThreadOpenResponsesOverrides {
     pub(crate) reasoning: Option<OpenResponsesReasoningConfig>,
 }
 
+impl ThreadOpenResponsesOverrides {
+    pub(crate) fn to_override_input(&self) -> crate::config::OpenResponsesOverrideInput {
+        crate::config::OpenResponsesOverrideInput {
+            endpoint: self.endpoint.clone(),
+            model: self.model.clone(),
+            stateless_history: self.stateless_history,
+            parallel_tool_calls: self.parallel_tool_calls,
+            include: self.include.clone(),
+            followup_user_message: self.followup_user_message.clone(),
+            reasoning: self.reasoning.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub(crate) struct ThreadPostMessageResponse {
     pub(crate) thread_id: String,
@@ -162,6 +176,8 @@ pub(crate) struct ThreadCompactionCheckpointResponse {
 #[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct InputPayload {
     pub(crate) input: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) openresponses: Option<ThreadOpenResponsesOverrides>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -298,6 +314,32 @@ pub(crate) fn build_app_with_workspace_root_and_provider_and_task_policy(
     router
         .route("/openapi.json", get(openapi_spec))
         .with_state(state)
+}
+
+pub(crate) fn resolve_session_openresponses_override(
+    workspace_root: &std::path::Path,
+    openresponses: Option<&ThreadOpenResponsesOverrides>,
+) -> Option<OpenResponsesConfig> {
+    let (resolved_openresponses, _loaded) = crate::config::resolve_openresponses_config(
+        workspace_root,
+        openresponses
+            .map(ThreadOpenResponsesOverrides::to_override_input)
+            .unwrap_or_default(),
+    );
+
+    resolved_openresponses.map(|cfg| OpenResponsesConfig {
+        provider_id: cfg.provider_id,
+        endpoint: cfg.endpoint,
+        api_key: cfg.api_key,
+        model: cfg.model,
+        headers: cfg.headers,
+        tool_choice: ToolChoiceParam::auto(),
+        include: cfg.include,
+        reasoning: cfg.reasoning,
+        followup_user_message: cfg.followup_user_message,
+        stateless_history: cfg.stateless_history,
+        parallel_tool_calls: cfg.parallel_tool_calls,
+    })
 }
 
 pub(crate) fn build_openapi_router() -> (Router<AppState>, String) {
