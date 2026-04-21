@@ -309,6 +309,15 @@ async fn rip_config_doctor_reports_layered_sources_and_effective_openresponses()
             .and_then(|value| value.as_str()),
         Some("native")
     );
+    assert!(openresponses
+        .get("compat")
+        .and_then(|value| value.get("include"))
+        .and_then(|value| value.get("support"))
+        .and_then(|value| value.get("native_values"))
+        .and_then(|value| value.as_array())
+        .is_some_and(|values| values
+            .iter()
+            .any(|value| value.as_str() == Some("message.output_text.logprobs"))));
     assert_eq!(
         openresponses
             .get("compat")

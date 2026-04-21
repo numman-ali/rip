@@ -152,7 +152,14 @@ async fn config_doctor_surfaces_openrouter_compat_profile() {
     "openrouter": {
       "endpoint": "https://openrouter.ai/api/v1/responses",
       "api_key": { "env": "OPENROUTER_API_KEY" },
-      "openresponses": { "stateless_history": true }
+      "openresponses": {
+        "stateless_history": true,
+        "include": [
+          "reasoning.encrypted_content",
+          "message.output_text.logprobs",
+          "message.input_image.image_url"
+        ]
+      }
     }
   },
   "roles": {
@@ -198,12 +205,88 @@ async fn config_doctor_surfaces_openrouter_compat_profile() {
     assert_eq!(
         payload
             .get("openresponses")
+            .and_then(|value| value.get("include"))
+            .and_then(|value| value.as_array())
+            .map(|value| {
+                value
+                    .iter()
+                    .filter_map(|item| item.as_str())
+                    .collect::<Vec<_>>()
+            }),
+        Some(vec![
+            "reasoning.encrypted_content",
+            "message.output_text.logprobs",
+            "message.input_image.image_url"
+        ])
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
             .and_then(|value| value.get("compat"))
             .and_then(|value| value.get("provider"))
             .and_then(|value| value.get("provider_id"))
             .and_then(|value| value.as_str()),
         Some("openrouter")
     );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("compat"))
+            .and_then(|value| value.get("include"))
+            .and_then(|value| value.get("support"))
+            .and_then(|value| value.get("request"))
+            .and_then(|value| value.as_str()),
+        Some("compat")
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("compat"))
+            .and_then(|value| value.get("include"))
+            .and_then(|value| value.get("support"))
+            .and_then(|value| value.get("unsupported_values"))
+            .and_then(|value| value.as_array())
+            .map(|value| {
+                value
+                    .iter()
+                    .filter_map(|item| item.as_str())
+                    .collect::<Vec<_>>()
+            }),
+        Some(vec![
+            "web_search_call.results",
+            "web_search_call.action.sources",
+            "message.output_text.logprobs"
+        ])
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("compat"))
+            .and_then(|value| value.get("include"))
+            .and_then(|value| value.get("effective"))
+            .and_then(|value| value.as_array())
+            .map(|value| {
+                value
+                    .iter()
+                    .filter_map(|item| item.as_str())
+                    .collect::<Vec<_>>()
+            }),
+        Some(vec![
+            "reasoning.encrypted_content",
+            "message.input_image.image_url"
+        ])
+    );
+    assert!(payload
+        .get("openresponses")
+        .and_then(|value| value.get("compat"))
+        .and_then(|value| value.get("include"))
+        .and_then(|value| value.get("warnings"))
+        .and_then(|value| value.as_array())
+        .is_some_and(|warnings| warnings.iter().any(|warning| {
+            warning
+                .as_str()
+                .is_some_and(|text| text.contains("message.output_text.logprobs"))
+        })));
     assert_eq!(
         payload
             .get("openresponses")

@@ -115,6 +115,14 @@ pub struct ResolvedOpenResponsesReasoning {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
 pub struct OpenResponsesIncludeSupport {
     pub request: CompatLevel,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub native_values: Vec<OpenResponsesInclude>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub compat_values: Vec<OpenResponsesInclude>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unknown_values: Vec<OpenResponsesInclude>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unsupported_values: Vec<OpenResponsesInclude>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
@@ -266,33 +274,37 @@ impl ResolvedOpenResponsesCompatProfile {
     }
 
     pub fn include(self, requested: &[OpenResponsesInclude]) -> ResolvedOpenResponsesInclude {
+        let rule = include_support_rule(self);
         let support = OpenResponsesIncludeSupport {
-            request: self.provider.request.response_include,
+            request: rule.request,
+            native_values: rule.native_values.to_vec(),
+            compat_values: rule.compat_values.to_vec(),
+            unknown_values: rule.unknown_values.to_vec(),
+            unsupported_values: rule.unsupported_values.to_vec(),
         };
         let requested = requested.to_vec();
         let mut warnings = Vec::new();
+        let route = route_label(self);
+        let mut effective = Vec::new();
 
-        let effective = match support.request {
-            CompatLevel::Unsupported => {
-                if !requested.is_empty() {
+        for include in &requested {
+            match include_support_level(rule, *include) {
+                CompatLevel::Native | CompatLevel::Compat => effective.push(*include),
+                CompatLevel::Unknown => {
                     warnings.push(format!(
-                        "{} does not support OpenResponses include selections; omitting include.",
-                        route_label(self)
+                        "include={} is unverified on {}; forwarding as requested.",
+                        include.as_str(),
+                        route
                     ));
+                    effective.push(*include);
                 }
-                Vec::new()
+                CompatLevel::Unsupported => warnings.push(format!(
+                    "include={} is not supported on {}; omitting value.",
+                    include.as_str(),
+                    route
+                )),
             }
-            CompatLevel::Unknown => {
-                if !requested.is_empty() {
-                    warnings.push(format!(
-                        "include is unverified on {}; forwarding as requested.",
-                        route_label(self)
-                    ));
-                }
-                requested.clone()
-            }
-            CompatLevel::Native | CompatLevel::Compat => requested.clone(),
-        };
+        }
 
         ResolvedOpenResponsesInclude {
             requested,
@@ -321,6 +333,15 @@ struct ReasoningSupportRule {
     summary: CompatLevel,
     supported_efforts: &'static [ReasoningEffort],
     supported_summaries: &'static [ReasoningSummary],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct IncludeSupportRule {
+    request: CompatLevel,
+    native_values: &'static [OpenResponsesInclude],
+    compat_values: &'static [OpenResponsesInclude],
+    unknown_values: &'static [OpenResponsesInclude],
+    unsupported_values: &'static [OpenResponsesInclude],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
@@ -364,7 +385,18 @@ impl ValidationProfile {
     }
 }
 
-pub const OPENRESPONSES_COMPAT_PROFILE_VERSION: &str = "2026-04-19.v1";
+pub const OPENRESPONSES_COMPAT_PROFILE_VERSION: &str = "2026-04-21.v1";
+
+const ALL_OPENRESPONSES_INCLUDE_VALUES: &[OpenResponsesInclude] = &[
+    OpenResponsesInclude::FileSearchCallResults,
+    OpenResponsesInclude::WebSearchCallResults,
+    OpenResponsesInclude::WebSearchCallActionSources,
+    OpenResponsesInclude::MessageInputImageImageUrl,
+    OpenResponsesInclude::ComputerCallOutputOutputImageUrl,
+    OpenResponsesInclude::CodeInterpreterCallOutputs,
+    OpenResponsesInclude::ReasoningEncryptedContent,
+    OpenResponsesInclude::MessageOutputTextLogprobs,
+];
 
 const OPENAI_REASONING_SUMMARIES: &[ReasoningSummary] = &[
     ReasoningSummary::Auto,
@@ -385,6 +417,22 @@ const OPENROUTER_REASONING_EFFORTS: &[ReasoningEffort] = &[
     ReasoningEffort::Low,
     ReasoningEffort::Medium,
     ReasoningEffort::High,
+];
+
+const OPENROUTER_COMPAT_INCLUDE_VALUES: &[OpenResponsesInclude] = &[
+    OpenResponsesInclude::FileSearchCallResults,
+    OpenResponsesInclude::CodeInterpreterCallOutputs,
+];
+
+const OPENROUTER_UNKNOWN_INCLUDE_VALUES: &[OpenResponsesInclude] = &[
+    OpenResponsesInclude::MessageInputImageImageUrl,
+    OpenResponsesInclude::ComputerCallOutputOutputImageUrl,
+];
+
+const OPENROUTER_UNSUPPORTED_INCLUDE_VALUES: &[OpenResponsesInclude] = &[
+    OpenResponsesInclude::WebSearchCallResults,
+    OpenResponsesInclude::WebSearchCallActionSources,
+    OpenResponsesInclude::MessageOutputTextLogprobs,
 ];
 
 const UNKNOWN_REQUEST_CAPABILITIES: RequestCapabilityHealth = RequestCapabilityHealth {
@@ -478,7 +526,7 @@ const OPENROUTER_PROVIDER_PROFILE: OpenResponsesProviderCompatProfile =
             background: CompatLevel::Unknown,
             store: CompatLevel::Unsupported,
             service_tier: CompatLevel::Unknown,
-            response_include: CompatLevel::Unknown,
+            response_include: CompatLevel::Compat,
             reasoning_parameter: CompatLevel::Native,
         },
         tools: ToolCapabilityHealth {
@@ -690,6 +738,49 @@ fn reasoning_support_rule(resolved: ResolvedOpenResponsesCompatProfile) -> Reaso
             supported_efforts: &[],
             supported_summaries: &[],
         },
+    }
+}
+
+fn include_support_rule(resolved: ResolvedOpenResponsesCompatProfile) -> IncludeSupportRule {
+    match (
+        resolved.provider.provider_id,
+        resolved.model.map(|model| model.model_id),
+    ) {
+        ("openai", _) => IncludeSupportRule {
+            request: CompatLevel::Native,
+            native_values: ALL_OPENRESPONSES_INCLUDE_VALUES,
+            compat_values: &[],
+            unknown_values: &[],
+            unsupported_values: &[],
+        },
+        ("openrouter", _) => IncludeSupportRule {
+            request: CompatLevel::Compat,
+            native_values: &[OpenResponsesInclude::ReasoningEncryptedContent],
+            compat_values: OPENROUTER_COMPAT_INCLUDE_VALUES,
+            unknown_values: OPENROUTER_UNKNOWN_INCLUDE_VALUES,
+            unsupported_values: OPENROUTER_UNSUPPORTED_INCLUDE_VALUES,
+        },
+        _ => IncludeSupportRule {
+            request: CompatLevel::Unknown,
+            native_values: &[],
+            compat_values: &[],
+            unknown_values: ALL_OPENRESPONSES_INCLUDE_VALUES,
+            unsupported_values: &[],
+        },
+    }
+}
+
+fn include_support_level(rule: IncludeSupportRule, value: OpenResponsesInclude) -> CompatLevel {
+    if rule.native_values.contains(&value) {
+        CompatLevel::Native
+    } else if rule.compat_values.contains(&value) {
+        CompatLevel::Compat
+    } else if rule.unsupported_values.contains(&value) {
+        CompatLevel::Unsupported
+    } else if rule.unknown_values.contains(&value) {
+        CompatLevel::Unknown
+    } else {
+        rule.request
     }
 }
 

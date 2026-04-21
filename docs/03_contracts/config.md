@@ -113,6 +113,6 @@ Diagnostics
 - Doctor now does the same for response include:
   - `openresponses.include`: the layered include selection RIP resolved from config/env/per-run overrides
   - `openresponses.compat.include.effective`: the include array RIP will actually send after applying route support/degradation rules
-  - `openresponses.compat.include.support`: route-level health for the OpenResponses include surface
+  - `openresponses.compat.include.support`: route-level health plus per-value `native_values`, `compat_values`, `unknown_values`, and `unsupported_values`
   - `openresponses.compat.include.warnings`: downgrade / unverified-forwarding notes when a route cannot prove or honor the request cleanly
 - Compatibility resolution prefers the resolved `provider_id` from route/config selection and falls back to endpoint heuristics only when RIP has no canonical provider id for the route. This keeps custom proxies and loopback/provider-fixture endpoints aligned with the intended provider profile.

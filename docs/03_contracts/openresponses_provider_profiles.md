@@ -163,7 +163,7 @@ Runtime ownership
   - `background`: `unknown`
   - `store`: `unsupported`
   - `service_tier`: `unknown`
-  - `response_include`: `unknown`
+  - `response_include`: `compat`
   - `reasoning_parameter`: `native`
 - Tool health:
   - `function_calling`: `native`
@@ -181,6 +181,11 @@ Runtime ownership
 - Notes:
   - OpenRouter Responses Beta is stateless-only. RIP normalizes known downstream deltas for validation: missing response `user`, `response.reasoning_text.{delta,done}`, and missing item ids on paths that still rely on stateless history.
   - RIP now treats `previous_response_id` as an unsupported request on this provider profile and automatically coerces follow-ups to `stateless_history`, with the downgrade surfaced in `config doctor` rather than discovered only after a failed turn.
+  - OpenRouter's current Responses create docs advertise a narrower `include` subset than the canonical OpenResponses enum. RIP now records that as first-class compat knowledge instead of treating every include path as equally unknown:
+    - `reasoning.encrypted_content`: `native`
+    - `file_search_call.results`, `code_interpreter_call.outputs`: `compat`
+    - `message.input_image.image_url`, `computer_call_output.output.image_url`: `unknown`
+    - `web_search_call.results`, `web_search_call.action.sources`, `message.output_text.logprobs`: `unsupported`
   - The current OpenRouter docs explicitly advertise reasoning support, tool calling, parallel tool execution, web search, and a stateless transformation layer. RIP records those facts here, but only treats the fields as `native` or `compat` where they are actually curated.
   - `store` is recorded as `unsupported` because the provider posture is stateless and does not preserve provider-side conversation state between requests.
   - Images/files/video stay `unknown` here until they are proven on the Responses endpoint in RIP’s own integration coverage and, where needed, narrowed by model overlays.
@@ -270,10 +275,11 @@ Runtime ownership
   - a loopback OpenRouter session smoke proving an OpenRouter-shaped stream can complete without false provider errors when the OpenRouter profile is explicitly selected
   - outbound request composition proof for auth + custom headers + tool-choice/max-tool-call controls at the HTTP boundary
   - typed runtime/config surfaces for reasoning and `include`, both resolved through requested-vs-effective compatibility logic before request emission
+  - seeded per-value `include` subsets in the compatibility layer, so `config.doctor` can distinguish native/compat/unknown/unsupported include values instead of reporting one blunt route-wide include status
 - The next expansion should cover:
   - request-field quirks (`store`, `background`, `service_tier`, `include`, `parallel_tool_calls`)
   - tool/runtime quirks (`tool_choice`, `allowed_tools`, hosted-tool behavior, tool schema strictness, MCP headers)
   - model capability overlays for reasoning, tool calling, structured outputs, and multimodal input
   - operator-facing surfacing in `config.doctor`, the TUI model selector, and SDK diagnostics
 - Known current gap:
-  - typed reasoning controls and typed `include` selection are now first-class runtime/config surfaces, but multimodal/image/file/video request controls, hosted-tool/MCP request composition, and fine-grained per-value `include` subsets are still curated in the compatibility matrix before they are lifted into the same operator surface.
+  - typed reasoning controls and typed `include` selection are now first-class runtime/config surfaces, and the first per-value `include` subsets are curated for OpenRouter. The remaining gap is broader provider/model coverage plus multimodal/image/file/video request controls and hosted-tool/MCP request composition as first-class operator surfaces.

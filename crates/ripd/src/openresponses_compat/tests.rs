@@ -289,6 +289,10 @@ fn openai_route_preserves_include_without_warnings() {
 
     assert_eq!(include.support.request, CompatLevel::Native);
     assert_eq!(
+        include.support.native_values,
+        ALL_OPENRESPONSES_INCLUDE_VALUES.to_vec()
+    );
+    assert_eq!(
         include.effective,
         vec![
             OpenResponsesInclude::ReasoningEncryptedContent,
@@ -299,22 +303,69 @@ fn openai_route_preserves_include_without_warnings() {
 }
 
 #[test]
-fn openrouter_route_forwards_include_but_marks_it_unverified() {
+fn openrouter_route_applies_curated_include_subset() {
     let resolved = resolve_openresponses_compat_profile(
         Some("openrouter"),
         "https://openrouter.ai/api/v1/responses",
         Some("google/gemma-4-26b-a4b-it"),
     );
 
-    let include = resolved.include(&[OpenResponsesInclude::ReasoningEncryptedContent]);
+    let include = resolved.include(&[
+        OpenResponsesInclude::ReasoningEncryptedContent,
+        OpenResponsesInclude::CodeInterpreterCallOutputs,
+        OpenResponsesInclude::MessageInputImageImageUrl,
+        OpenResponsesInclude::MessageOutputTextLogprobs,
+        OpenResponsesInclude::WebSearchCallActionSources,
+    ]);
 
-    assert_eq!(include.support.request, CompatLevel::Unknown);
+    assert_eq!(include.support.request, CompatLevel::Compat);
+    assert_eq!(
+        include.support.native_values,
+        vec![OpenResponsesInclude::ReasoningEncryptedContent]
+    );
+    assert_eq!(
+        include.support.compat_values,
+        vec![
+            OpenResponsesInclude::FileSearchCallResults,
+            OpenResponsesInclude::CodeInterpreterCallOutputs,
+        ]
+    );
+    assert_eq!(
+        include.support.unknown_values,
+        vec![
+            OpenResponsesInclude::MessageInputImageImageUrl,
+            OpenResponsesInclude::ComputerCallOutputOutputImageUrl,
+        ]
+    );
+    assert_eq!(
+        include.support.unsupported_values,
+        vec![
+            OpenResponsesInclude::WebSearchCallResults,
+            OpenResponsesInclude::WebSearchCallActionSources,
+            OpenResponsesInclude::MessageOutputTextLogprobs,
+        ]
+    );
     assert_eq!(
         include.effective,
-        vec![OpenResponsesInclude::ReasoningEncryptedContent]
+        vec![
+            OpenResponsesInclude::ReasoningEncryptedContent,
+            OpenResponsesInclude::CodeInterpreterCallOutputs,
+            OpenResponsesInclude::MessageInputImageImageUrl,
+        ]
     );
     assert!(include
         .warnings
         .iter()
-        .any(|warning| warning.contains("include is unverified")));
+        .any(|warning| warning.contains("include=message.input_image.image_url is unverified")));
+    assert!(include
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("include=message.output_text.logprobs is not supported")));
+    assert!(
+        include
+            .warnings
+            .iter()
+            .any(|warning| warning
+                .contains("include=web_search_call.action.sources is not supported"))
+    );
 }

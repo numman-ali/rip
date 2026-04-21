@@ -2134,8 +2134,32 @@
           "request"
         ],
         "properties": {
+          "compat_values": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpenResponsesInclude"
+            }
+          },
+          "native_values": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpenResponsesInclude"
+            }
+          },
           "request": {
             "$ref": "#/components/schemas/CompatLevel"
+          },
+          "unknown_values": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpenResponsesInclude"
+            }
+          },
+          "unsupported_values": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpenResponsesInclude"
+            }
           }
         }
       },

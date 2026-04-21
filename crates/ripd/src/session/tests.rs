@@ -1359,7 +1359,10 @@ data: [DONE]\n\n";
         model: Some("fixture-model".to_string()),
         headers: Vec::new(),
         tool_choice: ToolChoiceParam::auto(),
-        include: vec![OpenResponsesInclude::ReasoningEncryptedContent],
+        include: vec![
+            OpenResponsesInclude::ReasoningEncryptedContent,
+            OpenResponsesInclude::MessageOutputTextLogprobs,
+        ],
         reasoning: None,
         followup_user_message: None,
         stateless_history: false,
@@ -1408,6 +1411,15 @@ data: [DONE]\n\n";
         }
         _ => false,
     }));
+    let warning_frames: Vec<_> = events
+        .iter()
+        .filter_map(|event| match &event.kind {
+            EventKind::ProviderEvent {
+                event_name, data, ..
+            } if event_name.as_deref() == Some("rip.compat.warning") => data.clone(),
+            _ => None,
+        })
+        .collect();
     drop(events);
 
     let requests = state.requests.lock().await;
@@ -1428,6 +1440,12 @@ data: [DONE]\n\n";
             .and_then(|value| value.as_str()),
         Some("message")
     );
+    assert!(warning_frames.iter().any(|value| {
+        value
+            .get("message")
+            .and_then(|value| value.as_str())
+            .is_some_and(|text| text.contains("include=message.output_text.logprobs"))
+    }));
 }
 
 #[tokio::test]

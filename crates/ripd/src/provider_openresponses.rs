@@ -45,7 +45,7 @@ pub enum OpenResponsesInclude {
 }
 
 impl OpenResponsesInclude {
-    fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::FileSearchCallResults => "file_search_call.results",
             Self::WebSearchCallResults => "web_search_call.results",
