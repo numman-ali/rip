@@ -19,7 +19,8 @@ async fn config_doctor_serves_resolved_configuration() {
         workspace_dir.join("rip.jsonc"),
         r#"{
   "openresponses": {
-    "reasoning": { "summary": "concise" }
+    "reasoning": { "summary": "concise" },
+    "include": ["reasoning.encrypted_content"]
   },
   "provider": {
     "openai": {
@@ -81,6 +82,22 @@ async fn config_doctor_serves_resolved_configuration() {
     assert_eq!(
         payload
             .get("openresponses")
+            .and_then(|value| value.get("include"))
+            .and_then(|value| value.as_array())
+            .and_then(|value| value.first())
+            .and_then(|value| value.as_str()),
+        Some("reasoning.encrypted_content")
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("include_source"))
+            .and_then(|value| value.as_str()),
+        Some("config:openresponses.include")
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
             .and_then(|value| value.get("reasoning"))
             .and_then(|value| value.get("summary"))
             .and_then(|value| value.as_str()),
@@ -101,6 +118,16 @@ async fn config_doctor_serves_resolved_configuration() {
             .and_then(|value| value.get("provider_id"))
             .and_then(|value| value.as_str()),
         Some("openai")
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("compat"))
+            .and_then(|value| value.get("include"))
+            .and_then(|value| value.get("support"))
+            .and_then(|value| value.get("request"))
+            .and_then(|value| value.as_str()),
+        Some("native")
     );
     assert_eq!(
         payload

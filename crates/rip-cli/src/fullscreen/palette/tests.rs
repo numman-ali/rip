@@ -41,6 +41,7 @@ fn override_input_returns_default_when_value_is_none() {
     assert!(out.model.is_none());
     assert!(out.stateless_history.is_none());
     assert!(out.parallel_tool_calls.is_none());
+    assert!(out.include.is_none());
     assert!(out.followup_user_message.is_none());
     assert!(out.reasoning.is_none());
 }
@@ -60,6 +61,7 @@ fn override_input_extracts_all_known_fields() {
         "model": "openai/gpt-5-nano",
         "stateless_history": true,
         "parallel_tool_calls": false,
+        "include": ["reasoning.encrypted_content", "message.output_text.logprobs"],
         "followup_user_message": "continue",
         "reasoning": {
             "effort": "high",
@@ -75,6 +77,13 @@ fn override_input_extracts_all_known_fields() {
     assert_eq!(out.model.as_deref(), Some("openai/gpt-5-nano"));
     assert_eq!(out.stateless_history, Some(true));
     assert_eq!(out.parallel_tool_calls, Some(false));
+    assert_eq!(
+        out.include,
+        Some(vec![
+            ripd::OpenResponsesInclude::ReasoningEncryptedContent,
+            ripd::OpenResponsesInclude::MessageOutputTextLogprobs
+        ])
+    );
     assert_eq!(out.followup_user_message.as_deref(), Some("continue"));
     assert_eq!(
         out.reasoning.as_ref().and_then(|value| value.effort),

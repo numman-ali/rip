@@ -122,6 +122,10 @@ async fn rip_config_doctor_reports_layered_sources_and_effective_openresponses()
         .env("RIP_OPENRESPONSES_MODEL", "gpt-5-env")
         .env("RIP_OPENRESPONSES_STATELESS_HISTORY", "off")
         .env("RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS", "yes")
+        .env(
+            "RIP_OPENRESPONSES_INCLUDE",
+            "reasoning.encrypted_content,message.output_text.logprobs",
+        )
         .env("RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE", "env followup")
         .env("RIP_OPENRESPONSES_REASONING_EFFORT", "high")
         .env("RIP_OPENRESPONSES_REASONING_SUMMARY", "detailed")
@@ -239,6 +243,27 @@ async fn rip_config_doctor_reports_layered_sources_and_effective_openresponses()
     );
     assert_eq!(
         openresponses
+            .get("include")
+            .and_then(|value| value.as_array())
+            .map(|value| {
+                value
+                    .iter()
+                    .filter_map(|item| item.as_str())
+                    .collect::<Vec<_>>()
+            }),
+        Some(vec![
+            "reasoning.encrypted_content",
+            "message.output_text.logprobs"
+        ])
+    );
+    assert_eq!(
+        openresponses
+            .get("include_source")
+            .and_then(|value| value.as_str()),
+        Some("env:RIP_OPENRESPONSES_INCLUDE")
+    );
+    assert_eq!(
+        openresponses
             .get("followup_user_message")
             .and_then(|value| value.as_str()),
         Some("env followup")
@@ -274,6 +299,15 @@ async fn rip_config_doctor_reports_layered_sources_and_effective_openresponses()
             .get("reasoning_summary_source")
             .and_then(|value| value.as_str()),
         Some("env:RIP_OPENRESPONSES_REASONING_SUMMARY")
+    );
+    assert_eq!(
+        openresponses
+            .get("compat")
+            .and_then(|value| value.get("include"))
+            .and_then(|value| value.get("support"))
+            .and_then(|value| value.get("request"))
+            .and_then(|value| value.as_str()),
+        Some("native")
     );
     assert_eq!(
         openresponses

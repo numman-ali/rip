@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::provider_openresponses::OpenResponsesReasoningConfig;
+use crate::provider_openresponses::{
+    parse_openresponses_include_list, OpenResponsesInclude, OpenResponsesReasoningConfig,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RipConfig {
@@ -132,6 +134,8 @@ pub struct OpenResponsesDefaults {
     pub stateless_history: bool,
     #[serde(default)]
     pub parallel_tool_calls: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub include: Vec<OpenResponsesInclude>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub followup_user_message: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -148,6 +152,8 @@ pub struct OpenResponsesDefaultsOverlay {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parallel_tool_calls: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub include: Option<Vec<OpenResponsesInclude>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub followup_user_message: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<OpenResponsesReasoningConfig>,
@@ -159,6 +165,7 @@ pub struct OpenResponsesOverrideInput {
     pub model: Option<String>,
     pub stateless_history: Option<bool>,
     pub parallel_tool_calls: Option<bool>,
+    pub include: Option<Vec<OpenResponsesInclude>>,
     pub followup_user_message: Option<String>,
     pub reasoning: Option<OpenResponsesReasoningConfig>,
 }
@@ -180,6 +187,8 @@ pub struct OpenResponsesResolvedConfig {
     pub stateless_history_source: Option<String>,
     pub parallel_tool_calls: bool,
     pub parallel_tool_calls_source: Option<String>,
+    pub include: Vec<OpenResponsesInclude>,
+    pub include_source: Option<String>,
     pub followup_user_message: Option<String>,
     pub followup_user_message_source: Option<String>,
     pub reasoning: Option<OpenResponsesReasoningConfig>,
@@ -412,6 +421,13 @@ pub fn resolve_openresponses_config(
             .map(|_| "config:openresponses.followup_user_message".to_string())
             .unwrap_or_else(|| "default:followup_user_message=none".to_string()),
     );
+    let mut include = config
+        .openresponses
+        .as_ref()
+        .map(|cfg| cfg.include.clone())
+        .unwrap_or_default();
+    let mut include_source =
+        (!include.is_empty()).then(|| "config:openresponses.include".to_string());
     let mut reasoning = config
         .openresponses
         .as_ref()
@@ -438,6 +454,12 @@ pub fn resolve_openresponses_config(
                 defaults.parallel_tool_calls = value;
                 parallel_tool_calls_source = Some(format!(
                     "config:provider.{provider_id}.openresponses.parallel_tool_calls"
+                ));
+            }
+            if let Some(value) = overlay.include.as_ref() {
+                include = value.clone();
+                include_source = Some(format!(
+                    "config:provider.{provider_id}.openresponses.include"
                 ));
             }
             if overlay.followup_user_message.is_some() {
@@ -476,6 +498,17 @@ pub fn resolve_openresponses_config(
     if let Some(parallel) = parse_env_bool("RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS") {
         defaults.parallel_tool_calls = parallel;
         parallel_tool_calls_source = Some("env:RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS".to_string());
+    }
+    if let Some(value) = env_var("RIP_OPENRESPONSES_INCLUDE") {
+        match parse_openresponses_include_list(&value) {
+            Ok(parsed) => {
+                include = parsed;
+                include_source = Some("env:RIP_OPENRESPONSES_INCLUDE".to_string());
+            }
+            Err(err) => {
+                eprintln!("invalid RIP_OPENRESPONSES_INCLUDE={value:?}: {err}; ignoring")
+            }
+        }
     }
     if let Some(value) = env_var("RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE") {
         let trimmed = value.trim().to_string();
@@ -522,6 +555,10 @@ pub fn resolve_openresponses_config(
         defaults.parallel_tool_calls = parallel_tool_calls;
         parallel_tool_calls_source = Some("override:parallel_tool_calls".to_string());
     }
+    if let Some(override_include) = overrides.include.as_ref() {
+        include = override_include.clone();
+        include_source = Some("override:include".to_string());
+    }
     if overrides.followup_user_message.is_some() {
         defaults.followup_user_message = overrides.followup_user_message.clone();
         followup_user_message_source = Some("override:followup_user_message".to_string());
@@ -563,6 +600,8 @@ pub fn resolve_openresponses_config(
             stateless_history_source,
             parallel_tool_calls: defaults.parallel_tool_calls,
             parallel_tool_calls_source,
+            include,
+            include_source,
             followup_user_message: defaults.followup_user_message,
             followup_user_message_source,
             reasoning,
@@ -1023,6 +1062,7 @@ mod tests {
                 endpoint: Some("https://api.openai.com/v1/responses".to_string()),
                 model: Some("gpt-5-nano-2025-08-07".to_string()),
                 parallel_tool_calls: Some(false),
+                include: Some(vec![OpenResponsesInclude::ReasoningEncryptedContent]),
                 reasoning: Some(OpenResponsesReasoningConfig {
                     effort: None,
                     summary: Some(ReasoningSummary::Auto),
@@ -1055,6 +1095,11 @@ mod tests {
             Some("override:parallel_tool_calls")
         );
         assert_eq!(
+            resolved.include,
+            vec![OpenResponsesInclude::ReasoningEncryptedContent]
+        );
+        assert_eq!(resolved.include_source.as_deref(), Some("override:include"));
+        assert_eq!(
             resolved.followup_user_message_source.as_deref(),
             Some("config:provider.openai.openresponses.followup_user_message")
         );
@@ -1073,6 +1118,46 @@ mod tests {
         assert_eq!(
             resolved.reasoning_summary_source.as_deref(),
             Some("override:reasoning.summary")
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_openresponses_config_tracks_include_source_from_provider_overlay() {
+        let dir = std::env::temp_dir().join(format!("ripd-config-include-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".git")).expect("git dir");
+
+        fs::write(
+            dir.join("rip.jsonc"),
+            r#"
+            {
+              "provider": {
+                "openai": {
+                  "endpoint": "https://api.openai.com/v1/responses",
+                  "openresponses": {
+                    "include": ["reasoning.encrypted_content"]
+                  }
+                }
+              },
+              "model": "openai/gpt-5.4-nano"
+            }
+            "#,
+        )
+        .expect("write config");
+
+        let (resolved, _loaded) =
+            resolve_openresponses_config(&dir, OpenResponsesOverrideInput::default());
+        let resolved = resolved.expect("resolved");
+
+        assert_eq!(
+            resolved.include,
+            vec![OpenResponsesInclude::ReasoningEncryptedContent]
+        );
+        assert_eq!(
+            resolved.include_source.as_deref(),
+            Some("config:provider.openai.openresponses.include")
         );
 
         let _ = fs::remove_dir_all(&dir);

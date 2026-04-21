@@ -76,7 +76,7 @@ Generated from docs/03_contracts/capability_registry.md.
 | execution.resume_session | planned | planned | planned | planned | planned | planned |
 | execution.output_format | planned | planned | planned | planned | planned | planned |
 | execution.structured_output | planned | planned | planned | planned | planned | planned |
-| execution.response_include | planned | planned | planned | planned | planned | planned |
+| execution.response_include | planned | supported | supported | planned | planned | planned |
 | openresponses.request_fidelity | planned | planned | planned | planned | planned | planned |
 | openresponses.response_fidelity | planned | planned | planned | planned | planned | planned |
 | openresponses.streaming_fidelity | planned | planned | planned | planned | planned | planned |

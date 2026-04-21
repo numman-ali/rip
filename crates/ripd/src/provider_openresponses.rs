@@ -24,6 +24,41 @@ pub enum ReasoningSummary {
     Auto,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub enum OpenResponsesInclude {
+    #[serde(rename = "file_search_call.results")]
+    FileSearchCallResults,
+    #[serde(rename = "web_search_call.results")]
+    WebSearchCallResults,
+    #[serde(rename = "web_search_call.action.sources")]
+    WebSearchCallActionSources,
+    #[serde(rename = "message.input_image.image_url")]
+    MessageInputImageImageUrl,
+    #[serde(rename = "computer_call_output.output.image_url")]
+    ComputerCallOutputOutputImageUrl,
+    #[serde(rename = "code_interpreter_call.outputs")]
+    CodeInterpreterCallOutputs,
+    #[serde(rename = "reasoning.encrypted_content")]
+    ReasoningEncryptedContent,
+    #[serde(rename = "message.output_text.logprobs")]
+    MessageOutputTextLogprobs,
+}
+
+impl OpenResponsesInclude {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::FileSearchCallResults => "file_search_call.results",
+            Self::WebSearchCallResults => "web_search_call.results",
+            Self::WebSearchCallActionSources => "web_search_call.action.sources",
+            Self::MessageInputImageImageUrl => "message.input_image.image_url",
+            Self::ComputerCallOutputOutputImageUrl => "computer_call_output.output.image_url",
+            Self::CodeInterpreterCallOutputs => "code_interpreter_call.outputs",
+            Self::ReasoningEncryptedContent => "reasoning.encrypted_content",
+            Self::MessageOutputTextLogprobs => "message.output_text.logprobs",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct OpenResponsesReasoningConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -71,6 +106,7 @@ pub struct OpenResponsesConfig {
     pub model: Option<String>,
     pub headers: Vec<(String, String)>,
     pub tool_choice: ToolChoiceParam,
+    pub include: Vec<OpenResponsesInclude>,
     pub reasoning: Option<OpenResponsesReasoningConfig>,
     pub followup_user_message: Option<String>,
     pub stateless_history: bool,
@@ -95,6 +131,7 @@ impl OpenResponsesConfig {
             },
             Err(_) => ToolChoiceParam::auto(),
         };
+        let include = openresponses_include_from_env();
         let reasoning = openresponses_reasoning_from_env();
         let followup_user_message = std::env::var("RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE").ok();
         let stateless_history = std::env::var("RIP_OPENRESPONSES_STATELESS_HISTORY")
@@ -122,6 +159,7 @@ impl OpenResponsesConfig {
             model,
             headers: Vec::new(),
             tool_choice,
+            include,
             reasoning,
             followup_user_message,
             stateless_history,
@@ -187,7 +225,7 @@ pub fn build_streaming_followup_request(
 }
 
 fn base_streaming_builder(config: &OpenResponsesConfig) -> CreateResponseBuilder {
-    let builder = match config.model.as_deref() {
+    let mut builder = match config.model.as_deref() {
         Some(model) => CreateResponseBuilder::new().model(model.to_string()),
         None if config.provider_id.as_deref() == Some("openrouter")
             || is_openrouter_responses_endpoint(&config.endpoint) =>
@@ -197,12 +235,35 @@ fn base_streaming_builder(config: &OpenResponsesConfig) -> CreateResponseBuilder
         None => CreateResponseBuilder::new(),
     };
 
+    let effective_include = effective_include(config);
+    if !effective_include.is_empty() {
+        builder = builder.insert_raw(
+            "include",
+            Value::Array(
+                effective_include
+                    .into_iter()
+                    .map(|value| Value::String(value.as_str().to_string()))
+                    .collect(),
+            ),
+        );
+    }
+
     if let Some(reasoning) = effective_reasoning(config).and_then(|reasoning| reasoning.to_value())
     {
-        builder.insert_raw("reasoning", reasoning)
-    } else {
-        builder
+        builder = builder.insert_raw("reasoning", reasoning);
     }
+
+    builder
+}
+
+fn effective_include(config: &OpenResponsesConfig) -> Vec<OpenResponsesInclude> {
+    crate::openresponses_compat::resolve_openresponses_compat_profile(
+        config.provider_id.as_deref(),
+        &config.endpoint,
+        config.model.as_deref(),
+    )
+    .include(&config.include)
+    .effective
 }
 
 fn effective_reasoning(config: &OpenResponsesConfig) -> Option<OpenResponsesReasoningConfig> {
@@ -288,6 +349,51 @@ pub fn parse_reasoning_summary(value: &str) -> Result<ReasoningSummary, String> 
         "auto" => Ok(ReasoningSummary::Auto),
         _ => Err("unsupported value (expected concise|detailed|auto)".to_string()),
     }
+}
+
+pub fn parse_openresponses_include(value: &str) -> Result<OpenResponsesInclude, String> {
+    match value.trim() {
+        "file_search_call.results" => Ok(OpenResponsesInclude::FileSearchCallResults),
+        "web_search_call.results" => Ok(OpenResponsesInclude::WebSearchCallResults),
+        "web_search_call.action.sources" => Ok(OpenResponsesInclude::WebSearchCallActionSources),
+        "message.input_image.image_url" => Ok(OpenResponsesInclude::MessageInputImageImageUrl),
+        "computer_call_output.output.image_url" => {
+            Ok(OpenResponsesInclude::ComputerCallOutputOutputImageUrl)
+        }
+        "code_interpreter_call.outputs" => Ok(OpenResponsesInclude::CodeInterpreterCallOutputs),
+        "reasoning.encrypted_content" => Ok(OpenResponsesInclude::ReasoningEncryptedContent),
+        "message.output_text.logprobs" => Ok(OpenResponsesInclude::MessageOutputTextLogprobs),
+        _ => Err("unsupported value (expected a canonical OpenResponses include path)".to_string()),
+    }
+}
+
+pub fn parse_openresponses_include_list(value: &str) -> Result<Vec<OpenResponsesInclude>, String> {
+    let mut out = Vec::new();
+    for raw in value.split(',') {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let include = parse_openresponses_include(trimmed)?;
+        if !out.contains(&include) {
+            out.push(include);
+        }
+    }
+    Ok(out)
+}
+
+#[cfg(not(test))]
+fn openresponses_include_from_env() -> Vec<OpenResponsesInclude> {
+    std::env::var("RIP_OPENRESPONSES_INCLUDE")
+        .ok()
+        .and_then(|value| match parse_openresponses_include_list(&value) {
+            Ok(include) => Some(include),
+            Err(err) => {
+                eprintln!("invalid RIP_OPENRESPONSES_INCLUDE={value:?}: {err}; ignoring");
+                None
+            }
+        })
+        .unwrap_or_default()
 }
 
 #[cfg(not(test))]
@@ -468,6 +574,7 @@ mod tests {
             model: None,
             headers: Vec::new(),
             tool_choice: ToolChoiceParam::auto(),
+            include: Vec::new(),
             reasoning: None,
             followup_user_message,
             stateless_history: false,
@@ -624,6 +731,7 @@ mod tests {
             model: Some("gpt-5-nano-2025-08-07".to_string()),
             headers: Vec::new(),
             tool_choice: ToolChoiceParam::required(),
+            include: Vec::new(),
             reasoning: None,
             followup_user_message: None,
             stateless_history: false,
@@ -655,6 +763,7 @@ mod tests {
             model: None,
             headers: Vec::new(),
             tool_choice: ToolChoiceParam::auto(),
+            include: Vec::new(),
             reasoning: None,
             followup_user_message: None,
             stateless_history: false,
@@ -676,6 +785,7 @@ mod tests {
             model: None,
             headers: Vec::new(),
             tool_choice: ToolChoiceParam::auto(),
+            include: Vec::new(),
             reasoning: None,
             followup_user_message: None,
             stateless_history: false,
@@ -734,6 +844,7 @@ mod tests {
             model: Some("gpt-5.4-nano".to_string()),
             headers: Vec::new(),
             tool_choice: ToolChoiceParam::auto(),
+            include: Vec::new(),
             reasoning: Some(OpenResponsesReasoningConfig {
                 effort: Some(ReasoningEffort::High),
                 summary: Some(ReasoningSummary::Detailed),
@@ -767,6 +878,7 @@ mod tests {
             model: Some("gpt-5.4-nano".to_string()),
             headers: Vec::new(),
             tool_choice: ToolChoiceParam::auto(),
+            include: Vec::new(),
             reasoning: Some(OpenResponsesReasoningConfig {
                 effort: Some(ReasoningEffort::Minimal),
                 summary: Some(ReasoningSummary::Detailed),
@@ -798,6 +910,7 @@ mod tests {
             model: Some("nvidia/nemotron-3-super-120b-a12b:free".to_string()),
             headers: Vec::new(),
             tool_choice: ToolChoiceParam::auto(),
+            include: Vec::new(),
             reasoning: Some(OpenResponsesReasoningConfig {
                 effort: Some(ReasoningEffort::Xhigh),
                 summary: Some(ReasoningSummary::Detailed),
@@ -828,5 +941,56 @@ mod tests {
             .find(|tool| tool.get("name").and_then(|v| v.as_str()) == Some("read"))
             .expect("read tool");
         assert_eq!(tool.get("strict").and_then(|v| v.as_bool()), Some(false));
+    }
+
+    #[test]
+    fn parse_openresponses_include_helpers_accept_canonical_values() {
+        assert_eq!(
+            parse_openresponses_include("reasoning.encrypted_content"),
+            Ok(OpenResponsesInclude::ReasoningEncryptedContent)
+        );
+        assert_eq!(
+            parse_openresponses_include_list(
+                "reasoning.encrypted_content, message.output_text.logprobs , reasoning.encrypted_content"
+            ),
+            Ok(vec![
+                OpenResponsesInclude::ReasoningEncryptedContent,
+                OpenResponsesInclude::MessageOutputTextLogprobs,
+            ])
+        );
+    }
+
+    #[test]
+    fn parse_openresponses_include_helpers_reject_unknown_values() {
+        assert!(parse_openresponses_include("reasoning.summary").is_err());
+        assert!(parse_openresponses_include_list("reasoning.encrypted_content,unknown").is_err());
+    }
+
+    #[test]
+    fn build_streaming_request_includes_effective_include_values() {
+        let config = OpenResponsesConfig {
+            provider_id: Some("openai".to_string()),
+            endpoint: "https://api.openai.com/v1/responses".to_string(),
+            api_key: None,
+            model: Some("gpt-5.4-nano".to_string()),
+            headers: Vec::new(),
+            tool_choice: ToolChoiceParam::auto(),
+            include: vec![
+                OpenResponsesInclude::ReasoningEncryptedContent,
+                OpenResponsesInclude::MessageOutputTextLogprobs,
+            ],
+            reasoning: None,
+            followup_user_message: None,
+            stateless_history: false,
+            parallel_tool_calls: false,
+        };
+        let payload = build_streaming_request(&config, "hi");
+        assert_eq!(
+            payload.body().get("include"),
+            Some(&json!([
+                "reasoning.encrypted_content",
+                "message.output_text.logprobs"
+            ]))
+        );
     }
 }

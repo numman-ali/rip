@@ -87,10 +87,12 @@ Diagnostics
 - The first typed reasoning controls now live in that same OpenResponses surface:
   - `reasoning.effort`: `none|minimal|low|medium|high|xhigh`
   - `reasoning.summary`: `concise|detailed|auto`
+- Typed response include controls now live there too:
+  - `include`: array of canonical OpenResponses include paths such as `reasoning.encrypted_content` and `message.output_text.logprobs`
 - They resolve through the same layered path as the other OpenResponses fields:
   - global config
   - provider-scoped overlay
-  - env compat overrides (`RIP_OPENRESPONSES_REASONING_EFFORT`, `RIP_OPENRESPONSES_REASONING_SUMMARY`)
+  - env compat overrides (`RIP_OPENRESPONSES_REASONING_EFFORT`, `RIP_OPENRESPONSES_REASONING_SUMMARY`, `RIP_OPENRESPONSES_INCLUDE`)
   - per-run overrides
 - Doctor now also surfaces the resolved OpenResponses compatibility profile for the active route:
   - provider profile health (`native` / `compat` / `unsupported` / `unknown`)
@@ -108,4 +110,9 @@ Diagnostics
   - `openresponses.compat.reasoning.effective`: the sanitized reasoning object RIP will actually send after applying route support/degradation rules
   - `openresponses.compat.reasoning.support`: known effort/summary support for the route plus curated value subsets when proven
   - `openresponses.compat.reasoning.warnings`: explicit downgrade / unverified-forwarding notes for unhappy-path debugging
+- Doctor now does the same for response include:
+  - `openresponses.include`: the layered include selection RIP resolved from config/env/per-run overrides
+  - `openresponses.compat.include.effective`: the include array RIP will actually send after applying route support/degradation rules
+  - `openresponses.compat.include.support`: route-level health for the OpenResponses include surface
+  - `openresponses.compat.include.warnings`: downgrade / unverified-forwarding notes when a route cannot prove or honor the request cleanly
 - Compatibility resolution prefers the resolved `provider_id` from route/config selection and falls back to endpoint heuristics only when RIP has no canonical provider id for the route. This keeps custom proxies and loopback/provider-fixture endpoints aligned with the intended provider profile.

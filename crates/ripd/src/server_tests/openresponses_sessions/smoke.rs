@@ -249,6 +249,7 @@ async fn live_openresponses_smoke() {
             model,
             headers: Vec::new(),
             tool_choice,
+            include: Vec::new(),
             reasoning: None,
             followup_user_message: None,
             stateless_history: false,

@@ -153,6 +153,21 @@ pub(super) fn openresponses_override_input_from_json(
         parallel_tool_calls: obj
             .get("parallel_tool_calls")
             .and_then(|value| value.as_bool()),
+        include: obj
+            .get("include")
+            .and_then(|value| value.as_array())
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(|value| value.as_str())
+                    .filter_map(|value| ripd::parse_openresponses_include(value).ok())
+                    .fold(Vec::new(), |mut acc, value| {
+                        if !acc.contains(&value) {
+                            acc.push(value);
+                        }
+                        acc
+                    })
+            }),
         followup_user_message: obj
             .get("followup_user_message")
             .and_then(|value| value.as_str())

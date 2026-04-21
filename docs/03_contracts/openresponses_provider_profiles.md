@@ -269,10 +269,11 @@ Runtime ownership
   - provider-id-over-endpoint selection for noncanonical/loopback OpenRouter endpoints
   - a loopback OpenRouter session smoke proving an OpenRouter-shaped stream can complete without false provider errors when the OpenRouter profile is explicitly selected
   - outbound request composition proof for auth + custom headers + tool-choice/max-tool-call controls at the HTTP boundary
+  - typed runtime/config surfaces for reasoning and `include`, both resolved through requested-vs-effective compatibility logic before request emission
 - The next expansion should cover:
   - request-field quirks (`store`, `background`, `service_tier`, `include`, `parallel_tool_calls`)
   - tool/runtime quirks (`tool_choice`, `allowed_tools`, hosted-tool behavior, tool schema strictness, MCP headers)
   - model capability overlays for reasoning, tool calling, structured outputs, and multimodal input
   - operator-facing surfacing in `config.doctor`, the TUI model selector, and SDK diagnostics
 - Known current gap:
-  - typed reasoning controls are now first-class for `effort` and `summary`, but multimodal/image/file/video request controls, hosted-tool/MCP request composition, and `include`-level details such as `reasoning.encrypted_content` are still curated in the compatibility matrix before they are lifted into the same runtime/config surface.
+  - typed reasoning controls and typed `include` selection are now first-class runtime/config surfaces, but multimodal/image/file/video request controls, hosted-tool/MCP request composition, and fine-grained per-value `include` subsets are still curated in the compatibility matrix before they are lifted into the same operator surface.

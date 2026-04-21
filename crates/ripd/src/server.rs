@@ -13,9 +13,12 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::openresponses_compat::{
     ConversationStrategy, OpenResponsesModelCompatProfile, OpenResponsesProviderCompatProfile,
-    ResolvedOpenResponsesConversation, ResolvedOpenResponsesReasoning, ValidationProfile,
+    ResolvedOpenResponsesConversation, ResolvedOpenResponsesInclude,
+    ResolvedOpenResponsesReasoning, ValidationProfile,
 };
-use crate::provider_openresponses::{OpenResponsesConfig, OpenResponsesReasoningConfig};
+use crate::provider_openresponses::{
+    OpenResponsesConfig, OpenResponsesInclude, OpenResponsesReasoningConfig,
+};
 use crate::runner::{SessionEngine, SessionHandle};
 use crate::tasks::TaskHandle;
 #[cfg(not(test))]
@@ -82,6 +85,8 @@ pub(crate) struct ThreadOpenResponsesOverrides {
     pub(crate) stateless_history: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) parallel_tool_calls: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) include: Option<Vec<OpenResponsesInclude>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) followup_user_message: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -201,6 +206,10 @@ pub(crate) struct ConfigDoctorOpenResponses {
     pub(crate) parallel_tool_calls: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) parallel_tool_calls_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) include: Vec<OpenResponsesInclude>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) include_source: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) followup_user_message: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -223,6 +232,7 @@ pub(crate) struct ConfigDoctorOpenResponsesCompat {
     pub(crate) provider: OpenResponsesProviderCompatProfile,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) model: Option<OpenResponsesModelCompatProfile>,
+    pub(crate) include: ResolvedOpenResponsesInclude,
     pub(crate) reasoning: ResolvedOpenResponsesReasoning,
 }
 

@@ -54,6 +54,7 @@ fn with_clean_env<F: FnOnce()>(f: F) {
         "RIP_OPENRESPONSES_MODEL",
         "RIP_OPENRESPONSES_STATELESS_HISTORY",
         "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
+        "RIP_OPENRESPONSES_INCLUDE",
         "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
         "RIP_OPENRESPONSES_REASONING_EFFORT",
         "RIP_OPENRESPONSES_REASONING_SUMMARY",
@@ -84,6 +85,7 @@ where
         "RIP_OPENRESPONSES_MODEL",
         "RIP_OPENRESPONSES_STATELESS_HISTORY",
         "RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS",
+        "RIP_OPENRESPONSES_INCLUDE",
         "RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE",
         "RIP_OPENRESPONSES_REASONING_EFFORT",
         "RIP_OPENRESPONSES_REASONING_SUMMARY",
@@ -326,6 +328,7 @@ async fn run_headless_with_interactive_flag() {
             model: None,
             stateless_history: false,
             parallel_tool_calls: false,
+            include: Vec::new(),
             followup_user_message: None,
             reasoning_effort: None,
             reasoning_summary: None,
@@ -371,6 +374,7 @@ async fn run_headless_remote() {
             model: None,
             stateless_history: false,
             parallel_tool_calls: false,
+            include: Vec::new(),
             followup_user_message: None,
             reasoning_effort: None,
             reasoning_summary: None,
@@ -474,6 +478,7 @@ async fn run_interactive_local_uses_env_paths() {
                 model: None,
                 stateless_history: false,
                 parallel_tool_calls: false,
+                include: Vec::new(),
                 followup_user_message: None,
                 reasoning_effort: None,
                 reasoning_summary: None,
@@ -525,6 +530,7 @@ async fn run_accepts_openresponses_flags_with_server() {
             model: Some("gpt-5-nano-2025-08-07".to_string()),
             stateless_history: true,
             parallel_tool_calls: true,
+            include: Vec::new(),
             followup_user_message: Some("compat".to_string()),
             reasoning_effort: Some(ReasoningEffortArg::Medium),
             reasoning_summary: Some(ReasoningSummaryArg::Concise),
@@ -572,6 +578,7 @@ async fn run_allows_model_override_without_provider() {
             model: Some("gpt-5-nano-2025-08-07".to_string()),
             stateless_history: false,
             parallel_tool_calls: false,
+            include: Vec::new(),
             followup_user_message: None,
             reasoning_effort: None,
             reasoning_summary: None,
@@ -1122,6 +1129,10 @@ fn openresponses_overrides_from_env_reads_vars() {
         std::env::set_var("RIP_OPENRESPONSES_MODEL", "openai/gpt-oss-20b");
         std::env::set_var("RIP_OPENRESPONSES_STATELESS_HISTORY", "yes");
         std::env::set_var("RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS", "true");
+        std::env::set_var(
+            "RIP_OPENRESPONSES_INCLUDE",
+            "reasoning.encrypted_content,message.output_text.logprobs",
+        );
         std::env::set_var("RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE", "continue");
         std::env::set_var("RIP_OPENRESPONSES_REASONING_EFFORT", "high");
         std::env::set_var("RIP_OPENRESPONSES_REASONING_SUMMARY", "detailed");
@@ -1132,6 +1143,10 @@ fn openresponses_overrides_from_env_reads_vars() {
             "model": "openai/gpt-oss-20b",
             "stateless_history": true,
             "parallel_tool_calls": true,
+            "include": [
+                "reasoning.encrypted_content",
+                "message.output_text.logprobs"
+            ],
             "followup_user_message": "continue",
             "reasoning": {
                 "effort": "high",
@@ -1164,6 +1179,35 @@ fn insert_reasoning_overrides_builds_nested_reasoning_object() {
             "summary": "auto"
         }))
     );
+}
+
+#[test]
+fn insert_include_overrides_builds_include_array() {
+    let mut obj = serde_json::Map::new();
+    insert_include_overrides(
+        &mut obj,
+        &[
+            "reasoning.encrypted_content".to_string(),
+            "message.output_text.logprobs".to_string(),
+        ],
+    )
+    .expect("include overrides");
+    assert_eq!(
+        obj.get("include"),
+        Some(&serde_json::json!([
+            "reasoning.encrypted_content",
+            "message.output_text.logprobs"
+        ]))
+    );
+}
+
+#[test]
+fn insert_include_overrides_rejects_unknown_values() {
+    let mut obj = serde_json::Map::new();
+    let err = insert_include_overrides(&mut obj, &["reasoning.summary".to_string()]).unwrap_err();
+    assert!(err
+        .to_string()
+        .contains("invalid --include \"reasoning.summary\""));
 }
 
 #[test]

@@ -32,6 +32,7 @@ pub(crate) async fn config_doctor(State(state): State<AppState>) -> impl IntoRes
             cfg.model.as_deref(),
         );
         let conversation = compat.conversation(cfg.stateless_history);
+        let include = compat.include(&cfg.include);
         let reasoning = cfg.reasoning.clone();
         ConfigDoctorOpenResponses {
             provider_id: cfg.provider_id,
@@ -53,6 +54,8 @@ pub(crate) async fn config_doctor(State(state): State<AppState>) -> impl IntoRes
             stateless_history_source: cfg.stateless_history_source,
             parallel_tool_calls: cfg.parallel_tool_calls,
             parallel_tool_calls_source: cfg.parallel_tool_calls_source,
+            include: cfg.include,
+            include_source: cfg.include_source,
             followup_user_message: cfg.followup_user_message,
             followup_user_message_source: cfg.followup_user_message_source,
             reasoning: reasoning.clone(),
@@ -64,6 +67,7 @@ pub(crate) async fn config_doctor(State(state): State<AppState>) -> impl IntoRes
                 effective_validation: compat.effective_validation(cfg.stateless_history),
                 provider: *compat.provider,
                 model: compat.model.copied(),
+                include,
                 reasoning: compat.reasoning(reasoning.as_ref()),
             }),
         }

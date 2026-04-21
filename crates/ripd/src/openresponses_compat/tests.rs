@@ -1,4 +1,5 @@
 use super::*;
+use crate::provider_openresponses::OpenResponsesInclude;
 
 #[test]
 fn resolves_openai_profile_strictly() {
@@ -271,4 +272,49 @@ fn gemma_route_marks_reasoning_summary_as_compat_supported() {
         })
     );
     assert!(reasoning.warnings.is_empty());
+}
+
+#[test]
+fn openai_route_preserves_include_without_warnings() {
+    let resolved = resolve_openresponses_compat_profile(
+        Some("openai"),
+        "https://api.openai.com/v1/responses",
+        Some("gpt-5.4-nano"),
+    );
+
+    let include = resolved.include(&[
+        OpenResponsesInclude::ReasoningEncryptedContent,
+        OpenResponsesInclude::MessageOutputTextLogprobs,
+    ]);
+
+    assert_eq!(include.support.request, CompatLevel::Native);
+    assert_eq!(
+        include.effective,
+        vec![
+            OpenResponsesInclude::ReasoningEncryptedContent,
+            OpenResponsesInclude::MessageOutputTextLogprobs,
+        ]
+    );
+    assert!(include.warnings.is_empty());
+}
+
+#[test]
+fn openrouter_route_forwards_include_but_marks_it_unverified() {
+    let resolved = resolve_openresponses_compat_profile(
+        Some("openrouter"),
+        "https://openrouter.ai/api/v1/responses",
+        Some("google/gemma-4-26b-a4b-it"),
+    );
+
+    let include = resolved.include(&[OpenResponsesInclude::ReasoningEncryptedContent]);
+
+    assert_eq!(include.support.request, CompatLevel::Unknown);
+    assert_eq!(
+        include.effective,
+        vec![OpenResponsesInclude::ReasoningEncryptedContent]
+    );
+    assert!(include
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("include is unverified")));
 }

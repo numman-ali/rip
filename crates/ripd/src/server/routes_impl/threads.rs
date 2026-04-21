@@ -108,6 +108,7 @@ pub(crate) async fn thread_post_message(
             parallel_tool_calls: openresponses
                 .as_ref()
                 .and_then(|cfg| cfg.parallel_tool_calls),
+            include: openresponses.as_ref().and_then(|cfg| cfg.include.clone()),
             followup_user_message: openresponses
                 .as_ref()
                 .and_then(|cfg| cfg.followup_user_message.clone()),
@@ -121,6 +122,7 @@ pub(crate) async fn thread_post_message(
         model: cfg.model,
         headers: cfg.headers,
         tool_choice: ToolChoiceParam::auto(),
+        include: cfg.include,
         reasoning: cfg.reasoning,
         followup_user_message: cfg.followup_user_message,
         stateless_history: cfg.stateless_history,

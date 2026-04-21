@@ -64,6 +64,7 @@ fn build_test_app_with_openresponses_provider_profile(
             model: Some("fixture-model".to_string()),
             headers: Vec::new(),
             tool_choice: ToolChoiceParam::auto(),
+            include: Vec::new(),
             reasoning: None,
             followup_user_message: None,
             stateless_history,

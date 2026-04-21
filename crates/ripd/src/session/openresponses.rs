@@ -156,10 +156,12 @@ pub(super) async fn run_openresponses_agent_loop(
         config.model.as_deref(),
     );
     let conversation = compat.conversation(config.stateless_history);
+    let include = compat.include(&config.include);
     let reasoning = compat.reasoning(config.reasoning.as_ref());
     let compat_warnings: Vec<String> = conversation
         .warnings
         .iter()
+        .chain(include.warnings.iter())
         .chain(reasoning.warnings.iter())
         .cloned()
         .collect();

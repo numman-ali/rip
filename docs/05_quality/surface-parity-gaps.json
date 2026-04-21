@@ -85,6 +85,20 @@
       "expires_on": "2026-03-01"
     },
     {
+      "capability_id": "execution.response_include",
+      "surface": "sdk",
+      "owner": "sdk",
+      "reason": "The runtime and cli_h/server surfaces now expose typed OpenResponses include selection, but the SDK does not yet surface include controls or requested-vs-effective diagnostics as a first-class API.",
+      "expires_on": "2026-05-15"
+    },
+    {
+      "capability_id": "execution.response_include",
+      "surface": "tui",
+      "owner": "tui",
+      "reason": "The runtime and cli_h/server surfaces now expose typed OpenResponses include selection, but the fullscreen TUI does not yet expose include controls or include diagnostics as a first-class operator affordance.",
+      "expires_on": "2026-05-15"
+    },
+    {
       "capability_id": "execution.json_stream",
       "surface": "tui",
       "owner": "tui",

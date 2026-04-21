@@ -1712,6 +1712,18 @@
               "type": "string"
             }
           },
+          "include": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpenResponsesInclude"
+            }
+          },
+          "include_source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "model": {
             "type": [
               "string",
@@ -1791,6 +1803,7 @@
           "conversation",
           "effective_validation",
           "provider",
+          "include",
           "reasoning"
         ],
         "properties": {
@@ -1802,6 +1815,9 @@
           },
           "effective_validation": {
             "$ref": "#/components/schemas/ValidationProfile"
+          },
+          "include": {
+            "$ref": "#/components/schemas/ResolvedOpenResponsesInclude"
           },
           "model": {
             "oneOf": [
@@ -2095,6 +2111,30 @@
             "$ref": "#/components/schemas/CompatLevel"
           },
           "tool_calling": {
+            "$ref": "#/components/schemas/CompatLevel"
+          }
+        }
+      },
+      "OpenResponsesInclude": {
+        "type": "string",
+        "enum": [
+          "file_search_call.results",
+          "web_search_call.results",
+          "web_search_call.action.sources",
+          "message.input_image.image_url",
+          "computer_call_output.output.image_url",
+          "code_interpreter_call.outputs",
+          "reasoning.encrypted_content",
+          "message.output_text.logprobs"
+        ]
+      },
+      "OpenResponsesIncludeSupport": {
+        "type": "object",
+        "required": [
+          "request"
+        ],
+        "properties": {
+          "request": {
             "$ref": "#/components/schemas/CompatLevel"
           }
         }
@@ -2462,6 +2502,35 @@
           },
           "support": {
             "$ref": "#/components/schemas/ConversationSupport"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ResolvedOpenResponsesInclude": {
+        "type": "object",
+        "required": [
+          "support"
+        ],
+        "properties": {
+          "effective": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpenResponsesInclude"
+            }
+          },
+          "requested": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpenResponsesInclude"
+            }
+          },
+          "support": {
+            "$ref": "#/components/schemas/OpenResponsesIncludeSupport"
           },
           "warnings": {
             "type": "array",
@@ -3007,6 +3076,15 @@
               "string",
               "null"
             ]
+          },
+          "include": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/OpenResponsesInclude"
+            }
           },
           "model": {
             "type": [

@@ -41,11 +41,13 @@ pub use local_authority::{
     PidLiveness,
 };
 pub use openresponses_compat::{
-    resolve_openresponses_compat_profile, CompatLevel, OpenResponsesReasoningSupport,
-    ResolvedOpenResponsesCompatProfile, ResolvedOpenResponsesReasoning,
+    resolve_openresponses_compat_profile, CompatLevel, OpenResponsesIncludeSupport,
+    OpenResponsesReasoningSupport, ResolvedOpenResponsesCompatProfile,
+    ResolvedOpenResponsesInclude, ResolvedOpenResponsesReasoning,
 };
 pub use provider_openresponses::{
-    parse_reasoning_effort, parse_reasoning_summary, OpenResponsesReasoningConfig, ReasoningEffort,
+    parse_openresponses_include, parse_openresponses_include_list, parse_reasoning_effort,
+    parse_reasoning_summary, OpenResponsesInclude, OpenResponsesReasoningConfig, ReasoningEffort,
     ReasoningSummary,
 };
 pub use runner::{SessionEngine, SessionHandle};

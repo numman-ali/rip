@@ -1,5 +1,5 @@
 use crate::provider_openresponses::{
-    OpenResponsesReasoningConfig, ReasoningEffort, ReasoningSummary,
+    OpenResponsesInclude, OpenResponsesReasoningConfig, ReasoningEffort, ReasoningSummary,
 };
 use rip_provider_openresponses::ValidationOptions;
 use serde::Serialize;
@@ -108,6 +108,22 @@ pub struct ResolvedOpenResponsesReasoning {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effective: Option<OpenResponsesReasoningConfig>,
     pub support: OpenResponsesReasoningSupport,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct OpenResponsesIncludeSupport {
+    pub request: CompatLevel,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct ResolvedOpenResponsesInclude {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub requested: Vec<OpenResponsesInclude>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub effective: Vec<OpenResponsesInclude>,
+    pub support: OpenResponsesIncludeSupport,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
 }
@@ -244,6 +260,43 @@ impl ResolvedOpenResponsesCompatProfile {
         ResolvedOpenResponsesReasoning {
             requested,
             effective: effective.normalized(),
+            support,
+            warnings,
+        }
+    }
+
+    pub fn include(self, requested: &[OpenResponsesInclude]) -> ResolvedOpenResponsesInclude {
+        let support = OpenResponsesIncludeSupport {
+            request: self.provider.request.response_include,
+        };
+        let requested = requested.to_vec();
+        let mut warnings = Vec::new();
+
+        let effective = match support.request {
+            CompatLevel::Unsupported => {
+                if !requested.is_empty() {
+                    warnings.push(format!(
+                        "{} does not support OpenResponses include selections; omitting include.",
+                        route_label(self)
+                    ));
+                }
+                Vec::new()
+            }
+            CompatLevel::Unknown => {
+                if !requested.is_empty() {
+                    warnings.push(format!(
+                        "include is unverified on {}; forwarding as requested.",
+                        route_label(self)
+                    ));
+                }
+                requested.clone()
+            }
+            CompatLevel::Native | CompatLevel::Compat => requested.clone(),
+        };
+
+        ResolvedOpenResponsesInclude {
+            requested,
+            effective,
             support,
             warnings,
         }

@@ -53,6 +53,8 @@ enum Commands {
         stateless_history: bool,
         #[arg(long, action = clap::ArgAction::SetTrue)]
         parallel_tool_calls: bool,
+        #[arg(long = "include")]
+        include: Vec<String>,
         #[arg(long)]
         followup_user_message: Option<String>,
         #[arg(long, value_enum)]
@@ -285,6 +287,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             model,
             stateless_history,
             parallel_tool_calls,
+            include,
             followup_user_message,
             reasoning_effort,
             reasoning_summary,
@@ -295,6 +298,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                 || model.is_some()
                 || stateless_history
                 || parallel_tool_calls
+                || !include.is_empty()
                 || followup_user_message.is_some()
                 || reasoning_effort.is_some()
                 || reasoning_summary.is_some();
@@ -318,6 +322,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                 if parallel_tool_calls {
                     obj.insert("parallel_tool_calls".to_string(), Value::Bool(true));
                 }
+                insert_include_overrides(&mut obj, &include)?;
                 if let Some(message) = followup_user_message.clone() {
                     if !message.trim().is_empty() {
                         obj.insert("followup_user_message".to_string(), Value::String(message));
@@ -616,6 +621,30 @@ fn openresponses_overrides_from_env() -> Option<Value> {
         );
     }
 
+    if let Ok(value) = std::env::var("RIP_OPENRESPONSES_INCLUDE") {
+        let trimmed = value.trim().to_string();
+        if !trimmed.is_empty() {
+            let include = match ripd::parse_openresponses_include_list(&trimmed) {
+                Ok(include) => include,
+                Err(err) => {
+                    eprintln!("invalid RIP_OPENRESPONSES_INCLUDE={trimmed:?}: {err}; ignoring");
+                    Vec::new()
+                }
+            };
+            if !include.is_empty() {
+                obj.insert(
+                    "include".to_string(),
+                    Value::Array(
+                        include
+                            .into_iter()
+                            .map(|value| serde_json::to_value(value).expect("include serializes"))
+                            .collect(),
+                    ),
+                );
+            }
+        }
+    }
+
     if let Ok(value) = std::env::var("RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE") {
         let trimmed = value.trim().to_string();
         if !trimmed.is_empty() {
@@ -664,6 +693,35 @@ fn insert_reasoning_overrides(
     if !reasoning.is_empty() {
         obj.insert("reasoning".to_string(), Value::Object(reasoning));
     }
+}
+
+fn insert_include_overrides(
+    obj: &mut serde_json::Map<String, Value>,
+    include: &[String],
+) -> anyhow::Result<()> {
+    if include.is_empty() {
+        return Ok(());
+    }
+
+    let mut parsed = Vec::new();
+    for raw in include {
+        let value = ripd::parse_openresponses_include(raw)
+            .map_err(|err| anyhow::anyhow!("invalid --include {raw:?}: {err}"))?;
+        if !parsed.contains(&value) {
+            parsed.push(value);
+        }
+    }
+
+    obj.insert(
+        "include".to_string(),
+        Value::Array(
+            parsed
+                .into_iter()
+                .map(|value| serde_json::to_value(value).expect("include serializes"))
+                .collect(),
+        ),
+    );
+    Ok(())
 }
 
 fn parse_env_bool(key: &str) -> Option<bool> {
