@@ -110,9 +110,9 @@ Profile shape (v1)
 Runtime ownership
 - Code: `crates/ripd/src/openresponses_compat.rs`
 - Runtime use today:
-  - `crates/ripd/src/session/openresponses.rs` resolves the compatibility profile from `{provider_id, endpoint, model}` and derives validation behavior from that profile plus the explicit `stateless_history` run config.
+  - `crates/ripd/src/session/openresponses.rs` resolves the compatibility profile from `{provider_id, endpoint, model}` and now derives both validation behavior and the effective follow-up strategy from that profile plus the explicit `stateless_history` request preference.
   - The resolved `provider_id` is the primary selector when RIP knows it from config/route resolution; endpoint heuristics are only a fallback for generic direct-provider wiring and env-only setups.
-  - `GET /config/doctor` and `rip config doctor` now surface the resolved provider profile, active conversation strategy, effective validation posture, any curated model overlay for the active route, and a route-specific reasoning support object with requested vs effective values plus downgrade/unverified warnings.
+  - `GET /config/doctor` and `rip config doctor` now surface the resolved provider profile, a structured conversation object (`requested`, `effective`, `support`, `warnings`), the effective validation posture, any curated model overlay for the active route, and a route-specific reasoning support object with requested vs effective values plus downgrade/unverified warnings.
   - `crates/ripd/src/provider_openresponses.rs` now consumes the typed reasoning config surface (`reasoning.effort`, `reasoning.summary`) through the compatibility layer, so the emitted OpenResponses `reasoning` request object is the effective route-safe value rather than the raw requested value.
 - This slice is intentionally modest in runtime effect:
   - current runtime selection is used for boundary validation behavior first
@@ -179,6 +179,7 @@ Runtime ownership
 - Validation posture: `compat`
 - Notes:
   - OpenRouter Responses Beta is stateless-only. RIP normalizes known downstream deltas for validation: missing response `user`, `response.reasoning_text.{delta,done}`, and missing item ids on paths that still rely on stateless history.
+  - RIP now treats `previous_response_id` as an unsupported request on this provider profile and automatically coerces follow-ups to `stateless_history`, with the downgrade surfaced in `config doctor` rather than discovered only after a failed turn.
   - The current OpenRouter docs explicitly advertise reasoning support, tool calling, parallel tool execution, web search, and a stateless transformation layer. RIP records those facts here, but only treats the fields as `native` or `compat` where they are actually curated.
   - `store` is recorded as `unsupported` because the provider posture is stateless and does not preserve provider-side conversation state between requests.
   - Images/files/video stay `unknown` here until they are proven on the Responses endpoint in RIP’s own integration coverage and, where needed, narrowed by model overlays.

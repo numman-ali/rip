@@ -26,3 +26,14 @@ async fn prompt_openresponses_executes_function_tools_stateless_history() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn openrouter_profile_coerces_followups_to_stateless_history() {
+    run_openresponses_tool_loop_fixture_with_profile(
+        include_str!("../../../../../fixtures/openresponses/tool_loop_apply_patch_first.sse"),
+        Some("openrouter"),
+        false,
+        true,
+    )
+    .await;
+}

@@ -112,25 +112,69 @@ pub struct ResolvedOpenResponsesReasoning {
     pub warnings: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct ResolvedOpenResponsesConversation {
+    pub requested: ConversationStrategy,
+    pub effective: ConversationStrategy,
+    pub support: ConversationSupport,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+}
+
 impl ResolvedOpenResponsesCompatProfile {
-    pub fn validation_options(self, stateless_history: bool) -> ValidationOptions {
-        self.effective_validation(stateless_history)
+    pub fn validation_options(self, requested_stateless_history: bool) -> ValidationOptions {
+        self.effective_validation(requested_stateless_history)
             .to_validation_options()
     }
 
-    pub fn effective_validation(self, stateless_history: bool) -> ValidationProfile {
+    pub fn effective_validation(self, requested_stateless_history: bool) -> ValidationProfile {
         let mut validation = self.provider.validation;
-        if stateless_history {
+        if matches!(
+            self.conversation(requested_stateless_history).effective,
+            ConversationStrategy::StatelessHistory
+        ) {
             validation.missing_item_ids = true;
         }
         validation
     }
 
-    pub fn active_conversation_strategy(self, stateless_history: bool) -> ConversationStrategy {
-        if stateless_history {
-            ConversationStrategy::StatelessHistory
-        } else {
-            ConversationStrategy::PreviousResponseId
+    pub fn active_conversation_strategy(
+        self,
+        requested_stateless_history: bool,
+    ) -> ConversationStrategy {
+        self.conversation(requested_stateless_history).effective
+    }
+
+    pub fn conversation(
+        self,
+        requested_stateless_history: bool,
+    ) -> ResolvedOpenResponsesConversation {
+        let support = self.provider.conversation;
+        let requested = requested_conversation_strategy(requested_stateless_history);
+        let mut effective = requested;
+        let mut warnings = Vec::new();
+        let requested_level = conversation_support_level(support, requested);
+
+        if requested_level == CompatLevel::Unsupported {
+            if let Some(alternate) = alternate_conversation_strategy(requested) {
+                let alternate_level = conversation_support_level(support, alternate);
+                if alternate_level != CompatLevel::Unsupported {
+                    effective = alternate;
+                    warnings.push(format!(
+                        "{} does not support {}; using {} instead.",
+                        route_label(self),
+                        conversation_strategy_label(requested),
+                        conversation_strategy_label(effective)
+                    ));
+                }
+            }
+        }
+
+        ResolvedOpenResponsesConversation {
+            requested,
+            effective,
+            support,
+            warnings,
         }
     }
 
@@ -612,6 +656,41 @@ fn reasoning_summary_label(value: ReasoningSummary) -> &'static str {
         ReasoningSummary::Auto => "auto",
         ReasoningSummary::Concise => "concise",
         ReasoningSummary::Detailed => "detailed",
+    }
+}
+
+fn requested_conversation_strategy(stateless_history: bool) -> ConversationStrategy {
+    if stateless_history {
+        ConversationStrategy::StatelessHistory
+    } else {
+        ConversationStrategy::PreviousResponseId
+    }
+}
+
+fn alternate_conversation_strategy(strategy: ConversationStrategy) -> Option<ConversationStrategy> {
+    match strategy {
+        ConversationStrategy::PreviousResponseId => Some(ConversationStrategy::StatelessHistory),
+        ConversationStrategy::StatelessHistory => Some(ConversationStrategy::PreviousResponseId),
+        ConversationStrategy::ConfigDriven => None,
+    }
+}
+
+fn conversation_support_level(
+    support: ConversationSupport,
+    strategy: ConversationStrategy,
+) -> CompatLevel {
+    match strategy {
+        ConversationStrategy::PreviousResponseId => support.previous_response_id,
+        ConversationStrategy::StatelessHistory => support.stateless_history,
+        ConversationStrategy::ConfigDriven => CompatLevel::Unknown,
+    }
+}
+
+fn conversation_strategy_label(value: ConversationStrategy) -> &'static str {
+    match value {
+        ConversationStrategy::PreviousResponseId => "previous_response_id",
+        ConversationStrategy::StatelessHistory => "stateless_history",
+        ConversationStrategy::ConfigDriven => "config_driven",
     }
 }
 

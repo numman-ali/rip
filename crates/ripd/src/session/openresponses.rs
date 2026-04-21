@@ -150,7 +150,16 @@ pub(super) async fn run_openresponses_agent_loop(
     let mut followup_tool_outputs: Option<Vec<ItemParam>> = None;
     let mut tool_call_count: u64 = 0;
     let mut request_index: u64 = 0;
-    let stateless_history = config.stateless_history;
+    let compat = resolve_openresponses_compat_profile(
+        config.provider_id.as_deref(),
+        &config.endpoint,
+        config.model.as_deref(),
+    );
+    let conversation = compat.conversation(config.stateless_history);
+    let stateless_history = matches!(
+        conversation.effective,
+        crate::openresponses_compat::ConversationStrategy::StatelessHistory
+    );
     let tool_choice_enforcement = ToolChoiceEnforcement::from_tool_choice(&config.tool_choice);
     let mut initial_request_items = initial_items;
     let mut history_items = if stateless_history {

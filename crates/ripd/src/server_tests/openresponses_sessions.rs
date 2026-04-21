@@ -5,6 +5,21 @@ mod smoke;
 mod tool_loop;
 
 async fn run_openresponses_tool_loop_fixture(first_sse: &'static str, stateless_history: bool) {
+    run_openresponses_tool_loop_fixture_with_profile(
+        first_sse,
+        None,
+        stateless_history,
+        stateless_history,
+    )
+    .await;
+}
+
+async fn run_openresponses_tool_loop_fixture_with_profile(
+    first_sse: &'static str,
+    provider_id: Option<&str>,
+    requested_stateless_history: bool,
+    expected_stateless_history: bool,
+) {
     use axum::extract::State;
     use axum::http::header::CONTENT_TYPE;
     use axum::routing::post;
@@ -57,7 +72,12 @@ async fn run_openresponses_tool_loop_fixture(first_sse: &'static str, stateless_
     let endpoint = format!("http://{addr}/v1/responses");
 
     let dir = tempdir().expect("tmp");
-    let app = build_test_app_with_openresponses_provider(&dir, endpoint, stateless_history);
+    let app = build_test_app_with_openresponses_provider_profile(
+        &dir,
+        provider_id,
+        endpoint,
+        requested_stateless_history,
+    );
     let session_id = create_session_id(&app).await;
     let workspace_root = dir.path().join("workspace");
     std::fs::write(workspace_root.join("a.txt"), "one\ntwo\n").expect("seed workspace");
@@ -126,7 +146,7 @@ async fn run_openresponses_tool_loop_fixture(first_sse: &'static str, stateless_
 
     let requests = state.requests.lock().expect("requests").clone();
     assert_eq!(requests.len(), 2, "expected two provider requests");
-    if stateless_history {
+    if expected_stateless_history {
         let first_input_items = requests[0]
             .get("input")
             .and_then(|value| value.as_array())
@@ -157,7 +177,7 @@ async fn run_openresponses_tool_loop_fixture(first_sse: &'static str, stateless_
         .and_then(|value| value.as_array())
         .expect("followup input array");
 
-    if stateless_history {
+    if expected_stateless_history {
         assert!(requests[1].get("previous_response_id").is_none());
         assert_eq!(
             input_items

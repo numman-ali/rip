@@ -189,6 +189,24 @@ async fn config_doctor_surfaces_openrouter_compat_profile() {
         payload
             .get("openresponses")
             .and_then(|value| value.get("compat"))
+            .and_then(|value| value.get("conversation"))
+            .and_then(|value| value.get("requested"))
+            .and_then(|value| value.as_str()),
+        Some("stateless_history")
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("compat"))
+            .and_then(|value| value.get("conversation"))
+            .and_then(|value| value.get("effective"))
+            .and_then(|value| value.as_str()),
+        Some("stateless_history")
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("compat"))
             .and_then(|value| value.get("effective_validation"))
             .and_then(|value| value.get("missing_response_user"))
             .and_then(|value| value.as_bool()),
@@ -213,6 +231,105 @@ async fn config_doctor_surfaces_openrouter_compat_profile() {
             .and_then(|value| value.as_str()),
         Some("native")
     );
+}
+
+#[tokio::test]
+async fn config_doctor_coerces_unsupported_openrouter_previous_response_id_to_stateless_history() {
+    let dir = tempdir().expect("tmp");
+    let data_dir = dir.path().join("data");
+    let workspace_dir = dir.path().join("workspace");
+    fs::create_dir_all(&workspace_dir).expect("workspace");
+    fs::write(
+        workspace_dir.join("rip.jsonc"),
+        r#"{
+  "provider": {
+    "openrouter": {
+      "endpoint": "https://openrouter.ai/api/v1/responses",
+      "api_key": { "env": "OPENROUTER_API_KEY" }
+    }
+  },
+  "roles": {
+    "primary": {
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-nano-30b-a3b:free"
+    }
+  }
+}
+"#,
+    )
+    .expect("config");
+
+    let previous_api_key = std::env::var_os("OPENROUTER_API_KEY");
+    std::env::set_var("OPENROUTER_API_KEY", "sk-test-openrouter");
+
+    let app = build_app_with_workspace_root(data_dir, workspace_dir);
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/config/doctor")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+
+    match previous_api_key {
+        Some(value) => std::env::set_var("OPENROUTER_API_KEY", value),
+        None => std::env::remove_var("OPENROUTER_API_KEY"),
+    }
+
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let payload: serde_json::Value = serde_json::from_slice(&body).expect("json");
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("stateless_history"))
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("compat"))
+            .and_then(|value| value.get("active_conversation_strategy"))
+            .and_then(|value| value.as_str()),
+        Some("stateless_history")
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("compat"))
+            .and_then(|value| value.get("conversation"))
+            .and_then(|value| value.get("requested"))
+            .and_then(|value| value.as_str()),
+        Some("previous_response_id")
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("compat"))
+            .and_then(|value| value.get("conversation"))
+            .and_then(|value| value.get("effective"))
+            .and_then(|value| value.as_str()),
+        Some("stateless_history")
+    );
+    assert!(payload
+        .get("openresponses")
+        .and_then(|value| value.get("compat"))
+        .and_then(|value| value.get("conversation"))
+        .and_then(|value| value.get("warnings"))
+        .and_then(|value| value.as_array())
+        .is_some_and(|warnings| warnings.iter().any(|warning| warning
+            .as_str()
+            .is_some_and(|warning| warning.contains("does not support previous_response_id")))));
 }
 
 #[tokio::test]

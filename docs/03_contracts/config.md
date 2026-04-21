@@ -98,6 +98,11 @@ Diagnostics
   - effective validation normalizations
   - any curated model overlay attached to the resolved route
 - Doctor also surfaces the resolved `reasoning` object and per-field provenance, so operators can see both what RIP is asking for and what the compatibility matrix says that route supports.
+- Doctor now also separates requested vs effective conversation strategy for the resolved route:
+  - `openresponses.stateless_history`: the layered operator preference RIP resolved from config/env/per-run overrides
+  - `openresponses.compat.conversation.requested`: the canonical strategy implied by that preference (`previous_response_id` or `stateless_history`)
+  - `openresponses.compat.conversation.effective`: the strategy RIP will actually use after applying route support/degradation rules
+  - `openresponses.compat.conversation.warnings`: explicit downgrade notes when a provider/model route cannot honor the requested mode
 - Doctor now separates requested vs effective reasoning for the resolved route:
   - `openresponses.reasoning`: the layered request preference RIP resolved from config/env/per-run overrides
   - `openresponses.compat.reasoning.effective`: the sanitized reasoning object RIP will actually send after applying route support/degradation rules

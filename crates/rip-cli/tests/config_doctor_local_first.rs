@@ -278,6 +278,22 @@ async fn rip_config_doctor_reports_layered_sources_and_effective_openresponses()
     assert_eq!(
         openresponses
             .get("compat")
+            .and_then(|value| value.get("conversation"))
+            .and_then(|value| value.get("requested"))
+            .and_then(|value| value.as_str()),
+        Some("previous_response_id")
+    );
+    assert_eq!(
+        openresponses
+            .get("compat")
+            .and_then(|value| value.get("conversation"))
+            .and_then(|value| value.get("effective"))
+            .and_then(|value| value.as_str()),
+        Some("previous_response_id")
+    );
+    assert_eq!(
+        openresponses
+            .get("compat")
             .and_then(|value| value.get("active_conversation_strategy"))
             .and_then(|value| value.as_str()),
         Some("previous_response_id")

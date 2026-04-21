@@ -31,6 +31,7 @@ pub(crate) async fn config_doctor(State(state): State<AppState>) -> impl IntoRes
             &cfg.endpoint,
             cfg.model.as_deref(),
         );
+        let conversation = compat.conversation(cfg.stateless_history);
         let reasoning = cfg.reasoning.clone();
         ConfigDoctorOpenResponses {
             provider_id: cfg.provider_id,
@@ -58,8 +59,8 @@ pub(crate) async fn config_doctor(State(state): State<AppState>) -> impl IntoRes
             reasoning_effort_source: cfg.reasoning_effort_source,
             reasoning_summary_source: cfg.reasoning_summary_source,
             compat: Some(ConfigDoctorOpenResponsesCompat {
-                active_conversation_strategy: compat
-                    .active_conversation_strategy(cfg.stateless_history),
+                active_conversation_strategy: conversation.effective,
+                conversation,
                 effective_validation: compat.effective_validation(cfg.stateless_history),
                 provider: *compat.provider,
                 model: compat.model.copied(),

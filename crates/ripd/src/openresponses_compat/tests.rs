@@ -126,6 +126,56 @@ fn provider_id_takes_precedence_over_noncanonical_endpoint() {
 }
 
 #[test]
+fn openrouter_conversation_coerces_unsupported_previous_response_id_to_stateless_history() {
+    let resolved = resolve_openresponses_compat_profile(
+        Some("openrouter"),
+        "https://openrouter.ai/api/v1/responses",
+        Some("nvidia/nemotron-3-nano-30b-a3b:free"),
+    );
+
+    let conversation = resolved.conversation(false);
+
+    assert_eq!(
+        conversation.requested,
+        ConversationStrategy::PreviousResponseId
+    );
+    assert_eq!(
+        conversation.effective,
+        ConversationStrategy::StatelessHistory
+    );
+    assert_eq!(
+        conversation.support.previous_response_id,
+        CompatLevel::Unsupported
+    );
+    assert!(conversation
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("does not support previous_response_id")));
+}
+
+#[test]
+fn openai_conversation_preserves_explicit_stateless_history() {
+    let resolved = resolve_openresponses_compat_profile(
+        Some("openai"),
+        "https://api.openai.com/v1/responses",
+        Some("gpt-5.4-nano"),
+    );
+
+    let conversation = resolved.conversation(true);
+
+    assert_eq!(
+        conversation.requested,
+        ConversationStrategy::StatelessHistory
+    );
+    assert_eq!(
+        conversation.effective,
+        ConversationStrategy::StatelessHistory
+    );
+    assert_eq!(conversation.support.stateless_history, CompatLevel::Native);
+    assert!(conversation.warnings.is_empty());
+}
+
+#[test]
 fn openai_gpt_54_models_constrain_reasoning_effort_and_keep_supported_summary() {
     let resolved = resolve_openresponses_compat_profile(
         Some("openai"),

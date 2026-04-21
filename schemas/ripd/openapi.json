@@ -1788,6 +1788,7 @@
         "type": "object",
         "required": [
           "active_conversation_strategy",
+          "conversation",
           "effective_validation",
           "provider",
           "reasoning"
@@ -1795,6 +1796,9 @@
         "properties": {
           "active_conversation_strategy": {
             "$ref": "#/components/schemas/ConversationStrategy"
+          },
+          "conversation": {
+            "$ref": "#/components/schemas/ResolvedOpenResponsesConversation"
           },
           "effective_validation": {
             "$ref": "#/components/schemas/ValidationProfile"
@@ -2439,6 +2443,31 @@
           },
           "store": {
             "$ref": "#/components/schemas/CompatLevel"
+          }
+        }
+      },
+      "ResolvedOpenResponsesConversation": {
+        "type": "object",
+        "required": [
+          "requested",
+          "effective",
+          "support"
+        ],
+        "properties": {
+          "effective": {
+            "$ref": "#/components/schemas/ConversationStrategy"
+          },
+          "requested": {
+            "$ref": "#/components/schemas/ConversationStrategy"
+          },
+          "support": {
+            "$ref": "#/components/schemas/ConversationSupport"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
