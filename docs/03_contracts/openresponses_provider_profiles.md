@@ -114,6 +114,7 @@ Runtime ownership
   - The resolved `provider_id` is the primary selector when RIP knows it from config/route resolution; endpoint heuristics are only a fallback for generic direct-provider wiring and env-only setups.
   - `GET /config/doctor` and `rip config doctor` now surface the resolved provider profile, a structured conversation object (`requested`, `effective`, `support`, `warnings`), the effective validation posture, any curated model overlay for the active route, and a route-specific reasoning support object with requested vs effective values plus downgrade/unverified warnings.
   - `crates/ripd/src/provider_openresponses.rs` now consumes the typed reasoning config surface (`reasoning.effort`, `reasoning.summary`) through the compatibility layer, so the emitted OpenResponses `reasoning` request object is the effective route-safe value rather than the raw requested value.
+  - When a run starts and RIP had to degrade a requested conversation or reasoning setting, the session stream now emits a structured compat warning frame (`rip.compat.warning`) before the first provider request. Surfaces may render that as a runtime notice, but the warning source remains the provider-boundary compatibility layer.
 - This slice is intentionally modest in runtime effect:
   - current runtime selection is used for boundary validation behavior first
   - the wider request/tool/modality matrix is now versioned and inspectable, even where the runtime does not act on every field yet

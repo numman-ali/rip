@@ -3,6 +3,7 @@ use crate::provider_openresponses::{
     OpenResponsesReasoningConfig, ReasoningEffort, ReasoningSummary, DEFAULT_OPENROUTER_MODEL,
 };
 use crate::CompactionCheckpointCumulativeV1Request;
+use rip_kernel::ProviderEventStatus;
 use rip_provider_openresponses::ToolChoiceParam;
 use tempfile::tempdir;
 
@@ -1263,6 +1264,156 @@ data: [DONE]\n\n";
     assert!(events
         .iter()
         .any(|event| matches!(event.kind, EventKind::ToolStarted { .. })));
+}
+
+#[tokio::test]
+async fn run_openresponses_agent_loop_emits_compat_warning_and_coerces_openrouter_to_stateless() {
+    use axum::extract::{Json, State};
+    use axum::http::header::CONTENT_TYPE;
+    use axum::routing::post;
+    use axum::Router as AxumRouter;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::net::TcpListener;
+
+    #[derive(Clone)]
+    struct ProviderState {
+        counter: Arc<AtomicUsize>,
+        requests: Arc<Mutex<Vec<Value>>>,
+        tool_sse: Arc<String>,
+        output_sse: Arc<String>,
+    }
+
+    async fn handler(
+        State(state): State<ProviderState>,
+        Json(body): Json<Value>,
+    ) -> impl axum::response::IntoResponse {
+        state.requests.lock().await.push(body);
+        let idx = state.counter.fetch_add(1, Ordering::SeqCst);
+        let sse = if idx == 0 {
+            state.tool_sse.as_str()
+        } else {
+            state.output_sse.as_str()
+        };
+        ([(CONTENT_TYPE, "text/event-stream")], sse.to_string())
+    }
+
+    let tool_sse = "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"noop\",\"arguments\":\"{}\"}}\n\n\
+data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"noop\",\"arguments\":\"{}\"}}\n\n\
+data: [DONE]\n\n";
+    let output_sse = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n\
+data: [DONE]\n\n";
+
+    let state = ProviderState {
+        counter: Arc::new(AtomicUsize::new(0)),
+        requests: Arc::new(Mutex::new(Vec::new())),
+        tool_sse: Arc::new(tool_sse.to_string()),
+        output_sse: Arc::new(output_sse.to_string()),
+    };
+    let provider_app = AxumRouter::new()
+        .route("/v1/responses", post(handler))
+        .with_state(state.clone());
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    tokio::spawn(async move {
+        axum::serve(listener, provider_app).await.expect("serve");
+    });
+
+    let dir = tempdir().expect("tmp");
+    let log = EventLog::new(dir.path().join("events.jsonl")).expect("log");
+    let buffer = Arc::new(Mutex::new(Vec::new()));
+    let (sender, _) = broadcast::channel(8);
+    let sink = EventSink::new(&sender, &buffer, &log);
+
+    let registry = Arc::new(rip_tools::ToolRegistry::default());
+    registry.register(
+        "noop",
+        Arc::new(|_invocation| Box::pin(async { rip_tools::ToolOutput::success(vec![]) })),
+    );
+    let tool_runner = ToolRunner::new(registry, 1);
+    let workspace_lock = crate::workspace_lock::WorkspaceLock::new();
+    let continuity_workspace = dir.path().join("workspace");
+    std::fs::create_dir_all(&continuity_workspace).expect("workspace");
+    let continuity_log =
+        Arc::new(EventLog::new(dir.path().join("continuity_events.jsonl")).expect("log"));
+    let continuity_store = ContinuityStore::new(
+        dir.path().join("continuity_data"),
+        continuity_workspace,
+        continuity_log,
+    )
+    .expect("continuities");
+
+    let config = OpenResponsesConfig {
+        provider_id: Some("openrouter".to_string()),
+        endpoint: format!("http://{addr}/v1/responses"),
+        api_key: None,
+        model: Some("fixture-model".to_string()),
+        headers: Vec::new(),
+        tool_choice: ToolChoiceParam::auto(),
+        reasoning: None,
+        followup_user_message: None,
+        stateless_history: false,
+        parallel_tool_calls: false,
+    };
+
+    let mut seq = 0;
+    let http = reqwest::Client::new();
+    let outcome = run_openresponses_agent_loop(OpenResponsesRunContext {
+        http: &http,
+        config: &config,
+        tool_runner: &tool_runner,
+        workspace_lock: &workspace_lock,
+        continuities: &continuity_store,
+        continuity_run: None,
+        session_id: "s1",
+        initial_items: None,
+        prompt: "hi",
+        seq: &mut seq,
+        sink,
+    })
+    .await;
+
+    assert_eq!(outcome.reason, "completed");
+    assert!(outcome.last_response_id.is_none());
+
+    let events = buffer.lock().await;
+    assert!(events.iter().any(|event| match &event.kind {
+        EventKind::ProviderEvent {
+            status,
+            event_name,
+            data,
+            errors,
+            response_errors,
+            ..
+        } => {
+            *status == ProviderEventStatus::Event
+                && errors.is_empty()
+                && response_errors.is_empty()
+                && event_name.as_deref() == Some("rip.compat.warning")
+                && data
+                    .as_ref()
+                    .and_then(|value| value.get("type"))
+                    .and_then(|value| value.as_str())
+                    == Some("rip.compat.warning")
+        }
+        _ => false,
+    }));
+    drop(events);
+
+    let requests = state.requests.lock().await;
+    assert_eq!(requests.len(), 2);
+    assert!(requests[1].get("previous_response_id").is_none());
+    let input = requests[1]
+        .get("input")
+        .and_then(|value| value.as_array())
+        .expect("input items");
+    assert_eq!(
+        input
+            .first()
+            .and_then(|item| item.get("type"))
+            .and_then(|value| value.as_str()),
+        Some("message")
+    );
 }
 
 #[tokio::test]

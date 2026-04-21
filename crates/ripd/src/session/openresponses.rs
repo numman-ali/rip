@@ -156,6 +156,14 @@ pub(super) async fn run_openresponses_agent_loop(
         config.model.as_deref(),
     );
     let conversation = compat.conversation(config.stateless_history);
+    let reasoning = compat.reasoning(config.reasoning.as_ref());
+    let compat_warnings: Vec<String> = conversation
+        .warnings
+        .iter()
+        .chain(reasoning.warnings.iter())
+        .cloned()
+        .collect();
+    emit_compat_warnings(sink, session_id, seq, compat_warnings).await;
     let stateless_history = matches!(
         conversation.effective,
         crate::openresponses_compat::ConversationStrategy::StatelessHistory
@@ -318,6 +326,36 @@ pub(super) async fn run_openresponses_agent_loop(
             history_items.extend(tool_outputs.clone());
         }
         followup_tool_outputs = Some(tool_outputs);
+    }
+}
+
+async fn emit_compat_warnings(
+    sink: EventSink<'_>,
+    session_id: &str,
+    seq: &mut u64,
+    warnings: Vec<String>,
+) {
+    for warning in warnings {
+        sink.emit(Event {
+            id: Uuid::new_v4().to_string(),
+            session_id: session_id.to_string(),
+            timestamp_ms: super::now_ms(),
+            seq: *seq,
+            kind: EventKind::ProviderEvent {
+                provider: "openresponses.compat".to_string(),
+                status: rip_kernel::ProviderEventStatus::Event,
+                event_name: Some("rip.compat.warning".to_string()),
+                data: Some(serde_json::json!({
+                    "type": "rip.compat.warning",
+                    "message": warning,
+                })),
+                raw: None,
+                errors: Vec::new(),
+                response_errors: Vec::new(),
+            },
+        })
+        .await;
+        *seq += 1;
     }
 }
 

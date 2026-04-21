@@ -202,6 +202,45 @@ fn provider_error_pushes_system_notice_danger() {
 }
 
 #[test]
+fn compat_warning_pushes_system_notice_warn() {
+    let mut canvas = CanvasModel::new();
+    canvas.ingest(&event(
+        6,
+        210,
+        EventKind::ProviderEvent {
+            provider: "openresponses.compat".to_string(),
+            status: ProviderEventStatus::Event,
+            event_name: Some("rip.compat.warning".to_string()),
+            data: Some(json!({
+                "type": "rip.compat.warning",
+                "message": "openrouter/example does not support previous_response_id; using stateless_history instead."
+            })),
+            raw: None,
+            errors: Vec::new(),
+            response_errors: Vec::new(),
+        },
+    ));
+    let notice = canvas
+        .messages
+        .iter()
+        .find(|m| matches!(m, CanvasMessage::SystemNotice { .. }))
+        .expect("notice");
+    match notice {
+        CanvasMessage::SystemNotice {
+            level, seq, text, ..
+        } => {
+            assert_eq!(*level, NoticeLevel::Warn);
+            assert_eq!(*seq, 6);
+            assert_eq!(
+                text,
+                "openrouter/example does not support previous_response_id; using stateless_history instead."
+            );
+        }
+        _ => unreachable!(),
+    }
+}
+
+#[test]
 fn provider_reasoning_events_append_to_agent_turn_without_error_notice() {
     let mut canvas = CanvasModel::new();
     canvas.ingest(&event(

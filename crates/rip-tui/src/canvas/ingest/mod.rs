@@ -122,6 +122,9 @@ pub(super) fn apply(canvas: &mut CanvasModel, event: &Event) {
             if ingest_reasoning_event(canvas, event_name.as_deref(), data.as_ref()) {
                 return;
             }
+            if ingest_compat_warning_notice(canvas, event, event_name.as_deref(), data.as_ref()) {
+                return;
+            }
             if is_provider_error(status, errors, response_errors) {
                 notices::push_system_notice(
                     canvas,
@@ -271,6 +274,34 @@ fn provider_error_notice_text(errors: &[String], response_errors: &[String]) -> 
         Some(message) => format!("Provider error: {message}"),
         None => "Provider error".to_string(),
     }
+}
+
+fn ingest_compat_warning_notice(
+    canvas: &mut CanvasModel,
+    event: &Event,
+    event_name: Option<&str>,
+    data: Option<&Value>,
+) -> bool {
+    let Some(event_type) = provider_event::event_type(event_name, data) else {
+        return false;
+    };
+    if event_type != "rip.compat.warning" {
+        return false;
+    }
+    let text = data
+        .and_then(Value::as_object)
+        .and_then(|payload| payload.get("message"))
+        .and_then(Value::as_str)
+        .filter(|message| !message.trim().is_empty())
+        .unwrap_or("Compatibility warning");
+    notices::push_system_notice(
+        canvas,
+        event,
+        super::model::NoticeLevel::Warn,
+        text.to_string(),
+        "provider_event",
+    );
+    true
 }
 
 fn is_provider_error(
