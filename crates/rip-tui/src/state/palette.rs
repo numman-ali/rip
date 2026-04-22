@@ -40,7 +40,7 @@ impl PaletteMode {
 
 /// Spatial origin for the palette overlay (C.6). The driver picks a
 /// zone based on how the palette was summoned: top-center for the
-/// default `⌘K`, top-right when anchored to the hero model chip, etc.
+/// default `⌃K`, top-right when anchored to the hero model chip, etc.
 /// The renderer translates the origin into a concrete `Rect` inside
 /// the current frame; nothing persists across sessions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -10,12 +10,12 @@ pub enum Command {
     Submit,
     CloseOverlay,
     /// Primary palette trigger (Phase C.5): opens the Command palette —
-    /// the workspace's front door for every action. `⌘K` / `⌃K`. The
+    /// the workspace's front door for every action. `⌃K`. The
     /// palette hosts Command, Models, Go To, Threads, and Options
     /// modes; users cycle with `Tab` or type a `/` prefix in the
     /// palette query to switch modes.
     TogglePalette,
-    /// `⌃M` / `Alt+M` → Models palette mode directly (alias into
+    /// `Alt+M` → Models palette mode directly (alias into
     /// `TogglePalette` + `SwitchMode("models")`). Retained as a
     /// hotkey because model switching is the most-used palette
     /// action.

@@ -17,4 +17,4 @@
 
 ⟡ bash
 ▎ · Continue the thread
-   ? help   ⌘K command   click hero   ⌘M model
+   ? help   ⌃K command   ⌥M models   click top row

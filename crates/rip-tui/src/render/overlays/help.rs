@@ -45,21 +45,28 @@ pub(super) fn render_help_overlay(
 
     lines.push(Line::from(Span::styled(
         truncate(
-            "⌃K opens the searchable command palette. Tabs across the top show which palette mode is active. ? opens Help only when the composer is empty.",
+            "Help is reference. ⌃K opens the action palette. ? opens Help only when the composer is empty.",
             width.saturating_sub(2),
         ),
         theme.chrome,
     )));
     lines.push(Line::from(Span::styled(
         truncate(
-            "The hero row is clickable: thread opens Threads, agent opens Commands, model opens Models.",
+            "The top row is clickable: thread opens Threads, agent opens Commands, model opens Models.",
             width.saturating_sub(2),
         ),
         theme.muted,
     )));
     lines.push(Line::from(Span::styled(
         truncate(
-            "Mouse wheel scrolls the canvas. Focus a message, then Enter expands cards or opens detail views.",
+            "Mouse wheel scrolls the canvas. In the palette, the bracketed tab is the one Enter will act in.",
+            width.saturating_sub(2),
+        ),
+        theme.muted,
+    )));
+    lines.push(Line::from(Span::styled(
+        truncate(
+            "Direct shortcuts: ⌥M models, ⌃G go to, ⌃T threads, ⌥O options.",
             width.saturating_sub(2),
         ),
         theme.muted,
@@ -101,7 +108,7 @@ pub(super) fn render_help_overlay(
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         truncate(
-            "⎋ close   ⌃K command palette   /help in palette narrows by query",
+            "⎋ close   ⌃K action palette   type in the palette to filter",
             width.saturating_sub(2),
         ),
         theme.quiet,

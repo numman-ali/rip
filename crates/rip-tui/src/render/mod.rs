@@ -441,7 +441,7 @@ mod tests {
                     value: "openrouter/openai/gpt-oss-20b".to_string(),
                     title: "openrouter/openai/gpt-oss-20b".to_string(),
                     subtitle: Some("OpenRouter".to_string()),
-                    chips: vec!["current".to_string(), "128k".to_string()],
+                    chips: vec!["active".to_string(), "128k".to_string()],
                 },
                 crate::PaletteEntry {
                     value: "openai/gpt-5-nano".to_string(),
@@ -455,14 +455,14 @@ mod tests {
             "Use typed route".to_string(),
         )));
         let palette = render_to_string(&state, RenderMode::Json, 120, 30);
-        assert!(palette.contains("Palette · Model"), "{palette}");
+        assert!(palette.contains("Model Picker"), "{palette}");
         assert!(palette.contains("Filter"), "{palette}");
         assert!(
             palette.contains("openrouter/openai/gpt-oss-20b"),
             "{palette}"
         );
         assert!(palette.contains("OpenRouter"), "{palette}");
-        assert!(palette.contains("[current] [128k]"), "{palette}");
+        assert!(palette.contains("[active] [128k]"), "{palette}");
 
         state.set_overlay(Overlay::ToolDetail {
             tool_id: "tool-1".to_string(),

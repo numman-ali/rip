@@ -19,7 +19,7 @@ pub(super) fn render_palette_overlay(
     };
 
     frame.render_widget(Clear, area);
-    let title = format!("Palette · {}", palette.mode.label());
+    let title = palette_title(palette.mode);
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)
@@ -38,11 +38,11 @@ pub(super) fn render_palette_overlay(
         .split(inner);
 
     let tabs = Tabs::new(vec![
-        Line::from("Command"),
-        Line::from("Models"),
-        Line::from("Go To"),
-        Line::from("Threads"),
-        Line::from("Options"),
+        tab_label(PaletteMode::Command, palette.mode),
+        tab_label(PaletteMode::Model, palette.mode),
+        tab_label(PaletteMode::Navigation, palette.mode),
+        tab_label(PaletteMode::Session, palette.mode),
+        tab_label(PaletteMode::Option, palette.mode),
     ])
     .select(match palette.mode {
         PaletteMode::Command => 0,
@@ -138,10 +138,51 @@ pub(super) fn render_palette_overlay(
     );
 
     let footer = Paragraph::new(Text::from(vec![
-        Line::from("Enter apply  Esc close  Type to filter"),
-        Line::from("Tab cycle modes  Ctrl-K command  Alt-M models  Ctrl-T threads  Alt-O options"),
+        Line::from(truncate(
+            palette_apply_help(palette.mode),
+            sections[3].width as usize,
+        )),
+        Line::from(truncate(
+            "⇥ tabs  ⌃K cmd  ⌥M models  ⌃G go  ⌃T threads  ⌥O opts",
+            sections[3].width as usize,
+        )),
     ]))
     .style(theme.chrome)
     .wrap(Wrap { trim: false });
     frame.render_widget(footer, sections[3]);
+}
+
+fn palette_title(mode: PaletteMode) -> &'static str {
+    match mode {
+        PaletteMode::Command => "Command Palette",
+        PaletteMode::Model => "Model Picker",
+        PaletteMode::Navigation => "Go To",
+        PaletteMode::Session => "Threads",
+        PaletteMode::Option => "Options",
+    }
+}
+
+fn tab_label(tab: PaletteMode, active: PaletteMode) -> Line<'static> {
+    let label = match tab {
+        PaletteMode::Command => "Command",
+        PaletteMode::Model => "Models",
+        PaletteMode::Navigation => "Go To",
+        PaletteMode::Session => "Threads",
+        PaletteMode::Option => "Options",
+    };
+    if tab == active {
+        Line::from(format!("[{label}]"))
+    } else {
+        Line::from(label)
+    }
+}
+
+fn palette_apply_help(mode: PaletteMode) -> &'static str {
+    match mode {
+        PaletteMode::Command => "Enter runs action  Esc closes  Type to filter",
+        PaletteMode::Model => "Enter switches model  Esc closes  Type to filter",
+        PaletteMode::Navigation => "Enter jumps there  Esc closes  Type to filter",
+        PaletteMode::Session => "Enter opens thread  Esc closes  Type to filter",
+        PaletteMode::Option => "Enter toggles option  Esc closes  Type to filter",
+    }
 }

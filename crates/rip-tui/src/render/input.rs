@@ -330,11 +330,10 @@ fn truncate_line(line: Line<'static>, width: usize) -> Line<'static> {
 /// buffer has non-whitespace content — that's when send / newline
 /// become the headline keys, regardless of other state.
 ///
-/// Key glyphs (⏎ / ⇧⏎ / ⌘K / …) are the *advertised* bindings; the
+/// Key glyphs (⏎ / ⇧⏎ / ⌃K / …) are the *advertised* bindings; the
 /// driver still accepts the ASCII fallbacks (Enter / Alt-Enter / Ctrl-K).
-/// That matches the plan's "hotkeys are aliases into palette actions"
-/// philosophy — the keylight shows the prettier glyph, but the driver
-/// is tolerant about what the terminal actually sent.
+/// The keylight should show the real default keymap, not a "Mac-like"
+/// alias that terminals never actually send.
 pub(super) fn keylight_for(state: &TuiState, typing: bool) -> Vec<(&'static str, &'static str)> {
     use crate::Overlay;
 
@@ -370,20 +369,20 @@ pub(super) fn keylight_for(state: &TuiState, typing: bool) -> Vec<(&'static str,
     if state.awaiting_response {
         // Streaming (first output received) vs thinking (still waiting).
         if state.first_output_ms.is_some() {
-            return vec![("⎋", "stop"), ("⌘[", "prev msg"), ("⌘]", "next msg")];
+            return vec![("⎋", "stop"), ("[", "prev msg"), ("]", "next msg")];
         }
-        return vec![("⎋", "stop"), ("⌘[", "prev msg")];
+        return vec![("⎋", "stop"), ("[", "prev msg")];
     }
 
     if typing {
-        return vec![("⏎", "send"), ("⇧⏎", "newline"), ("⌘K", "palette")];
+        return vec![("⏎", "send"), ("⇧⏎", "newline"), ("⌃K", "palette")];
     }
 
     vec![
         ("?", "help"),
-        ("⌘K", "command"),
-        ("click", "hero"),
-        ("⌘M", "model"),
+        ("⌃K", "command"),
+        ("⌥M", "models"),
+        ("click", "top row"),
     ]
 }
 
@@ -424,14 +423,14 @@ mod tests {
     #[test]
     fn idle_state_shows_navigation_defaults() {
         let state = TuiState::new(10);
-        assert_eq!(keys(&state, false), vec!["?", "⌘K", "click", "⌘M"]);
+        assert_eq!(keys(&state, false), vec!["?", "⌃K", "⌥M", "click"]);
     }
 
     #[test]
     fn typing_swaps_headline_keys_to_send_and_newline() {
         let state = TuiState::new(10);
         let k = keys(&state, true);
-        assert_eq!(&k[..3], &["⏎", "⇧⏎", "⌘K"]);
+        assert_eq!(&k[..3], &["⏎", "⇧⏎", "⌃K"]);
     }
 
     #[test]
@@ -451,8 +450,8 @@ mod tests {
         state.first_output_ms = Some(5);
         let k = keys(&state, false);
         assert!(k.contains(&"⎋"));
-        assert!(k.contains(&"⌘["));
-        assert!(k.contains(&"⌘]"));
+        assert!(k.contains(&"["));
+        assert!(k.contains(&"]"));
     }
 
     #[test]
@@ -526,9 +525,9 @@ mod tests {
     fn fit_keylight_never_drops_below_two_entries() {
         let items = vec![
             ("⏎", "send"),
-            ("⌘K", "palette"),
-            ("⌘M", "model"),
-            ("⌘G", "go to"),
+            ("⌃K", "palette"),
+            ("⌥M", "models"),
+            ("⌃G", "go to"),
         ];
         let fit = fit_keylight(&items, 0);
         assert_eq!(fit.len(), 2);

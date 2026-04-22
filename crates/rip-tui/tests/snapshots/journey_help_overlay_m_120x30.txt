@@ -2,12 +2,13 @@
 ›  Add a slide outline for a product launch.
 
 ◎  Got it. I┌Help──────────────────────────────────────────────────────────────────────────────────────────┐
-            │⌃K opens the searchable command palette. Tabs across the top show which palette mode is act…  │
-            │The hero row is clickable: thread opens Threads, agent opens Commands, model opens Models.    │
-⟡  ╭─ bash ─│Mouse wheel scrolls the canvas. Focus a message, then Enter expands cards or opens detail v…  │ ✓ 100ms ─╮
-            │                                                                                              │
+            │Help is reference. ⌃K opens the action palette. ? opens Help only when the composer is empt…  │
+            │The top row is clickable: thread opens Threads, agent opens Commands, model opens Models.     │
+⟡  ╭─ bash ─│Mouse wheel scrolls the canvas. In the palette, the bracketed tab is the one Enter will act…  │ ✓ 100ms ─╮
+            │Direct shortcuts: ⌥M models, ⌃G go to, ⌃T threads, ⌥O options.                                │
      1 artif│                                                                                              │
-   ╰────────│CANVAS                                                                                        │──────────╯
+   ╰────────│                                                                                              │──────────╯
+            │CANVAS                                                                                        │
             │  Scroll to top                                                                               │
             │  Scroll to bottom                                                                            │
             │  Toggle follow-tail                                                                          │
@@ -22,7 +23,6 @@
             │  New thread  · unavailable                                                                   │
             │  Switch thread                                                                               │
             │  Branch current thread                                                                       │
-            │  Handoff to new thread                                                                       │
             └──────────────────────────────────────────────────────────────────────────────────────────────┘
 
 

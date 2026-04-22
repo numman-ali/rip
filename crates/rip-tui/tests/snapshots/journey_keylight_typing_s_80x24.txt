@@ -21,4 +21,4 @@
 
 
 ▎ › draft slide 1
-   ⏎ send   ⇧⏎ newline   ⌘K palette
+   ⏎ send   ⇧⏎ newline   ⌃K palette

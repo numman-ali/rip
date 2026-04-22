@@ -127,7 +127,7 @@ impl PaletteSource for ModelsMode {
             .map(|record| {
                 let mut chips = Vec::new();
                 if current == Some(record.route.as_str()) {
-                    chips.push("current".to_string());
+                    chips.push("active".to_string());
                 }
                 for source in &record.sources {
                     if let Some(chip) = source_chip(source) {
@@ -318,7 +318,7 @@ mod tests {
         );
         let entries = mode.entries();
         assert_eq!(entries[0].title, "openrouter/openai/gpt-oss-20b");
-        assert!(entries[0].chips.contains(&"current".to_string()));
+        assert!(entries[0].chips.contains(&"active".to_string()));
         assert!(entries[0].chips.contains(&"catalog".to_string()));
         assert!(entries[0].chips.contains(&"primary".to_string()));
         assert_eq!(entries[1].subtitle.as_deref(), Some("OpenAI"));

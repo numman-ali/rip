@@ -21,4 +21,4 @@
 ▎ › line one
 ▎   line two
 ▎   line three
-   ⏎ send   ⇧⏎ newline   ⌘K palette
+   ⏎ send   ⇧⏎ newline   ⌃K palette
