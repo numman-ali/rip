@@ -292,10 +292,11 @@ impl TuiState {
     /// the canonical transcript and normal rendering walks messages
     /// directly.
     pub fn rendered_agent_text(&self) -> String {
-        use crate::canvas::{Block, CanvasMessage};
+        use crate::canvas::{reasoning_hidden_note, Block, CanvasMessage};
         let mut out = String::new();
         for message in &self.canvas.messages {
             let CanvasMessage::AgentTurn {
+                reasoning_seen,
                 reasoning_text,
                 reasoning_summary,
                 blocks,
@@ -311,7 +312,8 @@ impl TuiState {
                 } else if !reasoning_text.trim().is_empty() {
                     Some(("Reasoning", reasoning_text.as_str()))
                 } else {
-                    None
+                    reasoning_hidden_note(*reasoning_seen, reasoning_text, reasoning_summary)
+                        .map(|text| ("Reasoning", text))
                 };
                 if let Some((label, text)) = reasoning {
                     out.push_str(label);

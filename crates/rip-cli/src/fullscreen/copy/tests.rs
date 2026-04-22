@@ -100,6 +100,7 @@ fn copyable_message_text_covers_remaining_canvas_variants() {
         role: AgentRole::Primary,
         actor_id: "rip".to_string(),
         model: Some("gpt".to_string()),
+        reasoning_seen: false,
         reasoning_text: String::new(),
         reasoning_summary: String::new(),
         blocks: vec![CanvasBlock::Paragraph(CachedText::plain("final answer"))],

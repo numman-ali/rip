@@ -322,15 +322,17 @@ fn provider_reasoning_events_append_to_agent_turn_without_error_notice() {
         .iter()
         .find_map(|message| match message {
             CanvasMessage::AgentTurn {
+                reasoning_seen,
                 reasoning_text,
                 reasoning_summary,
                 ..
-            } => Some((reasoning_text, reasoning_summary)),
+            } => Some((reasoning_seen, reasoning_text, reasoning_summary)),
             _ => None,
         })
         .expect("agent turn");
-    assert_eq!(agent.0, "step one");
-    assert_eq!(agent.1, "concise summary");
+    assert!(*agent.0);
+    assert_eq!(agent.1, "step one");
+    assert_eq!(agent.2, "concise summary");
     assert!(!canvas
         .messages
         .iter()
@@ -385,15 +387,118 @@ fn provider_reasoning_events_use_payload_type_when_event_name_is_missing() {
         .iter()
         .find_map(|message| match message {
             CanvasMessage::AgentTurn {
+                reasoning_seen,
                 reasoning_text,
                 reasoning_summary,
                 ..
-            } => Some((reasoning_text, reasoning_summary)),
+            } => Some((reasoning_seen, reasoning_text, reasoning_summary)),
             _ => None,
         })
         .expect("agent turn");
-    assert_eq!(agent.0, "step one in full");
+    assert!(*agent.0);
+    assert_eq!(agent.1, "step one in full");
+    assert_eq!(agent.2, "");
+}
+
+#[test]
+fn reasoning_output_item_done_backfills_summary_from_canonical_item_shape() {
+    let mut canvas = CanvasModel::new();
+    canvas.ingest(&event(
+        0,
+        100,
+        EventKind::SessionStarted {
+            input: "think".to_string(),
+        },
+    ));
+    canvas.ingest(&event(
+        1,
+        110,
+        EventKind::ProviderEvent {
+            provider: "openresponses".to_string(),
+            status: ProviderEventStatus::Event,
+            event_name: Some("response.output_item.done".to_string()),
+            data: Some(json!({
+                "type": "response.output_item.done",
+                "item": {
+                    "type": "reasoning",
+                    "summary": [
+                        {
+                            "type": "summary_text",
+                            "text": "Used short arithmetic decomposition."
+                        }
+                    ]
+                }
+            })),
+            raw: None,
+            errors: Vec::new(),
+            response_errors: Vec::new(),
+        },
+    ));
+
+    let agent = canvas
+        .messages
+        .iter()
+        .find_map(|message| match message {
+            CanvasMessage::AgentTurn {
+                reasoning_seen,
+                reasoning_text,
+                reasoning_summary,
+                ..
+            } => Some((reasoning_seen, reasoning_text, reasoning_summary)),
+            _ => None,
+        })
+        .expect("agent turn");
+    assert!(*agent.0);
     assert_eq!(agent.1, "");
+    assert_eq!(agent.2, "Used short arithmetic decomposition.");
+}
+
+#[test]
+fn reasoning_output_item_without_visible_summary_still_marks_reasoning_seen() {
+    let mut canvas = CanvasModel::new();
+    canvas.ingest(&event(
+        0,
+        100,
+        EventKind::SessionStarted {
+            input: "think".to_string(),
+        },
+    ));
+    canvas.ingest(&event(
+        1,
+        110,
+        EventKind::ProviderEvent {
+            provider: "openresponses".to_string(),
+            status: ProviderEventStatus::Event,
+            event_name: Some("response.output_item.done".to_string()),
+            data: Some(json!({
+                "type": "response.output_item.done",
+                "item": {
+                    "type": "reasoning",
+                    "summary": []
+                }
+            })),
+            raw: None,
+            errors: Vec::new(),
+            response_errors: Vec::new(),
+        },
+    ));
+
+    let agent = canvas
+        .messages
+        .iter()
+        .find_map(|message| match message {
+            CanvasMessage::AgentTurn {
+                reasoning_seen,
+                reasoning_text,
+                reasoning_summary,
+                ..
+            } => Some((reasoning_seen, reasoning_text, reasoning_summary)),
+            _ => None,
+        })
+        .expect("agent turn");
+    assert!(*agent.0);
+    assert_eq!(agent.1, "");
+    assert_eq!(agent.2, "");
 }
 
 #[test]

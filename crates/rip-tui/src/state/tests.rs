@@ -144,6 +144,7 @@ fn focus_ring_walks_focusable_messages_and_toggles_expand_on_cards() {
         role: crate::canvas::AgentRole::Primary,
         actor_id: "agent".into(),
         model: None,
+        reasoning_seen: false,
         reasoning_text: String::new(),
         reasoning_summary: String::new(),
         blocks: Vec::new(),
@@ -229,6 +230,7 @@ fn rendered_agent_text_includes_reasoning_only_when_visible() {
         role: crate::canvas::AgentRole::Primary,
         actor_id: "agent".into(),
         model: Some("gpt".into()),
+        reasoning_seen: true,
         reasoning_text: "private chain".into(),
         reasoning_summary: "safe summary".into(),
         blocks: vec![Block::Paragraph(CachedText::plain("final answer"))],
@@ -249,6 +251,35 @@ fn rendered_agent_text_includes_reasoning_only_when_visible() {
     assert!(!hidden.contains("Reasoning summary"));
     assert!(!hidden.contains("safe summary"));
     assert!(hidden.contains("final answer"));
+}
+
+#[test]
+fn rendered_agent_text_explains_hidden_reasoning_when_provider_returns_no_summary() {
+    use crate::canvas::{Block, CachedText, CanvasMessage};
+
+    let mut state = TuiState::new(80);
+    state.canvas.messages.push(CanvasMessage::AgentTurn {
+        message_id: "a2".into(),
+        run_session_id: "run-2".into(),
+        agent_id: None,
+        role: crate::canvas::AgentRole::Primary,
+        actor_id: "agent".into(),
+        model: Some("gpt".into()),
+        reasoning_seen: true,
+        reasoning_text: String::new(),
+        reasoning_summary: String::new(),
+        blocks: vec![Block::Paragraph(CachedText::plain("final answer"))],
+        streaming_tail: String::new(),
+        streaming_collector: crate::canvas::StreamCollector::new(),
+        streaming: false,
+        started_at_ms: 0,
+        ended_at_ms: Some(1),
+    });
+
+    let visible = state.rendered_agent_text();
+    assert!(visible.contains("Reasoning"));
+    assert!(visible.contains("provider did not return a visible summary"));
+    assert!(visible.contains("final answer"));
 }
 
 #[test]

@@ -259,6 +259,24 @@ fn ingest_reasoning_event(
             turns::finalize_agent_reasoning_summary(canvas, text);
             return true;
         }
+        "response.output_item.added" | "response.output_item.done" => {
+            if let Some(item) = payload.and_then(|value| value.get("item")) {
+                return turns::ingest_reasoning_item(canvas, item);
+            }
+        }
+        "response.completed" => {
+            if let Some(items) = payload
+                .and_then(|value| value.get("response"))
+                .and_then(|value| value.get("output"))
+                .and_then(Value::as_array)
+            {
+                let mut matched = false;
+                for item in items {
+                    matched |= turns::ingest_reasoning_item(canvas, item);
+                }
+                return matched;
+            }
+        }
         _ => {}
     }
     false

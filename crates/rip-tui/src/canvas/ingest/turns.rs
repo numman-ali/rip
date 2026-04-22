@@ -39,6 +39,7 @@ pub(super) fn on_session_started(canvas: &mut CanvasModel, event: &Event, input:
         role: AgentRole::Primary,
         actor_id: "agent".to_string(),
         model: None,
+        reasoning_seen: false,
         reasoning_text: String::new(),
         reasoning_summary: String::new(),
         blocks: Vec::new(),
@@ -82,33 +83,39 @@ pub(super) fn append_agent_reasoning_delta(canvas: &mut CanvasModel, delta: &str
     if delta.is_empty() {
         return;
     }
-    if let Some(CanvasMessage::AgentTurn { reasoning_text, .. }) =
-        canvas.messages.iter_mut().rev().find(|message| {
-            matches!(
-                message,
-                CanvasMessage::AgentTurn {
-                    streaming: true,
-                    ..
-                }
-            )
-        })
-    {
+    if let Some(CanvasMessage::AgentTurn {
+        reasoning_seen,
+        reasoning_text,
+        ..
+    }) = canvas.messages.iter_mut().rev().find(|message| {
+        matches!(
+            message,
+            CanvasMessage::AgentTurn {
+                streaming: true,
+                ..
+            }
+        )
+    }) {
+        *reasoning_seen = true;
         reasoning_text.push_str(delta);
     }
 }
 
 pub(super) fn finalize_agent_reasoning(canvas: &mut CanvasModel, text: Option<&str>) {
-    if let Some(CanvasMessage::AgentTurn { reasoning_text, .. }) =
-        canvas.messages.iter_mut().rev().find(|message| {
-            matches!(
-                message,
-                CanvasMessage::AgentTurn {
-                    streaming: true,
-                    ..
-                }
-            )
-        })
-    {
+    if let Some(CanvasMessage::AgentTurn {
+        reasoning_seen,
+        reasoning_text,
+        ..
+    }) = canvas.messages.iter_mut().rev().find(|message| {
+        matches!(
+            message,
+            CanvasMessage::AgentTurn {
+                streaming: true,
+                ..
+            }
+        )
+    }) {
+        *reasoning_seen = true;
         if let Some(text) = text.filter(|value| !value.trim().is_empty()) {
             reasoning_text.clear();
             reasoning_text.push_str(text);
@@ -121,7 +128,9 @@ pub(super) fn append_agent_reasoning_summary_delta(canvas: &mut CanvasModel, del
         return;
     }
     if let Some(CanvasMessage::AgentTurn {
-        reasoning_summary, ..
+        reasoning_seen,
+        reasoning_summary,
+        ..
     }) = canvas.messages.iter_mut().rev().find(|message| {
         matches!(
             message,
@@ -131,13 +140,16 @@ pub(super) fn append_agent_reasoning_summary_delta(canvas: &mut CanvasModel, del
             }
         )
     }) {
+        *reasoning_seen = true;
         reasoning_summary.push_str(delta);
     }
 }
 
 pub(super) fn finalize_agent_reasoning_summary(canvas: &mut CanvasModel, text: Option<&str>) {
     if let Some(CanvasMessage::AgentTurn {
-        reasoning_summary, ..
+        reasoning_seen,
+        reasoning_summary,
+        ..
     }) = canvas.messages.iter_mut().rev().find(|message| {
         matches!(
             message,
@@ -147,11 +159,88 @@ pub(super) fn finalize_agent_reasoning_summary(canvas: &mut CanvasModel, text: O
             }
         )
     }) {
+        *reasoning_seen = true;
         if let Some(text) = text.filter(|value| !value.trim().is_empty()) {
             reasoning_summary.clear();
             reasoning_summary.push_str(text);
         }
     }
+}
+
+pub(super) fn ingest_reasoning_item(canvas: &mut CanvasModel, item: &serde_json::Value) -> bool {
+    let Some(item) = item.as_object() else {
+        return false;
+    };
+    let Some(item_type) = item.get("type").and_then(serde_json::Value::as_str) else {
+        return false;
+    };
+    if item_type != "reasoning" {
+        return false;
+    }
+
+    if let Some(CanvasMessage::AgentTurn { reasoning_seen, .. }) =
+        canvas.messages.iter_mut().rev().find(|message| {
+            matches!(
+                message,
+                CanvasMessage::AgentTurn {
+                    streaming: true,
+                    ..
+                }
+            )
+        })
+    {
+        *reasoning_seen = true;
+    }
+
+    if let Some(summary) = reasoning_summary_from_item(item) {
+        finalize_agent_reasoning_summary(canvas, Some(summary.as_str()));
+    }
+    if let Some(content) = reasoning_content_from_item(item) {
+        finalize_agent_reasoning(canvas, Some(content.as_str()));
+    }
+    true
+}
+
+fn reasoning_summary_from_item(
+    item: &serde_json::Map<String, serde_json::Value>,
+) -> Option<String> {
+    let summary = item.get("summary")?.as_array()?;
+    join_reasoning_text_parts(summary, &["summary_text"])
+}
+
+fn reasoning_content_from_item(
+    item: &serde_json::Map<String, serde_json::Value>,
+) -> Option<String> {
+    let content = item.get("content")?.as_array()?;
+    join_reasoning_text_parts(content, &["output_text", "reasoning_text"])
+}
+
+fn join_reasoning_text_parts(
+    parts: &[serde_json::Value],
+    allowed_types: &[&str],
+) -> Option<String> {
+    let mut out = Vec::new();
+    for part in parts {
+        let Some(part) = part.as_object() else {
+            continue;
+        };
+        let Some(part_type) = part.get("type").and_then(serde_json::Value::as_str) else {
+            continue;
+        };
+        if !allowed_types.contains(&part_type) {
+            continue;
+        }
+        let Some(text) = part.get("text").and_then(serde_json::Value::as_str) else {
+            continue;
+        };
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        out.push(trimmed.to_string());
+    }
+
+    (!out.is_empty()).then(|| out.join("\n"))
 }
 
 pub(super) fn finalize_agent_turn(canvas: &mut CanvasModel, now_ms: u64) {

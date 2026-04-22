@@ -141,6 +141,17 @@ pub enum PanelPlacement {
     ActivityChip,
 }
 
+pub const REASONING_HIDDEN_NOTE: &str = "used, but the provider did not return a visible summary";
+
+pub fn reasoning_hidden_note(
+    reasoning_seen: bool,
+    reasoning_text: &str,
+    reasoning_summary: &str,
+) -> Option<&'static str> {
+    (reasoning_seen && reasoning_text.trim().is_empty() && reasoning_summary.trim().is_empty())
+        .then_some(REASONING_HIDDEN_NOTE)
+}
+
 #[derive(Debug, Clone)]
 pub struct StyledLine {
     pub text: String,
@@ -166,6 +177,7 @@ pub enum CanvasMessage {
         role: AgentRole,
         actor_id: String,
         model: Option<String>,
+        reasoning_seen: bool,
         reasoning_text: String,
         reasoning_summary: String,
         blocks: Vec<Block>,

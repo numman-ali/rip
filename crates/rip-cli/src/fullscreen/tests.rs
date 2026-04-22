@@ -67,6 +67,7 @@ fn push_streaming_primary_turn(state: &mut TuiState, blocks: Vec<Block>, streami
         role: AgentRole::Primary,
         actor_id: "agent".to_string(),
         model: None,
+        reasoning_seen: false,
         reasoning_text: String::new(),
         reasoning_summary: String::new(),
         blocks,

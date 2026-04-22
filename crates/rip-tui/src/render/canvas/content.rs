@@ -10,8 +10,8 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 
 use crate::canvas::{
-    AgentRole, Block as CanvasBlock, CachedText, CanvasMessage, ContextLifecycle, JobLifecycle,
-    NoticeLevel,
+    reasoning_hidden_note, AgentRole, Block as CanvasBlock, CachedText, CanvasMessage,
+    ContextLifecycle, JobLifecycle, NoticeLevel,
 };
 
 use super::super::theme::ThemeStyles;
@@ -297,6 +297,7 @@ pub(super) fn message_body_lines(
             style_block_lines(&text, theme.prompt)
         }
         CanvasMessage::AgentTurn {
+            reasoning_seen,
             reasoning_text,
             reasoning_summary,
             blocks,
@@ -307,6 +308,7 @@ pub(super) fn message_body_lines(
             let mut lines = Vec::new();
             if ctx.reasoning_visible {
                 lines.extend(reasoning_lines(
+                    *reasoning_seen,
                     reasoning_text,
                     reasoning_summary,
                     *streaming,
@@ -362,6 +364,7 @@ pub(super) fn message_body_lines(
 }
 
 fn reasoning_lines(
+    reasoning_seen: bool,
     reasoning_text: &str,
     reasoning_summary: &str,
     streaming: bool,
@@ -372,6 +375,9 @@ fn reasoning_lines(
         Some(("reasoning summary", reasoning_summary))
     } else if !reasoning_text.trim().is_empty() {
         Some(("thinking", reasoning_text))
+    } else if !awaiting_first_token {
+        reasoning_hidden_note(reasoning_seen, reasoning_text, reasoning_summary)
+            .map(|text| ("reasoning", text))
     } else {
         None
     };

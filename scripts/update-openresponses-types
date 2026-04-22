@@ -38,16 +38,46 @@ if not stream_schema or "oneOf" not in stream_schema:
 
 components = spec.get("components", {}).get("schemas", {})
 allowed = []
-for item in stream_schema.get("oneOf", []):
-    ref = item.get("$ref")
-    if not ref or not ref.startswith("#/components/schemas/"):
-        continue
-    name = ref.split("/")[-1]
-    schema = components.get(name, {})
-    type_info = schema.get("properties", {}).get("type", {})
-    enum = type_info.get("enum")
-    if isinstance(enum, list) and enum:
-        allowed.append(enum[0])
+paths_src = repo / "schema/paths/responses.json"
+if paths_src.exists():
+    paths = json.loads(paths_src.read_text())
+    stream_schema = (
+        paths.get("post", {})
+        .get("responses", {})
+        .get("200", {})
+        .get("content", {})
+        .get("text/event-stream", {})
+        .get("schema", {})
+    )
+    refs = []
+    stack = [stream_schema]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, dict):
+            ref = current.get("$ref")
+            if isinstance(ref, str) and ref.startswith("../components/schemas/"):
+                refs.append(ref.split("/")[-1])
+            stack.extend(current.values())
+        elif isinstance(current, list):
+            stack.extend(current)
+
+    for name in sorted(set(refs)):
+        schema = components.get(name, {})
+        type_info = schema.get("properties", {}).get("type", {})
+        enum = type_info.get("enum")
+        if isinstance(enum, list) and enum:
+            allowed.append(enum[0])
+else:
+    for item in stream_schema.get("oneOf", []):
+        ref = item.get("$ref")
+        if not ref or not ref.startswith("#/components/schemas/"):
+            continue
+        name = ref.split("/")[-1]
+        schema = components.get(name, {})
+        type_info = schema.get("properties", {}).get("type", {})
+        enum = type_info.get("enum")
+        if isinstance(enum, list) and enum:
+            allowed.append(enum[0])
 
 allowed = sorted(set(allowed))
 
