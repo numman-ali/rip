@@ -202,6 +202,46 @@ fn provider_error_pushes_system_notice_danger() {
 }
 
 #[test]
+fn provider_error_notice_prefers_provider_message_over_wrapped_http_json_blob() {
+    let mut canvas = CanvasModel::new();
+    canvas.ingest(&event(
+        6,
+        210,
+        EventKind::ProviderEvent {
+            provider: "openresponses".to_string(),
+            status: ProviderEventStatus::InvalidJson,
+            event_name: None,
+            data: None,
+            raw: None,
+            errors: vec![r#"provider http error: 400 Bad Request: {
+  "error": {
+    "message": "The requested model 'gpt-5.4-does-not-exist' does not exist.",
+    "type": "invalid_request_error",
+    "param": "model",
+    "code": "model_not_found"
+  }
+}"#
+            .to_string()],
+            response_errors: Vec::new(),
+        },
+    ));
+    let notice = canvas
+        .messages
+        .iter()
+        .find(|m| matches!(m, CanvasMessage::SystemNotice { .. }))
+        .expect("notice");
+    match notice {
+        CanvasMessage::SystemNotice { text, .. } => {
+            assert_eq!(
+                text,
+                "Provider error: The requested model 'gpt-5.4-does-not-exist' does not exist. (400 Bad Request)"
+            );
+        }
+        _ => unreachable!(),
+    }
+}
+
+#[test]
 fn compat_warning_pushes_system_notice_warn() {
     let mut canvas = CanvasModel::new();
     canvas.ingest(&event(

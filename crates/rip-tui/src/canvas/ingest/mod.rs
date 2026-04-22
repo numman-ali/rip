@@ -271,9 +271,49 @@ fn provider_error_notice_text(errors: &[String], response_errors: &[String]) -> 
         .find(|value| !value.trim().is_empty())
         .cloned();
     match first {
-        Some(message) => format!("Provider error: {message}"),
+        Some(message) => summarize_provider_error_message(&message),
         None => "Provider error".to_string(),
     }
+}
+
+fn summarize_provider_error_message(message: &str) -> String {
+    let compact = collapse_whitespace(message);
+    let status = extract_http_status(message);
+    let provider_message = extract_json_error_message(message).unwrap_or_else(|| compact.clone());
+    match status {
+        Some(status) if provider_message != compact => {
+            format!("Provider error: {provider_message} ({status})")
+        }
+        _ => format!("Provider error: {provider_message}"),
+    }
+}
+
+fn extract_http_status(message: &str) -> Option<String> {
+    let rest = message.strip_prefix("provider http error:")?;
+    let status = rest
+        .split('{')
+        .next()
+        .unwrap_or(rest)
+        .trim()
+        .trim_end_matches(':')
+        .trim();
+    (!status.is_empty()).then(|| status.to_string())
+}
+
+fn extract_json_error_message(message: &str) -> Option<String> {
+    let json_start = message.find('{')?;
+    let value: Value = serde_json::from_str(message[json_start..].trim()).ok()?;
+    let message = value
+        .get("error")
+        .and_then(|value| value.get("message"))
+        .and_then(Value::as_str)
+        .or_else(|| value.get("message").and_then(Value::as_str))?
+        .trim();
+    (!message.is_empty()).then(|| message.to_string())
+}
+
+fn collapse_whitespace(message: &str) -> String {
+    message.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn ingest_compat_warning_notice(
