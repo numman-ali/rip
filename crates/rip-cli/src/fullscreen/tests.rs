@@ -4,7 +4,7 @@ use crossterm::event::{
     Event as TermEvent, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use crossterm::terminal::size as terminal_size;
-use httpmock::Method::GET;
+use httpmock::Method::{GET, POST};
 use httpmock::MockServer;
 use rip_kernel::{EventKind, ProviderEventStatus};
 use rip_tui::canvas::StreamCollector;
@@ -1628,6 +1628,45 @@ async fn next_sse_event_pending_when_none() {
     let mut source: Option<EventSource> = None;
     let result = timeout(Duration::from_millis(10), next_sse_event(&mut source)).await;
     assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn cancel_remote_session_posts_cancel_endpoint() {
+    let server = MockServer::start();
+    let cancel = server.mock(|when, then| {
+        when.method(POST).path("/sessions/s1/cancel");
+        then.status(204);
+    });
+
+    let client = Client::new();
+    cancel_remote_session(&client, &server.base_url(), "s1")
+        .await
+        .expect("cancel ok");
+    cancel.assert();
+}
+
+#[tokio::test]
+async fn cancel_remote_session_reports_response_body_on_failure() {
+    let server = MockServer::start();
+    let _cancel = server.mock(|when, then| {
+        when.method(POST).path("/sessions/s1/cancel");
+        then.status(409).body("busy");
+    });
+
+    let client = Client::new();
+    let err = cancel_remote_session(&client, &server.base_url(), "s1")
+        .await
+        .expect_err("cancel failure should surface");
+    assert!(err.to_string().contains("409 Conflict: busy"));
+}
+
+#[tokio::test]
+async fn stop_active_session_before_exit_is_noop_without_session() {
+    let client = Client::new();
+    let stopped = stop_active_session_before_exit(&client, "http://unused", None)
+        .await
+        .expect("no-op succeeds");
+    assert!(!stopped);
 }
 
 struct EnvGuard {

@@ -52,7 +52,8 @@ high-traffic modes: `⌃G` Go To, `⌃T` Threads, `M-m` Models, `M-o` Options.
 
 **Overlays are a stack.** `Vec<Overlay>` in `TuiState`. Esc pops an overlay
 when one owns input; otherwise it stops the active run. `C-c` quits and, by
-default, stops any active session before exit. Activity, Palette,
+default, stops any active session before exit. Terminal input disconnects and
+shutdown signals also best-effort stop the active session before exit. Activity, Palette,
 ToolDetail, TaskDetail, ErrorDetail, StallDetail, Debug, Help, ErrorRecovery
 all live on the same stack and use the shared dim-behind layout.
 ErrorRecovery auto-opens on the first provider-error frame per run. An

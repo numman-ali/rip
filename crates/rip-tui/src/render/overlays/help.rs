@@ -73,7 +73,7 @@ pub(super) fn render_help_overlay(
     )));
     lines.push(Line::from(Span::styled(
         truncate(
-            "Esc stops the active run when no overlay owns input. Ctrl-C quits and, by default, stops the active run first.",
+            "Esc stops the active run when no overlay owns input. Ctrl-C quits and, by default, stops the active run first. Terminal/window closes best-effort stop it too unless a future detach mode is chosen.",
             width.saturating_sub(2),
         ),
         theme.muted,

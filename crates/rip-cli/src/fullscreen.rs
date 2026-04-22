@@ -121,6 +121,7 @@ async fn run_fullscreen_tui_sse(
     }
 
     let mut term_events = EventStream::new();
+    let mut shutdown = Box::pin(shutdown_signal());
     // The old 33ms unconditional tick forced a full repaint ~30x/sec
     // even when the only thing changing was a slow breath/thinking
     // glyph. Keep a lightweight cadence, but only redraw when the
@@ -159,22 +160,37 @@ async fn run_fullscreen_tui_sse(
                     dirty = true;
                 }
             }
+            _ = &mut shutdown => {
+                stop_active_session_on_shutdown(client, &server, active_session_id.as_deref()).await;
+                break;
+            }
             maybe_event = term_events.next() => {
-                let Some(Ok(event)) = maybe_event else {
-                    continue;
+                let event = match maybe_event {
+                    Some(Ok(event)) => event,
+                    Some(Err(_)) | None => {
+                        stop_active_session_on_shutdown(
+                            client,
+                            &server,
+                            active_session_id.as_deref(),
+                        )
+                        .await;
+                        break;
+                    }
                 };
                 match handle_term_event(event, &mut state, &mut mode, &mut input, session_running, &keymap) {
                     UiAction::None => {}
                     UiAction::Quit => {
-                        if let Some(session_id) = active_session_id.as_deref() {
-                            match cancel_remote_session(client, &server, session_id).await {
-                                Ok(()) => break,
-                                Err(err) => {
-                                    state.set_status_message(format!("stop failed: {err}"));
-                                }
+                        match stop_active_session_before_exit(
+                            client,
+                            &server,
+                            active_session_id.as_deref(),
+                        )
+                        .await
+                        {
+                            Ok(_) => break,
+                            Err(err) => {
+                                state.set_status_message(format!("stop failed: {err}"));
                             }
-                        } else {
-                            break;
                         }
                     }
                     UiAction::CancelSession => {
@@ -715,6 +731,51 @@ async fn cancel_remote_session(
         anyhow::bail!("server returned {status}");
     }
     anyhow::bail!("server returned {status}: {}", body.trim());
+}
+
+async fn stop_active_session_before_exit(
+    client: &Client,
+    server: &str,
+    session_id: Option<&str>,
+) -> anyhow::Result<bool> {
+    let Some(session_id) = session_id else {
+        return Ok(false);
+    };
+    cancel_remote_session(client, server, session_id).await?;
+    Ok(true)
+}
+
+async fn stop_active_session_on_shutdown(client: &Client, server: &str, session_id: Option<&str>) {
+    let Some(session_id) = session_id else {
+        return;
+    };
+    let _ = tokio::time::timeout(
+        Duration::from_millis(750),
+        cancel_remote_session(client, server, session_id),
+    )
+    .await;
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = tokio::signal::ctrl_c();
+
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+
+        let mut sighup = signal(SignalKind::hangup()).expect("install SIGHUP handler");
+        let mut sigterm = signal(SignalKind::terminate()).expect("install SIGTERM handler");
+        tokio::select! {
+            _ = ctrl_c => {}
+            _ = sighup.recv() => {}
+            _ = sigterm.recv() => {}
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = ctrl_c.await;
+    }
 }
 
 struct InitState {
