@@ -1,6 +1,7 @@
 use super::run_impl::{
-    ensure_thread, post_thread_message, render_message, run_interactive_remote,
-    run_local_with_engine, stream_events, stream_events_with_writer,
+    ensure_thread, post_thread_message, render_detached_run, render_message,
+    run_headless_remote as run_headless_remote_impl, run_interactive_remote, run_local_with_engine,
+    stream_events, stream_events_with_writer, DetachedRunInfo,
 };
 use super::*;
 use httpmock::Method::{GET, POST};
@@ -324,6 +325,7 @@ async fn run_headless_with_interactive_flag() {
         command: Some(Commands::Run {
             prompt: "hello".to_string(),
             server: Some(server.base_url()),
+            detach: false,
             provider: None,
             model: None,
             stateless_history: false,
@@ -370,6 +372,7 @@ async fn run_headless_remote() {
         command: Some(Commands::Run {
             prompt: "hello".to_string(),
             server: Some(server.base_url()),
+            detach: false,
             provider: None,
             model: None,
             stateless_history: false,
@@ -383,6 +386,33 @@ async fn run_headless_remote() {
         }),
     };
     let result = run(cli).await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn run_headless_remote_detach_skips_event_stream() {
+    let server = MockServer::start();
+    let _ensure = server.mock(|when, then| {
+        when.method(POST).path("/threads/ensure");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(r#"{"thread_id":"t1"}"#);
+    });
+    let _post = server.mock(|when, then| {
+        when.method(POST).path("/threads/t1/messages");
+        then.status(202)
+            .header("content-type", "application/json")
+            .body(r#"{"thread_id":"t1","message_id":"m1","session_id":"abc"}"#);
+    });
+
+    let result = run_headless_remote_impl(
+        "hello".to_string(),
+        server.base_url(),
+        OutputView::Raw,
+        None,
+        true,
+    )
+    .await;
     assert!(result.is_ok());
 }
 
@@ -413,6 +443,7 @@ async fn run_interactive_remote_smoke() {
         server.base_url(),
         OutputView::Raw,
         None,
+        false,
     )
     .await;
     assert!(result.is_ok());
@@ -451,6 +482,7 @@ async fn run_interactive_remote_forwards_openresponses_overrides() {
             "model": "nvidia/nemotron-3-nano-30b-a3b:free",
             "stateless_history": true
         })),
+        false,
     )
     .await;
     assert!(result.is_ok());
@@ -474,6 +506,7 @@ async fn run_interactive_local_uses_env_paths() {
             command: Some(Commands::Run {
                 prompt: "hello".to_string(),
                 server: None,
+                detach: false,
                 provider: None,
                 model: None,
                 stateless_history: false,
@@ -526,6 +559,7 @@ async fn run_accepts_openresponses_flags_with_server() {
         command: Some(Commands::Run {
             prompt: "hello".to_string(),
             server: Some(server.base_url()),
+            detach: false,
             provider: Some(Provider::Openai),
             model: Some("gpt-5-nano-2025-08-07".to_string()),
             stateless_history: true,
@@ -574,6 +608,7 @@ async fn run_allows_model_override_without_provider() {
         command: Some(Commands::Run {
             prompt: "hello".to_string(),
             server: Some(server.base_url()),
+            detach: false,
             provider: None,
             model: Some("gpt-5-nano-2025-08-07".to_string()),
             stateless_history: false,
@@ -607,6 +642,15 @@ fn cli_parses_run() {
         Some(Commands::Threads { .. }) => panic!("expected run"),
         Some(Commands::Config { .. }) => panic!("expected run"),
         None => panic!("expected run"),
+    }
+}
+
+#[test]
+fn cli_parses_detach_flag() {
+    let cli = Cli::parse_from(["rip", "run", "hello", "--detach"]);
+    match cli.command {
+        Some(Commands::Run { detach, .. }) => assert!(detach),
+        _ => panic!("expected run"),
     }
 }
 
@@ -825,6 +869,41 @@ fn renders_output_deltas() {
     render_message(OutputView::Output, &payload, &mut buffer, &mut state).expect("render");
     let rendered = String::from_utf8(buffer).expect("utf8");
     assert_eq!(rendered.trim_end(), "hi");
+}
+
+#[test]
+fn render_detached_run_raw_outputs_json() {
+    let detached = DetachedRunInfo {
+        thread_id: "t1".to_string(),
+        message_id: "m1".to_string(),
+        session_id: "s1".to_string(),
+        server: Some("http://local".to_string()),
+        attach_command: Some("rip --server http://local --session s1".to_string()),
+    };
+    let mut buffer = Vec::new();
+    render_detached_run(OutputView::Raw, &mut buffer, &detached).expect("render");
+    let rendered = String::from_utf8(buffer).expect("utf8");
+    let payload: serde_json::Value = serde_json::from_str(rendered.trim()).expect("json");
+    assert_eq!(payload["thread_id"], "t1");
+    assert_eq!(payload["message_id"], "m1");
+    assert_eq!(payload["session_id"], "s1");
+    assert_eq!(payload["server"], "http://local");
+}
+
+#[test]
+fn render_detached_run_output_includes_attach_command() {
+    let detached = DetachedRunInfo {
+        thread_id: "t1".to_string(),
+        message_id: "m1".to_string(),
+        session_id: "s1".to_string(),
+        server: Some("http://local".to_string()),
+        attach_command: Some("rip --server http://local --session s1".to_string()),
+    };
+    let mut buffer = Vec::new();
+    render_detached_run(OutputView::Output, &mut buffer, &detached).expect("render");
+    let rendered = String::from_utf8(buffer).expect("utf8");
+    assert!(rendered.contains("detached session s1 on thread t1"));
+    assert!(rendered.contains("reattach with: rip --server http://local --session s1"));
 }
 
 #[test]

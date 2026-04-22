@@ -10,6 +10,7 @@ TypeScript SDK
 - Current posture:
   - No business logic in the SDK (only transport + frame parsing + light aggregation helpers).
   - The authoritative log is the frame stream (SDK can expose convenience fields derived from frames).
+  - `runDetached()` is now first-class on both exec and HTTP transports: exec shells out to `rip run --detach --view raw`, while HTTP uses the same continuity-first `thread.ensure` + `thread.post_message` path and returns reattach metadata instead of opening a stream.
   - `run()` now exposes typed OpenResponses `include` selection across both exec and HTTP session transports, so SDK callers can request canonical include values without dropping to raw extra args.
   - `configDoctor()` is now first-class in the SDK on both exec (`rip config doctor`) and HTTP (`GET /config/doctor`), which gives SDK consumers the same requested-vs-effective OpenResponses diagnostics the CLI already uses.
   - Thread APIs are accessed via the `rip` CLI adapter (`rip threads ...`), keeping SDK transport consistent with ADR-0006:

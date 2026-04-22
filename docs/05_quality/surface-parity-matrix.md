@@ -73,6 +73,7 @@ Generated from docs/03_contracts/capability_registry.md.
 | execution.print | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable |
 | execution.rpc | not_applicable | not_applicable | planned | planned | not_applicable | not_applicable |
 | execution.json_input | planned | planned | planned | planned | not_applicable | not_applicable |
+| execution.detach | planned | supported | not_applicable | supported | supported | not_applicable |
 | execution.resume_session | planned | planned | planned | planned | planned | planned |
 | execution.output_format | planned | planned | planned | planned | planned | planned |
 | execution.structured_output | planned | planned | planned | planned | planned | planned |

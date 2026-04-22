@@ -715,16 +715,30 @@ fn command_action_switch_model_opens_model_palette() {
 }
 
 #[test]
-fn command_action_quit_sets_status_message_without_closing() {
+fn command_action_quit_returns_quit_ui_action() {
     let mut state = tui();
     let catalog = empty_catalog();
-    apply_command_action(
+    let action = apply_command_action_with_overrides(
         rip_tui::palette::modes::command::CommandAction::Quit,
         &mut state,
+        &mut None,
         &catalog,
     );
-    // Should not panic; status message is set. We check overlay is
-    // still None (Quit does not summon anything).
+    assert_eq!(action, Some(UiAction::Quit));
+    assert_eq!(*state.overlay(), Overlay::None);
+}
+
+#[test]
+fn command_action_detach_returns_detach_ui_action() {
+    let mut state = tui();
+    let catalog = empty_catalog();
+    let action = apply_command_action_with_overrides(
+        rip_tui::palette::modes::command::CommandAction::DetachSession,
+        &mut state,
+        &mut None,
+        &catalog,
+    );
+    assert_eq!(action, Some(UiAction::DetachSession));
     assert_eq!(*state.overlay(), Overlay::None);
 }
 
@@ -803,7 +817,7 @@ fn apply_palette_selection_in_navigation_mode_focuses_message_and_closes() {
     );
 
     let result = apply_palette_selection(&mut state, &mut overrides, &mut catalog);
-    assert!(result.is_ok());
+    assert_eq!(result, Ok(None));
     assert_eq!(state.focused_message_id.as_deref(), Some("msg-target"));
     assert!(!state.auto_follow);
     assert_eq!(*state.overlay(), Overlay::None);
@@ -830,7 +844,7 @@ fn apply_palette_selection_in_session_mode_switches_thread_and_closes() {
     );
 
     let result = apply_palette_selection(&mut state, &mut overrides, &mut catalog);
-    assert!(result.is_ok());
+    assert_eq!(result, Ok(None));
     assert_eq!(state.continuity_id.as_deref(), Some("t-new"));
     assert_eq!(*state.overlay(), Overlay::None);
 }
@@ -880,9 +894,34 @@ fn apply_palette_selection_in_command_mode_with_known_action_routes_and_closes()
     );
 
     let result = apply_palette_selection(&mut state, &mut overrides, &mut catalog);
-    assert!(result.is_ok());
+    assert_eq!(result, Ok(None));
     assert_eq!(*state.overlay(), Overlay::None);
     assert!(state.auto_follow);
+}
+
+#[test]
+fn apply_palette_selection_in_command_mode_can_request_detach() {
+    let mut state = tui();
+    let mut overrides: Option<Value> = None;
+    let mut catalog = empty_catalog();
+
+    state.open_palette(
+        PaletteMode::Command,
+        PaletteOrigin::TopCenter,
+        vec![rip_tui::PaletteEntry {
+            value: "runs.detach-session".to_string(),
+            title: "detach".to_string(),
+            subtitle: None,
+            chips: Vec::new(),
+        }],
+        "no results".to_string(),
+        false,
+        String::new(),
+    );
+
+    let result = apply_palette_selection(&mut state, &mut overrides, &mut catalog);
+    assert_eq!(result, Ok(Some(UiAction::DetachSession)));
+    assert_eq!(*state.overlay(), Overlay::None);
 }
 
 #[test]
@@ -909,7 +948,7 @@ fn apply_palette_selection_in_option_mode_toggles_include_override_and_closes() 
     );
 
     let result = apply_palette_selection(&mut state, &mut overrides, &mut catalog);
-    assert!(result.is_ok());
+    assert_eq!(result, Ok(None));
     assert_eq!(*state.overlay(), Overlay::None);
     assert_eq!(
         overrides

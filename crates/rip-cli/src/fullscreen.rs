@@ -72,6 +72,11 @@ enum TickMotionSignature {
     Stalled,
 }
 
+enum FullscreenExit {
+    Plain,
+    Detached { message: String },
+}
+
 async fn run_fullscreen_tui_sse(
     client: &Client,
     server: String,
@@ -130,6 +135,7 @@ async fn run_fullscreen_tui_sse(
     let mut dirty = true;
     let mut last_tick_signature = None;
     let (status_tx, mut status_rx) = mpsc::channel::<String>(16);
+    let mut exit = FullscreenExit::Plain;
 
     loop {
         if dirty {
@@ -205,6 +211,16 @@ async fn run_fullscreen_tui_sse(
                             }
                         } else {
                             state.set_status_message("this stream cannot be stopped here");
+                        }
+                    }
+                    UiAction::DetachSession => {
+                        if let Some(session_id) = active_session_id.as_deref() {
+                            exit = FullscreenExit::Detached {
+                                message: detach_notice(&server, session_id),
+                            };
+                            break;
+                        } else {
+                            state.set_status_message("nothing is running to detach");
                         }
                     }
                     UiAction::Submit => {
@@ -294,12 +310,39 @@ async fn run_fullscreen_tui_sse(
                         );
                     }
                     UiAction::ApplyPalette => {
-                        if let Err(err) = apply_palette_selection(
+                        match apply_palette_selection(
                             &mut state,
                             &mut current_overrides,
                             &mut model_catalog,
                         ) {
-                            state.set_status_message(err);
+                            Ok(Some(UiAction::Quit)) => {
+                                match stop_active_session_before_exit(
+                                    client,
+                                    &server,
+                                    active_session_id.as_deref(),
+                                )
+                                .await
+                                {
+                                    Ok(_) => break,
+                                    Err(err) => {
+                                        state.set_status_message(format!("stop failed: {err}"));
+                                    }
+                                }
+                            }
+                            Ok(Some(UiAction::DetachSession)) => {
+                                if let Some(session_id) = active_session_id.as_deref() {
+                                    exit = FullscreenExit::Detached {
+                                        message: detach_notice(&server, session_id),
+                                    };
+                                    break;
+                                } else {
+                                    state.set_status_message("nothing is running to detach");
+                                }
+                            }
+                            Ok(Some(_)) | Ok(None) => {}
+                            Err(err) => {
+                                state.set_status_message(err);
+                            }
                         }
                     }
                     UiAction::ApplyThreadPicker => {
@@ -540,6 +583,9 @@ async fn run_fullscreen_tui_sse(
     }
 
     guard.deactivate(&mut terminal)?;
+    if let FullscreenExit::Detached { message } = exit {
+        println!("{message}");
+    }
     Ok(())
 }
 
@@ -754,6 +800,12 @@ async fn stop_active_session_on_shutdown(client: &Client, server: &str, session_
         cancel_remote_session(client, server, session_id),
     )
     .await;
+}
+
+fn detach_notice(server: &str, session_id: &str) -> String {
+    format!(
+        "detached session {session_id}. reattach with: rip --server {server} --session {session_id}"
+    )
 }
 
 async fn shutdown_signal() {

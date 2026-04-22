@@ -174,6 +174,48 @@ test("Rip SDK http transport exposes configDoctor", async () => {
   assert.equal(doctor.openresponses?.compat?.include.support.unsupported_values[0], "message.output_text.logprobs");
 });
 
+test("Rip SDK http transport runDetached returns thread/session linkage without streaming", async () => {
+  const calls: Array<{ method: string; path: string; body: string | null }> = [];
+
+  const fakeFetch: typeof fetch = async (input, init = {}) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const { pathname } = new URL(url);
+    const method = (init.method ?? "GET").toUpperCase();
+    const body = typeof init.body === "string" ? init.body : null;
+    calls.push({ method, path: pathname, body });
+
+    if (method === "POST" && pathname === "/threads/ensure") {
+      return new Response(JSON.stringify({ thread_id: "t1" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (method === "POST" && pathname === "/threads/t1/messages") {
+      assert.equal(body, JSON.stringify({ content: "hello", actor_id: "user", origin: "sdk-ts" }));
+      return new Response(JSON.stringify({ thread_id: "t1", message_id: "m1", session_id: "s1" }), {
+        status: 202,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    return new Response("not found", { status: 404 });
+  };
+
+  const rip = new Rip({ transport: "http", server: "http://rip.test", fetch: fakeFetch });
+  const detached = await rip.runDetached("hello");
+
+  assert.equal(detached.thread_id, "t1");
+  assert.equal(detached.message_id, "m1");
+  assert.equal(detached.session_id, "s1");
+  assert.equal(detached.server, "http://rip.test");
+  assert.equal(detached.attach_command, "rip --server http://rip.test --session s1");
+  assert.deepEqual(
+    calls.map((call) => `${call.method} ${call.path}`),
+    ["POST /threads/ensure", "POST /threads/t1/messages"],
+  );
+});
+
 test("Rip SDK http transport supports thread.* and task.* surfaces", async () => {
   const fakeFetch: typeof fetch = async (input, init = {}) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;

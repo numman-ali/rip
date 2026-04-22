@@ -123,6 +123,7 @@ Notes
 | execution.print | v1 | P2 | planned | not_applicable | not_applicable | not_applicable | planned | not_applicable | Formatted print mode. |
 | execution.rpc | v1 | P2 | not_applicable | not_applicable | planned | planned | not_applicable | not_applicable | RPC mode for machine commands. |
 | execution.json_input | v1 | P2 | planned | planned | planned | planned | not_applicable | not_applicable | Streaming JSON input mode. |
+| execution.detach | v1 | P2 | planned | supported | not_applicable | supported | supported | not_applicable | Explicitly leave a running session alive and return control to the caller (detach/reattach workflow). |
 | execution.resume_session | v1 | P2 | planned | planned | planned | planned | planned | planned | Resume sessions by id. |
 | execution.output_format | v1 | P2 | planned | planned | planned | planned | planned | planned | Output format control for text/JSON/streaming. |
 | execution.structured_output | v1 | P2 | planned | planned | planned | planned | planned | planned | Structured output using JSON Schema. |

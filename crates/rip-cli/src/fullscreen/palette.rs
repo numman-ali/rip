@@ -17,6 +17,8 @@ use rip_tui::{
 };
 use serde_json::Value;
 
+use super::events::UiAction;
+
 const OPTION_INCLUDE_PREFIX: &str = "options.include.";
 const ALL_RESPONSE_INCLUDE_OPTIONS: &[(ripd::OpenResponsesInclude, &str)] = &[
     (
@@ -388,21 +390,24 @@ pub(super) fn apply_palette_selection(
     state: &mut TuiState,
     overrides: &mut Option<Value>,
     catalog: &mut ModelsMode,
-) -> Result<(), String> {
+) -> Result<Option<UiAction>, String> {
     use rip_tui::palette::modes::command::CommandAction;
 
     let Some(overlay) = state.palette_state_clone() else {
         return Err("palette: no palette open".to_string());
     };
     match overlay.mode {
-        PaletteMode::Model => apply_model_palette_selection(state, overrides, catalog),
+        PaletteMode::Model => {
+            apply_model_palette_selection(state, overrides, catalog)?;
+            Ok(None)
+        }
         PaletteMode::Navigation => {
             let Some(value) = state.palette_selected_value() else {
                 return Err("palette: no entry selected".to_string());
             };
             state.set_focused_message(value);
             state.close_overlay();
-            Ok(())
+            Ok(None)
         }
         PaletteMode::Session => {
             let Some(value) = state.palette_selected_value() else {
@@ -411,7 +416,7 @@ pub(super) fn apply_palette_selection(
             state.set_continuity_id(value.clone());
             state.set_status_message(format!("switched thread: {value}"));
             state.close_overlay();
-            Ok(())
+            Ok(None)
         }
         PaletteMode::Command | PaletteMode::Option => {
             let Some(value) = state.palette_selected_value() else {
@@ -421,7 +426,7 @@ pub(super) fn apply_palette_selection(
                 if let Some(include) = parse_include_option_value(&value) {
                     toggle_response_include_with_overrides(state, overrides, catalog, include);
                     state.close_overlay();
-                    return Ok(());
+                    return Ok(None);
                 }
             }
             let Some(action) = CommandAction::from_value(&value) else {
@@ -433,11 +438,11 @@ pub(super) fn apply_palette_selection(
                     action.title()
                 ));
                 state.close_overlay();
-                return Ok(());
+                return Ok(None);
             }
-            apply_command_action_with_overrides(action, state, overrides, catalog);
+            let action = apply_command_action_with_overrides(action, state, overrides, catalog);
             state.close_overlay();
-            Ok(())
+            Ok(action)
         }
     }
 }
@@ -458,7 +463,7 @@ pub(super) fn apply_command_action(
     catalog: &ModelsMode,
 ) {
     let mut overrides = None;
-    apply_command_action_with_overrides(action, state, &mut overrides, catalog);
+    let _ = apply_command_action_with_overrides(action, state, &mut overrides, catalog);
 }
 
 pub(super) fn apply_command_action_with_overrides(
@@ -466,7 +471,7 @@ pub(super) fn apply_command_action_with_overrides(
     state: &mut TuiState,
     overrides: &mut Option<Value>,
     catalog: &ModelsMode,
-) {
+) -> Option<UiAction> {
     use rip_tui::palette::modes::command::CommandAction as A;
     match action {
         A::ScrollCanvasTop => state.scroll_canvas_up(u16::MAX),
@@ -557,9 +562,8 @@ pub(super) fn apply_command_action_with_overrides(
                 }
             ));
         }
-        A::Quit => {
-            state.set_status_message("press Ctrl-C to quit".to_string());
-        }
+        A::DetachSession => return Some(UiAction::DetachSession),
+        A::Quit => return Some(UiAction::Quit),
         other => {
             state.set_status_message(format!(
                 "{}: use the dedicated hotkey or command (palette routing lands in a later phase)",
@@ -567,6 +571,7 @@ pub(super) fn apply_command_action_with_overrides(
             ));
         }
     }
+    None
 }
 
 fn resolve_openresponses_runtime_config(

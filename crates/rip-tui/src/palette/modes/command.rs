@@ -47,6 +47,7 @@ pub enum CommandAction {
     // Runs / Models
     RetryLastTurn,
     StopStreaming,
+    DetachSession,
     SwitchModel,
     RotateProviderCursor,
     ProviderCursorStatus,
@@ -93,6 +94,7 @@ impl CommandAction {
         CommandAction::CompactionStatus,
         CommandAction::RetryLastTurn,
         CommandAction::StopStreaming,
+        CommandAction::DetachSession,
         CommandAction::SwitchModel,
         CommandAction::RotateProviderCursor,
         CommandAction::ProviderCursorStatus,
@@ -136,6 +138,7 @@ impl CommandAction {
             CommandAction::CompactionStatus => "compaction.status",
             CommandAction::RetryLastTurn => "runs.retry-turn",
             CommandAction::StopStreaming => "runs.stop-streaming",
+            CommandAction::DetachSession => "runs.detach-session",
             CommandAction::SwitchModel => "runs.switch-model",
             CommandAction::RotateProviderCursor => "runs.rotate-cursor",
             CommandAction::ProviderCursorStatus => "runs.cursor-status",
@@ -180,6 +183,7 @@ impl CommandAction {
             CommandAction::CompactionStatus => "Compaction status",
             CommandAction::RetryLastTurn => "Retry last turn",
             CommandAction::StopStreaming => "Stop streaming",
+            CommandAction::DetachSession => "Detach and keep running",
             CommandAction::SwitchModel => "Switch model",
             CommandAction::RotateProviderCursor => "Rotate provider cursor",
             CommandAction::ProviderCursorStatus => "Provider cursor status",
@@ -224,6 +228,7 @@ impl CommandAction {
             | CommandAction::CompactionStatus => "THREADS",
             CommandAction::RetryLastTurn
             | CommandAction::StopStreaming
+            | CommandAction::DetachSession
             | CommandAction::SwitchModel
             | CommandAction::RotateProviderCursor
             | CommandAction::ProviderCursorStatus

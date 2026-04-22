@@ -236,6 +236,14 @@ export type RipTurn = {
   exitCode: number;
 };
 
+export type RipDetachedRun = {
+  thread_id: string;
+  message_id: string;
+  session_id: string;
+  server?: string | null;
+  attach_command?: string | null;
+};
+
 export type RipThreadEnsureResponse = {
   thread_id: string;
 };
@@ -578,6 +586,32 @@ export class Rip {
   async run(prompt: string, options: RipRunOptions = {}): Promise<RipTurn> {
     const { result } = await this.runStreamed(prompt, options);
     return await result;
+  }
+
+  async runDetached(prompt: string, options: RipRunOptions = {}): Promise<RipDetachedRun> {
+    const transport = resolveTransport(options.transport ?? this.base.transport);
+    if (transport === "http") {
+      const server = options.server ?? this.base.server;
+      if (!server) throw new Error("runDetached with http transport requires server");
+      const thread = await this.threadEnsure({ ...options, server });
+      const posted = await this.threadPostMessage(thread.thread_id, { content: prompt }, { ...options, server });
+      return {
+        ...posted,
+        server,
+        attach_command: `rip --server ${server} --session ${posted.session_id}`,
+      };
+    }
+
+    const out = await this.execJson(
+      buildRipRunArgs(prompt, {
+        server: options.server,
+        detach: true,
+        include: options.include,
+        extraArgs: options.extraArgs,
+      }),
+      options,
+    );
+    return out as RipDetachedRun;
   }
 
   async runStreamed(

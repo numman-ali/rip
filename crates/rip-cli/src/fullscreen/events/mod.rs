@@ -36,6 +36,7 @@ pub(super) enum UiAction {
     None,
     Quit,
     CancelSession,
+    DetachSession,
     Submit,
     CloseOverlay,
     /// Primary palette trigger — `⌃K` opens the Command palette

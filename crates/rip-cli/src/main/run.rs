@@ -4,13 +4,25 @@ use super::*;
 #[cfg(test)]
 use tokio::sync::broadcast;
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub(super) struct DetachedRunInfo {
+    pub thread_id: String,
+    pub message_id: String,
+    pub session_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attach_command: Option<String>,
+}
+
 pub(super) async fn run_headless_remote(
     prompt: String,
     server: String,
     view: OutputView,
     openresponses_overrides: Option<Value>,
+    detach: bool,
 ) -> anyhow::Result<()> {
-    run_remote(prompt, server, view, openresponses_overrides).await
+    run_remote(prompt, server, view, openresponses_overrides, detach).await
 }
 
 pub(super) async fn run_interactive_remote(
@@ -18,8 +30,9 @@ pub(super) async fn run_interactive_remote(
     server: String,
     view: OutputView,
     openresponses_overrides: Option<Value>,
+    detach: bool,
 ) -> anyhow::Result<()> {
-    run_remote(prompt, server, view, openresponses_overrides).await
+    run_remote(prompt, server, view, openresponses_overrides, detach).await
 }
 
 async fn run_remote(
@@ -27,6 +40,7 @@ async fn run_remote(
     server: String,
     view: OutputView,
     openresponses_overrides: Option<Value>,
+    detach: bool,
 ) -> anyhow::Result<()> {
     let client = Client::new();
     let thread_id = ensure_thread(&client, &server).await?;
@@ -40,22 +54,50 @@ async fn run_remote(
         openresponses_overrides,
     )
     .await?;
+    if detach {
+        let stdout = io::stdout();
+        let mut handle = stdout.lock();
+        let detached = DetachedRunInfo {
+            thread_id: response.thread_id,
+            message_id: response.message_id,
+            session_id: response.session_id.clone(),
+            server: Some(server.clone()),
+            attach_command: Some(format!(
+                "rip --server {server} --session {}",
+                response.session_id
+            )),
+        };
+        render_detached_run(view, &mut handle, &detached)?;
+        return Ok(());
+    }
     stream_events(&client, &server, &response.session_id, view).await?;
     Ok(())
 }
 
 #[cfg(test)]
-pub(super) async fn run_headless_local(prompt: String, view: OutputView) -> anyhow::Result<()> {
+pub(super) async fn run_headless_local(
+    prompt: String,
+    view: OutputView,
+    detach: bool,
+) -> anyhow::Result<()> {
     let engine =
         ripd::SessionEngine::new_default().map_err(|err| anyhow::anyhow!("engine init: {err}"))?;
     let stdout = io::stdout();
     let mut handle = stdout.lock();
-    run_local_with_engine(&engine, prompt, view, &mut handle).await
+    if detach {
+        run_local_detached_with_engine(&engine, prompt, view, &mut handle).await
+    } else {
+        run_local_with_engine(&engine, prompt, view, &mut handle).await
+    }
 }
 
 #[cfg(test)]
-pub(super) async fn run_interactive_local(prompt: String, view: OutputView) -> anyhow::Result<()> {
-    run_headless_local(prompt, view).await
+pub(super) async fn run_interactive_local(
+    prompt: String,
+    view: OutputView,
+    detach: bool,
+) -> anyhow::Result<()> {
+    run_headless_local(prompt, view, detach).await
 }
 
 pub(super) async fn ensure_thread(client: &Client, server: &str) -> anyhow::Result<String> {
@@ -173,6 +215,50 @@ pub(super) async fn run_local_with_engine(
     let mut receiver = handle.subscribe();
     engine.spawn_session(handle, prompt, Some(run_link), None);
     stream_events_from_receiver(&mut receiver, view, out).await
+}
+
+#[cfg(test)]
+pub(super) async fn run_local_detached_with_engine(
+    engine: &ripd::SessionEngine,
+    prompt: String,
+    view: OutputView,
+    out: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let continuities = engine.continuities();
+    let thread_id = continuities
+        .ensure_default()
+        .map_err(|err| anyhow::anyhow!("continuity ensure: {err}"))?;
+    let actor_id = "user".to_string();
+    let origin = "cli".to_string();
+    let message_id = continuities
+        .append_message(&thread_id, actor_id.clone(), origin.clone(), prompt.clone())
+        .map_err(|err| anyhow::anyhow!("continuity post message: {err}"))?;
+
+    let handle = engine.create_session();
+    let run_link = ripd::ContinuityRunLink {
+        continuity_id: thread_id.clone(),
+        message_id: message_id.clone(),
+        actor_id: actor_id.clone(),
+        origin: origin.clone(),
+    };
+    continuities
+        .append_run_spawned(
+            &thread_id,
+            &message_id,
+            &handle.session_id,
+            actor_id,
+            origin,
+        )
+        .map_err(|err| anyhow::anyhow!("continuity run spawned: {err}"))?;
+    let detached = DetachedRunInfo {
+        thread_id,
+        message_id,
+        session_id: handle.session_id.clone(),
+        server: None,
+        attach_command: None,
+    };
+    engine.spawn_session(handle, prompt, Some(run_link), None);
+    render_detached_run(view, out, &detached)
 }
 
 #[cfg(test)]
@@ -384,4 +470,35 @@ pub(super) fn render_message(
         }
     }
     Ok(should_stop)
+}
+
+pub(super) fn render_detached_run(
+    view: OutputView,
+    out: &mut dyn Write,
+    detached: &DetachedRunInfo,
+) -> anyhow::Result<()> {
+    match view {
+        OutputView::Raw => {
+            let payload = serde_json::to_string(detached)
+                .map_err(|err| anyhow::anyhow!("detached run json: {err}"))?;
+            writeln!(out, "{payload}")?;
+        }
+        OutputView::Output | OutputView::Metrics => {
+            if let Some(command) = detached.attach_command.as_deref() {
+                writeln!(
+                    out,
+                    "detached session {} on thread {}. reattach with: {command}",
+                    detached.session_id, detached.thread_id
+                )?;
+            } else {
+                writeln!(
+                    out,
+                    "detached session {} on thread {}",
+                    detached.session_id, detached.thread_id
+                )?;
+            }
+        }
+    }
+    out.flush()?;
+    Ok(())
 }

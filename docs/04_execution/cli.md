@@ -55,6 +55,7 @@ Headless mode (draft)
 - emits newline-delimited JSON event frames
 - `--view output` prints human output: text deltas only (tool stdout/stderr emitted only if no model output)
 - `--view metrics` prints a single JSON summary object at `session_ended` (TTFT/E2E + OpenResponses timing breakdown when present)
+- `--detach` posts the prompt, starts the run, and returns linkage (`thread_id`, `message_id`, `session_id`) without waiting for completion; `--view raw` emits JSON, while rendered views print a reattach hint.
 
 OpenResponses overrides (`rip run` flags)
 - Preferred: configure providers/models once via layered config (`docs/03_contracts/config.md`), then use `rip config doctor` to confirm the authority’s effective route (provider/model/auth presence) with zero ambiguity.
@@ -80,5 +81,6 @@ Notes
 - Multi-terminal posture: one store needs a single authority for truth writes (ADR-0019).
   - Now: local runs auto-start/auto-attach to a per-store local authority (store lock + discovery) so “one store just works” across terminals without manual `--server`.
 - Default output: `rip run ...` uses `--view output` (human-readable). Use `--view raw` for newline-delimited JSON frames.
+- Lifecycle contract: fullscreen `rip` stops active runs on `Esc`/quit/shutdown by default; detach is the explicit second path (`Command Palette -> Detach and keep running` in the TUI, `rip run --detach` for headless/automation flows).
 - Phase 1 is single-run sessions (no multi-turn/thread resume yet); OpenResponses tool execution is sequential and capped (`max_tool_calls=32`, `parallel_tool_calls=false`) per ADR-0005.
 - Workspace-mutating operations are serialized across sessions and background tasks; read-only tools may run concurrently.

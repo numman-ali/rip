@@ -225,6 +225,29 @@ test("Rip SDK runs `rip` locally and parses JSONL frames", async () => {
   }
 });
 
+test("Rip SDK runDetached returns local linkage without waiting for completion", async () => {
+  const repoRoot = repoRootFromSdkCwd();
+  const ripPath = ripExecutablePath(repoRoot);
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "rip-sdk-detach-"));
+  const opts = buildLocalExecOptions(repoRoot, dataDir, path.join(repoRoot, "fixtures", "repo_small"));
+
+  try {
+    const rip = new Rip({ executablePath: ripPath });
+    const detached = await rip.runDetached("hello", opts);
+
+    assert.ok(detached.thread_id.length > 0);
+    assert.ok(detached.message_id.length > 0);
+    assert.ok(detached.session_id.length > 0);
+    assert.match(detached.server ?? "", /^http:\/\/127\.0\.0\.1:\d+$/);
+    assert.match(
+      detached.attach_command ?? "",
+      /^rip --server http:\/\/127\.0\.0\.1:\d+ --session .+$/,
+    );
+  } finally {
+    await cleanupDataDir(dataDir);
+  }
+});
+
 test("Rip SDK exposes continuity-first thread.* via `rip threads`", async () => {
   const repoRoot = repoRootFromSdkCwd();
   const ripPath = ripExecutablePath(repoRoot);

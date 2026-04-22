@@ -2,6 +2,7 @@ import type { RipEventFrame } from "./frames.js";
 
 export type RipRunArgsOptions = {
   server?: string;
+  detach?: boolean;
   include?: readonly string[];
   extraArgs?: string[];
 };
@@ -10,6 +11,9 @@ export function buildRipRunArgs(prompt: string, options: RipRunArgsOptions = {})
   const args: string[] = ["run", prompt, "--headless", "true", "--view", "raw"];
   if (options.server) {
     args.push("--server", options.server);
+  }
+  if (options.detach) {
+    args.push("--detach");
   }
   for (const include of options.include ?? []) {
     args.push("--include", include);

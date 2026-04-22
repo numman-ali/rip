@@ -58,7 +58,10 @@ ToolDetail, TaskDetail, ErrorDetail, StallDetail, Debug, Help, ErrorRecovery
 all live on the same stack and use the shared dim-behind layout.
 ErrorRecovery auto-opens on the first provider-error frame per run. An
 explicit detach/leave-running action is a separate behavior and should not be
-confused with the default quit path.
+confused with the default quit path. Phase D now ships that split explicitly:
+default exit stops the run, while `Command Palette -> Detach and keep running`
+leaves the session alive and prints a reattach command after the terminal
+restores.
 
 **Summoned, not stacked.** No tabs. No permanent panels. Canvas is always
 the only canvas. Everything else is summoned (palette, overlays) or ambient

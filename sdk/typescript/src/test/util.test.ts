@@ -40,6 +40,11 @@ test("buildRipRunArgs includes --server when provided", () => {
   ]);
 });
 
+test("buildRipRunArgs includes --detach when requested", () => {
+  const args = buildRipRunArgs("hello", { detach: true });
+  assert.deepEqual(args, ["run", "hello", "--headless", "true", "--view", "raw", "--detach"]);
+});
+
 test("buildRipRunArgs includes repeated --include values when provided", () => {
   const args = buildRipRunArgs("hello", {
     include: ["reasoning.encrypted_content", "message.output_text.logprobs"],

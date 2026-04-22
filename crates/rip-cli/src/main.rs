@@ -45,6 +45,8 @@ enum Commands {
         prompt: String,
         #[arg(long)]
         server: Option<String>,
+        #[arg(long, action = clap::ArgAction::SetTrue)]
+        detach: bool,
         #[arg(long, value_enum)]
         provider: Option<Provider>,
         #[arg(long)]
@@ -283,6 +285,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         Some(Commands::Run {
             prompt,
             server,
+            detach,
             provider,
             model,
             stateless_history,
@@ -339,20 +342,32 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             };
             if let Some(server) = server {
                 if headless {
-                    run_impl::run_headless_remote(prompt, server, view, openresponses_overrides)
-                        .await?;
+                    run_impl::run_headless_remote(
+                        prompt,
+                        server,
+                        view,
+                        openresponses_overrides,
+                        detach,
+                    )
+                    .await?;
                 } else {
-                    run_impl::run_interactive_remote(prompt, server, view, openresponses_overrides)
-                        .await?;
+                    run_impl::run_interactive_remote(
+                        prompt,
+                        server,
+                        view,
+                        openresponses_overrides,
+                        detach,
+                    )
+                    .await?;
                 }
             } else {
                 #[cfg(test)]
                 {
                     let _openresponses_overrides = openresponses_overrides;
                     if headless {
-                        run_impl::run_headless_local(prompt, view).await?;
+                        run_impl::run_headless_local(prompt, view, detach).await?;
                     } else {
-                        run_impl::run_interactive_local(prompt, view).await?;
+                        run_impl::run_interactive_local(prompt, view, detach).await?;
                     }
                 }
                 #[cfg(not(test))]
@@ -364,6 +379,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                             server,
                             view,
                             openresponses_overrides,
+                            detach,
                         )
                         .await?;
                     } else {
@@ -372,6 +388,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                             server,
                             view,
                             openresponses_overrides,
+                            detach,
                         )
                         .await?;
                     }
