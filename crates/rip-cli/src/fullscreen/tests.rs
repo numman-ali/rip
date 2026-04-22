@@ -1789,7 +1789,13 @@ fn prepare_copy_selected_uses_osc52_for_small_payload() {
     let _disable = remove_env("RIP_TUI_DISABLE_OSC52");
     let mut state = seed_state();
     let action = prepare_copy_selected(&mut state);
-    assert!(matches!(action, CopySelectedAction::Osc52(_)));
+    assert!(matches!(
+        action,
+        CopySelectedAction::Osc52 {
+            source: CopySource::SelectedFrame,
+            ..
+        }
+    ));
 }
 
 #[test]
@@ -1801,7 +1807,10 @@ fn prepare_copy_selected_falls_back_to_latest_copyable_canvas_message() {
 
     let action = prepare_copy_selected(&mut state);
     match action {
-        CopySelectedAction::Osc52(payload) => assert!(
+        CopySelectedAction::Osc52 {
+            payload,
+            source: CopySource::LatestMessage,
+        } => assert!(
             payload.contains("hi"),
             "expected latest copyable canvas message, got {payload:?}"
         ),
@@ -1815,9 +1824,15 @@ fn prepare_copy_selected_stores_when_disabled() {
     let _disable = set_env("RIP_TUI_DISABLE_OSC52", "1");
     let mut state = seed_state();
     let action = prepare_copy_selected(&mut state);
-    assert_eq!(action, CopySelectedAction::Store);
+    assert_eq!(
+        action,
+        CopySelectedAction::Store {
+            source: CopySource::SelectedFrame
+        }
+    );
     assert!(state.clipboard_buffer.is_some());
     let status = state.status_message.unwrap_or_default();
+    assert!(status.contains("selected frame"));
     assert!(status.contains("OSC52 disabled"));
 }
 
@@ -1837,7 +1852,13 @@ fn prepare_copy_selected_stores_when_large() {
     state.selected_seq = Some(0);
 
     let action = prepare_copy_selected(&mut state);
-    assert_eq!(action, CopySelectedAction::Store);
+    assert_eq!(
+        action,
+        CopySelectedAction::Store {
+            source: CopySource::SelectedFrame
+        }
+    );
     let status = state.status_message.unwrap_or_default();
+    assert!(status.contains("selected frame"));
     assert!(status.contains("too large"));
 }

@@ -302,6 +302,13 @@ fn canvas_scroll_helpers_clamp_at_zero() {
     state.scroll_canvas_down(99);
     assert_eq!(state.canvas_scroll_from_bottom, 0);
     assert!(state.auto_follow);
+
+    state.scroll_canvas_up(5);
+    state.set_focused_message("m000001");
+    state.scroll_canvas_to_bottom();
+    assert_eq!(state.canvas_scroll_from_bottom, 0);
+    assert!(state.auto_follow);
+    assert!(!state.focus_reveal_pending());
 }
 
 fn artifact(fill: char) -> String {

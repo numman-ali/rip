@@ -530,6 +530,12 @@ impl TuiState {
         }
     }
 
+    pub fn scroll_canvas_to_bottom(&mut self) {
+        self.focus_reveal_pending = false;
+        self.canvas_scroll_from_bottom = 0;
+        self.auto_follow = true;
+    }
+
     /// Move the canvas focus to the previous/next focusable message.
     ///
     /// The ring is restricted to items the user can *act on* — cards,

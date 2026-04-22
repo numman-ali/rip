@@ -46,7 +46,7 @@ use theme::load_theme;
 use thread_picker::load_thread_picker_entries;
 
 #[cfg(test)]
-use copy::{base64_encode, osc52_sequence, prepare_copy_selected, CopySelectedAction};
+use copy::{base64_encode, osc52_sequence, prepare_copy_selected, CopySelectedAction, CopySource};
 #[cfg(test)]
 use events::{
     handle_key_event, handle_mouse_event, mouse_canvas_hit_geometry, mouse_footer_activity_row,
@@ -355,6 +355,22 @@ async fn run_fullscreen_tui_sse(
                     }
                     UiAction::CopySelected => {
                         copy_selected(&mut terminal, &mut state)?;
+                    }
+                    UiAction::ScrollCanvasTop => {
+                        if state.output_view == rip_tui::OutputViewMode::Rendered {
+                            state.scroll_canvas_up(u16::MAX);
+                        } else {
+                            state.auto_follow = false;
+                            state.selected_seq = state.frames.first_seq();
+                        }
+                    }
+                    UiAction::ScrollCanvasBottom => {
+                        if state.output_view == rip_tui::OutputViewMode::Rendered {
+                            state.scroll_canvas_to_bottom();
+                        } else {
+                            state.auto_follow = true;
+                            state.selected_seq = state.frames.last_seq();
+                        }
                     }
                     UiAction::ScrollCanvasUp => {
                         if state.output_view == rip_tui::OutputViewMode::Rendered {

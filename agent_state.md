@@ -107,6 +107,7 @@ Open risks / notes
 - OpenResponses: `tool_choice`/`allowed_tools` are now enforced for function tool execution (disallowed calls emit tool failure + `function_call_output.ok=false`).
 - TUI: Canvas-first + X-ray posture is now gated by deterministic ratatui golden snapshots for the 3 v0 journeys (`crates/rip-tui/tests/snapshots/`); `scripts/check-fast` enforces them.
 - TUI: Confidence is better, and the palette foundation now exists, but the workspace feel is still not done. Remaining gaps are broader palette modes (commands/navigation/sessions/options), inline tool-call visibility in the Canvas, smoother streaming polish, provider-debug clarity, and a more intentional visual system than the current minimal terminal chrome.
+- TUI: scroll/copy trust is tighter again. `Home`/`End` now do what the strip says they do (top / follow tail) when the composer is empty, the idle/scrolled-back keylights advertise the real follow/copy controls, Help explains them, and clipboard feedback now names the source (`selected frame`, `focused message`, `latest message`) instead of a generic `clipboard` toast.
 - Config: layered JSON/JSONC config foundations shipped (deep-merge) + `config.doctor` diagnostics to remove provider/model ambiguity (`docs/03_contracts/config.md`).
 - Config: provider-scoped OpenResponses defaults now overlay global defaults; `config.doctor` reports effective route + per-field provenance; `rip run --server` forwards per-run OpenResponses overrides the same way local runs do.
 

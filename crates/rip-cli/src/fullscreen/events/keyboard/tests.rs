@@ -218,6 +218,29 @@ fn empty_input_allows_left_bracket_to_focus_prev_message() {
 }
 
 #[test]
+fn empty_input_allows_end_to_resume_follow_tail() {
+    let mut state = TuiState::new(100);
+    state.canvas_scroll_from_bottom = 12;
+    state.auto_follow = false;
+    let mut input = TextArea::default();
+
+    let action = press(&mut state, &mut input, KeyCode::End, KeyModifiers::empty());
+    assert_eq!(action, UiAction::ScrollCanvasBottom);
+    assert_eq!(input.lines(), &[String::new()]);
+}
+
+#[test]
+fn nonempty_input_keeps_end_as_editor_navigation() {
+    let mut state = TuiState::new(100);
+    let mut input = TextArea::default();
+    input.insert_str("hello");
+
+    let action = press(&mut state, &mut input, KeyCode::End, KeyModifiers::empty());
+    assert_eq!(action, UiAction::None);
+    assert_eq!(input.lines(), &["hello".to_string()]);
+}
+
+#[test]
 fn nonempty_input_keeps_left_bracket_as_text() {
     let mut state = TuiState::new(100);
     state.canvas.push_user_turn("user", "tui", "first", 0);

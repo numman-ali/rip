@@ -234,7 +234,7 @@ fn preferred_copyable_message_prefers_focused_message_before_latest() {
     state.focused_message_id = Some("focused".to_string());
 
     assert_eq!(
-        preferred_copyable_message(&state).as_deref(),
-        Some("focused")
+        preferred_copyable_message(&state),
+        Some(("focused".to_string(), CopySource::FocusedMessage))
     );
 }

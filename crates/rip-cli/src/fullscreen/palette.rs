@@ -470,10 +470,7 @@ pub(super) fn apply_command_action_with_overrides(
     use rip_tui::palette::modes::command::CommandAction as A;
     match action {
         A::ScrollCanvasTop => state.scroll_canvas_up(u16::MAX),
-        A::ScrollCanvasBottom => {
-            state.canvas_scroll_from_bottom = 0;
-            state.auto_follow = true;
-        }
+        A::ScrollCanvasBottom => state.scroll_canvas_to_bottom(),
         A::FollowTail => state.auto_follow = !state.auto_follow,
         A::PrevMessage => state.focus_prev_message(),
         A::NextMessage => state.focus_next_message(),

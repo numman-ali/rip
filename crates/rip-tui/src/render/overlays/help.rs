@@ -59,14 +59,21 @@ pub(super) fn render_help_overlay(
     )));
     lines.push(Line::from(Span::styled(
         truncate(
-            "Mouse wheel scrolls the canvas. In the palette, the bracketed tab is the one Enter will act in.",
+            "Mouse wheel scrolls the canvas. Home jumps to the top, End follows the live tail again.",
             width.saturating_sub(2),
         ),
         theme.muted,
     )));
     lines.push(Line::from(Span::styled(
         truncate(
-            "Direct shortcuts: ⌥M models, ⌃G go to, ⌃T threads, ⌥O options.",
+            "Direct shortcuts: ⌥M models, ⌃G go to, ⌃T threads, ⌥O options, ⌃Y copy.",
+            width.saturating_sub(2),
+        ),
+        theme.muted,
+    )));
+    lines.push(Line::from(Span::styled(
+        truncate(
+            "In the palette, the bracketed tab is the one Enter will act in.",
             width.saturating_sub(2),
         ),
         theme.muted,

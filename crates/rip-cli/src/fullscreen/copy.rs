@@ -23,7 +23,7 @@ pub(super) fn copy_selected(
     state: &mut TuiState,
 ) -> anyhow::Result<()> {
     let action = prepare_copy_selected(state);
-    let CopySelectedAction::Osc52(payload) = action else {
+    let CopySelectedAction::Osc52 { payload, source } = action else {
         return Ok(());
     };
 
@@ -32,28 +32,45 @@ pub(super) fn copy_selected(
     terminal.backend_mut().flush()?;
 
     state.clipboard_buffer = None;
-    state.set_status_message("clipboard: osc52");
+    state.set_status_message(format!("clipboard: {} via osc52", source.label()));
     Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum CopySelectedAction {
     None,
-    Store,
-    Osc52(String),
+    Store { source: CopySource },
+    Osc52 { payload: String, source: CopySource },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum CopySource {
+    SelectedFrame,
+    FocusedMessage,
+    LatestMessage,
+}
+
+impl CopySource {
+    fn label(self) -> &'static str {
+        match self {
+            CopySource::SelectedFrame => "selected frame",
+            CopySource::FocusedMessage => "focused message",
+            CopySource::LatestMessage => "latest message",
+        }
+    }
 }
 
 pub(super) fn prepare_copy_selected(state: &mut TuiState) -> CopySelectedAction {
-    let payload = if let Some(event) = state.selected_event() {
+    let (payload, source) = if let Some(event) = state.selected_event() {
         match serde_json::to_string_pretty(event) {
-            Ok(json) => json,
+            Ok(json) => (json, CopySource::SelectedFrame),
             Err(_) => {
                 state.set_status_message("clipboard: failed to serialize frame");
                 return CopySelectedAction::None;
             }
         }
-    } else if let Some(message) = preferred_copyable_message(state) {
-        message
+    } else if let Some((message, source)) = preferred_copyable_message(state) {
+        (message, source)
     } else {
         state.set_status_message("clipboard: nothing copyable selected");
         return CopySelectedAction::None;
@@ -63,20 +80,27 @@ pub(super) fn prepare_copy_selected(state: &mut TuiState) -> CopySelectedAction 
     if osc52_disabled || payload.len() > OSC52_MAX_BYTES {
         state.clipboard_buffer = Some(payload);
         if osc52_disabled {
-            state.set_status_message("clipboard: stored (OSC52 disabled)");
+            state.set_status_message(format!(
+                "clipboard: {} stored (OSC52 disabled)",
+                source.label()
+            ));
         } else {
-            state.set_status_message("clipboard: stored (too large for OSC52)");
+            state.set_status_message(format!(
+                "clipboard: {} stored (too large for OSC52)",
+                source.label()
+            ));
         }
-        return CopySelectedAction::Store;
+        return CopySelectedAction::Store { source };
     }
 
-    CopySelectedAction::Osc52(payload)
+    CopySelectedAction::Osc52 { payload, source }
 }
 
-fn preferred_copyable_message(state: &TuiState) -> Option<String> {
+fn preferred_copyable_message(state: &TuiState) -> Option<(String, CopySource)> {
     state
         .focused_message()
         .and_then(copyable_message_text)
+        .map(|text| (text, CopySource::FocusedMessage))
         .or_else(|| {
             state
                 .canvas
@@ -84,6 +108,7 @@ fn preferred_copyable_message(state: &TuiState) -> Option<String> {
                 .iter()
                 .rev()
                 .find_map(copyable_message_text)
+                .map(|text| (text, CopySource::LatestMessage))
         })
 }
 

@@ -378,10 +378,20 @@ pub(super) fn keylight_for(state: &TuiState, typing: bool) -> Vec<(&'static str,
         return vec![("⏎", "send"), ("⇧⏎", "newline"), ("⌃K", "palette")];
     }
 
+    if state.canvas_scroll_from_bottom > 0 {
+        return vec![
+            ("End", "follow"),
+            ("Home", "top"),
+            ("⌃Y", "copy"),
+            ("⌃K", "command"),
+        ];
+    }
+
     vec![
         ("?", "help"),
         ("⌃K", "command"),
         ("⌥M", "models"),
+        ("⌃Y", "copy"),
         ("click", "top row"),
     ]
 }
@@ -423,7 +433,7 @@ mod tests {
     #[test]
     fn idle_state_shows_navigation_defaults() {
         let state = TuiState::new(10);
-        assert_eq!(keys(&state, false), vec!["?", "⌃K", "⌥M", "click"]);
+        assert_eq!(keys(&state, false), vec!["?", "⌃K", "⌥M", "⌃Y", "click"]);
     }
 
     #[test]
@@ -460,6 +470,13 @@ mod tests {
         state.last_error_seq = Some(3);
         let k = keys(&state, false);
         assert_eq!(k, vec!["r", "c", "x", "⎋"]);
+    }
+
+    #[test]
+    fn scrolled_back_idle_state_shows_follow_and_copy_shortcuts() {
+        let mut state = TuiState::new(10);
+        state.canvas_scroll_from_bottom = 3;
+        assert_eq!(keys(&state, false), vec!["End", "Home", "⌃Y", "⌃K"]);
     }
 
     #[test]

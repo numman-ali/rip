@@ -39,6 +39,8 @@ pub enum Command {
     ToggleOutputView,
     ToggleTheme,
     CopySelected,
+    ScrollCanvasTop,
+    ScrollCanvasBottom,
     SelectPrev,
     SelectNext,
     FocusPrevMessage,
@@ -97,6 +99,8 @@ impl Keymap {
         // Users can re-add them in `~/.rip/keybindings.json` if they
         // prefer the old muscle memory.
         bindings.insert("C-y".to_string(), Command::CopySelected);
+        bindings.insert("Home".to_string(), Command::ScrollCanvasTop);
+        bindings.insert("End".to_string(), Command::ScrollCanvasBottom);
         bindings.insert("PageUp".to_string(), Command::ScrollCanvasUp);
         bindings.insert("PageDown".to_string(), Command::ScrollCanvasDown);
 
@@ -240,6 +244,14 @@ fn parse_command(raw: &str) -> Option<Command> {
         | "toggle_raw" => Some(Command::ToggleOutputView),
         "toggletheme" | "toggle_theme" => Some(Command::ToggleTheme),
         "copyselected" | "copy_selected" | "copy" => Some(Command::CopySelected),
+        "scrollcanvastop" | "scroll_canvas_top" | "canvastop" | "canvas_top" | "home" => {
+            Some(Command::ScrollCanvasTop)
+        }
+        "scrollcanvasbottom"
+        | "scroll_canvas_bottom"
+        | "canvasbottom"
+        | "canvas_bottom"
+        | "end" => Some(Command::ScrollCanvasBottom),
         "selectprev" | "select_prev" | "up" => Some(Command::SelectPrev),
         "selectnext" | "select_next" | "down" => Some(Command::SelectNext),
         "scrollcanvasup" | "scroll_canvas_up" | "canvasup" | "canvas_up" | "pageup" => {
@@ -417,6 +429,8 @@ mod tests {
         assert_eq!(parse_command("quit"), Some(Command::Quit));
         assert_eq!(parse_command("toggle_raw"), Some(Command::ToggleOutputView));
         assert_eq!(parse_command("copy"), Some(Command::CopySelected));
+        assert_eq!(parse_command("home"), Some(Command::ScrollCanvasTop));
+        assert_eq!(parse_command("end"), Some(Command::ScrollCanvasBottom));
         assert_eq!(parse_command("down"), Some(Command::SelectNext));
         assert_eq!(parse_command("pageup"), Some(Command::ScrollCanvasUp));
         assert!(parse_command("nope").is_none());

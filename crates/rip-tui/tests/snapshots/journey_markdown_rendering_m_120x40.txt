@@ -37,4 +37,4 @@
 
 
 ▎ · Continue the thread
-   ? help   ⌃K command   ⌥M models   click top row
+   ? help   ⌃K command   ⌥M models   ⌃Y copy   click top row

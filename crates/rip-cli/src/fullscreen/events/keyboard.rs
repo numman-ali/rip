@@ -29,7 +29,20 @@ fn idle_keymap_preempts_editor(key: KeyEvent, input: &TextArea<'_>, keymap: &Key
     buffer_is_effectively_empty(input)
         && matches!(
             keymap.command_for(key),
-            Some(KeyCommand::FocusPrevMessage | KeyCommand::FocusNextMessage)
+            Some(
+                KeyCommand::FocusPrevMessage
+                    | KeyCommand::FocusNextMessage
+                    | KeyCommand::ScrollCanvasTop
+                    | KeyCommand::ScrollCanvasBottom
+            )
+        )
+}
+
+fn editor_prefers_navigation_key(key: KeyEvent, input: &TextArea<'_>, keymap: &Keymap) -> bool {
+    !buffer_is_effectively_empty(input)
+        && matches!(
+            keymap.command_for(key),
+            Some(KeyCommand::ScrollCanvasTop | KeyCommand::ScrollCanvasBottom)
         )
 }
 
@@ -153,6 +166,11 @@ pub(in crate::fullscreen) fn handle_key_event(
         }
     }
 
+    if !session_running && editor_prefers_navigation_key(key, input, keymap) {
+        let _ = input.input(Input::from(key));
+        return UiAction::None;
+    }
+
     if let Some(cmd) = keymap.command_for(key) {
         return match cmd {
             KeyCommand::Quit => UiAction::Quit,
@@ -220,6 +238,8 @@ pub(in crate::fullscreen) fn handle_key_event(
                 UiAction::None
             }
             KeyCommand::CopySelected => UiAction::CopySelected,
+            KeyCommand::ScrollCanvasTop => UiAction::ScrollCanvasTop,
+            KeyCommand::ScrollCanvasBottom => UiAction::ScrollCanvasBottom,
             KeyCommand::SelectPrev => {
                 state.auto_follow = false;
                 move_selected(state, -1);

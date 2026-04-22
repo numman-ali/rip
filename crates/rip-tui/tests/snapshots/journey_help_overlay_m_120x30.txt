@@ -4,10 +4,11 @@
 ◎  Got it. I┌Help──────────────────────────────────────────────────────────────────────────────────────────┐
             │Help is reference. ⌃K opens the action palette. ? opens Help only when the composer is empt…  │
             │The top row is clickable: thread opens Threads, agent opens Commands, model opens Models.     │
-⟡  ╭─ bash ─│Mouse wheel scrolls the canvas. In the palette, the bracketed tab is the one Enter will act…  │ ✓ 100ms ─╮
-            │Direct shortcuts: ⌥M models, ⌃G go to, ⌃T threads, ⌥O options.                                │
-     1 artif│                                                                                              │
+⟡  ╭─ bash ─│Mouse wheel scrolls the canvas. Home jumps to the top, End follows the live tail again.       │ ✓ 100ms ─╮
+            │Direct shortcuts: ⌥M models, ⌃G go to, ⌃T threads, ⌥O options, ⌃Y copy.                       │
+     1 artif│In the palette, the bracketed tab is the one Enter will act in.                               │
    ╰────────│                                                                                              │──────────╯
+            │                                                                                              │
             │CANVAS                                                                                        │
             │  Scroll to top                                                                               │
             │  Scroll to bottom                                                                            │
@@ -22,7 +23,6 @@
             │THREADS                                                                                       │
             │  New thread  · unavailable                                                                   │
             │  Switch thread                                                                               │
-            │  Branch current thread                                                                       │
             └──────────────────────────────────────────────────────────────────────────────────────────────┘
 
 

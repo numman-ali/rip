@@ -66,6 +66,8 @@ pub(super) enum UiAction {
     OpenFocusedDetail,
     ExpandFocusedCard,
     CopySelected,
+    ScrollCanvasTop,
+    ScrollCanvasBottom,
     CompactionAuto,
     CompactionAutoSchedule,
     CompactionCutPoints,
