@@ -14,7 +14,10 @@ use reqwest_eventsource::{
     Error as EventSourceError, Event as SseEvent, EventSource, RequestBuilderExt,
 };
 use rip_kernel::Event as FrameEvent;
-use rip_tui::{render, PaletteOrigin, RenderMode, TuiState};
+use rip_tui::{
+    canvas_screen_regions, render, reveal_focused_canvas_message, PaletteOrigin, RenderMode,
+    TuiState,
+};
 use serde_json::Value;
 use tokio::sync::mpsc;
 
@@ -128,6 +131,7 @@ async fn run_fullscreen_tui_sse(
     loop {
         if dirty {
             state.set_now_ms(current_time_ms());
+            reveal_pending_canvas_focus(&mut terminal, &mut state, &input)?;
             terminal.draw(|f| render(f, &state, mode, &input))?;
             last_tick_signature = tick_motion_signature(&state, &input);
             dirty = false;
@@ -481,6 +485,21 @@ fn current_time_ms() -> u64 {
         .unwrap_or_default()
         .as_millis()
         .min(u128::from(u64::MAX)) as u64
+}
+
+fn reveal_pending_canvas_focus(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    state: &mut TuiState,
+    input: &TextArea<'static>,
+) -> io::Result<()> {
+    if state.output_view != rip_tui::OutputViewMode::Rendered || !state.focus_reveal_pending() {
+        return Ok(());
+    }
+
+    let area = terminal.size()?;
+    let regions = canvas_screen_regions(state, area.into(), input);
+    reveal_focused_canvas_message(state, regions.canvas.width, regions.canvas.height);
+    Ok(())
 }
 
 fn tick_motion_signature(

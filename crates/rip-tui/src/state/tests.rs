@@ -187,6 +187,7 @@ fn focus_ring_walks_focusable_messages_and_toggles_expand_on_cards() {
     // Forward walk skips JobNotice.
     state.focus_next_message();
     assert_eq!(state.focused_message_id.as_deref(), Some("m000000")); // UserTurn
+    assert!(!state.auto_follow);
     state.focus_next_message();
     assert_eq!(state.focused_message_id.as_deref(), Some("a")); // AgentTurn
     state.focus_next_message();

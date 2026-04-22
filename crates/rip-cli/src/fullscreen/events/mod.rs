@@ -111,7 +111,7 @@ pub(super) fn handle_term_event(
             }
             UiAction::None
         }
-        TermEvent::Mouse(m) => handle_mouse_event(m, state),
+        TermEvent::Mouse(m) => handle_mouse_event(m, state, input),
         TermEvent::Resize(_, _) => UiAction::None,
         _ => UiAction::None,
     }

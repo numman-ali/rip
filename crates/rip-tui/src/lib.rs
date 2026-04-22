@@ -14,7 +14,10 @@ pub use canvas::{
 pub use frame_store::FrameStore;
 pub use overlay::{OverlayStack, OverlayView};
 pub use palette::{ModelRoute, ModelsMode, PaletteSource, ResolvedModelRoute};
-pub use render::{canvas_hit_message_id, hero_click_target, render, HeroClickTarget, RenderMode};
+pub use render::{
+    canvas_hit_message_id, canvas_screen_regions, hero_click_target, render,
+    reveal_focused_canvas_message, CanvasScreenRegions, HeroClickTarget, RenderMode,
+};
 pub use state::{
     ContextStatus, ContextSummary, JobStatus, JobSummary, OutputViewMode, Overlay, PaletteEntry,
     PaletteMode, PaletteOrigin, PaletteState, TaskSummary, ThemeId, ThreadPickerEntry,

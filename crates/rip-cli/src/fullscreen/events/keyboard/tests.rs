@@ -198,3 +198,39 @@ fn plain_x_inserts_into_editor_instead_of_triggering_global_detail_shortcut() {
     assert_eq!(action, UiAction::None);
     assert_eq!(input.lines(), &["Hello from cmux".to_string()]);
 }
+
+#[test]
+fn empty_input_allows_left_bracket_to_focus_prev_message() {
+    let mut state = TuiState::new(100);
+    state.canvas.push_user_turn("user", "tui", "first", 0);
+    state.canvas.push_user_turn("user", "tui", "second", 1);
+    let mut input = TextArea::default();
+
+    let action = press(
+        &mut state,
+        &mut input,
+        KeyCode::Char('['),
+        KeyModifiers::empty(),
+    );
+    assert_eq!(action, UiAction::None);
+    assert_eq!(state.focused_message_id.as_deref(), Some("m000001"));
+    assert_eq!(input.lines(), &[String::new()]);
+}
+
+#[test]
+fn nonempty_input_keeps_left_bracket_as_text() {
+    let mut state = TuiState::new(100);
+    state.canvas.push_user_turn("user", "tui", "first", 0);
+    let mut input = TextArea::default();
+    input.insert_str("look ");
+
+    let action = press(
+        &mut state,
+        &mut input,
+        KeyCode::Char('['),
+        KeyModifiers::empty(),
+    );
+    assert_eq!(action, UiAction::None);
+    assert!(state.focused_message_id.is_none());
+    assert_eq!(input.lines(), &["look [".to_string()]);
+}

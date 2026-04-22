@@ -1,6 +1,8 @@
 mod cards;
 mod content;
 
+use std::ops::Range;
+
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
@@ -29,6 +31,15 @@ use content::subagent_slot;
 const GUTTER_WIDTH: usize = 3;
 const CARD_BODY_INDENT: usize = 2;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CanvasScreenRegions {
+    pub status_bar: Rect,
+    pub canvas: Rect,
+    pub activity_footer: Option<Rect>,
+    pub activity_rail: Option<Rect>,
+    pub input: Rect,
+}
+
 /// Canvas layout (Phase C.1+):
 ///
 /// ```text
@@ -47,12 +58,27 @@ pub(super) fn render_canvas_screen(
     theme: &ThemeStyles,
     input: &TextArea<'static>,
 ) {
+    let regions = canvas_screen_regions(state, frame.area(), input);
+
+    render_status_bar(frame, state, theme, regions.status_bar);
+    render_canvas_body(frame, state, theme, regions.canvas, regions.activity_rail);
+    if let Some(activity_footer) = regions.activity_footer {
+        render_footer_strip(frame, state, theme, activity_footer);
+    }
+    render_input(frame, state, theme, regions.input, input);
+}
+
+pub fn canvas_screen_regions(
+    state: &TuiState,
+    area: Rect,
+    input: &TextArea<'static>,
+) -> CanvasScreenRegions {
     // Input block grows with multi-line input (C.4). `input_block_rows`
     // reserves enough vertical space for the editor + keylight: always
     // 1 keylight + [1..6] editor rows, capped by the buffer's line
     // count. The activity strip hides when the editor exceeds 2 rows
     // so we never triple-squeeze the canvas.
-    let editor_rows = editor_rows_needed(input, frame.area().height);
+    let editor_rows = editor_rows_needed(input, area.height);
     let keylight_row = 1u16;
     let input_block = editor_rows + keylight_row;
     let show_activity = editor_rows <= 1;
@@ -66,14 +92,27 @@ pub(super) fn render_canvas_screen(
             Constraint::Length(activity_row),
             Constraint::Length(input_block),
         ])
-        .split(frame.area());
+        .split(area);
 
-    render_status_bar(frame, state, theme, chunks[0]);
-    render_canvas_body(frame, state, theme, chunks[1]);
-    if show_activity {
-        render_footer_strip(frame, state, theme, chunks[2]);
+    let (canvas, activity_rail) = if state.activity_pinned && chunks[1].width >= 100 {
+        let panes = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(40), Constraint::Length(32)])
+            .split(chunks[1]);
+        (panes[0], Some(panes[1]))
+    } else {
+        (chunks[1], None)
+    };
+
+    CanvasScreenRegions {
+        status_bar: chunks[0],
+        canvas,
+        activity_footer: show_activity
+            .then_some(chunks[2])
+            .filter(|rect| rect.height > 0),
+        activity_rail,
+        input: chunks[3],
     }
-    render_input(frame, state, theme, chunks[3], input);
 }
 
 pub fn canvas_hit_message_id(
@@ -87,6 +126,7 @@ pub fn canvas_hit_message_id(
     }
 
     let width = viewport_width as usize;
+    let layout = canvas_message_layout(state, width);
     let full_text = build_canvas_text(state, &ThemeStyles::for_theme(state.theme), width);
     let full_plain = plain_text(&full_text);
     let scroll = canvas_scroll_offset(
@@ -101,35 +141,52 @@ pub fn canvas_hit_message_id(
     )
     .0 as usize;
     let target_row = scroll.saturating_add(row as usize);
-    let focused = state.focused_message_id.as_deref();
-    let styles = ThemeStyles::for_theme(state.theme);
-    let ctx = RenderCtx {
-        theme_id: state.theme,
-        styles: &styles,
-        motion: MotionCtx::from_state(state),
-        reasoning_visible: state.reasoning_visible,
-    };
-    let card_width = card_width_for(width);
-    let mut cursor = 0usize;
+    layout
+        .rows
+        .iter()
+        .find(|row_range| row_range.rows.contains(&target_row))
+        .map(|row_range| row_range.message_id.clone())
+}
 
-    for (idx, message) in state.canvas.messages.iter().enumerate() {
-        if idx > 0 {
-            if cursor == target_row {
-                return None;
-            }
-            cursor += 1;
-        }
-        let mut lines = Vec::new();
-        append_message(&mut lines, message, &ctx, focused, card_width);
-        let plain = plain_text(&Text::from(lines));
-        let wrapped = wrapped_line_count(&plain, width);
-        if target_row < cursor.saturating_add(wrapped) {
-            return Some(message.message_id().to_string());
-        }
-        cursor += wrapped;
+pub fn reveal_focused_canvas_message(
+    state: &mut TuiState,
+    viewport_width: u16,
+    viewport_height: u16,
+) {
+    if !state.focus_reveal_pending() || viewport_width == 0 || viewport_height == 0 {
+        return;
     }
 
-    None
+    let width = viewport_width as usize;
+    let layout = canvas_message_layout(state, width);
+    let Some(focused_id) = state.focused_message_id.as_deref() else {
+        state.mark_focus_revealed();
+        return;
+    };
+    let Some(focused) = layout
+        .rows
+        .iter()
+        .find(|row_range| row_range.message_id == focused_id)
+    else {
+        state.mark_focus_revealed();
+        return;
+    };
+
+    let height = viewport_height.max(1) as usize;
+    let max_scroll = layout.total_lines.saturating_sub(height);
+    let current_top = max_scroll.saturating_sub(state.canvas_scroll_from_bottom as usize);
+    let current_bottom_exclusive = current_top.saturating_add(height);
+    let next_top = if focused.rows.start < current_top {
+        focused.rows.start
+    } else if focused.rows.end > current_bottom_exclusive {
+        focused.rows.end.saturating_sub(height)
+    } else {
+        current_top
+    }
+    .min(max_scroll);
+
+    state.canvas_scroll_from_bottom = max_scroll.saturating_sub(next_top) as u16;
+    state.mark_focus_revealed();
 }
 
 fn editor_rows_needed(input: &TextArea<'static>, available: u16) -> u16 {
@@ -146,16 +203,11 @@ pub(super) fn render_canvas_body(
     state: &TuiState,
     theme: &ThemeStyles,
     area: Rect,
+    activity_rail: Option<Rect>,
 ) {
-    if state.activity_pinned && area.width >= 100 {
-        let panes = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Min(40), Constraint::Length(32)])
-            .split(area);
-        render_canvas(frame, state, theme, panes[0]);
-        render_activity_rail(frame, state, theme, panes[1]);
-    } else {
-        render_canvas(frame, state, theme, area);
+    render_canvas(frame, state, theme, area);
+    if let Some(activity_rail) = activity_rail {
+        render_activity_rail(frame, state, theme, activity_rail);
     }
 }
 
@@ -213,6 +265,51 @@ pub(super) fn build_canvas_text(
         append_message(&mut lines, message, &ctx, focused, card_width);
     }
     Text::from(lines)
+}
+
+struct MessageRowRange {
+    message_id: String,
+    rows: Range<usize>,
+}
+
+struct CanvasMessageLayout {
+    rows: Vec<MessageRowRange>,
+    total_lines: usize,
+}
+
+fn canvas_message_layout(state: &TuiState, width: usize) -> CanvasMessageLayout {
+    let focused = state.focused_message_id.as_deref();
+    let styles = ThemeStyles::for_theme(state.theme);
+    let ctx = RenderCtx {
+        theme_id: state.theme,
+        styles: &styles,
+        motion: MotionCtx::from_state(state),
+        reasoning_visible: state.reasoning_visible,
+    };
+    let card_width = card_width_for(width);
+    let mut rows = Vec::with_capacity(state.canvas.messages.len());
+    let mut cursor = 0usize;
+
+    for (idx, message) in state.canvas.messages.iter().enumerate() {
+        if idx > 0 {
+            cursor += 1;
+        }
+        let start = cursor;
+        let mut lines = Vec::new();
+        append_message(&mut lines, message, &ctx, focused, card_width);
+        let plain = plain_text(&Text::from(lines));
+        let wrapped = wrapped_line_count(&plain, width);
+        cursor = cursor.saturating_add(wrapped);
+        rows.push(MessageRowRange {
+            message_id: message.message_id().to_string(),
+            rows: start..cursor,
+        });
+    }
+
+    CanvasMessageLayout {
+        rows,
+        total_lines: cursor.max(1),
+    }
 }
 
 /// Small bundle of styling + theme-id for the block renderer. The

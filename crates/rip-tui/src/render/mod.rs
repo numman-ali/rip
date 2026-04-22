@@ -13,7 +13,10 @@ mod theme;
 mod util;
 mod xray;
 
-pub use self::canvas::canvas_hit_message_id;
+pub use self::canvas::{
+    canvas_hit_message_id, canvas_screen_regions, reveal_focused_canvas_message,
+    CanvasScreenRegions,
+};
 pub use self::status_bar::{hero_click_target, HeroClickTarget};
 use self::theme::ThemeStyles;
 
@@ -124,6 +127,28 @@ mod tests {
             },
         ));
         render_once(&state, RenderMode::Decoded, 100);
+    }
+
+    #[test]
+    fn reveal_focused_canvas_message_scrolls_target_into_view() {
+        let mut state = TuiState::new(100);
+        let mut target_id = None;
+        for idx in 0..12 {
+            let id =
+                state
+                    .canvas
+                    .push_user_turn("user", "tui", &format!("message {idx}"), idx as u64);
+            if idx == 2 {
+                target_id = Some(id);
+            }
+        }
+        state.set_focused_message(target_id.expect("target id"));
+
+        reveal_focused_canvas_message(&mut state, 50, 5);
+
+        assert!(state.canvas_scroll_from_bottom > 0);
+        let rendered = render_to_string(&state, RenderMode::Json, 50, 10);
+        assert!(rendered.contains("message 2"));
     }
 
     fn seed_overlay_state() -> TuiState {

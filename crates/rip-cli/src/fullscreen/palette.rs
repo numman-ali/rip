@@ -400,7 +400,7 @@ pub(super) fn apply_palette_selection(
             let Some(value) = state.palette_selected_value() else {
                 return Err("palette: no entry selected".to_string());
             };
-            state.focused_message_id = Some(value);
+            state.set_focused_message(value);
             state.close_overlay();
             Ok(())
         }

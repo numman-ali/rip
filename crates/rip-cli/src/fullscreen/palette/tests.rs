@@ -805,6 +805,7 @@ fn apply_palette_selection_in_navigation_mode_focuses_message_and_closes() {
     let result = apply_palette_selection(&mut state, &mut overrides, &mut catalog);
     assert!(result.is_ok());
     assert_eq!(state.focused_message_id.as_deref(), Some("msg-target"));
+    assert!(!state.auto_follow);
     assert_eq!(*state.overlay(), Overlay::None);
 }
 

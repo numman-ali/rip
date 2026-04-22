@@ -76,6 +76,7 @@ pub struct TuiState {
     /// route into the per-item X-ray overlay. `None` means "focus is on
     /// the input editor, nothing on the canvas is selected."
     pub focused_message_id: Option<String>,
+    focus_reveal_pending: bool,
     pub pending_prompt: Option<String>,
     pub awaiting_response: bool,
     pub status_message: Option<String>,
@@ -129,6 +130,7 @@ impl TuiState {
             reasoning_visible: true,
             canvas: CanvasModel::new(),
             focused_message_id: None,
+            focus_reveal_pending: false,
             pending_prompt: None,
             awaiting_response: false,
             status_message: None,
@@ -470,6 +472,7 @@ impl TuiState {
         self.last_event_ms = None;
         self.canvas.clear();
         self.focused_message_id = None;
+        self.focus_reveal_pending = false;
     }
 
     /// Prepare TuiState for a new run on the existing conversation.
@@ -492,6 +495,7 @@ impl TuiState {
         self.selected_seq = None;
         self.canvas_scroll_from_bottom = 0;
         self.last_error_seq = None;
+        self.focus_reveal_pending = false;
     }
 
     pub fn begin_pending_turn(&mut self, input: &str) {
@@ -514,10 +518,12 @@ impl TuiState {
 
     pub fn scroll_canvas_up(&mut self, lines: u16) {
         self.auto_follow = false;
+        self.focus_reveal_pending = false;
         self.canvas_scroll_from_bottom = self.canvas_scroll_from_bottom.saturating_add(lines);
     }
 
     pub fn scroll_canvas_down(&mut self, lines: u16) {
+        self.focus_reveal_pending = false;
         self.canvas_scroll_from_bottom = self.canvas_scroll_from_bottom.saturating_sub(lines);
         if self.canvas_scroll_from_bottom == 0 {
             self.auto_follow = true;
@@ -543,8 +549,23 @@ impl TuiState {
         self.canvas.messages.iter().find(|m| m.message_id() == id)
     }
 
+    pub fn set_focused_message(&mut self, message_id: impl Into<String>) {
+        self.focused_message_id = Some(message_id.into());
+        self.auto_follow = false;
+        self.focus_reveal_pending = true;
+    }
+
     pub fn clear_focus(&mut self) {
         self.focused_message_id = None;
+        self.focus_reveal_pending = false;
+    }
+
+    pub fn focus_reveal_pending(&self) -> bool {
+        self.focus_reveal_pending
+    }
+
+    pub fn mark_focus_revealed(&mut self) {
+        self.focus_reveal_pending = false;
     }
 
     /// `⏎` semantic on a focused tool/task card. Returns `true` when the
@@ -568,6 +589,7 @@ impl TuiState {
             .collect();
         if focusable.is_empty() {
             self.focused_message_id = None;
+            self.focus_reveal_pending = false;
             return;
         }
 
@@ -588,7 +610,7 @@ impl TuiState {
             }
             (Some(idx), FocusStep::Next) => (idx + 1) % focusable.len(),
         };
-        self.focused_message_id = Some(focusable[next_idx].to_string());
+        self.set_focused_message(focusable[next_idx].to_string());
     }
 
     pub fn set_now_ms(&mut self, now_ms: u64) {

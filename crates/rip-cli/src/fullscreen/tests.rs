@@ -1055,6 +1055,7 @@ fn handle_term_event_routes_mouse_scroll() {
 #[test]
 fn mouse_clicks_hero_segments_open_expected_palettes() {
     let mut state = seed_state();
+    let input = TextArea::default();
     state.set_continuity_id("thread-alpha");
     state.set_preferred_openresponses_target(
         Some("https://openrouter.ai/api/v1/responses".to_string()),
@@ -1079,6 +1080,7 @@ fn mouse_clicks_hero_segments_open_expected_palettes() {
             modifiers: KeyModifiers::empty(),
         },
         &mut state,
+        &input,
     );
     assert_eq!(thread_action, UiAction::OpenPaletteThreads);
 
@@ -1090,6 +1092,7 @@ fn mouse_clicks_hero_segments_open_expected_palettes() {
             modifiers: KeyModifiers::empty(),
         },
         &mut state,
+        &input,
     );
     assert_eq!(agent_action, UiAction::TogglePalette);
 
@@ -1101,6 +1104,7 @@ fn mouse_clicks_hero_segments_open_expected_palettes() {
             modifiers: KeyModifiers::empty(),
         },
         &mut state,
+        &input,
     );
     assert_eq!(model_action, UiAction::OpenPaletteModels);
 }
@@ -1108,6 +1112,7 @@ fn mouse_clicks_hero_segments_open_expected_palettes() {
 #[test]
 fn mouse_activity_row_opens_activity_overlay() {
     let mut state = seed_state();
+    let input = TextArea::default();
     let (_, height) = terminal_size().unwrap_or((80, 24));
     let row = mouse_footer_activity_row(height).expect("activity row");
 
@@ -1119,6 +1124,7 @@ fn mouse_activity_row_opens_activity_overlay() {
             modifiers: KeyModifiers::empty(),
         },
         &mut state,
+        &input,
     );
 
     assert_eq!(action, UiAction::None);
@@ -1149,6 +1155,7 @@ fn mouse_scroll_with_palette_open_moves_selection_and_ignores_noise() {
     );
     let before = state.palette_selected_value().expect("selected");
     assert_eq!(before, "c-0");
+    let input = TextArea::default();
     handle_mouse_event(
         MouseEvent {
             kind: MouseEventKind::ScrollDown,
@@ -1157,6 +1164,7 @@ fn mouse_scroll_with_palette_open_moves_selection_and_ignores_noise() {
             modifiers: KeyModifiers::empty(),
         },
         &mut state,
+        &input,
     );
     let stepped = state.palette_selected_value().expect("selected");
     assert_ne!(stepped, before);
@@ -1168,6 +1176,7 @@ fn mouse_scroll_with_palette_open_moves_selection_and_ignores_noise() {
             modifiers: KeyModifiers::empty(),
         },
         &mut state,
+        &input,
     );
     assert_eq!(
         state.palette_selected_value().as_deref(),
@@ -1183,6 +1192,7 @@ fn mouse_scroll_with_palette_open_moves_selection_and_ignores_noise() {
             modifiers: KeyModifiers::empty(),
         },
         &mut state,
+        &input,
     );
     assert_eq!(action, UiAction::None);
 }
@@ -1190,6 +1200,7 @@ fn mouse_scroll_with_palette_open_moves_selection_and_ignores_noise() {
 #[test]
 fn mouse_events_with_thread_picker_open_route_to_picker_helpers() {
     let mut state = seed_state();
+    let input = TextArea::default();
     state.open_thread_picker(vec![
         rip_tui::ThreadPickerEntry {
             thread_id: "cont-a".into(),
@@ -1212,6 +1223,7 @@ fn mouse_events_with_thread_picker_open_route_to_picker_helpers() {
             modifiers: KeyModifiers::empty(),
         },
         &mut state,
+        &input,
     );
     assert_eq!(
         state.thread_picker_selected_value().as_deref(),
@@ -1225,6 +1237,7 @@ fn mouse_events_with_thread_picker_open_route_to_picker_helpers() {
             modifiers: KeyModifiers::empty(),
         },
         &mut state,
+        &input,
     );
     assert_eq!(action, UiAction::ApplyThreadPicker);
 }
@@ -1232,11 +1245,12 @@ fn mouse_events_with_thread_picker_open_route_to_picker_helpers() {
 #[test]
 fn mouse_click_focuses_canvas_message() {
     let mut state = TuiState::new(10);
+    let input = TextArea::default();
     let first = state.canvas.push_user_turn("user", "tui", "hello", 0);
     state.canvas.push_user_turn("user", "tui", "world", 1);
     let (width, height) = terminal_size().unwrap_or((80, 24));
     let (viewport_width, viewport_height, row_in_canvas) =
-        mouse_canvas_hit_geometry(&state, width, height, 0, 1).expect("canvas geometry");
+        mouse_canvas_hit_geometry(&state, &input, width, height, 0, 1).expect("canvas geometry");
     let expected = canvas_hit_message_id(&state, viewport_width, viewport_height, row_in_canvas);
 
     let action = handle_mouse_event(
@@ -1247,6 +1261,7 @@ fn mouse_click_focuses_canvas_message() {
             modifiers: KeyModifiers::empty(),
         },
         &mut state,
+        &input,
     );
 
     assert_eq!(action, UiAction::None);
@@ -1256,8 +1271,25 @@ fn mouse_click_focuses_canvas_message() {
 }
 
 #[test]
+fn mouse_canvas_hit_geometry_tracks_multiline_input_height() {
+    let state = TuiState::new(10);
+    let mut input = TextArea::default();
+    input.insert_str("one");
+    input.insert_newline();
+    input.insert_str("two");
+    input.insert_newline();
+    input.insert_str("three");
+
+    let visible = mouse_canvas_hit_geometry(&state, &input, 80, 10, 0, 5).expect("last canvas row");
+    assert_eq!(visible.1, 5);
+    assert_eq!(visible.2, 4);
+    assert!(mouse_canvas_hit_geometry(&state, &input, 80, 10, 0, 6).is_none());
+}
+
+#[test]
 fn thread_picker_mouse_scrolls_and_click_applies() {
     let mut state = seed_state();
+    let input = TextArea::default();
     state.open_thread_picker(vec![
         rip_tui::ThreadPickerEntry {
             thread_id: "t1".to_string(),
@@ -1281,6 +1313,7 @@ fn thread_picker_mouse_scrolls_and_click_applies() {
             modifiers: KeyModifiers::empty(),
         },
         &mut state,
+        &input,
     );
     assert_eq!(scroll, UiAction::None);
     assert_eq!(state.thread_picker_selected_value().as_deref(), Some("t2"));
@@ -1293,6 +1326,7 @@ fn thread_picker_mouse_scrolls_and_click_applies() {
             modifiers: KeyModifiers::empty(),
         },
         &mut state,
+        &input,
     );
     assert_eq!(click, UiAction::ApplyThreadPicker);
 }
@@ -1661,6 +1695,7 @@ fn open_model_palette_uses_catalog_entries_and_mouse_scroll_moves_selection() {
         state.palette_selected_value().as_deref(),
         Some("openrouter/openai/gpt-oss-20b")
     );
+    let input = TextArea::default();
 
     let action = handle_mouse_event(
         MouseEvent {
@@ -1670,6 +1705,7 @@ fn open_model_palette_uses_catalog_entries_and_mouse_scroll_moves_selection() {
             modifiers: KeyModifiers::empty(),
         },
         &mut state,
+        &input,
     );
     assert_eq!(action, UiAction::None);
     assert_eq!(

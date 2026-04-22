@@ -9,13 +9,18 @@
 
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use crossterm::terminal::size as terminal_size;
-use rip_tui::{canvas_hit_message_id, hero_click_target, HeroClickTarget, TuiState};
+use ratatui::layout::Rect;
+use ratatui_textarea::TextArea;
+use rip_tui::{
+    canvas_hit_message_id, canvas_screen_regions, hero_click_target, HeroClickTarget, TuiState,
+};
 
 use super::{move_selected, UiAction};
 
 pub(in crate::fullscreen) fn handle_mouse_event(
     mouse: MouseEvent,
     state: &mut TuiState,
+    input: &TextArea<'static>,
 ) -> UiAction {
     if state.is_palette_open() {
         match mouse.kind {
@@ -64,7 +69,7 @@ pub(in crate::fullscreen) fn handle_mouse_event(
         };
     }
 
-    if mouse_hits_activity_surface(state, width, height, mouse.column, mouse.row) {
+    if mouse_hits_activity_surface(state, input, width, height, mouse.column, mouse.row) {
         return match mouse.kind {
             MouseEventKind::Down(MouseButton::Left)
             | MouseEventKind::ScrollUp
@@ -81,13 +86,12 @@ pub(in crate::fullscreen) fn handle_mouse_event(
         MouseEventKind::Down(MouseButton::Left) | MouseEventKind::Drag(MouseButton::Left)
     ) {
         if let Some((viewport_width, viewport_height, row_in_canvas)) =
-            mouse_canvas_hit_geometry(state, width, height, mouse.column, mouse.row)
+            mouse_canvas_hit_geometry(state, input, width, height, mouse.column, mouse.row)
         {
             if let Some(message_id) =
                 canvas_hit_message_id(state, viewport_width, viewport_height, row_in_canvas)
             {
-                state.focused_message_id = Some(message_id);
-                state.auto_follow = false;
+                state.set_focused_message(message_id);
             }
             return UiAction::None;
         }
@@ -118,52 +122,70 @@ pub(in crate::fullscreen) fn handle_mouse_event(
 
 fn mouse_hits_activity_surface(
     state: &TuiState,
+    input: &TextArea<'static>,
     width: u16,
     height: u16,
     column: u16,
     row: u16,
 ) -> bool {
-    if state.activity_pinned && width >= 100 {
-        let rail_width = 32u16;
-        let rail_start = width.saturating_sub(rail_width);
-        if column >= rail_start && row > 0 && row < height.saturating_sub(2) {
+    let regions = canvas_screen_regions(
+        state,
+        Rect {
+            x: 0,
+            y: 0,
+            width,
+            height,
+        },
+        input,
+    );
+
+    if let Some(activity_rail) = regions.activity_rail {
+        if column >= activity_rail.x
+            && column < activity_rail.x.saturating_add(activity_rail.width)
+            && row >= activity_rail.y
+            && row < activity_rail.y.saturating_add(activity_rail.height)
+        {
             return true;
         }
     }
 
-    let Some(activity_row) = mouse_footer_activity_row(height) else {
-        return false;
-    };
-    row == activity_row
+    regions
+        .activity_footer
+        .is_some_and(|activity_footer| row == activity_footer.y)
 }
 
+#[cfg(test)]
 pub(in crate::fullscreen) fn mouse_footer_activity_row(height: u16) -> Option<u16> {
     (height >= 4).then_some(height.saturating_sub(3))
 }
 
 pub(in crate::fullscreen) fn mouse_canvas_hit_geometry(
     state: &TuiState,
+    input: &TextArea<'static>,
     width: u16,
     height: u16,
     column: u16,
     row: u16,
 ) -> Option<(u16, u16, u16)> {
-    let body_top = 1u16;
-    let bottom_reserved = 3u16;
-    let body_height = height.saturating_sub(body_top + bottom_reserved);
-    if body_height == 0 || row < body_top || row >= body_top.saturating_add(body_height) {
+    let regions = canvas_screen_regions(
+        state,
+        Rect {
+            x: 0,
+            y: 0,
+            width,
+            height,
+        },
+        input,
+    );
+    let canvas = regions.canvas;
+    if canvas.height == 0
+        || row < canvas.y
+        || row >= canvas.y.saturating_add(canvas.height)
+        || column < canvas.x
+        || column >= canvas.x.saturating_add(canvas.width)
+    {
         return None;
     }
 
-    let viewport_width = if state.activity_pinned && width >= 100 {
-        let canvas_width = width.saturating_sub(32);
-        if column >= canvas_width {
-            return None;
-        }
-        canvas_width
-    } else {
-        width
-    };
-
-    Some((viewport_width, body_height, row.saturating_sub(body_top)))
+    Some((canvas.width, canvas.height, row.saturating_sub(canvas.y)))
 }

@@ -25,6 +25,14 @@ fn editor_prefers_text_input(key: KeyEvent) -> bool {
             .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
 }
 
+fn idle_keymap_preempts_editor(key: KeyEvent, input: &TextArea<'_>, keymap: &Keymap) -> bool {
+    buffer_is_effectively_empty(input)
+        && matches!(
+            keymap.command_for(key),
+            Some(KeyCommand::FocusPrevMessage | KeyCommand::FocusNextMessage)
+        )
+}
+
 pub(in crate::fullscreen) fn handle_key_event(
     key: KeyEvent,
     state: &mut TuiState,
@@ -139,8 +147,10 @@ pub(in crate::fullscreen) fn handle_key_event(
         if matches!(key.code, KeyCode::Char('?')) && buffer_is_effectively_empty(input) {
             return UiAction::ShowHelp;
         }
-        let _ = input.input(Input::from(key));
-        return UiAction::None;
+        if !idle_keymap_preempts_editor(key, input, keymap) {
+            let _ = input.input(Input::from(key));
+            return UiAction::None;
+        }
     }
 
     if let Some(cmd) = keymap.command_for(key) {
