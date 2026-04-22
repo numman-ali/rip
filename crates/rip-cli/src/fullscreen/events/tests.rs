@@ -1,7 +1,7 @@
 //! Tests for the small pure helpers in `events/mod.rs` (buffer
 //! emptiness / trimming, selection movement, card-expand detection,
 //! `last_user_prompt` traversal) and for the `handle_term_event`
-//! non-Key/Mouse/Resize fallthrough. The `handle_key_event` /
+//! top-level dispatch, including paste handling. The `handle_key_event` /
 //! `handle_mouse_event` dispatches live in the sibling tests for the
 //! respective submodules and in `fullscreen/tests.rs`.
 
@@ -219,8 +219,7 @@ fn last_user_prompt_joins_multiline_blocks_with_newlines() {
 
 #[test]
 fn handle_term_event_focus_gained_is_a_noop() {
-    // The `_ =>` arm in handle_term_event covers Paste / FocusGained /
-    // FocusLost — anything that isn't Key / Mouse / Resize.
+    // Focus events are still intentionally ignored.
     let keymap = super::super::keymap::Keymap::default();
     let mut state = TuiState::new(16);
     let mut mode = RenderMode::Json;
@@ -235,6 +234,53 @@ fn handle_term_event_focus_gained_is_a_noop() {
         &keymap,
     );
     assert_eq!(action, UiAction::None);
+}
+
+#[test]
+fn handle_term_event_paste_inserts_into_editor_when_idle() {
+    let keymap = super::super::keymap::Keymap::default();
+    let mut state = TuiState::new(16);
+    let mut mode = RenderMode::Json;
+    let mut input = TextArea::default();
+
+    let action = handle_term_event(
+        crossterm::event::Event::Paste("Hello from cmux".to_string()),
+        &mut state,
+        &mut mode,
+        &mut input,
+        false,
+        &keymap,
+    );
+    assert_eq!(action, UiAction::None);
+    assert_eq!(input.lines(), &["Hello from cmux".to_string()]);
+}
+
+#[test]
+fn handle_term_event_paste_routes_to_palette_query_when_palette_open() {
+    let keymap = super::super::keymap::Keymap::default();
+    let mut state = TuiState::new(16);
+    state.open_palette(
+        rip_tui::PaletteMode::Command,
+        rip_tui::PaletteOrigin::TopCenter,
+        vec![],
+        "No entries",
+        true,
+        "",
+    );
+    let mut mode = RenderMode::Json;
+    let mut input = TextArea::default();
+
+    let action = handle_term_event(
+        crossterm::event::Event::Paste("gemma".to_string()),
+        &mut state,
+        &mut mode,
+        &mut input,
+        false,
+        &keymap,
+    );
+    assert_eq!(action, UiAction::None);
+    assert_eq!(state.palette_query(), Some("gemma"));
+    assert_eq!(input.lines(), &[String::new()]);
 }
 
 #[test]

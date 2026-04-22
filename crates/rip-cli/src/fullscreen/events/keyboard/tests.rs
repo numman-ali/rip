@@ -182,3 +182,19 @@ fn question_mark_opens_help_only_when_input_is_empty() {
     assert_eq!(action, UiAction::None);
     assert_eq!(input.lines(), &["why?".to_string()]);
 }
+
+#[test]
+fn plain_x_inserts_into_editor_instead_of_triggering_global_detail_shortcut() {
+    let mut state = TuiState::new(100);
+    let mut input = TextArea::default();
+    input.insert_str("Hello from cmu");
+
+    let action = press(
+        &mut state,
+        &mut input,
+        KeyCode::Char('x'),
+        KeyModifiers::empty(),
+    );
+    assert_eq!(action, UiAction::None);
+    assert_eq!(input.lines(), &["Hello from cmux".to_string()]);
+}

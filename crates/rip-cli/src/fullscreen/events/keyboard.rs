@@ -18,6 +18,13 @@ use super::super::keymap::{Command as KeyCommand, Keymap};
 use super::vim::try_vim_intercept;
 use super::{buffer_is_effectively_empty, card_expand_target, move_selected, UiAction};
 
+fn editor_prefers_text_input(key: KeyEvent) -> bool {
+    matches!(key.code, KeyCode::Char(_))
+        && !key
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+}
+
 pub(in crate::fullscreen) fn handle_key_event(
     key: KeyEvent,
     state: &mut TuiState,
@@ -126,6 +133,14 @@ pub(in crate::fullscreen) fn handle_key_event(
         if let Some(action) = try_vim_intercept(key, state, input) {
             return action;
         }
+    }
+
+    if !session_running && editor_prefers_text_input(key) {
+        if matches!(key.code, KeyCode::Char('?')) && buffer_is_effectively_empty(input) {
+            return UiAction::ShowHelp;
+        }
+        let _ = input.input(Input::from(key));
+        return UiAction::None;
     }
 
     if let Some(cmd) = keymap.command_for(key) {

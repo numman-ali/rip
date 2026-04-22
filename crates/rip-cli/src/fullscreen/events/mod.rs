@@ -101,6 +101,16 @@ pub(super) fn handle_term_event(
 ) -> UiAction {
     match event {
         TermEvent::Key(key) => handle_key_event(key, state, mode, input, session_running, keymap),
+        TermEvent::Paste(text) => {
+            if state.is_palette_open() {
+                for ch in text.chars() {
+                    state.palette_push_char(ch);
+                }
+            } else if !session_running && matches!(state.overlay(), rip_tui::Overlay::None) {
+                input.insert_str(&text);
+            }
+            UiAction::None
+        }
         TermEvent::Mouse(m) => handle_mouse_event(m, state),
         TermEvent::Resize(_, _) => UiAction::None,
         _ => UiAction::None,
