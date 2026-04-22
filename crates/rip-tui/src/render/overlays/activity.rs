@@ -28,7 +28,6 @@ pub(super) fn render_activity_overlay(
     ));
     lines.push(Line::from(" "));
 
-    let mut remaining = inner.height.saturating_sub(2) as usize;
     if state.openresponses_request_started_ms.is_some() {
         let headers = state
             .openresponses_headers_ms()
@@ -46,11 +45,11 @@ pub(super) fn render_activity_overlay(
             "openresponses: headers={headers} first_byte={first_byte} first_event={first_event}"
         )));
         lines.push(Line::from(" "));
-        remaining = remaining.saturating_sub(2);
     }
 
-    lines.extend(build_activity_lines(state, remaining));
+    lines.extend(build_activity_lines(state, usize::MAX));
     let widget = Paragraph::new(Text::from(lines))
+        .scroll((state.overlay_scroll, 0))
         .wrap(Wrap { trim: false })
         .style(theme.chrome);
     frame.render_widget(widget, inner);

@@ -27,7 +27,7 @@ use super::super::util::truncate;
 
 pub(super) fn render_help_overlay(
     frame: &mut Frame<'_>,
-    _state: &TuiState,
+    state: &TuiState,
     theme: &ThemeStyles,
     area: Rect,
 ) {
@@ -122,6 +122,7 @@ pub(super) fn render_help_overlay(
     )));
 
     let paragraph = Paragraph::new(Text::from(lines))
+        .scroll((state.overlay_scroll, 0))
         .wrap(Wrap { trim: false })
         .style(theme.chrome);
     frame.render_widget(paragraph, inner);

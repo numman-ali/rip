@@ -27,4 +27,4 @@
 
 
 ▎ › Continue the thread
-   ⎋ close   ↑↓ scroll   x raw
+   ↑↓ select   ⏎ open   ⎋ close

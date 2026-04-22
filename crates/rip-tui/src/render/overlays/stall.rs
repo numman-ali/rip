@@ -35,6 +35,7 @@ pub(super) fn render_stall_overlay(
     ];
     frame.render_widget(
         Paragraph::new(Text::from(lines))
+            .scroll((state.overlay_scroll, 0))
             .wrap(Wrap { trim: false })
             .style(theme.chrome),
         inner,

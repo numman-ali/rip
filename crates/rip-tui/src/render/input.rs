@@ -348,8 +348,20 @@ pub(super) fn keylight_for(state: &TuiState, typing: bool) -> Vec<(&'static str,
                 ("⎋", "close"),
             ];
         }
+        Overlay::ThreadPicker(_) => {
+            return vec![("↑↓", "select"), ("⏎", "open"), ("⎋", "close")];
+        }
+        Overlay::ErrorRecovery { .. } => {
+            return vec![
+                ("r", "retry"),
+                ("c", "cursor"),
+                ("m", "model"),
+                ("x", "raw"),
+                ("⎋", "dismiss"),
+            ];
+        }
         _ => {
-            return vec![("⎋", "close"), ("↑↓", "scroll"), ("x", "raw")];
+            return vec![("⎋", "close"), ("↑↓", "scroll"), ("PgUp/Dn", "page")];
         }
     }
 
@@ -495,11 +507,27 @@ mod tests {
     }
 
     #[test]
-    fn generic_overlay_shows_close_scroll_raw() {
+    fn generic_overlay_shows_close_scroll_and_page() {
         let mut state = TuiState::new(10);
         state.set_overlay(Overlay::Debug);
         let k = keys(&state, false);
-        assert_eq!(k, vec!["⎋", "↑↓", "x"]);
+        assert_eq!(k, vec!["⎋", "↑↓", "PgUp/Dn"]);
+    }
+
+    #[test]
+    fn thread_picker_overlay_shows_selection_actions() {
+        let mut state = TuiState::new(10);
+        state.open_thread_picker(Vec::new());
+        let k = keys(&state, false);
+        assert_eq!(k, vec!["↑↓", "⏎", "⎋"]);
+    }
+
+    #[test]
+    fn error_recovery_overlay_shows_recovery_actions() {
+        let mut state = TuiState::new(10);
+        state.set_overlay(Overlay::ErrorRecovery { seq: 7 });
+        let k = keys(&state, false);
+        assert_eq!(k, vec!["r", "c", "m", "x", "⎋"]);
     }
 
     #[test]

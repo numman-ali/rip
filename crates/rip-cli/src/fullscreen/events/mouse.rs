@@ -55,6 +55,24 @@ pub(in crate::fullscreen) fn handle_mouse_event(
         return UiAction::None;
     }
 
+    if state.overlay_owns_input() {
+        return match mouse.kind {
+            MouseEventKind::ScrollUp => {
+                if state.overlay_is_scrollable() {
+                    state.scroll_overlay_up(3);
+                }
+                UiAction::None
+            }
+            MouseEventKind::ScrollDown => {
+                if state.overlay_is_scrollable() {
+                    state.scroll_overlay_down(3);
+                }
+                UiAction::None
+            }
+            _ => UiAction::None,
+        };
+    }
+
     let (width, height) = match terminal_size() {
         Ok(size) => size,
         Err(_) => return UiAction::None,

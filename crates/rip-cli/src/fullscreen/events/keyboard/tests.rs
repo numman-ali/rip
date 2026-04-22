@@ -137,6 +137,45 @@ fn palette_pagedown_bulk_scrolls_selection() {
 }
 
 #[test]
+fn help_overlay_scrolls_instead_of_leaking_to_canvas_commands() {
+    let mut state = TuiState::new(100);
+    state.set_overlay(Overlay::Help);
+    state.canvas_scroll_from_bottom = 0;
+    let mut input = TextArea::default();
+
+    let down = press(&mut state, &mut input, KeyCode::Down, KeyModifiers::empty());
+    assert_eq!(down, UiAction::None);
+    assert_eq!(state.overlay_scroll, 1);
+    assert_eq!(state.canvas_scroll_from_bottom, 0);
+
+    let page = press(
+        &mut state,
+        &mut input,
+        KeyCode::PageDown,
+        KeyModifiers::empty(),
+    );
+    assert_eq!(page, UiAction::None);
+    assert_eq!(state.overlay_scroll, 6);
+    assert_eq!(state.canvas_scroll_from_bottom, 0);
+}
+
+#[test]
+fn help_overlay_home_and_end_stay_within_overlay() {
+    let mut state = TuiState::new(100);
+    state.set_overlay(Overlay::Help);
+    state.overlay_scroll = 9;
+    let mut input = TextArea::default();
+
+    let home = press(&mut state, &mut input, KeyCode::Home, KeyModifiers::empty());
+    assert_eq!(home, UiAction::None);
+    assert_eq!(state.overlay_scroll, 0);
+
+    let end = press(&mut state, &mut input, KeyCode::End, KeyModifiers::empty());
+    assert_eq!(end, UiAction::None);
+    assert_eq!(state.overlay_scroll, u16::MAX);
+}
+
+#[test]
 fn default_keymap_ctrl_f_toggles_auto_follow() {
     // Single representative from the default-keymap dispatch arms.
     // Walks into `handle_key_event` with no overlay and a command

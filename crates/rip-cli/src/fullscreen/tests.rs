@@ -1243,6 +1243,40 @@ fn mouse_events_with_thread_picker_open_route_to_picker_helpers() {
 }
 
 #[test]
+fn mouse_scroll_with_help_overlay_moves_overlay_not_canvas() {
+    let mut state = seed_state();
+    let input = TextArea::default();
+    state.set_overlay(rip_tui::Overlay::Help);
+
+    let scroll = handle_mouse_event(
+        MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::empty(),
+        },
+        &mut state,
+        &input,
+    );
+    assert_eq!(scroll, UiAction::None);
+    assert_eq!(state.overlay_scroll, 3);
+    assert_eq!(state.canvas_scroll_from_bottom, 0);
+
+    let click = handle_mouse_event(
+        MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 0,
+            row: 1,
+            modifiers: KeyModifiers::empty(),
+        },
+        &mut state,
+        &input,
+    );
+    assert_eq!(click, UiAction::None);
+    assert!(state.focused_message_id.is_none());
+}
+
+#[test]
 fn mouse_click_focuses_canvas_message() {
     let mut state = TuiState::new(10);
     let input = TextArea::default();

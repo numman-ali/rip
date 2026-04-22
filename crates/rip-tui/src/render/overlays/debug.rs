@@ -35,6 +35,7 @@ pub(super) fn render_debug_overlay(
     let lines = build_debug_lines(state, theme);
     frame.render_widget(
         Paragraph::new(Text::from(lines))
+            .scroll((state.overlay_scroll, 0))
             .wrap(Wrap { trim: false })
             .style(theme.chrome),
         inner,

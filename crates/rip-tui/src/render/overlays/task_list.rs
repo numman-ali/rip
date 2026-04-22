@@ -38,10 +38,7 @@ pub(super) fn render_task_list_overlay(
         )
     });
 
-    for task in tasks
-        .into_iter()
-        .take(inner.height.saturating_sub(2) as usize)
-    {
+    for task in tasks {
         let icon = match task.status {
             rip_kernel::ToolTaskStatus::Queued => "◯",
             rip_kernel::ToolTaskStatus::Running => "⟳",
@@ -58,6 +55,7 @@ pub(super) fn render_task_list_overlay(
     }
 
     let widget = Paragraph::new(Text::from(lines))
+        .scroll((state.overlay_scroll, 0))
         .wrap(Wrap { trim: false })
         .style(theme.chrome);
     frame.render_widget(widget, inner);

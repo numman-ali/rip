@@ -141,6 +141,41 @@ pub(in crate::fullscreen) fn handle_key_event(
         };
     }
 
+    if state.overlay_is_scrollable() {
+        if let Some(cmd) = keymap.command_for(key) {
+            return match cmd {
+                KeyCommand::Quit => UiAction::Quit,
+                KeyCommand::CloseOverlay | KeyCommand::TogglePalette => UiAction::CloseOverlay,
+                KeyCommand::SelectPrev => {
+                    state.scroll_overlay_up(1);
+                    UiAction::None
+                }
+                KeyCommand::SelectNext => {
+                    state.scroll_overlay_down(1);
+                    UiAction::None
+                }
+                KeyCommand::ScrollCanvasUp => {
+                    state.scroll_overlay_up(5);
+                    UiAction::None
+                }
+                KeyCommand::ScrollCanvasDown => {
+                    state.scroll_overlay_down(5);
+                    UiAction::None
+                }
+                KeyCommand::ScrollCanvasTop => {
+                    state.overlay_scroll = 0;
+                    UiAction::None
+                }
+                KeyCommand::ScrollCanvasBottom => {
+                    state.overlay_scroll = u16::MAX;
+                    UiAction::None
+                }
+                _ => UiAction::None,
+            };
+        }
+        return UiAction::None;
+    }
+
     // D.5: vim layer gets first refusal on non-overlay keys, but only
     // when the session isn't streaming and no palette / overlay has
     // already claimed the input. Normal mode fully owns plain-keyed

@@ -72,6 +72,7 @@ pub(super) fn render_task_detail_overlay(
     }
 
     let widget = Paragraph::new(Text::from(lines))
+        .scroll((state.overlay_scroll, 0))
         .wrap(Wrap { trim: false })
         .style(theme.chrome);
     frame.render_widget(widget, inner);

@@ -1016,6 +1016,40 @@ fn thread_picker_state_helpers_round_trip_through_overlay_stack() {
 }
 
 #[test]
+fn overlay_scroll_resets_when_overlay_changes_or_conversation_resets() {
+    let mut state = TuiState::default();
+    state.set_overlay(Overlay::Help);
+    state.overlay_scroll = 12;
+    state.push_overlay(Overlay::Debug);
+    assert_eq!(state.overlay_scroll, 0);
+
+    state.scroll_overlay_down(7);
+    assert_eq!(state.overlay_scroll, 7);
+    state.pop_overlay();
+    assert_eq!(state.overlay_scroll, 0);
+
+    state.scroll_overlay_down(9);
+    state.reset_conversation_state();
+    assert_eq!(state.overlay_scroll, 0);
+    assert_eq!(state.overlay(), &Overlay::None);
+}
+
+#[test]
+fn overlay_classification_distinguishes_scrollable_and_non_scrollable_overlays() {
+    let mut state = TuiState::default();
+    assert!(!state.overlay_owns_input());
+    assert!(!state.overlay_is_scrollable());
+
+    state.set_overlay(Overlay::Help);
+    assert!(state.overlay_owns_input());
+    assert!(state.overlay_is_scrollable());
+
+    state.set_overlay(Overlay::ErrorRecovery { seq: 7 });
+    assert!(state.overlay_owns_input());
+    assert!(!state.overlay_is_scrollable());
+}
+
+#[test]
 fn palette_origin_is_none_when_no_palette_is_open() {
     let mut state = TuiState::default();
     assert!(state.palette_origin().is_none());

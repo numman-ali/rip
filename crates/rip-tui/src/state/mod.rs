@@ -27,6 +27,7 @@ pub struct TuiState {
     pub selected_seq: Option<u64>,
     pub auto_follow: bool,
     pub canvas_scroll_from_bottom: u16,
+    pub overlay_scroll: u16,
     pub output_view: OutputViewMode,
     pub theme: ThemeId,
     /// Opt-in vim bindings for the multi-line editor (D.5). When true,
@@ -104,6 +105,7 @@ impl TuiState {
             selected_seq: None,
             auto_follow: true,
             canvas_scroll_from_bottom: 0,
+            overlay_scroll: 0,
             output_view: OutputViewMode::Rendered,
             theme: ThemeId::DefaultDark,
             vim_input_mode: false,
@@ -159,14 +161,17 @@ impl TuiState {
     }
 
     pub fn set_overlay(&mut self, overlay: Overlay) {
+        self.overlay_scroll = 0;
         self.overlay_stack.set(overlay);
     }
 
     pub fn push_overlay(&mut self, overlay: Overlay) {
+        self.overlay_scroll = 0;
         self.overlay_stack.push(overlay);
     }
 
     pub fn pop_overlay(&mut self) -> Option<Overlay> {
+        self.overlay_scroll = 0;
         self.overlay_stack.pop()
     }
 
@@ -175,6 +180,7 @@ impl TuiState {
     }
 
     pub fn close_overlay(&mut self) {
+        self.overlay_scroll = 0;
         self.overlay_stack.clear();
     }
 
@@ -220,6 +226,35 @@ impl TuiState {
 
     pub fn is_palette_open(&self) -> bool {
         matches!(self.overlay_stack.top(), Overlay::Palette(_))
+    }
+
+    pub fn overlay_owns_input(&self) -> bool {
+        matches!(
+            self.overlay_stack.top(),
+            Overlay::Activity
+                | Overlay::TaskList
+                | Overlay::ToolDetail { .. }
+                | Overlay::TaskDetail { .. }
+                | Overlay::ErrorDetail { .. }
+                | Overlay::StallDetail
+                | Overlay::Debug
+                | Overlay::Help
+                | Overlay::ErrorRecovery { .. }
+        )
+    }
+
+    pub fn overlay_is_scrollable(&self) -> bool {
+        matches!(
+            self.overlay_stack.top(),
+            Overlay::Activity
+                | Overlay::TaskList
+                | Overlay::ToolDetail { .. }
+                | Overlay::TaskDetail { .. }
+                | Overlay::ErrorDetail { .. }
+                | Overlay::StallDetail
+                | Overlay::Debug
+                | Overlay::Help
+        )
     }
 
     pub fn palette_move_selection(&mut self, delta: i32) {
@@ -445,6 +480,7 @@ impl TuiState {
         self.selected_seq = None;
         self.auto_follow = true;
         self.canvas_scroll_from_bottom = 0;
+        self.overlay_scroll = 0;
         self.overlay_stack.clear();
         self.now_ms = None;
         self.session_id = None;
@@ -534,6 +570,14 @@ impl TuiState {
         self.focus_reveal_pending = false;
         self.canvas_scroll_from_bottom = 0;
         self.auto_follow = true;
+    }
+
+    pub fn scroll_overlay_up(&mut self, lines: u16) {
+        self.overlay_scroll = self.overlay_scroll.saturating_sub(lines);
+    }
+
+    pub fn scroll_overlay_down(&mut self, lines: u16) {
+        self.overlay_scroll = self.overlay_scroll.saturating_add(lines);
     }
 
     /// Move the canvas focus to the previous/next focusable message.

@@ -27,4 +27,4 @@
 
 ▲ error @seq 1
 ▎ › Retry, or press r for recovery
-   ⎋ close   ↑↓ scroll   x raw
+   r retry   c cursor   m model   x raw   ⎋ dismiss

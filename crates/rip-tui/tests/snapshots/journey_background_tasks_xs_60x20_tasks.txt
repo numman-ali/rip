@@ -17,4 +17,4 @@
 │                                                          │
 └──────────────────────────────────────────────────────────┘
 ▎ › Retry, or press r for recovery
-   ⎋ close   ↑↓ scroll   x raw
+   ⎋ close   ↑↓ scroll   PgUp/Dn page

@@ -21,4 +21,4 @@
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
 ▎ › Continue the thread
-   ⎋ close   ↑↓ scroll   x raw
+   ⎋ close   ↑↓ scroll   PgUp/Dn page
