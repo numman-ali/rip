@@ -1,11 +1,12 @@
 use std::collections::HashMap;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use rip_kernel::{Event, Runtime};
-use rip_log::EventLog;
+use rip_kernel::{Event, EventKind, Runtime};
+use rip_log::{write_snapshot, EventLog};
 use rip_tools::{register_builtin_tools, BuiltinToolConfig, ToolRegistry, ToolRunner};
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{broadcast, watch, Mutex};
 use uuid::Uuid;
 
 use crate::checkpoints::WorkspaceCheckpointHook;
@@ -23,6 +24,7 @@ pub struct SessionHandle {
     pub session_id: String,
     sender: broadcast::Sender<Event>,
     events: Arc<Mutex<Vec<Event>>>,
+    cancel_tx: watch::Sender<bool>,
 }
 
 impl SessionHandle {
@@ -32,6 +34,10 @@ impl SessionHandle {
 
     pub(crate) async fn events_snapshot(&self) -> Vec<Event> {
         self.events.lock().await.clone()
+    }
+
+    fn cancel(&self) {
+        let _ = self.cancel_tx.send(true);
     }
 }
 
@@ -114,10 +120,12 @@ impl SessionEngine {
     pub fn create_session(&self) -> SessionHandle {
         let session_id = Uuid::new_v4().to_string();
         let (sender, _receiver) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
+        let (cancel_tx, _cancel_rx) = watch::channel(false);
         SessionHandle {
             session_id,
             sender,
             events: Arc::new(Mutex::new(Vec::new())),
+            cancel_tx,
         }
     }
 
@@ -129,25 +137,56 @@ impl SessionEngine {
         openresponses_override: Option<OpenResponsesConfig>,
     ) {
         let openresponses = openresponses_override.or_else(|| self.openresponses.clone());
-        tokio::spawn(run_session(SessionContext {
-            runtime: self.runtime.clone(),
-            tool_runner: self.tool_runner.clone(),
-            workspace_lock: self.workspace_lock.clone(),
-            http_client: self.http_client.clone(),
-            openresponses,
-            sender: handle.sender.clone(),
-            events: handle.events.clone(),
-            event_log: self.event_log.clone(),
-            snapshot_dir: self.snapshot_dir.clone(),
-            continuities: self.continuity_store.clone(),
-            continuity_run: continuity,
-            server_session_id: handle.session_id.clone(),
-            input,
-        }));
+        let runtime = self.runtime.clone();
+        let tool_runner = self.tool_runner.clone();
+        let workspace_lock = self.workspace_lock.clone();
+        let http_client = self.http_client.clone();
+        let event_log = self.event_log.clone();
+        let event_log_for_cancel = event_log.clone();
+        let snapshot_dir = self.snapshot_dir.clone();
+        let snapshot_dir_for_cancel = snapshot_dir.clone();
+        let continuities = self.continuity_store.clone();
+        let continuities_for_cancel = continuities.clone();
+        let continuity_for_cleanup = continuity.clone();
+        let mut cancel_rx = handle.cancel_tx.subscribe();
+        tokio::spawn(async move {
+            tokio::select! {
+                _ = cancel_rx.changed() => {
+                    finalize_cancelled_session(
+                        &handle,
+                        event_log_for_cancel.as_ref(),
+                        snapshot_dir_for_cancel.as_path(),
+                        continuities_for_cancel.as_ref(),
+                        continuity_for_cleanup.as_ref(),
+                    ).await;
+                }
+                _ = run_session(SessionContext {
+                    runtime,
+                    tool_runner,
+                    workspace_lock,
+                    http_client,
+                    openresponses,
+                    sender: handle.sender.clone(),
+                    events: handle.events.clone(),
+                    event_log,
+                    snapshot_dir,
+                    continuities,
+                    continuity_run: continuity,
+                    server_session_id: handle.session_id.clone(),
+                    input,
+                }) => {}
+            }
+        });
     }
 
     pub fn cancel_session(sessions: &mut HashMap<String, SessionHandle>, session_id: &str) -> bool {
-        sessions.remove(session_id).is_some()
+        match sessions.remove(session_id) {
+            Some(handle) => {
+                handle.cancel();
+                true
+            }
+            None => false,
+        }
     }
 
     pub(crate) fn tasks(&self) -> Arc<TaskEngine> {
@@ -182,6 +221,80 @@ fn openresponses_from_env() -> Option<OpenResponsesConfig> {
     {
         None
     }
+}
+
+async fn finalize_cancelled_session(
+    handle: &SessionHandle,
+    event_log: &EventLog,
+    snapshot_dir: &Path,
+    continuities: &ContinuityStore,
+    continuity_run: Option<&ContinuityRunLink>,
+) {
+    let reason = {
+        let mut guard = handle.events.lock().await;
+        let existing_reason = guard.iter().rev().find_map(|event| match &event.kind {
+            EventKind::SessionEnded { reason } => Some(reason.clone()),
+            _ => None,
+        });
+
+        let reason = match existing_reason {
+            Some(reason) => reason,
+            None => {
+                let event = Event {
+                    id: Uuid::new_v4().to_string(),
+                    session_id: handle.session_id.clone(),
+                    timestamp_ms: now_ms(),
+                    seq: guard
+                        .last()
+                        .map(|event| event.seq.saturating_add(1))
+                        .unwrap_or(0),
+                    kind: EventKind::SessionEnded {
+                        reason: "cancelled".to_string(),
+                    },
+                };
+                let _ = handle.sender.send(event.clone());
+                guard.push(event.clone());
+                let _ = event_log.append(&event);
+                "cancelled".to_string()
+            }
+        };
+
+        let _ = write_snapshot(snapshot_dir, &handle.session_id, &guard);
+        reason
+    };
+
+    if let Some(link) = continuity_run {
+        let already_appended = continuities
+            .replay_events(&link.continuity_id)
+            .map(|events| {
+                events.iter().any(|event| {
+                    matches!(
+                        &event.kind,
+                        EventKind::ContinuityRunEnded { run_session_id, .. }
+                            if run_session_id == &handle.session_id
+                    )
+                })
+            })
+            .unwrap_or(false);
+        if !already_appended {
+            let _ = continuities.append_run_ended(
+                &link.continuity_id,
+                &link.message_id,
+                &handle.session_id,
+                reason,
+                link.actor_id.clone(),
+                link.origin.clone(),
+            );
+        }
+    }
+}
+
+fn now_ms() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 #[cfg(test)]

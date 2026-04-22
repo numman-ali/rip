@@ -6,8 +6,9 @@
             │The top row is clickable: thread opens Threads, agent opens Commands, model opens Models.     │
 ⟡  ╭─ bash ─│Mouse wheel scrolls the canvas. Home jumps to the top, End follows the live tail again.       │ ✓ 100ms ─╮
             │Direct shortcuts: ⌥M models, ⌃G go to, ⌃T threads, ⌥O options, ⌃Y copy.                       │
-     1 artif│Palette and thread rows are clickable, and clicking outside an overlay closes it.             │
-   ╰────────│                                                                                              │──────────╯
+     1 artif│Esc stops the active run when no overlay owns input. Ctrl-C quits and, by default, stops th…  │
+   ╰────────│Palette and thread rows are clickable, and clicking outside an overlay closes it.             │──────────╯
+            │                                                                                              │
             │                                                                                              │
             │CANVAS                                                                                        │
             │  Scroll to top                                                                               │
@@ -22,7 +23,6 @@
             │                                                                                              │
             │THREADS                                                                                       │
             │  New thread  · unavailable                                                                   │
-            │  Switch thread                                                                               │
             └──────────────────────────────────────────────────────────────────────────────────────────────┘
 
 

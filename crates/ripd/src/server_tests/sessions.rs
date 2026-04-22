@@ -79,6 +79,108 @@ async fn cancel_existing_session_no_content() {
 }
 
 #[tokio::test]
+async fn cancel_active_session_emits_cancelled_event() {
+    use axum::routing::post;
+    use axum::Router as AxumRouter;
+    use tokio::net::TcpListener;
+
+    async fn handler() -> impl axum::response::IntoResponse {
+        sleep(Duration::from_secs(30)).await;
+        (
+            [(axum::http::header::CONTENT_TYPE, "text/event-stream")],
+            "data: [DONE]\n\n".to_string(),
+        )
+    }
+
+    let provider_app = AxumRouter::new().route("/v1/responses", post(handler));
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    tokio::spawn(async move {
+        axum::serve(listener, provider_app).await.expect("serve");
+    });
+
+    let dir = tempdir().expect("tmp");
+    let app = build_test_app_with_openresponses_provider(
+        &dir,
+        format!("http://{addr}/v1/responses"),
+        true,
+    );
+    let session_id = create_session_id(&app).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/sessions/{session_id}/events"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let mut reader = TestSseReader::new(response.into_body());
+
+    let send_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/sessions/{session_id}/input"))
+                .header("content-type", "application/json")
+                .body(Body::from("{\"input\":\"hello\"}"))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(send_response.status(), axum::http::StatusCode::ACCEPTED);
+
+    timeout(Duration::from_secs(2), async {
+        loop {
+            let message = reader.next_data_message().await.expect("message");
+            let Some(value) = extract_data_json(&message) else {
+                continue;
+            };
+            if value.get("type").and_then(|value| value.as_str()) == Some("session_started") {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("start timeout");
+
+    let cancel_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/sessions/{session_id}/cancel"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(cancel_response.status(), axum::http::StatusCode::NO_CONTENT);
+
+    timeout(Duration::from_secs(2), async {
+        loop {
+            let message = reader.next_data_message().await.expect("message");
+            let Some(value) = extract_data_json(&message) else {
+                continue;
+            };
+            if value.get("type").and_then(|value| value.as_str()) == Some("session_ended") {
+                assert_eq!(
+                    value.get("reason").and_then(|value| value.as_str()),
+                    Some("cancelled")
+                );
+                break;
+            }
+        }
+    })
+    .await
+    .expect("cancel timeout");
+}
+
+#[tokio::test]
 async fn send_input_accepts_and_writes_snapshot() {
     let dir = tempdir().expect("tmp");
     let data_dir = dir.path().join("data");

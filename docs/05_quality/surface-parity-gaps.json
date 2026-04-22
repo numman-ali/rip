@@ -85,13 +85,6 @@
       "expires_on": "2026-03-01"
     },
     {
-      "capability_id": "session.cancel",
-      "surface": "tui",
-      "owner": "tui",
-      "reason": "Fullscreen TUI starts runs via `thread.post_message` (continuity-first) and does not yet expose low-level session lifecycle controls (cancel) as first-class actions.",
-      "expires_on": "2026-03-01"
-    },
-    {
       "capability_id": "session.create",
       "surface": "tui",
       "owner": "tui",

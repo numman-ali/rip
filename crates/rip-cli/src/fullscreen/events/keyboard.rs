@@ -176,6 +176,13 @@ pub(in crate::fullscreen) fn handle_key_event(
         return UiAction::None;
     }
 
+    if session_running
+        && matches!(state.overlay(), rip_tui::Overlay::None)
+        && key.code == KeyCode::Esc
+    {
+        return UiAction::CancelSession;
+    }
+
     // D.5: vim layer gets first refusal on non-overlay keys, but only
     // when the session isn't streaming and no palette / overlay has
     // already claimed the input. Normal mode fully owns plain-keyed

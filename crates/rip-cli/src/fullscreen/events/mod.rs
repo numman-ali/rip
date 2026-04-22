@@ -35,6 +35,7 @@ pub(super) use mouse::{mouse_canvas_hit_geometry, mouse_footer_activity_row};
 pub(super) enum UiAction {
     None,
     Quit,
+    CancelSession,
     Submit,
     CloseOverlay,
     /// Primary palette trigger — `⌃K` opens the Command palette

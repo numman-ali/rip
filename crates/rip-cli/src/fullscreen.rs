@@ -77,6 +77,7 @@ async fn run_fullscreen_tui_sse(
     server: String,
     initial_prompt: Option<String>,
     mut stream: Option<EventSource>,
+    mut active_session_id: Option<String>,
     ui_mode: SseUiMode,
     openresponses_overrides: Option<Value>,
 ) -> anyhow::Result<()> {
@@ -109,6 +110,7 @@ async fn run_fullscreen_tui_sse(
         match start_remote_session(client, &server, prompt, current_overrides.clone()).await {
             Ok(next) => {
                 state.set_continuity_id(next.thread_id);
+                active_session_id = Some(next.session_id);
                 stream = Some(next.stream);
             }
             Err(err) => {
@@ -163,7 +165,32 @@ async fn run_fullscreen_tui_sse(
                 };
                 match handle_term_event(event, &mut state, &mut mode, &mut input, session_running, &keymap) {
                     UiAction::None => {}
-                    UiAction::Quit => break,
+                    UiAction::Quit => {
+                        if let Some(session_id) = active_session_id.as_deref() {
+                            match cancel_remote_session(client, &server, session_id).await {
+                                Ok(()) => break,
+                                Err(err) => {
+                                    state.set_status_message(format!("stop failed: {err}"));
+                                }
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    UiAction::CancelSession => {
+                        if let Some(session_id) = active_session_id.as_deref() {
+                            match cancel_remote_session(client, &server, session_id).await {
+                                Ok(()) => {
+                                    state.set_status_message("stopping session…");
+                                }
+                                Err(err) => {
+                                    state.set_status_message(format!("stop failed: {err}"));
+                                }
+                            }
+                        } else {
+                            state.set_status_message("this stream cannot be stopped here");
+                        }
+                    }
                     UiAction::Submit => {
                         if ui_mode == SseUiMode::Interactive && stream.is_none() {
                             let prompt = buffer_trimmed_prompt(&input);
@@ -181,6 +208,7 @@ async fn run_fullscreen_tui_sse(
                                 {
                                     Ok(next) => {
                                         state.set_continuity_id(next.thread_id);
+                                        active_session_id = Some(next.session_id);
                                         stream = Some(next.stream);
                                     }
                                     Err(err) => {
@@ -410,6 +438,7 @@ async fn run_fullscreen_tui_sse(
                                 {
                                     Ok(next) => {
                                         state.set_continuity_id(next.thread_id);
+                                        active_session_id = Some(next.session_id);
                                         stream = Some(next.stream);
                                     }
                                     Err(err) => {
@@ -468,13 +497,15 @@ async fn run_fullscreen_tui_sse(
                         if let Ok(frame) = serde_json::from_str::<FrameEvent>(&msg.data) {
                             let ended = matches!(frame.kind, rip_kernel::EventKind::SessionEnded { .. });
                             state.update(frame);
-                            if ui_mode == SseUiMode::Interactive && ended {
+                            if ended {
+                                active_session_id = None;
                                 stream.take();
                             }
                         }
                     }
                     Err(EventSourceError::StreamEnded) => {
                         state.awaiting_response = false;
+                        active_session_id = None;
                         if state.status_message.is_none() {
                             state.set_status_message("stream ended");
                         }
@@ -482,6 +513,7 @@ async fn run_fullscreen_tui_sse(
                     }
                     Err(err) => {
                         state.awaiting_response = false;
+                        active_session_id = None;
                         state.set_status_message(format!("stream error: {err}"));
                         stream.take();
                     }
@@ -597,6 +629,7 @@ pub async fn run_fullscreen_tui_remote(
         server,
         initial_prompt,
         None,
+        None,
         SseUiMode::Interactive,
         openresponses_overrides,
     )
@@ -611,6 +644,7 @@ pub async fn run_fullscreen_tui_attach(server: String, session_id: String) -> an
         server,
         None,
         Some(client.get(url).eventsource()?),
+        Some(session_id),
         SseUiMode::Attach,
         None,
     )
@@ -625,6 +659,7 @@ pub async fn run_fullscreen_tui_attach_task(server: String, task_id: String) -> 
         server,
         None,
         Some(client.get(url).eventsource()?),
+        None,
         SseUiMode::Attach,
         None,
     )
@@ -633,6 +668,7 @@ pub async fn run_fullscreen_tui_attach_task(server: String, task_id: String) -> 
 
 struct StartedRemoteSession {
     thread_id: String,
+    session_id: String,
     stream: EventSource,
 }
 
@@ -656,8 +692,29 @@ async fn start_remote_session(
     let url = format!("{server}/sessions/{}/events", response.session_id);
     Ok(StartedRemoteSession {
         thread_id,
+        session_id: response.session_id,
         stream: client.get(url).eventsource()?,
     })
+}
+
+async fn cancel_remote_session(
+    client: &Client,
+    server: &str,
+    session_id: &str,
+) -> anyhow::Result<()> {
+    let response = client
+        .post(format!("{server}/sessions/{session_id}/cancel"))
+        .send()
+        .await?;
+    if response.status().is_success() {
+        return Ok(());
+    }
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    if body.trim().is_empty() {
+        anyhow::bail!("server returned {status}");
+    }
+    anyhow::bail!("server returned {status}: {}", body.trim());
 }
 
 struct InitState {

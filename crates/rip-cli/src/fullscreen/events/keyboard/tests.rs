@@ -195,6 +195,26 @@ fn default_keymap_ctrl_f_toggles_auto_follow() {
 }
 
 #[test]
+fn esc_stops_active_session_when_no_overlay_owns_input() {
+    let mut state = TuiState::new(100);
+    let mut input = TextArea::default();
+    let action = press(&mut state, &mut input, KeyCode::Esc, KeyModifiers::empty());
+    assert_eq!(action, UiAction::CloseOverlay);
+
+    let keymap = Keymap::default();
+    let mut mode = RenderMode::Json;
+    let action = handle_key_event(
+        KeyEvent::new(KeyCode::Esc, KeyModifiers::empty()),
+        &mut state,
+        &mut mode,
+        &mut input,
+        true,
+        &keymap,
+    );
+    assert_eq!(action, UiAction::CancelSession);
+}
+
+#[test]
 fn question_mark_opens_help_only_when_input_is_empty() {
     let mut state = TuiState::new(100);
     let mut input = TextArea::default();

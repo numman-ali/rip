@@ -73,6 +73,13 @@ pub(super) fn render_help_overlay(
     )));
     lines.push(Line::from(Span::styled(
         truncate(
+            "Esc stops the active run when no overlay owns input. Ctrl-C quits and, by default, stops the active run first.",
+            width.saturating_sub(2),
+        ),
+        theme.muted,
+    )));
+    lines.push(Line::from(Span::styled(
+        truncate(
             "Palette and thread rows are clickable, and clicking outside an overlay closes it.",
             width.saturating_sub(2),
         ),

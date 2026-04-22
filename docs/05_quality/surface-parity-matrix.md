@@ -8,7 +8,7 @@ Generated from docs/03_contracts/capability_registry.md.
 | session.send_input | planned | supported | supported | supported | planned | planned |
 | session.set_model | planned | planned | planned | planned | planned | planned |
 | session.stream_events | planned | supported | supported | supported | supported | planned |
-| session.cancel | planned | supported | supported | supported | planned | planned |
+| session.cancel | planned | supported | supported | supported | supported | planned |
 | session.resume | planned | planned | planned | planned | planned | planned |
 | session.previous_response | planned | planned | planned | planned | planned | planned |
 | thread.ensure | planned | supported | supported | supported | supported | planned |

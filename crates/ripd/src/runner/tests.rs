@@ -60,6 +60,197 @@ fn cancel_session_removes_handle() {
     assert!(!SessionEngine::cancel_session(&mut sessions, &session_id));
 }
 
+#[tokio::test]
+async fn cancel_session_emits_cancelled_terminal_event_and_snapshot() {
+    use axum::routing::post;
+    use axum::Router as AxumRouter;
+    use rip_provider_openresponses::ToolChoiceParam;
+    use tokio::net::TcpListener;
+
+    async fn handler() -> impl axum::response::IntoResponse {
+        tokio::time::sleep(Duration::from_secs(30)).await;
+        (
+            [(axum::http::header::CONTENT_TYPE, "text/event-stream")],
+            "data: [DONE]\n\n".to_string(),
+        )
+    }
+
+    let provider_app = AxumRouter::new().route("/v1/responses", post(handler));
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    tokio::spawn(async move {
+        axum::serve(listener, provider_app).await.expect("serve");
+    });
+
+    let dir = tempdir().expect("tmp");
+    let data_dir = dir.path().join("data");
+    let workspace_dir = dir.path().join("workspace");
+    std::fs::create_dir_all(&workspace_dir).expect("workspace");
+    let engine = SessionEngine::new(
+        data_dir.clone(),
+        workspace_dir,
+        Some(OpenResponsesConfig {
+            provider_id: Some("openrouter".to_string()),
+            endpoint: format!("http://{addr}/v1/responses"),
+            api_key: None,
+            model: Some("fixture-model".to_string()),
+            headers: Vec::new(),
+            tool_choice: ToolChoiceParam::auto(),
+            include: Vec::new(),
+            reasoning: None,
+            followup_user_message: None,
+            stateless_history: true,
+            parallel_tool_calls: false,
+        }),
+    )
+    .expect("engine");
+
+    let handle = engine.create_session();
+    let session_id = handle.session_id.clone();
+    let mut receiver = handle.subscribe();
+    let mut sessions = HashMap::new();
+    sessions.insert(session_id.clone(), handle.clone());
+
+    engine.spawn_session(handle.clone(), "hello".to_string(), None, None);
+
+    let _ = wait_for_event(&mut receiver, |kind| {
+        matches!(kind, EventKind::SessionStarted { .. })
+    })
+    .await;
+
+    assert!(SessionEngine::cancel_session(&mut sessions, &session_id));
+
+    let ended = wait_for_event(
+        &mut receiver,
+        |kind| matches!(kind, EventKind::SessionEnded { reason } if reason == "cancelled"),
+    )
+    .await;
+    assert_eq!(
+        ended.session_id, session_id,
+        "cancel should terminate the same live session"
+    );
+
+    let snapshot_path = data_dir
+        .join("snapshots")
+        .join(format!("{session_id}.json"));
+    wait_for_snapshot(snapshot_path.clone()).await;
+    let log = EventLog::new(data_dir.join("events.jsonl")).expect("log");
+    verify_snapshot(&log, snapshot_path).expect("snapshot");
+}
+
+#[tokio::test]
+async fn cancelled_session_appends_cancelled_continuity_run_end_once() {
+    use axum::routing::post;
+    use axum::Router as AxumRouter;
+    use rip_provider_openresponses::ToolChoiceParam;
+    use tokio::net::TcpListener;
+
+    async fn handler() -> impl axum::response::IntoResponse {
+        tokio::time::sleep(Duration::from_secs(30)).await;
+        (
+            [(axum::http::header::CONTENT_TYPE, "text/event-stream")],
+            "data: [DONE]\n\n".to_string(),
+        )
+    }
+
+    let provider_app = AxumRouter::new().route("/v1/responses", post(handler));
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    tokio::spawn(async move {
+        axum::serve(listener, provider_app).await.expect("serve");
+    });
+
+    let dir = tempdir().expect("tmp");
+    let data_dir = dir.path().join("data");
+    let workspace_dir = dir.path().join("workspace");
+    std::fs::create_dir_all(&workspace_dir).expect("workspace");
+    let engine = SessionEngine::new(
+        data_dir,
+        workspace_dir,
+        Some(OpenResponsesConfig {
+            provider_id: Some("openrouter".to_string()),
+            endpoint: format!("http://{addr}/v1/responses"),
+            api_key: None,
+            model: Some("fixture-model".to_string()),
+            headers: Vec::new(),
+            tool_choice: ToolChoiceParam::auto(),
+            include: Vec::new(),
+            reasoning: None,
+            followup_user_message: None,
+            stateless_history: true,
+            parallel_tool_calls: false,
+        }),
+    )
+    .expect("engine");
+
+    let store = engine.continuities();
+    let thread_id = store.ensure_default().expect("thread");
+    let actor_id = "alice".to_string();
+    let origin = "cli".to_string();
+    let message_id = store
+        .append_message(
+            &thread_id,
+            actor_id.clone(),
+            origin.clone(),
+            "hi".to_string(),
+        )
+        .expect("message");
+
+    let handle = engine.create_session();
+    let session_id = handle.session_id.clone();
+    let mut receiver = handle.subscribe();
+    store
+        .append_run_spawned(
+            &thread_id,
+            &message_id,
+            &session_id,
+            actor_id.clone(),
+            origin.clone(),
+        )
+        .expect("run spawned");
+
+    let mut sessions = HashMap::new();
+    sessions.insert(session_id.clone(), handle.clone());
+    engine.spawn_session(
+        handle.clone(),
+        "hi".to_string(),
+        Some(ContinuityRunLink {
+            continuity_id: thread_id.clone(),
+            message_id: message_id.clone(),
+            actor_id: actor_id.clone(),
+            origin: origin.clone(),
+        }),
+        None,
+    );
+
+    let _ = wait_for_event(&mut receiver, |kind| {
+        matches!(kind, EventKind::SessionStarted { .. })
+    })
+    .await;
+    assert!(SessionEngine::cancel_session(&mut sessions, &session_id));
+    let _ = wait_for_event(
+        &mut receiver,
+        |kind| matches!(kind, EventKind::SessionEnded { reason } if reason == "cancelled"),
+    )
+    .await;
+
+    let thread_events = store.replay_events(&thread_id).expect("replay thread");
+    let cancelled_runs = thread_events
+        .iter()
+        .filter(|event| {
+            matches!(
+                &event.kind,
+                EventKind::ContinuityRunEnded {
+                    run_session_id,
+                    reason,
+                    ..
+                } if run_session_id == &session_id && reason == "cancelled"
+            )
+        })
+        .count();
+    assert_eq!(cancelled_runs, 1, "expected one cancelled run_ended event");
+}
+
 #[test]
 fn new_default_uses_env_paths() {
     let dir = tempdir().expect("tmp");

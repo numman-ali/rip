@@ -36,7 +36,7 @@ Notes
 | session.send_input | v1 | P1 | planned | supported | supported | supported | planned | planned | Send input to an active session. |
 | session.set_model | v1 | P2 | planned | planned | planned | planned | planned | planned | Change the active session's provider/model selection (applies forward only). |
 | session.stream_events | v1 | P1 | planned | supported | supported | supported | supported | planned | Stream session events. |
-| session.cancel | v1 | P1 | planned | supported | supported | supported | planned | planned | Cancel an active session. |
+| session.cancel | v1 | P1 | planned | supported | supported | supported | supported | planned | Cancel an active session. |
 | session.resume | v1 | P2 | planned | planned | planned | planned | planned | planned | Resume a prior session/run by id (debug/power feature; not the primary UX). |
 | session.previous_response | v1 | P2 | planned | planned | planned | planned | planned | planned | Continue from a prior response id (previous_response_id semantics). |
 | thread.ensure | v1 | P1 | planned | supported | supported | supported | supported | planned | Ensure a default continuity exists for the current workspace/user and return its id. |

@@ -50,11 +50,14 @@ Command mode; `Tab` cycles modes inside an open palette. Direct hotkeys for
 high-traffic modes: `⌃G` Go To, `⌃T` Threads, `M-m` Models, `M-o` Options.
 `?` opens Help.
 
-**Overlays are a stack.** `Vec<Overlay>` in `TuiState`. Esc pops one; C-c
-pops all. Activity, Palette, ToolDetail, TaskDetail, ErrorDetail,
-StallDetail, Debug, Help, ErrorRecovery all live on the same stack and use
-the shared dim-behind layout. ErrorRecovery auto-opens on the first
-provider-error frame per run.
+**Overlays are a stack.** `Vec<Overlay>` in `TuiState`. Esc pops an overlay
+when one owns input; otherwise it stops the active run. `C-c` quits and, by
+default, stops any active session before exit. Activity, Palette,
+ToolDetail, TaskDetail, ErrorDetail, StallDetail, Debug, Help, ErrorRecovery
+all live on the same stack and use the shared dim-behind layout.
+ErrorRecovery auto-opens on the first provider-error frame per run. An
+explicit detach/leave-running action is a separate behavior and should not be
+confused with the default quit path.
 
 **Summoned, not stacked.** No tabs. No permanent panels. Canvas is always
 the only canvas. Everything else is summoned (palette, overlays) or ambient

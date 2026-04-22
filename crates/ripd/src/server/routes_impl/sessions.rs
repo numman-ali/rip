@@ -139,7 +139,7 @@ pub(crate) async fn cancel_session(
     State(state): State<AppState>,
 ) -> impl IntoResponse {
     let mut sessions = state.sessions.lock().await;
-    if sessions.remove(&session_id).is_some() {
+    if crate::runner::SessionEngine::cancel_session(&mut sessions, &session_id) {
         StatusCode::NO_CONTENT
     } else {
         StatusCode::NOT_FOUND
