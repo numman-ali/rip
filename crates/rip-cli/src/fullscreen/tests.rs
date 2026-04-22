@@ -12,7 +12,10 @@ use rip_tui::palette::modes::models::{
     default_endpoint_for_provider, infer_provider_id_from_endpoint, parse_model_route,
     push_route_from_string, upsert_model_route,
 };
-use rip_tui::{canvas_hit_message_id, hero_click_target, HeroClickTarget};
+use rip_tui::{
+    canvas_hit_message_id, hero_click_target, overlay_mouse_target, HeroClickTarget,
+    OverlayMouseTarget,
+};
 use rip_tui::{AgentRole, Block, CachedText, CanvasMessage, ModelRoute, ModelsMode, PaletteSource};
 use std::collections::BTreeMap;
 use std::ffi::OsString;
@@ -1195,6 +1198,69 @@ fn mouse_scroll_with_palette_open_moves_selection_and_ignores_noise() {
         &input,
     );
     assert_eq!(action, UiAction::None);
+
+    let (width, height) = terminal_size().unwrap_or((80, 24));
+    let click_target = (0..height)
+        .flat_map(|row| (0..width).map(move |column| (column, row)))
+        .find(|(column, row)| {
+            overlay_mouse_target(
+                &state,
+                ratatui::layout::Rect {
+                    x: 0,
+                    y: 0,
+                    width,
+                    height,
+                },
+                *column,
+                *row,
+            ) == OverlayMouseTarget::PaletteEntry(2)
+        })
+        .expect("palette row for third entry");
+
+    let click = handle_mouse_event(
+        MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: click_target.0,
+            row: click_target.1,
+            modifiers: KeyModifiers::empty(),
+        },
+        &mut state,
+        &input,
+    );
+    assert_eq!(click, UiAction::ApplyPalette);
+    assert_eq!(state.palette_selected_value().as_deref(), Some("c-2"));
+}
+
+#[test]
+fn mouse_click_outside_palette_closes_it() {
+    let mut state = seed_state();
+    let input = TextArea::default();
+    state.open_palette(
+        rip_tui::PaletteMode::Command,
+        rip_tui::PaletteOrigin::TopCenter,
+        vec![rip_tui::PaletteEntry {
+            value: "c-0".into(),
+            title: "cmd 0".into(),
+            subtitle: None,
+            chips: vec![],
+        }],
+        "",
+        false,
+        String::new(),
+    );
+
+    let action = handle_mouse_event(
+        MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::empty(),
+        },
+        &mut state,
+        &input,
+    );
+    assert_eq!(action, UiAction::None);
+    assert!(!state.is_palette_open());
 }
 
 #[test]
@@ -1229,11 +1295,28 @@ fn mouse_events_with_thread_picker_open_route_to_picker_helpers() {
         state.thread_picker_selected_value().as_deref(),
         Some("cont-b")
     );
+    let (width, height) = terminal_size().unwrap_or((80, 24));
+    let click_target = (0..height)
+        .flat_map(|row| (0..width).map(move |column| (column, row)))
+        .find(|(column, row)| {
+            overlay_mouse_target(
+                &state,
+                ratatui::layout::Rect {
+                    x: 0,
+                    y: 0,
+                    width,
+                    height,
+                },
+                *column,
+                *row,
+            ) == OverlayMouseTarget::ThreadPickerEntry(1)
+        })
+        .expect("thread picker row for second entry");
     let action = handle_mouse_event(
         MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
-            column: 0,
-            row: 0,
+            column: click_target.0,
+            row: click_target.1,
             modifiers: KeyModifiers::empty(),
         },
         &mut state,
@@ -1274,6 +1357,7 @@ fn mouse_scroll_with_help_overlay_moves_overlay_not_canvas() {
     );
     assert_eq!(click, UiAction::None);
     assert!(state.focused_message_id.is_none());
+    assert_eq!(state.overlay(), &rip_tui::Overlay::None);
 }
 
 #[test]
@@ -1352,17 +1436,61 @@ fn thread_picker_mouse_scrolls_and_click_applies() {
     assert_eq!(scroll, UiAction::None);
     assert_eq!(state.thread_picker_selected_value().as_deref(), Some("t2"));
 
+    let (width, height) = terminal_size().unwrap_or((80, 24));
+    let click_target = (0..height)
+        .flat_map(|row| (0..width).map(move |column| (column, row)))
+        .find(|(column, row)| {
+            overlay_mouse_target(
+                &state,
+                ratatui::layout::Rect {
+                    x: 0,
+                    y: 0,
+                    width,
+                    height,
+                },
+                *column,
+                *row,
+            ) == OverlayMouseTarget::ThreadPickerEntry(1)
+        })
+        .expect("thread picker row for second entry");
+
     let click = handle_mouse_event(
         MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
-            column: 5,
-            row: 5,
+            column: click_target.0,
+            row: click_target.1,
             modifiers: KeyModifiers::empty(),
         },
         &mut state,
         &input,
     );
     assert_eq!(click, UiAction::ApplyThreadPicker);
+    assert_eq!(state.thread_picker_selected_value().as_deref(), Some("t2"));
+}
+
+#[test]
+fn thread_picker_click_outside_closes_overlay() {
+    let mut state = seed_state();
+    let input = TextArea::default();
+    state.open_thread_picker(vec![rip_tui::ThreadPickerEntry {
+        thread_id: "t1".to_string(),
+        title: "one".to_string(),
+        preview: "preview —".to_string(),
+        chips: vec!["current".to_string()],
+    }]);
+
+    let click = handle_mouse_event(
+        MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::empty(),
+        },
+        &mut state,
+        &input,
+    );
+    assert_eq!(click, UiAction::None);
+    assert!(!state.is_thread_picker_open());
 }
 
 #[test]

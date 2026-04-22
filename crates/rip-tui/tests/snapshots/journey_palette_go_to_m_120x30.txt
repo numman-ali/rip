@@ -21,8 +21,8 @@
                         │                                                                      │
                         │                                                                      │
                         │                                                                      │
-                        │Enter jumps there  Esc closes  Type to filter                         │
-                        │⇥ tabs  ⌃K cmd  ⌥M models  ⌃G go  ⌃T threads  ⌥O opts                 │
+                        │Enter or click row jumps there  Esc / outside closes                  │
+                        │click row apply  click outside close  ⇥ tabs  ⌃K cmd                  │
                         └──────────────────────────────────────────────────────────────────────┘
 
 

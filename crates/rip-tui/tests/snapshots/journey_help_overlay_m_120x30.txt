@@ -6,7 +6,7 @@
             │The top row is clickable: thread opens Threads, agent opens Commands, model opens Models.     │
 ⟡  ╭─ bash ─│Mouse wheel scrolls the canvas. Home jumps to the top, End follows the live tail again.       │ ✓ 100ms ─╮
             │Direct shortcuts: ⌥M models, ⌃G go to, ⌃T threads, ⌥O options, ⌃Y copy.                       │
-     1 artif│In the palette, the bracketed tab is the one Enter will act in.                               │
+     1 artif│Palette and thread rows are clickable, and clicking outside an overlay closes it.             │
    ╰────────│                                                                                              │──────────╯
             │                                                                                              │
             │CANVAS                                                                                        │

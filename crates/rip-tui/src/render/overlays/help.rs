@@ -73,7 +73,7 @@ pub(super) fn render_help_overlay(
     )));
     lines.push(Line::from(Span::styled(
         truncate(
-            "In the palette, the bracketed tab is the one Enter will act in.",
+            "Palette and thread rows are clickable, and clicking outside an overlay closes it.",
             width.saturating_sub(2),
         ),
         theme.muted,

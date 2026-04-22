@@ -3,10 +3,17 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs, Wrap};
 use ratatui::Frame;
 
-use crate::{Overlay, PaletteMode, TuiState};
+use crate::{Overlay, PaletteMode, PaletteState, TuiState};
 
 use super::super::theme::ThemeStyles;
 use super::super::util::truncate;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PaletteMouseTarget {
+    Outside,
+    Inside,
+    Entry(usize),
+}
 
 pub(super) fn render_palette_overlay(
     frame: &mut Frame<'_>,
@@ -26,16 +33,7 @@ pub(super) fn render_palette_overlay(
         .style(theme.chrome);
     let inner = block.inner(area);
     frame.render_widget(block, area);
-
-    let sections = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(2),
-            Constraint::Length(3),
-            Constraint::Min(3),
-            Constraint::Length(2),
-        ])
-        .split(inner);
+    let sections = palette_sections(inner);
 
     let tabs = Tabs::new(vec![
         tab_label(PaletteMode::Command, palette.mode),
@@ -90,10 +88,7 @@ pub(super) fn render_palette_overlay(
             )));
         }
     } else {
-        let start = palette
-            .selected
-            .saturating_sub(visible_rows.saturating_sub(1) / 2)
-            .min(filtered.len().saturating_sub(visible_rows));
+        let start = palette_visible_start(palette, visible_rows);
         let end = (start + visible_rows).min(filtered.len());
         for (visible_idx, entry_idx) in filtered[start..end].iter().enumerate() {
             let entry = &palette.entries[*entry_idx];
@@ -143,13 +138,74 @@ pub(super) fn render_palette_overlay(
             sections[3].width as usize,
         )),
         Line::from(truncate(
-            "⇥ tabs  ⌃K cmd  ⌥M models  ⌃G go  ⌃T threads  ⌥O opts",
+            "click row apply  click outside close  ⇥ tabs  ⌃K cmd",
             sections[3].width as usize,
         )),
     ]))
     .style(theme.chrome)
     .wrap(Wrap { trim: false });
     frame.render_widget(footer, sections[3]);
+}
+
+pub(super) fn palette_mouse_target(
+    palette: &PaletteState,
+    area: Rect,
+    column: u16,
+    row: u16,
+) -> PaletteMouseTarget {
+    if !point_in_rect(area, column, row) {
+        return PaletteMouseTarget::Outside;
+    }
+
+    let inner = Block::default().borders(Borders::ALL).inner(area);
+    let sections = palette_sections(inner);
+    if !point_in_rect(sections[2], column, row) {
+        return PaletteMouseTarget::Inside;
+    }
+
+    let filtered = palette.filtered_indices();
+    if filtered.is_empty() {
+        return PaletteMouseTarget::Inside;
+    }
+
+    let visible_rows = sections[2].height.max(1) as usize;
+    let start = palette_visible_start(palette, visible_rows);
+    let end = (start + visible_rows).min(filtered.len());
+    let row_offset = row.saturating_sub(sections[2].y) as usize;
+    let selection = start + row_offset;
+    if selection < end {
+        PaletteMouseTarget::Entry(selection)
+    } else {
+        PaletteMouseTarget::Inside
+    }
+}
+
+fn point_in_rect(rect: Rect, column: u16, row: u16) -> bool {
+    column >= rect.x
+        && column < rect.x.saturating_add(rect.width)
+        && row >= rect.y
+        && row < rect.y.saturating_add(rect.height)
+}
+
+fn palette_sections(inner: Rect) -> [Rect; 4] {
+    let sections = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(3),
+            Constraint::Min(3),
+            Constraint::Length(2),
+        ])
+        .split(inner);
+    [sections[0], sections[1], sections[2], sections[3]]
+}
+
+fn palette_visible_start(palette: &PaletteState, visible_rows: usize) -> usize {
+    let filtered = palette.filtered_indices();
+    palette
+        .selected
+        .saturating_sub(visible_rows.saturating_sub(1) / 2)
+        .min(filtered.len().saturating_sub(visible_rows))
 }
 
 fn palette_title(mode: PaletteMode) -> &'static str {
@@ -179,10 +235,10 @@ fn tab_label(tab: PaletteMode, active: PaletteMode) -> Line<'static> {
 
 fn palette_apply_help(mode: PaletteMode) -> &'static str {
     match mode {
-        PaletteMode::Command => "Enter runs action  Esc closes  Type to filter",
-        PaletteMode::Model => "Enter switches model  Esc closes  Type to filter",
-        PaletteMode::Navigation => "Enter jumps there  Esc closes  Type to filter",
-        PaletteMode::Session => "Enter opens thread  Esc closes  Type to filter",
-        PaletteMode::Option => "Enter toggles option  Esc closes  Type to filter",
+        PaletteMode::Command => "Enter or click row runs action  Esc / outside closes",
+        PaletteMode::Model => "Enter or click row switches model  Esc / outside closes",
+        PaletteMode::Navigation => "Enter or click row jumps there  Esc / outside closes",
+        PaletteMode::Session => "Enter or click row opens thread  Esc / outside closes",
+        PaletteMode::Option => "Enter or click row toggles option  Esc / outside closes",
     }
 }

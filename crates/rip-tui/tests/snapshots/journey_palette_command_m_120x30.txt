@@ -20,8 +20,8 @@
                         │  Branch current thread  THREADS                                      │
                         │  Handoff to new thread  THREADS                                      │
                         │  Rename current thread  THREADS  [unavailable]                       │
-                        │Enter runs action  Esc closes  Type to filter                         │
-                        │⇥ tabs  ⌃K cmd  ⌥M models  ⌃G go  ⌃T threads  ⌥O opts                 │
+                        │Enter or click row runs action  Esc / outside closes                  │
+                        │click row apply  click outside close  ⇥ tabs  ⌃K cmd                  │
                         └──────────────────────────────────────────────────────────────────────┘
 
 

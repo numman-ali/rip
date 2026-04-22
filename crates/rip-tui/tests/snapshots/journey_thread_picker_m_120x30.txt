@@ -21,8 +21,8 @@
                │                                                                                        │
                │                                                                                        │
                │                                                                                        │
-               │Enter target next run  Esc close                                                        │
-               │Up/Down move  PageUp/PageDown scroll                                                    │
+               │Enter target next run  click row apply  Esc close                                       │
+               │Up/Down move  PageUp/PageDown scroll  click outside close                               │
                └────────────────────────────────────────────────────────────────────────────────────────┘
 
 

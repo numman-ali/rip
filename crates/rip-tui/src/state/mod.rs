@@ -263,6 +263,13 @@ impl TuiState {
         }
     }
 
+    pub fn palette_set_selected(&mut self, selected: usize) {
+        if let Some(Overlay::Palette(palette)) = self.overlay_stack.top_mut() {
+            palette.selected = selected;
+            palette.clamp_selected();
+        }
+    }
+
     pub fn palette_push_char(&mut self, ch: char) {
         if let Some(Overlay::Palette(palette)) = self.overlay_stack.top_mut() {
             palette.query.push(ch);
@@ -372,6 +379,12 @@ impl TuiState {
     pub fn thread_picker_move_selection(&mut self, delta: i32) {
         if let Some(Overlay::ThreadPicker(picker)) = self.overlay_stack.top_mut() {
             picker.move_selection(delta);
+        }
+    }
+
+    pub fn thread_picker_set_selected(&mut self, selected: usize) {
+        if let Some(Overlay::ThreadPicker(picker)) = self.overlay_stack.top_mut() {
+            picker.selected = selected.min(picker.entries.len().saturating_sub(1));
         }
     }
 

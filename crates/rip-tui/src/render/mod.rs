@@ -17,6 +17,7 @@ pub use self::canvas::{
     canvas_hit_message_id, canvas_screen_regions, reveal_focused_canvas_message,
     CanvasScreenRegions,
 };
+pub use self::overlays::{overlay_mouse_target, OverlayMouseTarget};
 pub use self::status_bar::{hero_click_target, HeroClickTarget};
 use self::theme::ThemeStyles;
 

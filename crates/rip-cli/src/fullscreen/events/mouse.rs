@@ -12,7 +12,8 @@ use crossterm::terminal::size as terminal_size;
 use ratatui::layout::Rect;
 use ratatui_textarea::TextArea;
 use rip_tui::{
-    canvas_hit_message_id, canvas_screen_regions, hero_click_target, HeroClickTarget, TuiState,
+    canvas_hit_message_id, canvas_screen_regions, hero_click_target, overlay_mouse_target,
+    HeroClickTarget, OverlayMouseTarget, TuiState,
 };
 
 use super::{move_selected, UiAction};
@@ -22,6 +23,11 @@ pub(in crate::fullscreen) fn handle_mouse_event(
     state: &mut TuiState,
     input: &TextArea<'static>,
 ) -> UiAction {
+    let (width, height) = match terminal_size() {
+        Ok(size) => size,
+        Err(_) => return UiAction::None,
+    };
+
     if state.is_palette_open() {
         match mouse.kind {
             MouseEventKind::ScrollUp => {
@@ -33,6 +39,29 @@ pub(in crate::fullscreen) fn handle_mouse_event(
                 return UiAction::None;
             }
             _ => {}
+        }
+        if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
+            return match overlay_mouse_target(
+                state,
+                Rect {
+                    x: 0,
+                    y: 0,
+                    width,
+                    height,
+                },
+                mouse.column,
+                mouse.row,
+            ) {
+                OverlayMouseTarget::PaletteEntry(selected) => {
+                    state.palette_set_selected(selected);
+                    UiAction::ApplyPalette
+                }
+                OverlayMouseTarget::Outside => {
+                    state.close_overlay();
+                    UiAction::None
+                }
+                _ => UiAction::None,
+            };
         }
         return UiAction::None;
     }
@@ -50,13 +79,50 @@ pub(in crate::fullscreen) fn handle_mouse_event(
             _ => {}
         }
         if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
-            return UiAction::ApplyThreadPicker;
+            return match overlay_mouse_target(
+                state,
+                Rect {
+                    x: 0,
+                    y: 0,
+                    width,
+                    height,
+                },
+                mouse.column,
+                mouse.row,
+            ) {
+                OverlayMouseTarget::ThreadPickerEntry(selected) => {
+                    state.thread_picker_set_selected(selected);
+                    UiAction::ApplyThreadPicker
+                }
+                OverlayMouseTarget::Outside => {
+                    state.close_overlay();
+                    UiAction::None
+                }
+                _ => UiAction::None,
+            };
         }
         return UiAction::None;
     }
 
     if state.overlay_owns_input() {
         return match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) => match overlay_mouse_target(
+                state,
+                Rect {
+                    x: 0,
+                    y: 0,
+                    width,
+                    height,
+                },
+                mouse.column,
+                mouse.row,
+            ) {
+                OverlayMouseTarget::Outside => {
+                    state.close_overlay();
+                    UiAction::None
+                }
+                _ => UiAction::None,
+            },
             MouseEventKind::ScrollUp => {
                 if state.overlay_is_scrollable() {
                     state.scroll_overlay_up(3);
@@ -72,11 +138,6 @@ pub(in crate::fullscreen) fn handle_mouse_event(
             _ => UiAction::None,
         };
     }
-
-    let (width, height) = match terminal_size() {
-        Ok(size) => size,
-        Err(_) => return UiAction::None,
-    };
 
     if mouse.row == 0 && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
         return match hero_click_target(state, width, mouse.column) {

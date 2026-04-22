@@ -18,6 +18,15 @@ pub(super) mod task_list;
 pub(super) mod thread_picker;
 pub(super) mod tool_detail;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OverlayMouseTarget {
+    None,
+    Outside,
+    Inside,
+    PaletteEntry(usize),
+    ThreadPickerEntry(usize),
+}
+
 pub(super) fn render_overlay(
     frame: &mut Frame<'_>,
     state: &TuiState,
@@ -73,6 +82,62 @@ pub(super) fn render_overlay(
             overlay_modal_area(body),
             *seq,
         ),
+    }
+}
+
+pub fn overlay_mouse_target(
+    state: &TuiState,
+    area: Rect,
+    column: u16,
+    row: u16,
+) -> OverlayMouseTarget {
+    let body = overlay_body_area(area, state.output_view);
+    match state.overlay() {
+        Overlay::None => OverlayMouseTarget::None,
+        Overlay::Palette(palette_state) => match palette::palette_mouse_target(
+            palette_state,
+            overlay_modal_area_for_origin(body, palette_state.origin),
+            column,
+            row,
+        ) {
+            palette::PaletteMouseTarget::Outside => OverlayMouseTarget::Outside,
+            palette::PaletteMouseTarget::Inside => OverlayMouseTarget::Inside,
+            palette::PaletteMouseTarget::Entry(selected) => {
+                OverlayMouseTarget::PaletteEntry(selected)
+            }
+        },
+        Overlay::ThreadPicker(picker) => match thread_picker::thread_picker_mouse_target(
+            picker,
+            thread_picker_area(body),
+            column,
+            row,
+        ) {
+            thread_picker::ThreadPickerMouseTarget::Outside => OverlayMouseTarget::Outside,
+            thread_picker::ThreadPickerMouseTarget::Inside => OverlayMouseTarget::Inside,
+            thread_picker::ThreadPickerMouseTarget::Entry(selected) => {
+                OverlayMouseTarget::ThreadPickerEntry(selected)
+            }
+        },
+        Overlay::Activity | Overlay::TaskList => {
+            if point_in_rect(body, column, row) {
+                OverlayMouseTarget::Inside
+            } else {
+                OverlayMouseTarget::Outside
+            }
+        }
+        Overlay::ToolDetail { .. }
+        | Overlay::TaskDetail { .. }
+        | Overlay::ErrorDetail { .. }
+        | Overlay::StallDetail
+        | Overlay::Debug
+        | Overlay::Help
+        | Overlay::ErrorRecovery { .. } => {
+            if point_in_rect(overlay_modal_area(body), column, row) {
+                OverlayMouseTarget::Inside
+            } else {
+                OverlayMouseTarget::Outside
+            }
+        }
     }
 }
 
@@ -176,6 +241,13 @@ fn thread_picker_area(body: Rect) -> Rect {
     }
 }
 
+fn point_in_rect(rect: Rect, column: u16, row: u16) -> bool {
+    column >= rect.x
+        && column < rect.x.saturating_add(rect.width)
+        && row >= rect.y
+        && row < rect.y.saturating_add(rect.height)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -196,5 +268,28 @@ mod tests {
         assert!(top_left.x < top_right.x);
         assert_eq!(top_left.y, top_right.y);
         assert!(bottom.y > top_left.y);
+    }
+
+    #[test]
+    fn overlay_mouse_target_distinguishes_inside_and_outside_modal_overlays() {
+        let mut state = TuiState::new(100);
+        state.set_overlay(Overlay::Help);
+        let frame = Rect {
+            x: 0,
+            y: 0,
+            width: 120,
+            height: 40,
+        };
+        let body = overlay_body_area(frame, state.output_view);
+        let modal = overlay_modal_area(body);
+
+        assert_eq!(
+            overlay_mouse_target(&state, frame, modal.x, modal.y),
+            OverlayMouseTarget::Inside
+        );
+        assert_eq!(
+            overlay_mouse_target(&state, frame, 0, 0),
+            OverlayMouseTarget::Outside
+        );
     }
 }
