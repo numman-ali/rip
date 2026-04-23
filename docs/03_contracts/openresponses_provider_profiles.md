@@ -322,6 +322,7 @@ Runtime ownership
   - outbound request composition proof for auth + custom headers + tool-choice/max-tool-call controls at the HTTP boundary
   - typed runtime/config surfaces for reasoning and `include`, both resolved through requested-vs-effective compatibility logic before request emission
   - seeded per-value `include` subsets in the compatibility layer, so `config.doctor` can distinguish native/compat/unknown/unsupported include values instead of reporting one blunt route-wide include status
+  - fullscreen TUI cmux proof that OpenAI `gpt-5.4-nano` can use canonical `web_search`, emit canonical `web_search_call` items, and render them as `web_search` cards with no `provider_error` / `response_errors` noise
   - provider-prefixed hosted-tool item validation for streaming events, completed response resources, and item params (`openrouter:web_search` live shape accepted without false provider errors)
   - fullscreen TUI cmux proof that an OpenRouter `openrouter:web_search` run shows `web on` in the hero and a collapsible hosted-tool card instead of surfacing schema noise
 - The next expansion should cover:
