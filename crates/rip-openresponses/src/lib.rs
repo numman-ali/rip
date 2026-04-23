@@ -115,17 +115,21 @@ pub fn item_param_schema() -> &'static Value {
 }
 
 pub fn validate_stream_event(value: &Value) -> Result<(), Vec<String>> {
-    match STREAM_VALIDATOR.validate(value) {
+    let normalized = normalize_extension_items_for_validation(value);
+    let result = match STREAM_VALIDATOR.validate(&normalized) {
         Ok(_) => Ok(()),
         Err(errors) => Err(errors.map(|e| e.to_string()).collect()),
-    }
+    };
+    result
 }
 
 pub fn validate_response_resource(value: &Value) -> Result<(), Vec<String>> {
-    match RESPONSE_VALIDATOR.validate(value) {
+    let normalized = normalize_extension_items_for_validation(value);
+    let result = match RESPONSE_VALIDATOR.validate(&normalized) {
         Ok(_) => Ok(()),
         Err(errors) => Err(errors.map(|e| e.to_string()).collect()),
-    }
+    };
+    result
 }
 
 pub fn validate_create_response_body(value: &Value) -> Result<(), Vec<String>> {
@@ -192,6 +196,79 @@ fn is_provider_extension_tool_param(value: &Value) -> bool {
         return false;
     };
     is_extension_slug(slug) && !name.trim().is_empty()
+}
+
+fn normalize_extension_items_for_validation(value: &Value) -> Value {
+    let mut normalized = value.clone();
+    normalize_extension_items_in_value(&mut normalized);
+    normalized
+}
+
+fn normalize_extension_items_in_value(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            if let Some(item) = map.get_mut("item") {
+                normalize_extension_item_for_schema(item);
+            }
+            if let Some(response) = map.get_mut("response") {
+                normalize_extension_items_in_value(response);
+            }
+            if let Some(output) = map.get_mut("output").and_then(Value::as_array_mut) {
+                for item in output {
+                    normalize_extension_item_for_schema(item);
+                }
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                normalize_extension_items_in_value(item);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn normalize_extension_item_for_schema(item: &mut Value) {
+    if !is_provider_extension_item(item) {
+        return;
+    }
+
+    let Some(map) = item.as_object_mut() else {
+        return;
+    };
+    map.insert(
+        "type".to_string(),
+        Value::String("web_search_call".to_string()),
+    );
+    if !matches!(
+        map.get("status").and_then(Value::as_str),
+        Some("in_progress" | "completed" | "incomplete" | "searching" | "failed")
+    ) {
+        map.insert("status".to_string(), Value::String("completed".to_string()));
+    }
+}
+
+fn is_provider_extension_item(value: &Value) -> bool {
+    let Some(map) = value.as_object() else {
+        return false;
+    };
+    let Some(item_type) = map.get("type").and_then(Value::as_str) else {
+        return false;
+    };
+    let Some((slug, name)) = item_type.split_once(':') else {
+        return false;
+    };
+    if !is_extension_slug(slug) || name.trim().is_empty() {
+        return false;
+    }
+    has_non_empty_string(map, "id") && has_non_empty_string(map, "status")
+}
+
+fn has_non_empty_string(map: &serde_json::Map<String, Value>, key: &str) -> bool {
+    map.get(key)
+        .and_then(Value::as_str)
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
 }
 
 fn is_extension_slug(value: &str) -> bool {
@@ -366,6 +443,7 @@ pub fn validate_item_param(value: &Value) -> Result<(), Vec<String>> {
             require_string_field(map, "approval_request_id", context, &mut errors);
             require_bool_field(map, "approve", context, &mut errors);
         }
+        other if is_provider_extension_item(value) => {}
         other => errors.push(format!("ItemParam.type has unsupported value \"{other}\"")),
     }
 

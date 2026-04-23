@@ -328,6 +328,31 @@ fn validate_item_param_reports_unknown_type() {
 }
 
 #[test]
+fn validate_item_param_accepts_prefixed_extension_items() {
+    let value = serde_json::json!({
+        "id": "st_tmp_1",
+        "type": "openrouter:web_search",
+        "status": "completed"
+    });
+
+    let errors = validate_item_param(&value).err().unwrap_or_default();
+    assert!(errors.is_empty(), "errors: {errors:?}");
+}
+
+#[test]
+fn validate_item_param_rejects_prefixed_extension_items_missing_required_fields() {
+    let value = serde_json::json!({
+        "type": "openrouter:web_search"
+    });
+
+    let errors = validate_item_param(&value).err().unwrap_or_default();
+    assert!(
+        errors.iter().any(|err| err.contains("unsupported value")),
+        "errors: {errors:?}"
+    );
+}
+
+#[test]
 fn validate_item_param_reports_additional_type_errors() {
     let function_call = serde_json::json!({
         "type": "function_call",

@@ -14,6 +14,18 @@ fn validate_response_resource_accepts_fixture() {
 }
 
 #[test]
+fn validate_response_resource_accepts_prefixed_extension_output_items() {
+    let value = response_with_output(vec![serde_json::json!({
+        "id": "st_tmp_1",
+        "type": "openrouter:web_search",
+        "status": "completed"
+    })]);
+
+    let errors = validate_response_resource(&value).err().unwrap_or_default();
+    assert!(errors.is_empty(), "errors: {errors:?}");
+}
+
+#[test]
 fn validate_response_resource_accepts_tool_choice_variants() {
     let variants = vec![
         serde_json::json!({ "type": "code_interpreter" }),

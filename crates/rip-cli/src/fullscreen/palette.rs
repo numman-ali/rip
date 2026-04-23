@@ -636,6 +636,7 @@ pub(super) fn sync_preferred_openresponses_state(
 ) {
     let resolved = resolve_openresponses_runtime_config(openresponses_overrides);
     let reasoning = resolve_runtime_reasoning_state(resolved.as_ref(), openresponses_overrides);
+    let web_search = resolve_runtime_web_search_state(resolved.as_ref(), openresponses_overrides);
     let endpoint = resolved
         .as_ref()
         .map(|cfg| cfg.endpoint.clone())
@@ -657,6 +658,7 @@ pub(super) fn sync_preferred_openresponses_state(
             .and_then(|cfg| cfg.summary)
             .map(|value| reasoning_summary_label(Some(value)).to_string()),
     );
+    state.set_preferred_openresponses_web_search(web_search_hero_label(&web_search));
 }
 
 fn resolve_runtime_reasoning_state(
@@ -796,6 +798,29 @@ fn web_search_state_label(web_search: &ripd::ResolvedOpenResponsesWebSearch) -> 
         web_search_support_label(web_search.support.request)
     ));
     parts.join(" • ")
+}
+
+fn web_search_hero_label(web_search: &ripd::ResolvedOpenResponsesWebSearch) -> Option<String> {
+    let requested = web_search
+        .requested
+        .as_ref()
+        .map(ripd::OpenResponsesWebSearchConfig::is_enabled)
+        .unwrap_or(false);
+    let effective = web_search
+        .effective
+        .as_ref()
+        .map(ripd::OpenResponsesWebSearchConfig::is_enabled)
+        .unwrap_or(false);
+    if effective {
+        Some("web on".to_string())
+    } else if requested {
+        Some(format!(
+            "web {}",
+            web_search_support_label(web_search.support.request)
+        ))
+    } else {
+        None
+    }
 }
 
 fn build_include_option_entries(include: &ripd::ResolvedOpenResponsesInclude) -> Vec<PaletteEntry> {

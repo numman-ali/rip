@@ -122,6 +122,9 @@ pub(super) fn apply(canvas: &mut CanvasModel, event: &Event) {
             if ingest_reasoning_event(canvas, event_name.as_deref(), data.as_ref()) {
                 return;
             }
+            if ingest_hosted_tool_item_event(canvas, event, event_name.as_deref(), data.as_ref()) {
+                return;
+            }
             if ingest_compat_warning_notice(canvas, event, event_name.as_deref(), data.as_ref()) {
                 return;
             }
@@ -280,6 +283,127 @@ fn ingest_reasoning_event(
         _ => {}
     }
     false
+}
+
+fn ingest_hosted_tool_item_event(
+    canvas: &mut CanvasModel,
+    event: &Event,
+    event_name: Option<&str>,
+    data: Option<&Value>,
+) -> bool {
+    let Some(event_type) = provider_event::event_type(event_name, data) else {
+        return false;
+    };
+    if !matches!(
+        event_type,
+        "response.output_item.added" | "response.output_item.done"
+    ) {
+        return false;
+    }
+    let Some(item) = data
+        .and_then(Value::as_object)
+        .and_then(|payload| payload.get("item"))
+    else {
+        return false;
+    };
+    let Some(hosted) = HostedToolItem::from_value(item) else {
+        return false;
+    };
+
+    match event_type {
+        "response.output_item.added" => {
+            let args = serde_json::json!({
+                "provider_item_type": hosted.item_type,
+                "status": hosted.status,
+            });
+            cards::push_tool_card(canvas, event, hosted.id, hosted.tool_name, &args);
+        }
+        "response.output_item.done" => {
+            if hosted.is_failed() {
+                cards::finalize_tool_card_failure(
+                    canvas,
+                    hosted.id,
+                    &hosted.error.unwrap_or_else(|| hosted.status.to_string()),
+                );
+            } else {
+                cards::finalize_tool_card_success_at(canvas, hosted.id, event.timestamp_ms);
+            }
+        }
+        _ => {}
+    }
+    true
+}
+
+struct HostedToolItem<'a> {
+    id: &'a str,
+    item_type: &'a str,
+    tool_name: &'a str,
+    status: &'a str,
+    error: Option<String>,
+}
+
+impl<'a> HostedToolItem<'a> {
+    fn from_value(value: &'a Value) -> Option<Self> {
+        let map = value.as_object()?;
+        let id = map.get("id").and_then(Value::as_str)?.trim();
+        let item_type = map.get("type").and_then(Value::as_str)?.trim();
+        let status = map.get("status").and_then(Value::as_str)?.trim();
+        if id.is_empty() || item_type.is_empty() || status.is_empty() {
+            return None;
+        }
+        let tool_name = hosted_tool_name(item_type)?;
+        let error = map
+            .get("error")
+            .and_then(extract_hosted_tool_error)
+            .filter(|value| !value.trim().is_empty());
+        Some(Self {
+            id,
+            item_type,
+            tool_name,
+            status,
+            error,
+        })
+    }
+
+    fn is_failed(&self) -> bool {
+        matches!(self.status, "failed" | "incomplete")
+    }
+}
+
+fn hosted_tool_name(item_type: &str) -> Option<&str> {
+    match item_type {
+        "web_search_call"
+        | "file_search_call"
+        | "code_interpreter_call"
+        | "image_generation_call"
+        | "mcp_call"
+        | "computer_call" => Some(item_type.trim_end_matches("_call")),
+        prefixed if is_prefixed_extension_item_type(prefixed) => Some(prefixed),
+        _ => None,
+    }
+}
+
+fn is_prefixed_extension_item_type(item_type: &str) -> bool {
+    let Some((slug, name)) = item_type.split_once(':') else {
+        return false;
+    };
+    !name.trim().is_empty()
+        && slug
+            .chars()
+            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_' || ch == '-')
+}
+
+fn extract_hosted_tool_error(value: &Value) -> Option<String> {
+    value
+        .as_str()
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            value
+                .get("message")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned)
+        })
+        .or_else(|| Some(value.to_string()))
 }
 
 fn provider_error_notice_text(errors: &[String], response_errors: &[String]) -> String {

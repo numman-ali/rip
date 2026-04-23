@@ -203,6 +203,10 @@ fn collapsed_hint(artifact_count: usize) -> String {
 fn tool_status_meta(status: &ToolCardStatus) -> String {
     match status {
         ToolCardStatus::Running => "running".to_string(),
+        ToolCardStatus::Succeeded {
+            duration_ms: 0,
+            exit_code: 0,
+        } => "✓ done".to_string(),
         ToolCardStatus::Succeeded { duration_ms, .. } => format!("✓ {duration_ms}ms"),
         ToolCardStatus::Failed { error } => {
             let trimmed = truncate(error, 28);

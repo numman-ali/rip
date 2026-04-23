@@ -65,6 +65,7 @@ pub struct TuiState {
     pub preferred_openresponses_model: Option<String>,
     pub preferred_openresponses_reasoning_effort: Option<String>,
     pub preferred_openresponses_reasoning_summary: Option<String>,
+    pub preferred_openresponses_web_search: Option<String>,
     pub reasoning_visible: bool,
     /// Structured canvas model — the sole source of truth for agent
     /// text, tool cards, notices, and everything else the renderer
@@ -129,6 +130,7 @@ impl TuiState {
             preferred_openresponses_model: None,
             preferred_openresponses_reasoning_effort: None,
             preferred_openresponses_reasoning_summary: None,
+            preferred_openresponses_web_search: None,
             reasoning_visible: true,
             canvas: CanvasModel::new(),
             focused_message_id: None,
@@ -419,6 +421,11 @@ impl TuiState {
             summary.filter(|value| !value.trim().is_empty());
     }
 
+    pub fn set_preferred_openresponses_web_search(&mut self, web_search: Option<String>) {
+        self.preferred_openresponses_web_search =
+            web_search.filter(|value| !value.trim().is_empty());
+    }
+
     pub fn toggle_reasoning_visibility(&mut self) {
         self.reasoning_visible = !self.reasoning_visible;
     }
@@ -510,6 +517,7 @@ impl TuiState {
         self.openresponses_model = None;
         self.preferred_openresponses_reasoning_effort = None;
         self.preferred_openresponses_reasoning_summary = None;
+        self.preferred_openresponses_web_search = None;
         self.pending_prompt = None;
         self.awaiting_response = false;
         self.status_message = None;

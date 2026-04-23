@@ -656,6 +656,10 @@ fn apply_palette_selection_in_option_mode_toggles_web_search_override() {
             .and_then(Value::as_bool),
         Some(true)
     );
+    assert_eq!(
+        state.preferred_openresponses_web_search.as_deref(),
+        Some("web on")
+    );
 }
 
 #[test]

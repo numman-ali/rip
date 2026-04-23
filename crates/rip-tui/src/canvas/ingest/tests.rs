@@ -202,6 +202,119 @@ fn provider_error_pushes_system_notice_danger() {
 }
 
 #[test]
+fn hosted_tool_output_items_render_as_tool_cards() {
+    let mut canvas = CanvasModel::new();
+    canvas.ingest(&event(
+        5,
+        200,
+        EventKind::ProviderEvent {
+            provider: "openresponses".to_string(),
+            status: ProviderEventStatus::Event,
+            event_name: Some("response.output_item.added".to_string()),
+            data: Some(json!({
+                "type": "response.output_item.added",
+                "output_index": 0,
+                "item": {
+                    "id": "ws_1",
+                    "type": "web_search_call",
+                    "status": "in_progress"
+                }
+            })),
+            raw: None,
+            errors: Vec::new(),
+            response_errors: Vec::new(),
+        },
+    ));
+    canvas.ingest(&event(
+        6,
+        245,
+        EventKind::ProviderEvent {
+            provider: "openresponses".to_string(),
+            status: ProviderEventStatus::Event,
+            event_name: Some("response.output_item.done".to_string()),
+            data: Some(json!({
+                "type": "response.output_item.done",
+                "output_index": 0,
+                "item": {
+                    "id": "ws_1",
+                    "type": "web_search_call",
+                    "status": "completed"
+                }
+            })),
+            raw: None,
+            errors: Vec::new(),
+            response_errors: Vec::new(),
+        },
+    ));
+
+    let card = canvas
+        .messages
+        .iter()
+        .find(|m| matches!(m, CanvasMessage::ToolCard { .. }))
+        .expect("hosted tool card");
+    match card {
+        CanvasMessage::ToolCard {
+            tool_id,
+            tool_name,
+            status,
+            ..
+        } => {
+            assert_eq!(tool_id, "ws_1");
+            assert_eq!(tool_name, "web_search");
+            assert!(matches!(
+                status,
+                ToolCardStatus::Succeeded {
+                    duration_ms: 45,
+                    exit_code: 0
+                }
+            ));
+        }
+        _ => unreachable!(),
+    }
+}
+
+#[test]
+fn prefixed_hosted_tool_output_items_render_as_tool_cards() {
+    let mut canvas = CanvasModel::new();
+    canvas.ingest(&event(
+        5,
+        200,
+        EventKind::ProviderEvent {
+            provider: "openresponses".to_string(),
+            status: ProviderEventStatus::Event,
+            event_name: Some("response.output_item.added".to_string()),
+            data: Some(json!({
+                "type": "response.output_item.added",
+                "output_index": 0,
+                "item": {
+                    "id": "st_tmp_1",
+                    "type": "openrouter:web_search",
+                    "status": "in_progress"
+                }
+            })),
+            raw: None,
+            errors: Vec::new(),
+            response_errors: Vec::new(),
+        },
+    ));
+
+    let card = canvas
+        .messages
+        .iter()
+        .find(|m| matches!(m, CanvasMessage::ToolCard { .. }))
+        .expect("hosted tool card");
+    match card {
+        CanvasMessage::ToolCard {
+            tool_id, tool_name, ..
+        } => {
+            assert_eq!(tool_id, "st_tmp_1");
+            assert_eq!(tool_name, "openrouter:web_search");
+        }
+        _ => unreachable!(),
+    }
+}
+
+#[test]
 fn provider_error_notice_prefers_provider_message_over_wrapped_http_json_blob() {
     let mut canvas = CanvasModel::new();
     canvas.ingest(&event(

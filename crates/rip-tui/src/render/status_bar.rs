@@ -102,6 +102,9 @@ pub(super) struct HeroContent {
     /// Active reasoning posture for the next/current turn, rendered as
     /// a compact `r high/concise` chip when present.
     pub reasoning: Option<String>,
+    /// Hosted web-search posture for the next/current turn, rendered as
+    /// a compact chip when enabled or requested-but-unavailable.
+    pub web_search: Option<String>,
     /// Aggregate run state.
     pub state: HeroState,
     /// Latest TTFT in ms (if known).
@@ -177,6 +180,7 @@ impl HeroContent {
             state.preferred_openresponses_reasoning_effort.as_deref(),
             state.preferred_openresponses_reasoning_summary.as_deref(),
         );
+        let web_search = state.preferred_openresponses_web_search.clone();
 
         let hero_state = classify_state(state);
         let ttft_ms = state.ttft_ms();
@@ -186,6 +190,7 @@ impl HeroContent {
             agent,
             model,
             reasoning,
+            web_search,
             state: hero_state,
             ttft_ms,
             status_message: state.status_message.clone(),
@@ -236,6 +241,7 @@ enum SegmentKind {
     Separator,
     State(HeroState),
     Reasoning,
+    WebSearch,
     Status,
     Ttft,
     Muted,
@@ -249,6 +255,7 @@ fn styled_segment(seg: &HeroSegment, theme: &ThemeStyles) -> Span<'static> {
         SegmentKind::Separator => theme.quiet,
         SegmentKind::State(state) => state.style(theme),
         SegmentKind::Reasoning => theme.accent,
+        SegmentKind::WebSearch => theme.accent,
         SegmentKind::Status => theme.muted,
         SegmentKind::Ttft => theme.muted,
         SegmentKind::Muted => theme.muted,
@@ -388,6 +395,16 @@ fn right_segments(hero: &HeroContent) -> Vec<HeroSegment> {
             kind: SegmentKind::Reasoning,
         });
     }
+    if let Some(web_search) = hero.web_search.as_deref().filter(|value| !value.is_empty()) {
+        segs.push(HeroSegment {
+            text: "  ".to_string(),
+            kind: SegmentKind::Muted,
+        });
+        segs.push(HeroSegment {
+            text: web_search.to_string(),
+            kind: SegmentKind::WebSearch,
+        });
+    }
     if let Some(msg) = hero.status_message.as_deref().filter(|m| !m.is_empty()) {
         let trimmed = truncate(msg, 24);
         segs.push(HeroSegment {
@@ -518,6 +535,7 @@ mod tests {
             agent: Some(agent.to_string()),
             model: model.map(|s| s.to_string()),
             reasoning: None,
+            web_search: None,
             state: HeroState::Idle,
             ttft_ms: None,
             status_message: None,
@@ -611,6 +629,15 @@ mod tests {
         let line = h.render_line(&ThemeStyles::for_theme(ThemeId::DefaultDark), 48);
         let text = line.to_string();
         assert!(text.contains("r high/concise"), "{text}");
+    }
+
+    #[test]
+    fn web_search_label_renders_when_present() {
+        let mut h = hero(Some("t"), "rip", Some("o:g"));
+        h.web_search = Some("web on".to_string());
+        let line = h.render_line(&ThemeStyles::for_theme(ThemeId::DefaultDark), 48);
+        let text = line.to_string();
+        assert!(text.contains("web on"), "{text}");
     }
 
     #[test]

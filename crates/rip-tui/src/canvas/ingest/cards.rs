@@ -94,6 +94,30 @@ pub(super) fn finalize_tool_card_success(
     }
 }
 
+pub(super) fn finalize_tool_card_success_at(
+    canvas: &mut CanvasModel,
+    tool_id: &str,
+    timestamp_ms: u64,
+) {
+    for message in canvas.messages.iter_mut().rev() {
+        if let CanvasMessage::ToolCard {
+            tool_id: id,
+            status,
+            started_at_ms,
+            ..
+        } = message
+        {
+            if id == tool_id {
+                *status = ToolCardStatus::Succeeded {
+                    duration_ms: timestamp_ms.saturating_sub(*started_at_ms),
+                    exit_code: 0,
+                };
+                return;
+            }
+        }
+    }
+}
+
 pub(super) fn finalize_tool_card_failure(canvas: &mut CanvasModel, tool_id: &str, error: &str) {
     for message in canvas.messages.iter_mut().rev() {
         if let CanvasMessage::ToolCard {

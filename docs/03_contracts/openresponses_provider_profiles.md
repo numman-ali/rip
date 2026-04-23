@@ -30,6 +30,7 @@ Rules
 - Provider/model quirks are handled at the provider boundary, not in UI/surface code.
 - Validation-only normalization is allowed only through a versioned compatibility profile.
 - Validation-only normalization must preserve raw provider payloads in `provider_event` frames.
+- Provider-prefixed extension items are accepted as opaque item resources when they satisfy the OpenResponses extension contract (`id`, prefixed `type`, `status`); validation may normalize a copy to a schema-backed hosted-tool item, but raw payloads remain unchanged.
 - Known provider/model differences must be captured in both code and docs.
 - Real downstream failures must still surface as recoverable provider errors; compat-normalized success paths must not.
 
@@ -321,6 +322,8 @@ Runtime ownership
   - outbound request composition proof for auth + custom headers + tool-choice/max-tool-call controls at the HTTP boundary
   - typed runtime/config surfaces for reasoning and `include`, both resolved through requested-vs-effective compatibility logic before request emission
   - seeded per-value `include` subsets in the compatibility layer, so `config.doctor` can distinguish native/compat/unknown/unsupported include values instead of reporting one blunt route-wide include status
+  - provider-prefixed hosted-tool item validation for streaming events, completed response resources, and item params (`openrouter:web_search` live shape accepted without false provider errors)
+  - fullscreen TUI cmux proof that an OpenRouter `openrouter:web_search` run shows `web on` in the hero and a collapsible hosted-tool card instead of surfacing schema noise
 - The next expansion should cover:
   - request-field quirks (`store`, `background`, `service_tier`, `include`, `parallel_tool_calls`)
   - tool/runtime quirks (`tool_choice`, `allowed_tools`, hosted-tool behavior, tool schema strictness, MCP headers)
