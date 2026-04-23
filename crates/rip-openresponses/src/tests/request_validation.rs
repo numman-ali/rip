@@ -104,8 +104,29 @@ fn validate_tool_param_accepts_all_variants() {
 }
 
 #[test]
+fn validate_tool_param_accepts_provider_extension_tools() {
+    let value = serde_json::json!({
+        "type": "openrouter:web_search",
+        "parameters": {
+            "search_context_size": "medium",
+            "max_results": 3
+        }
+    });
+    let errors = validate_responses_tool_param(&value)
+        .err()
+        .unwrap_or_default();
+    assert!(errors.is_empty(), "errors: {errors:?}");
+}
+
+#[test]
 fn validate_tool_param_rejects_invalid() {
     let value = serde_json::json!(42);
+    assert!(validate_responses_tool_param(&value).is_err());
+}
+
+#[test]
+fn validate_tool_param_rejects_unprefixed_unknown_tools() {
+    let value = serde_json::json!({ "type": "web_search_custom" });
     assert!(validate_responses_tool_param(&value).is_err());
 }
 

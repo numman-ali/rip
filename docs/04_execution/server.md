@@ -72,7 +72,7 @@ Provider config (OpenResponses, Phase 1)
   - `RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE` (optional; if set, append this user message after tool outputs in follow-up requests for provider compatibility)
   - `RIP_OPENRESPONSES_STATELESS_HISTORY` (optional; if set, follow-ups resend full input history instead of using `previous_response_id`)
   - `RIP_OPENRESPONSES_PARALLEL_TOOL_CALLS` (optional; if set, request parallel tool calls; execution remains sequential in Phase 1)
-  - `RIP_OPENRESPONSES_WEB_SEARCH` (optional; if set, enables/disables canonical hosted `web_search`)
+  - `RIP_OPENRESPONSES_WEB_SEARCH` (optional; if set, enables/disables hosted web search; OpenAI uses canonical `web_search`, OpenRouter uses `openrouter:web_search`)
   - `RIP_OPENRESPONSES_WEB_SEARCH_CONTEXT_SIZE` (optional; `low|medium|high`)
   - `RIP_OPENRESPONSES_WEB_SEARCH_EXTERNAL_WEB_ACCESS` (optional; if false, requests cache/offline-only web search where supported)
   - Observability (opt-in; writes prompt/tool definitions into artifact blobs):

@@ -610,7 +610,7 @@ fn generic_route_forwards_web_search_with_unverified_field_warnings() {
 }
 
 #[test]
-fn openrouter_route_drops_canonical_web_search_with_warning() {
+fn openrouter_route_uses_provider_extension_web_search_and_drops_unsupported_external_access() {
     let resolved = resolve_openresponses_compat_profile(
         Some("openrouter"),
         "https://openrouter.ai/api/v1/responses",
@@ -629,7 +629,7 @@ fn openrouter_route_drops_canonical_web_search_with_warning() {
         }),
     }));
 
-    assert_eq!(web_search.support.request, CompatLevel::Unsupported);
+    assert_eq!(web_search.support.request, CompatLevel::Compat);
     assert_eq!(web_search.support.search_context_size, CompatLevel::Compat);
     assert_eq!(
         web_search.support.external_web_access,
@@ -638,10 +638,24 @@ fn openrouter_route_drops_canonical_web_search_with_warning() {
     assert_eq!(web_search.support.user_location, CompatLevel::Compat);
     assert_eq!(
         web_search.effective,
-        Some(OpenResponsesWebSearchConfig::disabled())
+        Some(OpenResponsesWebSearchConfig {
+            enabled: true,
+            search_context_size: Some(SearchContextSize::Medium),
+            external_web_access: None,
+            user_location: Some(OpenResponsesApproximateLocation {
+                country: Some("US".to_string()),
+                region: None,
+                city: None,
+                timezone: None,
+            }),
+        })
     );
     assert!(web_search
         .warnings
         .iter()
-        .any(|warning| warning.contains("canonical web_search request surface")));
+        .any(|warning| warning.contains("external_web_access is not supported")));
+    assert!(!web_search
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("user_location")));
 }

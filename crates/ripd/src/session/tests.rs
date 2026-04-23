@@ -1609,7 +1609,7 @@ data: [DONE]\n\n";
 }
 
 #[tokio::test]
-async fn run_openresponses_agent_loop_emits_web_search_compat_warning_for_openrouter() {
+async fn run_openresponses_agent_loop_sends_openrouter_web_search_extension() {
     use axum::extract::{Json, State};
     use axum::http::header::CONTENT_TYPE;
     use axum::routing::post;
@@ -1722,18 +1722,44 @@ data: [DONE]\n\n";
         value
             .get("message")
             .and_then(|value| value.as_str())
-            .is_some_and(|text| text.contains("canonical web_search request surface"))
+            .is_some_and(|text| text.contains("external_web_access is not supported"))
+    }));
+    assert!(!warning_frames.iter().any(|value| {
+        value
+            .get("message")
+            .and_then(|value| value.as_str())
+            .is_some_and(|text| text.contains("user_location"))
     }));
 
     let request = capture.request.lock().await.clone().expect("request body");
-    assert!(request
+    let tools = request
         .get("tools")
         .and_then(|value| value.as_array())
-        .is_some_and(|tools| {
-            tools
-                .iter()
-                .all(|tool| tool.get("type").and_then(|value| value.as_str()) != Some("web_search"))
-        }));
+        .expect("tools array");
+    assert!(tools
+        .iter()
+        .all(|tool| tool.get("type").and_then(|value| value.as_str()) != Some("web_search")));
+    let web_search = tools
+        .iter()
+        .find(|tool| {
+            tool.get("type").and_then(|value| value.as_str()) == Some("openrouter:web_search")
+        })
+        .expect("openrouter web_search tool");
+    assert_eq!(
+        web_search
+            .get("parameters")
+            .and_then(|value| value.get("search_context_size"))
+            .and_then(|value| value.as_str()),
+        Some("medium")
+    );
+    assert_eq!(
+        web_search
+            .get("parameters")
+            .and_then(|value| value.get("user_location"))
+            .and_then(|value| value.get("country"))
+            .and_then(|value| value.as_str()),
+        Some("US")
+    );
 }
 
 #[tokio::test]

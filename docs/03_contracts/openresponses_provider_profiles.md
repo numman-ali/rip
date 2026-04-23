@@ -117,7 +117,7 @@ Runtime ownership
   - The resolved `provider_id` is the primary selector when RIP knows it from config/route resolution; endpoint heuristics are only a fallback for generic direct-provider wiring and env-only setups.
   - `GET /config/doctor` and `rip config doctor` now surface the resolved provider profile, a structured conversation object (`requested`, `effective`, `support`, `warnings`), the effective validation posture, any curated model overlay for the active route, and route-specific reasoning/include/web-search support objects with requested vs effective values plus downgrade/unverified warnings.
   - `crates/ripd/src/provider_openresponses.rs` now consumes the typed reasoning config surface (`reasoning.effort`, `reasoning.summary`) through the compatibility layer, so the emitted OpenResponses `reasoning` request object is the effective route-safe value rather than the raw requested value.
-  - `crates/ripd/src/provider_openresponses.rs` also consumes the typed canonical `web_search` config through the compatibility layer, so OpenAI/native routes receive schema-backed `tools: [{type:"web_search", ...}]` while non-canonical routes can be deliberately degraded.
+  - `crates/ripd/src/provider_openresponses.rs` also consumes the typed `web_search` config through the compatibility layer, so OpenAI/native routes receive schema-backed `tools: [{type:"web_search", ...}]` while OpenRouter receives its documented provider extension `tools: [{type:"openrouter:web_search", ...}]`.
   - When a run starts and RIP had to degrade a requested conversation, reasoning, include, or web-search setting, the session stream now emits a structured compat warning frame (`rip.compat.warning`) before the first provider request. Surfaces may render that as a runtime notice, but the warning source remains the provider-boundary compatibility layer.
 - This slice is intentionally modest in runtime effect:
   - current runtime selection is used for boundary validation behavior first
@@ -193,8 +193,8 @@ Runtime ownership
     - `message.input_image.image_url`, `computer_call_output.output.image_url`: `unknown`
     - `web_search_call.results`, `web_search_call.action.sources`, `message.output_text.logprobs`: `unsupported`
   - The current OpenRouter docs explicitly advertise reasoning support, tool calling, parallel tool execution, provider-specific web search, and a stateless transformation layer. RIP records those facts here, but only treats the fields as `native` or `compat` where they are actually curated.
-  - OpenRouter web search is provider-specific today. Current docs say the older `plugins: [{id:"web"}]` approach is deprecated and point to an `openrouter:web_search` server tool. That is valid future `openresponses.extensions` work, but it is not the canonical OpenResponses `web_search` tool RIP implements in this slice.
-  - If an operator requests canonical `web_search` on OpenRouter, RIP omits the tool and emits a `rip.compat.warning` instead of silently translating it to a provider extension.
+  - OpenRouter web search is provider-specific today. Current docs say the older `plugins: [{id:"web"}]` and `:online` approaches are deprecated and point to an `openrouter:web_search` server tool.
+  - RIP maps the high-level hosted-web-search capability to that provider extension only inside the OpenRouter profile. It does not pretend OpenRouter supports canonical `web_search`; it maps documented extension parameters such as `search_context_size` and `user_location`, and omits unsupported canonical fields such as `external_web_access` with explicit warnings.
   - `store` is recorded as `unsupported` because the provider posture is stateless and does not preserve provider-side conversation state between requests.
   - Images/files/video stay `unknown` here until they are proven on the Responses endpoint in RIP’s own integration coverage and, where needed, narrowed by model overlays.
 
@@ -287,9 +287,10 @@ Runtime ownership
     - `user_location`: `native`
   - OpenRouter:
     - canonical `web_search` request: `unsupported`
-    - provider-specific `openrouter:web_search`: tracked as future `openresponses.extensions` work
-    - `external_web_access`: `unsupported` for the canonical request path
-    - `search_context_size` / `user_location`: not sent because the canonical tool itself is omitted
+    - provider-specific `openrouter:web_search`: `compat`
+    - `search_context_size`: `compat` as `parameters.search_context_size`
+    - `user_location`: `compat` as `parameters.user_location`
+    - `external_web_access`: `unsupported`
   - Generic:
     - forwarded as `unknown` with an explicit unverified warning
 - Surface parity:
@@ -299,7 +300,7 @@ Runtime ownership
   - remote: same override body travels over server mode
   - TypeScript SDK: typed `webSearch` controls over HTTP; exec transport maps fields supported by CLI flags and rejects `user_location` with a clear error
 - Follow-up:
-  - add first-class provider-extension hosted tools for OpenRouter (`openrouter:web_search`) under `openresponses.extensions`
+  - add richer OpenRouter provider-extension controls for `engine`, `max_results`, `max_total_results`, `allowed_domains`, and `excluded_domains`
   - add richer TUI controls for context size, live/cached access, and approximate location
   - add `filters` only after the OpenResponses split schema includes it or after an explicit provider-extension decision
   - this keeps the OpenResponses spec canonical while preventing known-bad provider/model values from leaking through as avoidable downstream errors

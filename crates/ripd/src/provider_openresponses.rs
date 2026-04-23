@@ -439,8 +439,8 @@ fn base_streaming_builder(config: &OpenResponsesConfig) -> CreateResponseBuilder
 
 fn tools_for_request(config: &OpenResponsesConfig) -> Vec<Value> {
     let mut tools = builtin_function_tools();
-    if let Some(tool) = effective_web_search(config).and_then(|cfg| web_search_tool_value(&cfg)) {
-        tools.push(tool);
+    if let Some(web_search) = effective_web_search_tool(config) {
+        tools.push(web_search_tool_value(&web_search));
     }
     tools
 }
@@ -465,18 +465,48 @@ fn effective_reasoning(config: &OpenResponsesConfig) -> Option<OpenResponsesReas
     .effective
 }
 
-fn effective_web_search(config: &OpenResponsesConfig) -> Option<OpenResponsesWebSearchConfig> {
-    crate::openresponses_compat::resolve_openresponses_compat_profile(
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct EffectiveWebSearchTool {
+    config: OpenResponsesWebSearchConfig,
+    surface: WebSearchToolSurface,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WebSearchToolSurface {
+    Canonical,
+    OpenRouterServerTool,
+}
+
+fn effective_web_search_tool(config: &OpenResponsesConfig) -> Option<EffectiveWebSearchTool> {
+    let compat = crate::openresponses_compat::resolve_openresponses_compat_profile(
         config.provider_id.as_deref(),
         &config.endpoint,
         config.model.as_deref(),
-    )
-    .web_search(config.web_search.as_ref())
-    .effective
-    .filter(OpenResponsesWebSearchConfig::is_enabled)
+    );
+    let web_search = compat.web_search(config.web_search.as_ref());
+    let config = web_search
+        .effective
+        .filter(OpenResponsesWebSearchConfig::is_enabled)?;
+    let surface = if compat.provider.provider_id == "openrouter"
+        && web_search.support.request == crate::openresponses_compat::CompatLevel::Compat
+    {
+        WebSearchToolSurface::OpenRouterServerTool
+    } else {
+        WebSearchToolSurface::Canonical
+    };
+    Some(EffectiveWebSearchTool { config, surface })
 }
 
-fn web_search_tool_value(web_search: &OpenResponsesWebSearchConfig) -> Option<Value> {
+fn web_search_tool_value(web_search: &EffectiveWebSearchTool) -> Value {
+    match web_search.surface {
+        WebSearchToolSurface::Canonical => canonical_web_search_tool_value(&web_search.config),
+        WebSearchToolSurface::OpenRouterServerTool => {
+            openrouter_web_search_tool_value(&web_search.config)
+        }
+    }
+}
+
+fn canonical_web_search_tool_value(web_search: &OpenResponsesWebSearchConfig) -> Value {
     let mut obj = serde_json::Map::new();
     obj.insert("type".to_string(), Value::String("web_search".to_string()));
     if let Some(search_context_size) = web_search.search_context_size {
@@ -499,7 +529,33 @@ fn web_search_tool_value(web_search: &OpenResponsesWebSearchConfig) -> Option<Va
         obj.insert("user_location".to_string(), user_location);
     }
 
-    Some(Value::Object(obj))
+    Value::Object(obj)
+}
+
+fn openrouter_web_search_tool_value(web_search: &OpenResponsesWebSearchConfig) -> Value {
+    let mut obj = serde_json::Map::new();
+    obj.insert(
+        "type".to_string(),
+        Value::String("openrouter:web_search".to_string()),
+    );
+    let mut parameters = serde_json::Map::new();
+    if let Some(search_context_size) = web_search.search_context_size {
+        parameters.insert(
+            "search_context_size".to_string(),
+            serde_json::to_value(search_context_size).expect("search_context_size serializes"),
+        );
+    }
+    if let Some(user_location) = web_search
+        .user_location
+        .as_ref()
+        .and_then(OpenResponsesApproximateLocation::to_value)
+    {
+        parameters.insert("user_location".to_string(), user_location);
+    }
+    if !parameters.is_empty() {
+        obj.insert("parameters".to_string(), Value::Object(parameters));
+    }
+    Value::Object(obj)
 }
 
 pub(crate) fn is_openrouter_responses_endpoint(endpoint: &str) -> bool {
@@ -1485,7 +1541,7 @@ mod tests {
     }
 
     #[test]
-    fn build_streaming_request_omits_canonical_web_search_for_openrouter() {
+    fn build_streaming_request_sends_openrouter_web_search_extension() {
         let config = OpenResponsesConfig {
             provider_id: Some("openrouter".to_string()),
             endpoint: "https://openrouter.ai/api/v1/responses".to_string(),
@@ -1511,6 +1567,11 @@ mod tests {
             parallel_tool_calls: false,
         };
         let payload = build_streaming_request(&config, "what happened today?");
+        assert!(
+            payload.errors().is_empty(),
+            "errors: {:?}",
+            payload.errors()
+        );
         let tools = payload
             .body()
             .get("tools")
@@ -1519,6 +1580,30 @@ mod tests {
         assert!(tools
             .iter()
             .all(|tool| tool.get("type").and_then(|value| value.as_str()) != Some("web_search")));
+        let web_search = tools
+            .iter()
+            .find(|tool| {
+                tool.get("type").and_then(|value| value.as_str()) == Some("openrouter:web_search")
+            })
+            .expect("openrouter web_search tool");
+        assert_eq!(
+            web_search
+                .get("parameters")
+                .and_then(|value| value.get("search_context_size"))
+                .and_then(|value| value.as_str()),
+            Some("medium")
+        );
+        assert!(web_search
+            .get("parameters")
+            .is_none_or(|value| value.get("external_web_access").is_none()));
+        assert_eq!(
+            web_search
+                .get("parameters")
+                .and_then(|value| value.get("user_location"))
+                .and_then(|value| value.get("country"))
+                .and_then(|value| value.as_str()),
+            Some("US")
+        );
     }
 
     #[test]

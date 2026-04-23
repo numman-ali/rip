@@ -336,7 +336,7 @@ async fn config_doctor_surfaces_openrouter_compat_profile() {
             .and_then(|value| value.get("support"))
             .and_then(|value| value.get("request"))
             .and_then(|value| value.as_str()),
-        Some("unsupported")
+        Some("compat")
     );
     assert!(payload
         .get("openresponses")
@@ -347,8 +347,40 @@ async fn config_doctor_surfaces_openrouter_compat_profile() {
         .is_some_and(|warnings| warnings.iter().any(|warning| {
             warning
                 .as_str()
-                .is_some_and(|text| text.contains("canonical web_search request surface"))
+                .is_some_and(|text| text.contains("external_web_access is not supported"))
         })));
+    assert!(!payload
+        .get("openresponses")
+        .and_then(|value| value.get("compat"))
+        .and_then(|value| value.get("web_search"))
+        .and_then(|value| value.get("warnings"))
+        .and_then(|value| value.as_array())
+        .is_some_and(|warnings| warnings.iter().any(|warning| {
+            warning
+                .as_str()
+                .is_some_and(|text| text.contains("user_location"))
+        })));
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("compat"))
+            .and_then(|value| value.get("web_search"))
+            .and_then(|value| value.get("effective"))
+            .and_then(|value| value.get("search_context_size"))
+            .and_then(|value| value.as_str()),
+        Some("medium")
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("compat"))
+            .and_then(|value| value.get("web_search"))
+            .and_then(|value| value.get("effective"))
+            .and_then(|value| value.get("user_location"))
+            .and_then(|value| value.get("country"))
+            .and_then(|value| value.as_str()),
+        Some("US")
+    );
     assert_eq!(
         payload
             .get("openresponses")

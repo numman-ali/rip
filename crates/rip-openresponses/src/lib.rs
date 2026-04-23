@@ -171,10 +171,35 @@ pub fn validate_create_response_body(value: &Value) -> Result<(), Vec<String>> {
 }
 
 pub fn validate_responses_tool_param(value: &Value) -> Result<(), Vec<String>> {
+    if is_provider_extension_tool_param(value) {
+        return Ok(());
+    }
+
     match TOOL_PARAM_VALIDATOR.validate(value) {
         Ok(_) => Ok(()),
         Err(errors) => Err(errors.map(|e| e.to_string()).collect()),
     }
+}
+
+fn is_provider_extension_tool_param(value: &Value) -> bool {
+    let Some(map) = value.as_object() else {
+        return false;
+    };
+    let Some(tool_type) = map.get("type").and_then(Value::as_str) else {
+        return false;
+    };
+    let Some((slug, name)) = tool_type.split_once(':') else {
+        return false;
+    };
+    is_extension_slug(slug) && !name.trim().is_empty()
+}
+
+fn is_extension_slug(value: &str) -> bool {
+    let value = value.trim();
+    !value.is_empty()
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_' || ch == '-')
 }
 
 pub fn validate_tool_choice_param(value: &Value) -> Result<(), Vec<String>> {

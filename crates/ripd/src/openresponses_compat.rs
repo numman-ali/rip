@@ -938,7 +938,7 @@ fn web_search_support_rule(resolved: ResolvedOpenResponsesCompatProfile) -> WebS
             user_location: CompatLevel::Native,
         },
         "openrouter" => WebSearchSupportRule {
-            request: CompatLevel::Unsupported,
+            request: CompatLevel::Compat,
             search_context_size: CompatLevel::Compat,
             external_web_access: CompatLevel::Unsupported,
             user_location: CompatLevel::Compat,
