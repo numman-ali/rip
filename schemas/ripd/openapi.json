@@ -1793,6 +1793,40 @@
               "string",
               "null"
             ]
+          },
+          "web_search": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/OpenResponsesWebSearchConfig"
+              }
+            ]
+          },
+          "web_search_enabled_source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "web_search_external_web_access_source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "web_search_search_context_size_source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "web_search_user_location_source": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -1804,6 +1838,7 @@
           "effective_validation",
           "provider",
           "include",
+          "web_search",
           "reasoning"
         ],
         "properties": {
@@ -1834,6 +1869,9 @@
           },
           "reasoning": {
             "$ref": "#/components/schemas/ResolvedOpenResponsesReasoning"
+          },
+          "web_search": {
+            "$ref": "#/components/schemas/ResolvedOpenResponsesWebSearch"
           }
         }
       },
@@ -2125,6 +2163,35 @@
           }
         }
       },
+      "OpenResponsesApproximateLocation": {
+        "type": "object",
+        "properties": {
+          "city": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "country": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "timezone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "OpenResponsesInclude": {
         "type": "string",
         "enum": [
@@ -2298,6 +2365,100 @@
             "items": {
               "$ref": "#/components/schemas/ReasoningSummary"
             }
+          }
+        }
+      },
+      "OpenResponsesWebSearchConfig": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "external_web_access": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "search_context_size": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchContextSize"
+              }
+            ]
+          },
+          "user_location": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/OpenResponsesApproximateLocation"
+              }
+            ]
+          }
+        }
+      },
+      "OpenResponsesWebSearchOverride": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "external_web_access": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "search_context_size": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchContextSize"
+              }
+            ]
+          },
+          "user_location": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/OpenResponsesApproximateLocation"
+              }
+            ]
+          }
+        }
+      },
+      "OpenResponsesWebSearchSupport": {
+        "type": "object",
+        "required": [
+          "request",
+          "search_context_size",
+          "external_web_access",
+          "user_location"
+        ],
+        "properties": {
+          "external_web_access": {
+            "$ref": "#/components/schemas/CompatLevel"
+          },
+          "request": {
+            "$ref": "#/components/schemas/CompatLevel"
+          },
+          "search_context_size": {
+            "$ref": "#/components/schemas/CompatLevel"
+          },
+          "user_location": {
+            "$ref": "#/components/schemas/CompatLevel"
           }
         }
       },
@@ -2610,6 +2771,51 @@
             }
           }
         }
+      },
+      "ResolvedOpenResponsesWebSearch": {
+        "type": "object",
+        "required": [
+          "support"
+        ],
+        "properties": {
+          "effective": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/OpenResponsesWebSearchConfig"
+              }
+            ]
+          },
+          "requested": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/OpenResponsesWebSearchConfig"
+              }
+            ]
+          },
+          "support": {
+            "$ref": "#/components/schemas/OpenResponsesWebSearchSupport"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "SearchContextSize": {
+        "type": "string",
+        "enum": [
+          "low",
+          "medium",
+          "high"
+        ]
       },
       "SessionCreated": {
         "type": "object",
@@ -3147,6 +3353,16 @@
               "boolean",
               "null"
             ]
+          },
+          "web_search": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/OpenResponsesWebSearchOverride"
+              }
+            ]
           }
         }
       },
@@ -3239,7 +3455,8 @@
           "missing_item_ids",
           "missing_response_user",
           "reasoning_text_events",
-          "missing_reasoning_summary"
+          "missing_reasoning_summary",
+          "response_web_search_tools"
         ],
         "properties": {
           "missing_item_ids": {
@@ -3252,6 +3469,9 @@
             "type": "boolean"
           },
           "reasoning_text_events": {
+            "type": "boolean"
+          },
+          "response_web_search_tools": {
             "type": "boolean"
           }
         }

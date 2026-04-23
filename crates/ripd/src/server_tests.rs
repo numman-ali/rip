@@ -66,6 +66,7 @@ fn build_test_app_with_openresponses_provider_profile(
             tool_choice: ToolChoiceParam::auto(),
             include: Vec::new(),
             reasoning: None,
+            web_search: None,
             followup_user_message: None,
             stateless_history,
             parallel_tool_calls: false,

@@ -99,8 +99,11 @@ pub(crate) async fn thread_post_message(
     let origin = origin.unwrap_or_else(|| "server".to_string());
 
     let store = state.engine.continuities();
-    let openresponses_override =
-        resolve_session_openresponses_override(store.workspace_root(), openresponses.as_ref());
+    let openresponses_override = resolve_session_openresponses_override(
+        store.workspace_root(),
+        openresponses.as_ref(),
+        state.engine.default_openresponses().as_ref(),
+    );
     let message_id = match store.append_message(
         &thread_id,
         actor_id.clone(),

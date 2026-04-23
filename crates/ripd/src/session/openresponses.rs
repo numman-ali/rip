@@ -158,11 +158,13 @@ pub(super) async fn run_openresponses_agent_loop(
     let conversation = compat.conversation(config.stateless_history);
     let include = compat.include(&config.include);
     let reasoning = compat.reasoning(config.reasoning.as_ref());
+    let web_search = compat.web_search(config.web_search.as_ref());
     let compat_warnings: Vec<String> = conversation
         .warnings
         .iter()
         .chain(include.warnings.iter())
         .chain(reasoning.warnings.iter())
+        .chain(web_search.warnings.iter())
         .cloned()
         .collect();
     emit_compat_warnings(sink, session_id, seq, compat_warnings).await;

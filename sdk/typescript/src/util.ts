@@ -4,6 +4,9 @@ export type RipRunArgsOptions = {
   server?: string;
   detach?: boolean;
   include?: readonly string[];
+  webSearchEnabled?: boolean;
+  webSearchContextSize?: "low" | "medium" | "high";
+  webSearchExternalWebAccess?: boolean;
   extraArgs?: string[];
 };
 
@@ -17,6 +20,17 @@ export function buildRipRunArgs(prompt: string, options: RipRunArgsOptions = {})
   }
   for (const include of options.include ?? []) {
     args.push("--include", include);
+  }
+  if (options.webSearchEnabled === true) {
+    args.push("--web-search");
+  } else if (options.webSearchEnabled === false) {
+    args.push("--no-web-search");
+  }
+  if (options.webSearchContextSize) {
+    args.push("--web-search-context-size", options.webSearchContextSize);
+  }
+  if (typeof options.webSearchExternalWebAccess === "boolean") {
+    args.push("--web-search-external-web-access", String(options.webSearchExternalWebAccess));
   }
   if (options.extraArgs?.length) {
     args.push(...options.extraArgs);

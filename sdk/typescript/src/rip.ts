@@ -23,6 +23,7 @@ import {
   buildRipThreadProviderCursorRotateArgs,
   buildRipThreadProviderCursorStatusArgs,
 } from "./util.js";
+import type { RipRunArgsOptions } from "./util.js";
 
 export type RipTransport = "exec" | "http";
 
@@ -45,6 +46,7 @@ export type RipRunOptions = {
   executablePath?: string;
   signal?: AbortSignal;
   include?: readonly RipOpenResponsesInclude[];
+  webSearch?: boolean | RipOpenResponsesWebSearchConfig;
   extraArgs?: string[];
   transport?: RipTransport;
   headers?: Record<string, string>;
@@ -65,10 +67,25 @@ export type RipCompatLevel = "native" | "compat" | "unsupported" | "unknown";
 export type RipConversationStrategy = "previous_response_id" | "stateless_history" | "config_driven";
 export type RipReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
 export type RipReasoningSummary = "concise" | "detailed" | "auto";
+export type RipSearchContextSize = "low" | "medium" | "high";
 
 export type RipOpenResponsesReasoningConfig = {
   effort?: RipReasoningEffort;
   summary?: RipReasoningSummary;
+};
+
+export type RipOpenResponsesApproximateLocation = {
+  country?: string;
+  region?: string;
+  city?: string;
+  timezone?: string;
+};
+
+export type RipOpenResponsesWebSearchConfig = {
+  enabled?: boolean;
+  search_context_size?: RipSearchContextSize;
+  external_web_access?: boolean;
+  user_location?: RipOpenResponsesApproximateLocation | null;
 };
 
 export type RipConfigDoctorSource = {
@@ -173,6 +190,17 @@ export type RipConfigDoctorOpenResponsesCompat = {
     };
     warnings: string[];
   };
+  web_search: {
+    requested?: RipOpenResponsesWebSearchConfig | null;
+    effective?: RipOpenResponsesWebSearchConfig | null;
+    support: {
+      request: RipCompatLevel;
+      search_context_size: RipCompatLevel;
+      external_web_access: RipCompatLevel;
+      user_location: RipCompatLevel;
+    };
+    warnings: string[];
+  };
 };
 
 export type RipConfigDoctorOpenResponses = {
@@ -193,6 +221,11 @@ export type RipConfigDoctorOpenResponses = {
   parallel_tool_calls_source?: string | null;
   include: RipOpenResponsesInclude[];
   include_source?: string | null;
+  web_search?: RipOpenResponsesWebSearchConfig | null;
+  web_search_enabled_source?: string | null;
+  web_search_search_context_size_source?: string | null;
+  web_search_external_web_access_source?: string | null;
+  web_search_user_location_source?: string | null;
   followup_user_message?: string | null;
   followup_user_message_source?: string | null;
   reasoning?: RipOpenResponsesReasoningConfig | null;
@@ -259,6 +292,10 @@ export type RipThreadPostMessageRequest = {
   content: string;
   actor_id?: string;
   origin?: string;
+  openresponses?: {
+    include?: readonly RipOpenResponsesInclude[];
+    web_search?: RipOpenResponsesWebSearchConfig;
+  };
 };
 
 export type RipThreadPostMessageResponse = {
@@ -594,7 +631,14 @@ export class Rip {
       const server = options.server ?? this.base.server;
       if (!server) throw new Error("runDetached with http transport requires server");
       const thread = await this.threadEnsure({ ...options, server });
-      const posted = await this.threadPostMessage(thread.thread_id, { content: prompt }, { ...options, server });
+      const posted = await this.threadPostMessage(
+        thread.thread_id,
+        {
+          content: prompt,
+          openresponses: buildOpenResponsesHttpOverride(options),
+        },
+        { ...options, server },
+      );
       return {
         ...posted,
         server,
@@ -607,6 +651,7 @@ export class Rip {
         server: options.server,
         detach: true,
         include: options.include,
+        ...buildWebSearchCliArgs(options.webSearch),
         extraArgs: options.extraArgs,
       }),
       options,
@@ -631,6 +676,7 @@ export class Rip {
     const args = buildRipRunArgs(prompt, {
       server: options.server,
       include: options.include,
+      ...buildWebSearchCliArgs(options.webSearch),
       extraArgs: options.extraArgs,
     });
 
@@ -769,7 +815,7 @@ export class Rip {
 
     const inputBody = JSON.stringify({
       input: prompt,
-      openresponses: options.include?.length ? { include: [...options.include] } : undefined,
+      openresponses: buildOpenResponsesHttpOverride(options),
     });
     await httpRequest(config, `/sessions/${sessionId}/input`, {
       method: "POST",
@@ -1010,7 +1056,12 @@ export class Rip {
       const server = options.server ?? this.base.server;
       if (!server) throw new Error("threadPostMessage with http transport requires server");
       const config = this.httpConfig(server, options);
-      const body = JSON.stringify({ content: request.content, actor_id: actorId, origin });
+      const body = JSON.stringify({
+        content: request.content,
+        actor_id: actorId,
+        origin,
+        openresponses: request.openresponses,
+      });
       const out = await httpJson(config, `/threads/${threadId}/messages`, {
         method: "POST",
         signal: options.signal,
@@ -1871,6 +1922,59 @@ export class Rip {
       fetch: options.fetch ?? this.base.fetch,
     };
   }
+}
+
+function buildOpenResponsesHttpOverride(
+  options: Pick<RipRunOptions, "include" | "webSearch">,
+): { include?: RipOpenResponsesInclude[]; web_search?: RipOpenResponsesWebSearchConfig } | undefined {
+  const include = options.include?.length ? [...options.include] : undefined;
+  const webSearch = normalizeWebSearchOption(options.webSearch);
+  if (!include && !webSearch) {
+    return undefined;
+  }
+  return {
+    include,
+    web_search: webSearch,
+  };
+}
+
+function buildWebSearchCliArgs(
+  webSearch: RipRunOptions["webSearch"],
+): Pick<RipRunArgsOptions, "webSearchEnabled" | "webSearchContextSize" | "webSearchExternalWebAccess"> {
+  const normalized = normalizeWebSearchOption(webSearch);
+  if (normalized?.user_location) {
+    throw new Error("exec transport does not yet support webSearch.user_location; use http transport or config");
+  }
+  return {
+    webSearchEnabled: normalized?.enabled,
+    webSearchContextSize: normalized?.search_context_size,
+    webSearchExternalWebAccess: normalized?.external_web_access,
+  };
+}
+
+function normalizeWebSearchOption(
+  webSearch: RipRunOptions["webSearch"],
+): RipOpenResponsesWebSearchConfig | undefined {
+  if (typeof webSearch === "boolean") {
+    return { enabled: webSearch };
+  }
+  if (!webSearch) {
+    return undefined;
+  }
+  const normalized: RipOpenResponsesWebSearchConfig = {};
+  if (typeof webSearch.enabled === "boolean") {
+    normalized.enabled = webSearch.enabled;
+  }
+  if (webSearch.search_context_size) {
+    normalized.search_context_size = webSearch.search_context_size;
+  }
+  if (typeof webSearch.external_web_access === "boolean") {
+    normalized.external_web_access = webSearch.external_web_access;
+  }
+  if (webSearch.user_location) {
+    normalized.user_location = { ...webSearch.user_location };
+  }
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
 
 function mergeEnv(...envs: Array<NodeJS.ProcessEnv | undefined>): Record<string, string> {

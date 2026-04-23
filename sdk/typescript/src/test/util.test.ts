@@ -63,6 +63,40 @@ test("buildRipRunArgs includes repeated --include values when provided", () => {
   ]);
 });
 
+test("buildRipRunArgs includes web search flags when provided", () => {
+  const args = buildRipRunArgs("hello", {
+    webSearchEnabled: true,
+    webSearchContextSize: "high",
+    webSearchExternalWebAccess: false,
+  });
+  assert.deepEqual(args, [
+    "run",
+    "hello",
+    "--headless",
+    "true",
+    "--view",
+    "raw",
+    "--web-search",
+    "--web-search-context-size",
+    "high",
+    "--web-search-external-web-access",
+    "false",
+  ]);
+});
+
+test("buildRipRunArgs includes --no-web-search when explicitly disabled", () => {
+  const args = buildRipRunArgs("hello", { webSearchEnabled: false });
+  assert.deepEqual(args, [
+    "run",
+    "hello",
+    "--headless",
+    "true",
+    "--view",
+    "raw",
+    "--no-web-search",
+  ]);
+});
+
 test("buildRipConfigDoctorArgs includes --server when provided", () => {
   const args = buildRipConfigDoctorArgs("http://127.0.0.1:7341");
   assert.deepEqual(args, ["config", "--server", "http://127.0.0.1:7341", "doctor"]);

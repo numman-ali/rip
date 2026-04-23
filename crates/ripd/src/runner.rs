@@ -129,6 +129,10 @@ impl SessionEngine {
         }
     }
 
+    pub fn default_openresponses(&self) -> Option<OpenResponsesConfig> {
+        self.openresponses.clone()
+    }
+
     pub fn spawn_session(
         &self,
         handle: SessionHandle,

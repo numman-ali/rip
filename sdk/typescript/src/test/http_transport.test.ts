@@ -38,6 +38,10 @@ test("Rip SDK http transport runs sessions and parses SSE frames", async () => {
           input: "hello",
           openresponses: {
             include: ["reasoning.encrypted_content"],
+            web_search: {
+              enabled: true,
+              search_context_size: "high",
+            },
           },
         }),
       );
@@ -48,7 +52,10 @@ test("Rip SDK http transport runs sessions and parses SSE frames", async () => {
   };
 
   const rip = new Rip({ transport: "http", server: "http://rip.test", fetch: fakeFetch });
-  const turn = await rip.run("hello", { include: ["reasoning.encrypted_content"] });
+  const turn = await rip.run("hello", {
+    include: ["reasoning.encrypted_content"],
+    webSearch: { enabled: true, search_context_size: "high" },
+  });
   assert.equal(turn.exitCode, 0);
   assert.equal(turn.finalOutput, "ack: hello");
   assert.ok(turn.frames.some((frame) => frame.type === "session_started"));
@@ -78,6 +85,13 @@ test("Rip SDK http transport exposes configDoctor", async () => {
             stateless_history: true,
             parallel_tool_calls: false,
             include: ["reasoning.encrypted_content"],
+            web_search: {
+              enabled: true,
+              search_context_size: "medium",
+            },
+            web_search_enabled_source: "config.openresponses.web_search.enabled",
+            web_search_search_context_size_source:
+              "config.openresponses.web_search.search_context_size",
             compat: {
               active_conversation_strategy: "stateless_history",
               conversation: {
@@ -156,6 +170,22 @@ test("Rip SDK http transport exposes configDoctor", async () => {
                 },
                 warnings: [],
               },
+              web_search: {
+                requested: {
+                  enabled: true,
+                  search_context_size: "medium",
+                },
+                effective: {
+                  enabled: false,
+                },
+                support: {
+                  request: "unsupported",
+                  search_context_size: "compat",
+                  external_web_access: "unsupported",
+                  user_location: "compat",
+                },
+                warnings: ["canonical web_search request surface omitted"],
+              },
             },
           },
         }),
@@ -172,6 +202,8 @@ test("Rip SDK http transport exposes configDoctor", async () => {
   assert.equal(doctor.openresponses?.compat?.include.requested.length, 2);
   assert.equal(doctor.openresponses?.compat?.include.effective.length, 1);
   assert.equal(doctor.openresponses?.compat?.include.support.unsupported_values[0], "message.output_text.logprobs");
+  assert.equal(doctor.openresponses?.web_search?.enabled, true);
+  assert.equal(doctor.openresponses?.compat?.web_search.support.request, "unsupported");
 });
 
 test("Rip SDK http transport runDetached returns thread/session linkage without streaming", async () => {
@@ -192,7 +224,20 @@ test("Rip SDK http transport runDetached returns thread/session linkage without 
     }
 
     if (method === "POST" && pathname === "/threads/t1/messages") {
-      assert.equal(body, JSON.stringify({ content: "hello", actor_id: "user", origin: "sdk-ts" }));
+      assert.equal(
+        body,
+        JSON.stringify({
+          content: "hello",
+          actor_id: "user",
+          origin: "sdk-ts",
+          openresponses: {
+            web_search: {
+              enabled: true,
+              search_context_size: "low",
+            },
+          },
+        }),
+      );
       return new Response(JSON.stringify({ thread_id: "t1", message_id: "m1", session_id: "s1" }), {
         status: 202,
         headers: { "content-type": "application/json" },
@@ -203,7 +248,9 @@ test("Rip SDK http transport runDetached returns thread/session linkage without 
   };
 
   const rip = new Rip({ transport: "http", server: "http://rip.test", fetch: fakeFetch });
-  const detached = await rip.runDetached("hello");
+  const detached = await rip.runDetached("hello", {
+    webSearch: { enabled: true, search_context_size: "low" },
+  });
 
   assert.equal(detached.thread_id, "t1");
   assert.equal(detached.message_id, "m1");
@@ -240,10 +287,16 @@ test("Rip SDK http transport supports thread.* and task.* surfaces", async () =>
       });
     }
     if (method === "POST" && pathname === "/threads/t1/messages") {
-      const body = JSON.parse(bodyText) as { content: string; actor_id: string; origin: string };
+      const body = JSON.parse(bodyText) as {
+        content: string;
+        actor_id: string;
+        origin: string;
+        openresponses?: { web_search?: { enabled?: boolean } };
+      };
       assert.equal(body.content, "hello");
       assert.equal(body.actor_id, "user");
       assert.equal(body.origin, "sdk-ts");
+      assert.equal(body.openresponses?.web_search?.enabled, true);
       return new Response(JSON.stringify({ thread_id: "t1", message_id: "m1", session_id: "s1" }), {
         status: 202,
         headers: { "content-type": "application/json" },
@@ -331,7 +384,12 @@ test("Rip SDK http transport supports thread.* and task.* surfaces", async () =>
   assert.equal(list.length, 1);
   const meta = await rip.threadGet("t1");
   assert.equal(meta.thread_id, "t1");
-  const posted = await rip.threadPostMessage("t1", { content: "hello" });
+  const posted = await rip.threadPostMessage("t1", {
+    content: "hello",
+    openresponses: {
+      web_search: { enabled: true },
+    },
+  });
   assert.equal(posted.message_id, "m1");
   const selection = await rip.threadContextSelectionStatus("t1", { limit: 1 });
   assert.equal(selection.thread_id, "t1");

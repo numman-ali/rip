@@ -20,6 +20,7 @@ use serde_json::Value;
 use super::events::UiAction;
 
 const OPTION_INCLUDE_PREFIX: &str = "options.include.";
+const OPTION_WEB_SEARCH_ENABLED: &str = "options.web_search.enabled";
 const ALL_RESPONSE_INCLUDE_OPTIONS: &[(ripd::OpenResponsesInclude, &str)] = &[
     (
         ripd::OpenResponsesInclude::ReasoningEncryptedContent,
@@ -211,6 +212,41 @@ pub(super) fn openresponses_override_input_from_json(
             .get("followup_user_message")
             .and_then(|value| value.as_str())
             .map(|value| value.to_string()),
+        web_search: obj
+            .get("web_search")
+            .and_then(|value| value.as_object())
+            .map(|web_search| ripd::OpenResponsesWebSearchOverride {
+                enabled: web_search.get("enabled").and_then(|value| value.as_bool()),
+                search_context_size: web_search
+                    .get("search_context_size")
+                    .and_then(|value| value.as_str())
+                    .and_then(|value| ripd::parse_search_context_size(value).ok()),
+                external_web_access: web_search
+                    .get("external_web_access")
+                    .and_then(|value| value.as_bool()),
+                user_location: web_search
+                    .get("user_location")
+                    .and_then(|value| value.as_object())
+                    .map(|location| ripd::OpenResponsesApproximateLocation {
+                        country: location
+                            .get("country")
+                            .and_then(|value| value.as_str())
+                            .map(|value| value.to_string()),
+                        region: location
+                            .get("region")
+                            .and_then(|value| value.as_str())
+                            .map(|value| value.to_string()),
+                        city: location
+                            .get("city")
+                            .and_then(|value| value.as_str())
+                            .map(|value| value.to_string()),
+                        timezone: location
+                            .get("timezone")
+                            .and_then(|value| value.as_str())
+                            .map(|value| value.to_string()),
+                    }),
+            })
+            .filter(|value| !value.is_empty()),
         reasoning: obj
             .get("reasoning")
             .and_then(|value| value.as_object())
@@ -323,6 +359,9 @@ pub(super) fn open_options_palette_with_overrides(
     let resolved = resolve_openresponses_runtime_config(overrides);
     let reasoning = resolve_runtime_reasoning_state(resolved.as_ref(), overrides);
     let include = resolve_runtime_include_state(resolved.as_ref(), overrides);
+    let web_search = resolve_runtime_web_search_state(resolved.as_ref(), overrides);
+    let mut extra_entries = build_web_search_option_entries(&web_search);
+    extra_entries.extend(build_include_option_entries(&include));
     let mode = OptionsMode {
         current_theme: Some(state.theme.as_str()),
         auto_follow: state.auto_follow,
@@ -332,7 +371,7 @@ pub(super) fn open_options_palette_with_overrides(
         vim_input_mode: state.vim_input_mode,
         mouse_capture: true,
         activity_rail_pinned: state.activity_pinned,
-        extra_entries: build_include_option_entries(&include),
+        extra_entries,
     };
     let entries = mode.entries();
     state.open_palette(
@@ -423,6 +462,11 @@ pub(super) fn apply_palette_selection(
                 return Err("palette: no entry selected".to_string());
             };
             if overlay.mode == PaletteMode::Option {
+                if value == OPTION_WEB_SEARCH_ENABLED {
+                    toggle_web_search_with_overrides(state, overrides, catalog);
+                    state.close_overlay();
+                    return Ok(None);
+                }
                 if let Some(include) = parse_include_option_value(&value) {
                     toggle_response_include_with_overrides(state, overrides, catalog, include);
                     state.close_overlay();
@@ -659,6 +703,32 @@ fn resolve_runtime_include_state(
     .include(overrides.include.as_deref().unwrap_or(&[]))
 }
 
+fn resolve_runtime_web_search_state(
+    resolved: Option<&ripd::OpenResponsesResolvedConfig>,
+    overrides: Option<&Value>,
+) -> ripd::ResolvedOpenResponsesWebSearch {
+    if let Some(cfg) = resolved {
+        return ripd::resolve_openresponses_compat_profile(
+            cfg.provider_id.as_deref(),
+            &cfg.endpoint,
+            cfg.model.as_deref(),
+        )
+        .web_search(cfg.web_search.as_ref());
+    }
+
+    let overrides = openresponses_override_input_from_json(overrides);
+    let web_search = overrides
+        .web_search
+        .clone()
+        .and_then(ripd::OpenResponsesWebSearchOverride::into_config);
+    ripd::resolve_openresponses_compat_profile(
+        None,
+        overrides.endpoint.as_deref().unwrap_or(""),
+        overrides.model.as_deref(),
+    )
+    .web_search(web_search.as_ref())
+}
+
 fn reasoning_effort_state_label(reasoning: &ripd::ResolvedOpenResponsesReasoning) -> String {
     reasoning_state_label(
         reasoning
@@ -695,6 +765,39 @@ fn reasoning_summary_state_label(reasoning: &ripd::ResolvedOpenResponsesReasonin
     )
 }
 
+fn build_web_search_option_entries(
+    web_search: &ripd::ResolvedOpenResponsesWebSearch,
+) -> Vec<PaletteEntry> {
+    vec![PaletteEntry {
+        value: OPTION_WEB_SEARCH_ENABLED.to_string(),
+        title: "Enable hosted web search".to_string(),
+        subtitle: Some(web_search_state_label(web_search)),
+        chips: vec![web_search_support_label(web_search.support.request).to_string()],
+    }]
+}
+
+fn web_search_state_label(web_search: &ripd::ResolvedOpenResponsesWebSearch) -> String {
+    let requested = web_search
+        .requested
+        .as_ref()
+        .map(ripd::OpenResponsesWebSearchConfig::is_enabled)
+        .unwrap_or(false);
+    let effective = web_search
+        .effective
+        .as_ref()
+        .map(ripd::OpenResponsesWebSearchConfig::is_enabled)
+        .unwrap_or(false);
+    let mut parts = vec![format!("effective: {}", on_off_label(effective))];
+    if requested != effective {
+        parts.push(format!("requested: {}", on_off_label(requested)));
+    }
+    parts.push(format!(
+        "route: {}",
+        web_search_support_label(web_search.support.request)
+    ));
+    parts.join(" • ")
+}
+
 fn build_include_option_entries(include: &ripd::ResolvedOpenResponsesInclude) -> Vec<PaletteEntry> {
     ALL_RESPONSE_INCLUDE_OPTIONS
         .iter()
@@ -705,6 +808,15 @@ fn build_include_option_entries(include: &ripd::ResolvedOpenResponsesInclude) ->
             chips: vec![include_support_chip(include, *value).to_string()],
         })
         .collect()
+}
+
+fn web_search_support_label(value: ripd::CompatLevel) -> &'static str {
+    match value {
+        ripd::CompatLevel::Native => "native",
+        ripd::CompatLevel::Compat => "compat",
+        ripd::CompatLevel::Unsupported => "unsupported",
+        ripd::CompatLevel::Unknown => "unverified",
+    }
 }
 
 fn include_state_label(
@@ -887,6 +999,44 @@ fn cycle_optional_enum<T: Copy + PartialEq>(order: &[Option<T>], current: Option
     order[(idx + 1) % order.len()]
 }
 
+fn toggle_web_search_with_overrides(
+    state: &mut TuiState,
+    overrides: &mut Option<Value>,
+    catalog: &ModelsMode,
+) {
+    let resolved = resolve_openresponses_runtime_config(overrides.as_ref());
+    let current = resolve_runtime_web_search_state(resolved.as_ref(), overrides.as_ref());
+    let requested = current
+        .requested
+        .as_ref()
+        .map(ripd::OpenResponsesWebSearchConfig::is_enabled)
+        .unwrap_or(false);
+    set_web_search_override(overrides, !requested);
+    sync_preferred_openresponses_state(state, overrides.as_ref(), catalog);
+
+    let resolved = resolve_openresponses_runtime_config(overrides.as_ref());
+    let updated = resolve_runtime_web_search_state(resolved.as_ref(), overrides.as_ref());
+    let effective = updated
+        .effective
+        .as_ref()
+        .map(ripd::OpenResponsesWebSearchConfig::is_enabled)
+        .unwrap_or(false);
+    let support = updated.support.request;
+    let message = if !requested && !effective {
+        format!(
+            "requested hosted web search but route {} drops it",
+            web_search_support_label(support)
+        )
+    } else {
+        format!(
+            "hosted web search: {} (route: {})",
+            on_off_label(!requested),
+            web_search_support_label(support)
+        )
+    };
+    state.set_status_message(message);
+}
+
 fn toggle_response_include_with_overrides(
     state: &mut TuiState,
     overrides: &mut Option<Value>,
@@ -934,6 +1084,34 @@ fn set_reasoning_summary_override(
 ) {
     let value = next.map(|value| Value::String(reasoning_summary_label(Some(value)).to_string()));
     set_reasoning_override_field(overrides, "summary", value);
+}
+
+fn set_web_search_override(overrides: &mut Option<Value>, enabled: bool) {
+    let mut root = match overrides.take() {
+        Some(Value::Object(map)) => map,
+        _ => serde_json::Map::new(),
+    };
+
+    if enabled {
+        let mut web = root
+            .get("web_search")
+            .and_then(|value| value.as_object())
+            .cloned()
+            .unwrap_or_default();
+        web.insert("enabled".to_string(), Value::Bool(true));
+        root.insert("web_search".to_string(), Value::Object(web));
+    } else {
+        root.insert(
+            "web_search".to_string(),
+            Value::Object(
+                [("enabled".to_string(), Value::Bool(false))]
+                    .into_iter()
+                    .collect(),
+            ),
+        );
+    }
+
+    *overrides = (!root.is_empty()).then_some(Value::Object(root));
 }
 
 fn set_include_override(

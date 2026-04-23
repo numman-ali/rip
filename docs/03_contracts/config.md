@@ -89,10 +89,15 @@ Diagnostics
   - `reasoning.summary`: `concise|detailed|auto`
 - Typed response include controls now live there too:
   - `include`: array of canonical OpenResponses include paths such as `reasoning.encrypted_content` and `message.output_text.logprobs`
+- Canonical hosted web-search controls now live there too:
+  - `web_search.enabled`: enable/disable canonical OpenResponses `web_search`
+  - `web_search.search_context_size`: `low|medium|high`
+  - `web_search.external_web_access`: boolean live/cached access request
+  - `web_search.user_location`: approximate `country|region|city|timezone`
 - They resolve through the same layered path as the other OpenResponses fields:
   - global config
   - provider-scoped overlay
-  - env compat overrides (`RIP_OPENRESPONSES_REASONING_EFFORT`, `RIP_OPENRESPONSES_REASONING_SUMMARY`, `RIP_OPENRESPONSES_INCLUDE`)
+  - env compat overrides (`RIP_OPENRESPONSES_REASONING_EFFORT`, `RIP_OPENRESPONSES_REASONING_SUMMARY`, `RIP_OPENRESPONSES_INCLUDE`, `RIP_OPENRESPONSES_WEB_SEARCH*`)
   - per-run overrides
 - Doctor now also surfaces the resolved OpenResponses compatibility profile for the active route:
   - provider profile health (`native` / `compat` / `unsupported` / `unknown`)
@@ -115,4 +120,9 @@ Diagnostics
   - `openresponses.compat.include.effective`: the include array RIP will actually send after applying route support/degradation rules
   - `openresponses.compat.include.support`: route-level health plus per-value `native_values`, `compat_values`, `unknown_values`, and `unsupported_values`
   - `openresponses.compat.include.warnings`: downgrade / unverified-forwarding notes when a route cannot prove or honor the request cleanly
+- Doctor now does the same for canonical hosted web search:
+  - `openresponses.web_search`: the layered web-search request preference RIP resolved from config/env/per-run overrides
+  - `openresponses.compat.web_search.effective`: the schema-backed web-search config RIP will actually send after applying route support/degradation rules
+  - `openresponses.compat.web_search.support`: request/field support for the resolved route
+  - `openresponses.compat.web_search.warnings`: explicit notes when a provider only supports a provider-extension version or cannot honor a requested field
 - Compatibility resolution prefers the resolved `provider_id` from route/config selection and falls back to endpoint heuristics only when RIP has no canonical provider id for the route. This keeps custom proxies and loopback/provider-fixture endpoints aligned with the intended provider profile.

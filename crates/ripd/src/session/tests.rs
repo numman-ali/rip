@@ -1,6 +1,7 @@
 use super::*;
 use crate::provider_openresponses::{
-    OpenResponsesInclude, OpenResponsesReasoningConfig, ReasoningEffort, ReasoningSummary,
+    OpenResponsesApproximateLocation, OpenResponsesInclude, OpenResponsesReasoningConfig,
+    OpenResponsesWebSearchConfig, ReasoningEffort, ReasoningSummary, SearchContextSize,
     DEFAULT_OPENROUTER_MODEL,
 };
 use crate::CompactionCheckpointCumulativeV1Request;
@@ -645,6 +646,7 @@ async fn stream_openresponses_request_rejects_invalid_payload() {
         tool_choice: ToolChoiceParam::auto(),
         include: Vec::new(),
         reasoning: None,
+        web_search: None,
         followup_user_message: None,
         stateless_history: false,
         parallel_tool_calls: false,
@@ -690,6 +692,7 @@ fn validation_options_for_stream_uses_openrouter_compat_profile() {
         tool_choice: ToolChoiceParam::auto(),
         include: Vec::new(),
         reasoning: None,
+        web_search: None,
         followup_user_message: None,
         stateless_history: false,
         parallel_tool_calls: false,
@@ -712,6 +715,7 @@ fn validation_options_for_stream_prefers_provider_id_over_endpoint_heuristic() {
         tool_choice: ToolChoiceParam::auto(),
         include: Vec::new(),
         reasoning: None,
+        web_search: None,
         followup_user_message: None,
         stateless_history: false,
         parallel_tool_calls: false,
@@ -734,6 +738,7 @@ fn validation_options_for_stream_adds_missing_item_ids_for_stateless_history() {
         tool_choice: ToolChoiceParam::auto(),
         include: Vec::new(),
         reasoning: None,
+        web_search: None,
         followup_user_message: None,
         stateless_history: true,
         parallel_tool_calls: false,
@@ -741,7 +746,7 @@ fn validation_options_for_stream_adds_missing_item_ids_for_stateless_history() {
 
     assert_eq!(
         super::openresponses::validation_options_for_stream(&config),
-        ValidationOptions::compat_missing_item_ids()
+        ValidationOptions::compat_missing_item_ids().with_response_web_search_tools()
     );
 }
 
@@ -883,6 +888,7 @@ async fn stream_openresponses_request_reports_transport_error() {
         tool_choice: ToolChoiceParam::auto(),
         include: Vec::new(),
         reasoning: None,
+        web_search: None,
         followup_user_message: None,
         stateless_history: false,
         parallel_tool_calls: false,
@@ -952,6 +958,7 @@ async fn stream_openresponses_request_reports_http_error() {
         tool_choice: ToolChoiceParam::auto(),
         include: Vec::new(),
         reasoning: None,
+        web_search: None,
         followup_user_message: None,
         stateless_history: false,
         parallel_tool_calls: false,
@@ -1079,6 +1086,7 @@ data: [DONE]\n\n";
             effort: Some(ReasoningEffort::High),
             summary: Some(ReasoningSummary::Detailed),
         }),
+        web_search: None,
         followup_user_message: None,
         stateless_history: false,
         parallel_tool_calls: true,
@@ -1247,6 +1255,7 @@ data: [DONE]\n\n";
         tool_choice: ToolChoiceParam::auto(),
         include: Vec::new(),
         reasoning: None,
+        web_search: None,
         followup_user_message: None,
         stateless_history: true,
         parallel_tool_calls: false,
@@ -1364,6 +1373,7 @@ data: [DONE]\n\n";
             OpenResponsesInclude::MessageOutputTextLogprobs,
         ],
         reasoning: None,
+        web_search: None,
         followup_user_message: None,
         stateless_history: false,
         parallel_tool_calls: false,
@@ -1544,6 +1554,7 @@ data: [DONE]\n\n";
         tool_choice: ToolChoiceParam::none(),
         include: Vec::new(),
         reasoning: None,
+        web_search: None,
         followup_user_message: None,
         stateless_history: true,
         parallel_tool_calls: false,
@@ -1595,6 +1606,134 @@ data: [DONE]\n\n";
         .and_then(|value| value.as_str())
         .unwrap_or("")
         .contains("rejected"));
+}
+
+#[tokio::test]
+async fn run_openresponses_agent_loop_emits_web_search_compat_warning_for_openrouter() {
+    use axum::extract::{Json, State};
+    use axum::http::header::CONTENT_TYPE;
+    use axum::routing::post;
+    use axum::Router as AxumRouter;
+    use tokio::net::TcpListener;
+
+    #[derive(Clone)]
+    struct ProviderCapture {
+        request: Arc<Mutex<Option<Value>>>,
+    }
+
+    async fn handler(
+        State(capture): State<ProviderCapture>,
+        Json(body): Json<Value>,
+    ) -> impl axum::response::IntoResponse {
+        *capture.request.lock().await = Some(body);
+        let sse = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n\
+data: [DONE]\n\n";
+        ([(CONTENT_TYPE, "text/event-stream")], sse.to_string())
+    }
+
+    let capture = ProviderCapture {
+        request: Arc::new(Mutex::new(None)),
+    };
+    let provider_app = AxumRouter::new()
+        .route("/v1/responses", post(handler))
+        .with_state(capture.clone());
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    tokio::spawn(async move {
+        axum::serve(listener, provider_app).await.expect("serve");
+    });
+
+    let dir = tempdir().expect("tmp");
+    let log = EventLog::new(dir.path().join("events.jsonl")).expect("log");
+    let buffer = Arc::new(Mutex::new(Vec::new()));
+    let (sender, _) = broadcast::channel(8);
+    let sink = EventSink::new(&sender, &buffer, &log);
+    let registry = Arc::new(rip_tools::ToolRegistry::default());
+    let tool_runner = ToolRunner::new(registry, 1);
+    let workspace_lock = crate::workspace_lock::WorkspaceLock::new();
+    let continuity_workspace = dir.path().join("workspace");
+    std::fs::create_dir_all(&continuity_workspace).expect("workspace");
+    let continuity_log =
+        Arc::new(EventLog::new(dir.path().join("continuity_events.jsonl")).expect("log"));
+    let continuity_store = ContinuityStore::new(
+        dir.path().join("continuity_data"),
+        continuity_workspace,
+        continuity_log,
+    )
+    .expect("continuities");
+
+    let config = OpenResponsesConfig {
+        provider_id: Some("openrouter".to_string()),
+        endpoint: format!("http://{addr}/v1/responses"),
+        api_key: None,
+        model: Some("google/gemma-4-26b-a4b-it".to_string()),
+        headers: Vec::new(),
+        tool_choice: ToolChoiceParam::auto(),
+        include: Vec::new(),
+        reasoning: None,
+        web_search: Some(OpenResponsesWebSearchConfig {
+            enabled: true,
+            search_context_size: Some(SearchContextSize::Medium),
+            external_web_access: Some(true),
+            user_location: Some(OpenResponsesApproximateLocation {
+                country: Some("US".to_string()),
+                region: None,
+                city: None,
+                timezone: None,
+            }),
+        }),
+        followup_user_message: None,
+        stateless_history: true,
+        parallel_tool_calls: false,
+    };
+
+    let mut seq = 0;
+    let http = reqwest::Client::new();
+    let outcome = run_openresponses_agent_loop(OpenResponsesRunContext {
+        http: &http,
+        config: &config,
+        tool_runner: &tool_runner,
+        workspace_lock: &workspace_lock,
+        continuities: &continuity_store,
+        continuity_run: None,
+        session_id: "s1",
+        initial_items: None,
+        prompt: "what happened today?",
+        seq: &mut seq,
+        sink,
+    })
+    .await;
+
+    assert_eq!(outcome.reason, "completed");
+
+    let warning_frames: Vec<_> = buffer
+        .lock()
+        .await
+        .iter()
+        .filter_map(|event| match &event.kind {
+            EventKind::ProviderEvent {
+                event_name, data, ..
+            } if event_name.as_deref() == Some("rip.compat.warning") => data.clone(),
+            _ => None,
+        })
+        .collect();
+    assert!(warning_frames.iter().any(|value| {
+        value
+            .get("message")
+            .and_then(|value| value.as_str())
+            .is_some_and(|text| text.contains("canonical web_search request surface"))
+    }));
+
+    let request = capture.request.lock().await.clone().expect("request body");
+    assert!(request
+        .get("tools")
+        .and_then(|value| value.as_array())
+        .is_some_and(|tools| {
+            tools
+                .iter()
+                .all(|tool| tool.get("type").and_then(|value| value.as_str()) != Some("web_search"))
+        }));
 }
 
 #[tokio::test]
@@ -1657,6 +1796,7 @@ data: [DONE]\n\n";
         tool_choice: ToolChoiceParam::auto(),
         include: Vec::new(),
         reasoning: None,
+        web_search: None,
         followup_user_message: None,
         stateless_history: false,
         parallel_tool_calls: false,
@@ -1799,6 +1939,7 @@ data: [DONE]\n\n";
         tool_choice,
         include: Vec::new(),
         reasoning: None,
+        web_search: None,
         followup_user_message: None,
         stateless_history: true,
         parallel_tool_calls: false,
@@ -1929,6 +2070,7 @@ data: [DONE]\n\n";
         tool_choice: ToolChoiceParam::auto(),
         include: Vec::new(),
         reasoning: None,
+        web_search: None,
         followup_user_message: None,
         stateless_history: false,
         parallel_tool_calls: false,
@@ -2089,6 +2231,7 @@ async fn run_session_ends_when_context_compile_fails_before_provider_loop() {
             tool_choice: ToolChoiceParam::auto(),
             include: Vec::new(),
             reasoning: None,
+            web_search: None,
             followup_user_message: None,
             stateless_history: false,
             parallel_tool_calls: false,

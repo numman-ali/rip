@@ -202,6 +202,132 @@ data: {\"type\":\"response.completed\",\"sequence_number\":4,\"response\":{\"bac
 }
 
 #[tokio::test]
+async fn prompt_sends_canonical_web_search_tool_for_openai_profile() {
+    use axum::extract::State;
+    use axum::http::header::CONTENT_TYPE;
+    use axum::routing::post;
+    use axum::{response::IntoResponse, Json, Router as AxumRouter};
+    use std::sync::Arc;
+    use tokio::net::TcpListener;
+    use tokio::sync::Mutex;
+
+    #[derive(Clone)]
+    struct CaptureState {
+        body: Arc<Mutex<Option<serde_json::Value>>>,
+    }
+
+    async fn handler(
+        State(state): State<CaptureState>,
+        Json(body): Json<serde_json::Value>,
+    ) -> impl IntoResponse {
+        *state.body.lock().await = Some(body);
+        (
+            [(CONTENT_TYPE, "text/event-stream")],
+            include_str!("../../../../../fixtures/openresponses/stream_all.sse").to_string(),
+        )
+            .into_response()
+    }
+
+    let capture = CaptureState {
+        body: Arc::new(Mutex::new(None)),
+    };
+    let provider_app = AxumRouter::new()
+        .route("/v1/responses", post(handler))
+        .with_state(capture.clone());
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    tokio::spawn(async move {
+        axum::serve(listener, provider_app).await.expect("serve");
+    });
+    let endpoint = format!("http://{addr}/v1/responses");
+
+    let dir = tempdir().expect("tmp");
+    let app =
+        build_test_app_with_openresponses_provider_profile(&dir, Some("openai"), endpoint, false);
+    let session_id = create_session_id(&app).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/sessions/{session_id}/events"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let mut reader = TestSseReader::new(response.into_body());
+
+    let send_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/sessions/{session_id}/input"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({
+                        "input": "What was a positive news story from today? Cite one source.",
+                        "openresponses": {
+                            "web_search": {
+                                "enabled": true,
+                                "search_context_size": "high",
+                                "external_web_access": true
+                            }
+                        }
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .expect("response");
+    assert_eq!(send_response.status(), axum::http::StatusCode::ACCEPTED);
+
+    let mut saw_session_ended = false;
+    timeout(Duration::from_secs(2), async {
+        while let Some(message) = reader.next_data_message().await {
+            if let Some(value) = extract_data_json(&message) {
+                if value.get("type").and_then(|value| value.as_str()) == Some("session_ended") {
+                    saw_session_ended = true;
+                    break;
+                }
+            }
+        }
+    })
+    .await
+    .expect("timeout");
+
+    assert!(saw_session_ended, "expected session_ended");
+
+    let captured = capture.body.lock().await.clone().expect("captured request");
+    let tools = captured
+        .get("tools")
+        .and_then(|value| value.as_array())
+        .expect("tools array");
+    let web_search = tools
+        .iter()
+        .find(|tool| tool.get("type").and_then(|value| value.as_str()) == Some("web_search"))
+        .expect("canonical web_search tool");
+    assert_eq!(
+        web_search
+            .get("search_context_size")
+            .and_then(|value| value.as_str()),
+        Some("high"),
+        "captured request: {captured:?}"
+    );
+    assert_eq!(
+        web_search
+            .get("external_web_access")
+            .and_then(|value| value.as_bool()),
+        Some(true),
+        "captured request: {captured:?}"
+    );
+}
+
+#[tokio::test]
 #[ignore]
 async fn live_openresponses_smoke() {
     let endpoint = match std::env::var("RIP_OPENRESPONSES_ENDPOINT") {
@@ -251,6 +377,7 @@ async fn live_openresponses_smoke() {
             tool_choice,
             include: Vec::new(),
             reasoning: None,
+            web_search: None,
             followup_user_message: None,
             stateless_history: false,
             parallel_tool_calls: false,

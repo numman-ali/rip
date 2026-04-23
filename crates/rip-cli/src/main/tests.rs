@@ -334,6 +334,10 @@ async fn run_headless_with_interactive_flag() {
             followup_user_message: None,
             reasoning_effort: None,
             reasoning_summary: None,
+            web_search: false,
+            no_web_search: false,
+            web_search_context_size: None,
+            web_search_external_web_access: None,
             headless: false,
             view: OutputView::Raw,
         }),
@@ -381,6 +385,10 @@ async fn run_headless_remote() {
             followup_user_message: None,
             reasoning_effort: None,
             reasoning_summary: None,
+            web_search: false,
+            no_web_search: false,
+            web_search_context_size: None,
+            web_search_external_web_access: None,
             headless: true,
             view: OutputView::Raw,
         }),
@@ -515,6 +523,10 @@ async fn run_interactive_local_uses_env_paths() {
                 followup_user_message: None,
                 reasoning_effort: None,
                 reasoning_summary: None,
+                web_search: false,
+                no_web_search: false,
+                web_search_context_size: None,
+                web_search_external_web_access: None,
                 headless: false,
                 view: OutputView::Raw,
             }),
@@ -568,6 +580,10 @@ async fn run_accepts_openresponses_flags_with_server() {
             followup_user_message: Some("compat".to_string()),
             reasoning_effort: Some(ReasoningEffortArg::Medium),
             reasoning_summary: Some(ReasoningSummaryArg::Concise),
+            web_search: false,
+            no_web_search: false,
+            web_search_context_size: None,
+            web_search_external_web_access: None,
             headless: true,
             view: OutputView::Raw,
         }),
@@ -617,6 +633,10 @@ async fn run_allows_model_override_without_provider() {
             followup_user_message: None,
             reasoning_effort: None,
             reasoning_summary: None,
+            web_search: false,
+            no_web_search: false,
+            web_search_context_size: None,
+            web_search_external_web_access: None,
             headless: true,
             view: OutputView::Raw,
         }),
@@ -698,6 +718,11 @@ fn cli_parses_openresponses_flags() {
         "high",
         "--reasoning-summary",
         "detailed",
+        "--web-search",
+        "--web-search-context-size",
+        "high",
+        "--web-search-external-web-access",
+        "true",
     ]);
     assert!(cli.prompt.is_none());
     assert!(cli.server.is_none());
@@ -712,6 +737,10 @@ fn cli_parses_openresponses_flags() {
             followup_user_message,
             reasoning_effort,
             reasoning_summary,
+            web_search,
+            no_web_search,
+            web_search_context_size,
+            web_search_external_web_access,
             ..
         }) => {
             assert_eq!(provider, Some(Provider::Openai));
@@ -721,6 +750,10 @@ fn cli_parses_openresponses_flags() {
             assert_eq!(followup_user_message.as_deref(), Some("continue"));
             assert_eq!(reasoning_effort, Some(ReasoningEffortArg::High));
             assert_eq!(reasoning_summary, Some(ReasoningSummaryArg::Detailed));
+            assert!(web_search);
+            assert!(!no_web_search);
+            assert_eq!(web_search_context_size, Some(SearchContextSizeArg::High));
+            assert_eq!(web_search_external_web_access, Some(true));
         }
         Some(Commands::Serve) => panic!("expected run"),
         Some(Commands::Tasks { .. }) => panic!("expected run"),
@@ -1215,6 +1248,9 @@ fn openresponses_overrides_from_env_reads_vars() {
         std::env::set_var("RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE", "continue");
         std::env::set_var("RIP_OPENRESPONSES_REASONING_EFFORT", "high");
         std::env::set_var("RIP_OPENRESPONSES_REASONING_SUMMARY", "detailed");
+        std::env::set_var("RIP_OPENRESPONSES_WEB_SEARCH", "true");
+        std::env::set_var("RIP_OPENRESPONSES_WEB_SEARCH_CONTEXT_SIZE", "medium");
+        std::env::set_var("RIP_OPENRESPONSES_WEB_SEARCH_EXTERNAL_WEB_ACCESS", "false");
 
         let overrides = openresponses_overrides_from_env().expect("overrides");
         let expected = serde_json::json!({
@@ -1230,6 +1266,11 @@ fn openresponses_overrides_from_env_reads_vars() {
             "reasoning": {
                 "effort": "high",
                 "summary": "detailed"
+            },
+            "web_search": {
+                "enabled": true,
+                "search_context_size": "medium",
+                "external_web_access": false
             }
         });
         assert_eq!(overrides, expected);
@@ -1287,6 +1328,34 @@ fn insert_include_overrides_rejects_unknown_values() {
     assert!(err
         .to_string()
         .contains("invalid --include \"reasoning.summary\""));
+}
+
+#[test]
+fn insert_web_search_overrides_skips_empty_inputs() {
+    let mut obj = serde_json::Map::new();
+    insert_web_search_overrides(&mut obj, false, false, None, None).expect("web search overrides");
+    assert!(obj.get("web_search").is_none());
+}
+
+#[test]
+fn insert_web_search_overrides_builds_nested_object() {
+    let mut obj = serde_json::Map::new();
+    insert_web_search_overrides(
+        &mut obj,
+        true,
+        false,
+        Some(SearchContextSizeArg::High),
+        Some(true),
+    )
+    .expect("web search overrides");
+    assert_eq!(
+        obj.get("web_search"),
+        Some(&serde_json::json!({
+            "enabled": true,
+            "search_context_size": "high",
+            "external_web_access": true
+        }))
+    );
 }
 
 #[test]

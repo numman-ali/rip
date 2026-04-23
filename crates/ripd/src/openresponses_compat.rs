@@ -1,5 +1,6 @@
 use crate::provider_openresponses::{
-    OpenResponsesInclude, OpenResponsesReasoningConfig, ReasoningEffort, ReasoningSummary,
+    OpenResponsesInclude, OpenResponsesReasoningConfig, OpenResponsesWebSearchConfig,
+    ReasoningEffort, ReasoningSummary,
 };
 use rip_provider_openresponses::ValidationOptions;
 use serde::Serialize;
@@ -132,6 +133,25 @@ pub struct ResolvedOpenResponsesInclude {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub effective: Vec<OpenResponsesInclude>,
     pub support: OpenResponsesIncludeSupport,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct OpenResponsesWebSearchSupport {
+    pub request: CompatLevel,
+    pub search_context_size: CompatLevel,
+    pub external_web_access: CompatLevel,
+    pub user_location: CompatLevel,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct ResolvedOpenResponsesWebSearch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested: Option<OpenResponsesWebSearchConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effective: Option<OpenResponsesWebSearchConfig>,
+    pub support: OpenResponsesWebSearchSupport,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
 }
@@ -314,6 +334,113 @@ impl ResolvedOpenResponsesCompatProfile {
         }
     }
 
+    pub fn web_search(
+        self,
+        requested: Option<&OpenResponsesWebSearchConfig>,
+    ) -> ResolvedOpenResponsesWebSearch {
+        let support = self.web_search_support();
+        let requested = requested
+            .cloned()
+            .and_then(OpenResponsesWebSearchConfig::normalized);
+        let Some(mut effective) = requested.clone() else {
+            return ResolvedOpenResponsesWebSearch {
+                requested,
+                effective: None,
+                support,
+                warnings: Vec::new(),
+            };
+        };
+        let mut warnings = Vec::new();
+        let route = route_label(self);
+
+        if !effective.enabled {
+            return ResolvedOpenResponsesWebSearch {
+                requested,
+                effective: effective.normalized(),
+                support,
+                warnings,
+            };
+        }
+
+        match support.request {
+            CompatLevel::Unsupported => {
+                warnings.push(format!(
+                    "{} does not support RIP's canonical web_search request surface; omitting the tool.",
+                    route
+                ));
+                return ResolvedOpenResponsesWebSearch {
+                    requested,
+                    effective: Some(OpenResponsesWebSearchConfig::disabled()),
+                    support,
+                    warnings,
+                };
+            }
+            CompatLevel::Unknown => warnings.push(format!(
+                "web_search is unverified on {}; forwarding as requested.",
+                route
+            )),
+            CompatLevel::Native | CompatLevel::Compat => {}
+        }
+
+        if effective.search_context_size.is_some() {
+            match support.search_context_size {
+                CompatLevel::Unsupported => {
+                    warnings.push(format!(
+                        "web_search.search_context_size is not supported on {}; omitting it.",
+                        route
+                    ));
+                    effective.search_context_size = None;
+                }
+                CompatLevel::Unknown => warnings.push(format!(
+                    "web_search.search_context_size is unverified on {}; forwarding as requested.",
+                    route
+                )),
+                CompatLevel::Native | CompatLevel::Compat => {}
+            }
+        }
+
+        if effective.external_web_access.is_some() {
+            match support.external_web_access {
+                CompatLevel::Unsupported => {
+                    warnings.push(format!(
+                        "web_search.external_web_access is not supported on {}; omitting it.",
+                        route
+                    ));
+                    effective.external_web_access = None;
+                }
+                CompatLevel::Unknown => warnings.push(format!(
+                    "web_search.external_web_access is unverified on {}; forwarding as requested.",
+                    route
+                )),
+                CompatLevel::Native | CompatLevel::Compat => {}
+            }
+        }
+
+        if effective.user_location.is_some() {
+            match support.user_location {
+                CompatLevel::Unsupported => {
+                    warnings.push(format!(
+                        "web_search.user_location is not supported on {}; omitting it.",
+                        route
+                    ));
+                    effective.user_location = None;
+                }
+                CompatLevel::Unknown => warnings.push(format!(
+                    "web_search.user_location is unverified on {}; forwarding as requested.",
+                    route
+                )),
+                CompatLevel::Native | CompatLevel::Compat => {}
+            }
+        }
+
+        ResolvedOpenResponsesWebSearch {
+            requested,
+            effective: effective.normalized(),
+            support,
+            warnings,
+        }
+    }
+
     pub fn reasoning_support(self) -> OpenResponsesReasoningSupport {
         let rule = reasoning_support_rule(self);
         OpenResponsesReasoningSupport {
@@ -322,6 +449,16 @@ impl ResolvedOpenResponsesCompatProfile {
             summary: rule.summary,
             supported_efforts: rule.supported_efforts.to_vec(),
             supported_summaries: rule.supported_summaries.to_vec(),
+        }
+    }
+
+    pub fn web_search_support(self) -> OpenResponsesWebSearchSupport {
+        let rule = web_search_support_rule(self);
+        OpenResponsesWebSearchSupport {
+            request: rule.request,
+            search_context_size: rule.search_context_size,
+            external_web_access: rule.external_web_access,
+            user_location: rule.user_location,
         }
     }
 }
@@ -344,12 +481,21 @@ struct IncludeSupportRule {
     unsupported_values: &'static [OpenResponsesInclude],
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct WebSearchSupportRule {
+    request: CompatLevel,
+    search_context_size: CompatLevel,
+    external_web_access: CompatLevel,
+    user_location: CompatLevel,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
 pub struct ValidationProfile {
     pub missing_item_ids: bool,
     pub missing_response_user: bool,
     pub reasoning_text_events: bool,
     pub missing_reasoning_summary: bool,
+    pub response_web_search_tools: bool,
 }
 
 impl ValidationProfile {
@@ -358,6 +504,7 @@ impl ValidationProfile {
         missing_response_user: false,
         reasoning_text_events: false,
         missing_reasoning_summary: false,
+        response_web_search_tools: false,
     };
 
     const OPENROUTER: Self = Self {
@@ -365,6 +512,15 @@ impl ValidationProfile {
         missing_response_user: true,
         reasoning_text_events: true,
         missing_reasoning_summary: true,
+        response_web_search_tools: false,
+    };
+
+    const OPENAI: Self = Self {
+        missing_item_ids: false,
+        missing_response_user: false,
+        reasoning_text_events: false,
+        missing_reasoning_summary: false,
+        response_web_search_tools: true,
     };
 
     fn to_validation_options(self) -> ValidationOptions {
@@ -380,6 +536,9 @@ impl ValidationProfile {
         }
         if self.missing_reasoning_summary {
             options = options.with_missing_reasoning_summary();
+        }
+        if self.response_web_search_tools {
+            options = options.with_response_web_search_tools();
         }
         options
     }
@@ -508,7 +667,7 @@ const OPENAI_PROVIDER_PROFILE: OpenResponsesProviderCompatProfile =
             input_file: CompatLevel::Native,
             input_video: CompatLevel::Unknown,
         },
-        validation: ValidationProfile::STRICT,
+        validation: ValidationProfile::OPENAI,
     };
 
 const OPENROUTER_PROVIDER_PROFILE: OpenResponsesProviderCompatProfile =
@@ -766,6 +925,29 @@ fn include_support_rule(resolved: ResolvedOpenResponsesCompatProfile) -> Include
             compat_values: &[],
             unknown_values: ALL_OPENRESPONSES_INCLUDE_VALUES,
             unsupported_values: &[],
+        },
+    }
+}
+
+fn web_search_support_rule(resolved: ResolvedOpenResponsesCompatProfile) -> WebSearchSupportRule {
+    match resolved.provider.provider_id {
+        "openai" => WebSearchSupportRule {
+            request: CompatLevel::Native,
+            search_context_size: CompatLevel::Native,
+            external_web_access: CompatLevel::Native,
+            user_location: CompatLevel::Native,
+        },
+        "openrouter" => WebSearchSupportRule {
+            request: CompatLevel::Unsupported,
+            search_context_size: CompatLevel::Compat,
+            external_web_access: CompatLevel::Unsupported,
+            user_location: CompatLevel::Compat,
+        },
+        _ => WebSearchSupportRule {
+            request: CompatLevel::Unknown,
+            search_context_size: CompatLevel::Unknown,
+            external_web_access: CompatLevel::Unknown,
+            user_location: CompatLevel::Unknown,
         },
     }
 }

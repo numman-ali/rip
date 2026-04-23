@@ -25,6 +25,14 @@ pub enum ReasoningSummary {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchContextSize {
+    Low,
+    Medium,
+    High,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub enum OpenResponsesInclude {
     #[serde(rename = "file_search_call.results")]
     FileSearchCallResults,
@@ -56,6 +64,173 @@ impl OpenResponsesInclude {
             Self::ReasoningEncryptedContent => "reasoning.encrypted_content",
             Self::MessageOutputTextLogprobs => "message.output_text.logprobs",
         }
+    }
+}
+
+fn default_enabled_true() -> bool {
+    true
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct OpenResponsesApproximateLocation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub country: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub region: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub city: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timezone: Option<String>,
+}
+
+impl OpenResponsesApproximateLocation {
+    pub fn is_empty(&self) -> bool {
+        self.country
+            .as_deref()
+            .is_none_or(|value| value.trim().is_empty())
+            && self
+                .region
+                .as_deref()
+                .is_none_or(|value| value.trim().is_empty())
+            && self
+                .city
+                .as_deref()
+                .is_none_or(|value| value.trim().is_empty())
+            && self
+                .timezone
+                .as_deref()
+                .is_none_or(|value| value.trim().is_empty())
+    }
+
+    pub fn normalized(mut self) -> Option<Self> {
+        self.country = self
+            .country
+            .and_then(|value| (!value.trim().is_empty()).then_some(value.trim().to_string()));
+        self.region = self
+            .region
+            .and_then(|value| (!value.trim().is_empty()).then_some(value.trim().to_string()));
+        self.city = self
+            .city
+            .and_then(|value| (!value.trim().is_empty()).then_some(value.trim().to_string()));
+        self.timezone = self
+            .timezone
+            .and_then(|value| (!value.trim().is_empty()).then_some(value.trim().to_string()));
+        (!self.is_empty()).then_some(self)
+    }
+
+    fn to_value(&self) -> Option<Value> {
+        let normalized = self.clone().normalized()?;
+        let mut obj = serde_json::Map::new();
+        obj.insert("type".to_string(), Value::String("approximate".to_string()));
+        if let Some(country) = normalized.country {
+            obj.insert("country".to_string(), Value::String(country));
+        }
+        if let Some(region) = normalized.region {
+            obj.insert("region".to_string(), Value::String(region));
+        }
+        if let Some(city) = normalized.city {
+            obj.insert("city".to_string(), Value::String(city));
+        }
+        if let Some(timezone) = normalized.timezone {
+            obj.insert("timezone".to_string(), Value::String(timezone));
+        }
+        Some(Value::Object(obj))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct OpenResponsesWebSearchConfig {
+    #[serde(default = "default_enabled_true")]
+    pub enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_context_size: Option<SearchContextSize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_web_access: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_location: Option<OpenResponsesApproximateLocation>,
+}
+
+impl Default for OpenResponsesWebSearchConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            search_context_size: None,
+            external_web_access: None,
+            user_location: None,
+        }
+    }
+}
+
+impl OpenResponsesWebSearchConfig {
+    pub fn disabled() -> Self {
+        Self {
+            enabled: false,
+            ..Self::default()
+        }
+    }
+
+    pub fn normalized(mut self) -> Option<Self> {
+        self.user_location = self
+            .user_location
+            .and_then(OpenResponsesApproximateLocation::normalized);
+        if self.enabled
+            || self.search_context_size.is_some()
+            || self.external_web_access.is_some()
+            || self.user_location.is_some()
+        {
+            Some(self)
+        } else {
+            None
+        }
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct OpenResponsesWebSearchOverride {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_context_size: Option<SearchContextSize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_web_access: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_location: Option<OpenResponsesApproximateLocation>,
+}
+
+impl OpenResponsesWebSearchOverride {
+    pub fn is_empty(&self) -> bool {
+        self.enabled.is_none()
+            && self.search_context_size.is_none()
+            && self.external_web_access.is_none()
+            && self.user_location.is_none()
+    }
+
+    pub fn apply_to(&self, target: &mut OpenResponsesWebSearchConfig) {
+        if let Some(enabled) = self.enabled {
+            target.enabled = enabled;
+        }
+        if let Some(search_context_size) = self.search_context_size {
+            target.search_context_size = Some(search_context_size);
+        }
+        if let Some(external_web_access) = self.external_web_access {
+            target.external_web_access = Some(external_web_access);
+        }
+        if let Some(user_location) = self.user_location.clone() {
+            target.user_location = user_location.normalized();
+        }
+    }
+
+    pub fn into_config(self) -> Option<OpenResponsesWebSearchConfig> {
+        if self.is_empty() {
+            return None;
+        }
+        let mut cfg = OpenResponsesWebSearchConfig::default();
+        self.apply_to(&mut cfg);
+        cfg.normalized()
     }
 }
 
@@ -107,6 +282,7 @@ pub struct OpenResponsesConfig {
     pub headers: Vec<(String, String)>,
     pub tool_choice: ToolChoiceParam,
     pub include: Vec<OpenResponsesInclude>,
+    pub web_search: Option<OpenResponsesWebSearchConfig>,
     pub reasoning: Option<OpenResponsesReasoningConfig>,
     pub followup_user_message: Option<String>,
     pub stateless_history: bool,
@@ -132,6 +308,7 @@ impl OpenResponsesConfig {
             Err(_) => ToolChoiceParam::auto(),
         };
         let include = openresponses_include_from_env();
+        let web_search = openresponses_web_search_from_env();
         let reasoning = openresponses_reasoning_from_env();
         let followup_user_message = std::env::var("RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE").ok();
         let stateless_history = std::env::var("RIP_OPENRESPONSES_STATELESS_HISTORY")
@@ -160,6 +337,7 @@ impl OpenResponsesConfig {
             headers: Vec::new(),
             tool_choice,
             include,
+            web_search,
             reasoning,
             followup_user_message,
             stateless_history,
@@ -175,9 +353,10 @@ pub fn build_streaming_request(
     config: &OpenResponsesConfig,
     prompt: &str,
 ) -> CreateResponsePayload {
+    let tools = tools_for_request(config);
     let mut builder = base_streaming_builder(config)
         .input_text(prompt)
-        .tools_raw(builtin_function_tools())
+        .tools_raw(tools)
         .tool_choice(config.tool_choice.clone())
         .parallel_tool_calls(config.parallel_tool_calls)
         .max_tool_calls(DEFAULT_MAX_TOOL_CALLS);
@@ -189,9 +368,10 @@ pub fn build_streaming_request_items(
     config: &OpenResponsesConfig,
     items: Vec<ItemParam>,
 ) -> CreateResponsePayload {
+    let tools = tools_for_request(config);
     let mut builder = base_streaming_builder(config)
         .input_items(items)
-        .tools_raw(builtin_function_tools())
+        .tools_raw(tools)
         .tool_choice(config.tool_choice.clone())
         .parallel_tool_calls(config.parallel_tool_calls)
         .max_tool_calls(DEFAULT_MAX_TOOL_CALLS);
@@ -207,6 +387,7 @@ pub fn build_streaming_followup_request(
     if let Some(message) = config.followup_user_message.as_deref() {
         input_items.push(ItemParam::user_message_text(message));
     }
+    let tools = tools_for_request(config);
     let mut builder = base_streaming_builder(config);
     if let Some(previous_response_id) = previous_response_id {
         builder = builder.insert_raw(
@@ -216,7 +397,7 @@ pub fn build_streaming_followup_request(
     }
     let builder = builder
         .input_items(input_items)
-        .tools_raw(builtin_function_tools())
+        .tools_raw(tools)
         .tool_choice(config.tool_choice.clone())
         .parallel_tool_calls(config.parallel_tool_calls)
         .max_tool_calls(DEFAULT_MAX_TOOL_CALLS)
@@ -256,6 +437,14 @@ fn base_streaming_builder(config: &OpenResponsesConfig) -> CreateResponseBuilder
     builder
 }
 
+fn tools_for_request(config: &OpenResponsesConfig) -> Vec<Value> {
+    let mut tools = builtin_function_tools();
+    if let Some(tool) = effective_web_search(config).and_then(|cfg| web_search_tool_value(&cfg)) {
+        tools.push(tool);
+    }
+    tools
+}
+
 fn effective_include(config: &OpenResponsesConfig) -> Vec<OpenResponsesInclude> {
     crate::openresponses_compat::resolve_openresponses_compat_profile(
         config.provider_id.as_deref(),
@@ -274,6 +463,43 @@ fn effective_reasoning(config: &OpenResponsesConfig) -> Option<OpenResponsesReas
     )
     .reasoning(config.reasoning.as_ref())
     .effective
+}
+
+fn effective_web_search(config: &OpenResponsesConfig) -> Option<OpenResponsesWebSearchConfig> {
+    crate::openresponses_compat::resolve_openresponses_compat_profile(
+        config.provider_id.as_deref(),
+        &config.endpoint,
+        config.model.as_deref(),
+    )
+    .web_search(config.web_search.as_ref())
+    .effective
+    .filter(OpenResponsesWebSearchConfig::is_enabled)
+}
+
+fn web_search_tool_value(web_search: &OpenResponsesWebSearchConfig) -> Option<Value> {
+    let mut obj = serde_json::Map::new();
+    obj.insert("type".to_string(), Value::String("web_search".to_string()));
+    if let Some(search_context_size) = web_search.search_context_size {
+        obj.insert(
+            "search_context_size".to_string(),
+            serde_json::to_value(search_context_size).expect("search_context_size serializes"),
+        );
+    }
+    if let Some(external_web_access) = web_search.external_web_access {
+        obj.insert(
+            "external_web_access".to_string(),
+            Value::Bool(external_web_access),
+        );
+    }
+    if let Some(user_location) = web_search
+        .user_location
+        .as_ref()
+        .and_then(OpenResponsesApproximateLocation::to_value)
+    {
+        obj.insert("user_location".to_string(), user_location);
+    }
+
+    Some(Value::Object(obj))
 }
 
 pub(crate) fn is_openrouter_responses_endpoint(endpoint: &str) -> bool {
@@ -351,6 +577,15 @@ pub fn parse_reasoning_summary(value: &str) -> Result<ReasoningSummary, String> 
     }
 }
 
+pub fn parse_search_context_size(value: &str) -> Result<SearchContextSize, String> {
+    match value.trim() {
+        "low" => Ok(SearchContextSize::Low),
+        "medium" => Ok(SearchContextSize::Medium),
+        "high" => Ok(SearchContextSize::High),
+        _ => Err("unsupported value (expected low|medium|high)".to_string()),
+    }
+}
+
 pub fn parse_openresponses_include(value: &str) -> Result<OpenResponsesInclude, String> {
     match value.trim() {
         "file_search_call.results" => Ok(OpenResponsesInclude::FileSearchCallResults),
@@ -394,6 +629,49 @@ fn openresponses_include_from_env() -> Vec<OpenResponsesInclude> {
             }
         })
         .unwrap_or_default()
+}
+
+#[cfg(not(test))]
+fn openresponses_web_search_from_env() -> Option<OpenResponsesWebSearchConfig> {
+    let mut web_search = OpenResponsesWebSearchConfig::default();
+    let mut seen = false;
+
+    if let Ok(value) = std::env::var("RIP_OPENRESPONSES_WEB_SEARCH") {
+        web_search.enabled = matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        );
+        seen = true;
+    }
+
+    if let Ok(value) = std::env::var("RIP_OPENRESPONSES_WEB_SEARCH_CONTEXT_SIZE") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            match parse_search_context_size(trimmed) {
+                Ok(search_context_size) => {
+                    web_search.search_context_size = Some(search_context_size);
+                    seen = true;
+                }
+                Err(err) => eprintln!(
+                    "invalid RIP_OPENRESPONSES_WEB_SEARCH_CONTEXT_SIZE={trimmed:?}: {err}; ignoring"
+                ),
+            }
+        }
+    }
+
+    if let Ok(value) = std::env::var("RIP_OPENRESPONSES_WEB_SEARCH_EXTERNAL_WEB_ACCESS") {
+        web_search.external_web_access = Some(matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        ));
+        seen = true;
+    }
+
+    if !seen {
+        return None;
+    }
+
+    web_search.normalized()
 }
 
 #[cfg(not(test))]
@@ -576,6 +854,7 @@ mod tests {
             tool_choice: ToolChoiceParam::auto(),
             include: Vec::new(),
             reasoning: None,
+            web_search: None,
             followup_user_message,
             stateless_history: false,
             parallel_tool_calls: false,
@@ -685,6 +964,18 @@ mod tests {
     }
 
     #[test]
+    fn parse_tool_choice_env_accepts_builtin_modes() {
+        assert_eq!(
+            parse_tool_choice_env("none").expect("none").value(),
+            ToolChoiceParam::none().value()
+        );
+        assert_eq!(
+            parse_tool_choice_env("required").expect("required").value(),
+            ToolChoiceParam::required().value()
+        );
+    }
+
+    #[test]
     fn parse_tool_choice_env_rejects_missing_function_name() {
         let err = parse_tool_choice_env("function:   ").unwrap_err();
         assert!(err.contains("function name missing"));
@@ -733,6 +1024,7 @@ mod tests {
             tool_choice: ToolChoiceParam::required(),
             include: Vec::new(),
             reasoning: None,
+            web_search: None,
             followup_user_message: None,
             stateless_history: false,
             parallel_tool_calls: true,
@@ -765,6 +1057,7 @@ mod tests {
             tool_choice: ToolChoiceParam::auto(),
             include: Vec::new(),
             reasoning: None,
+            web_search: None,
             followup_user_message: None,
             stateless_history: false,
             parallel_tool_calls: false,
@@ -787,6 +1080,7 @@ mod tests {
             tool_choice: ToolChoiceParam::auto(),
             include: Vec::new(),
             reasoning: None,
+            web_search: None,
             followup_user_message: None,
             stateless_history: false,
             parallel_tool_calls: false,
@@ -817,12 +1111,23 @@ mod tests {
 
     #[test]
     fn parse_reasoning_helpers_accept_known_values() {
+        assert_eq!(parse_reasoning_effort("none"), Ok(ReasoningEffort::None));
         assert_eq!(
             parse_reasoning_effort("minimal"),
             Ok(ReasoningEffort::Minimal)
         );
+        assert_eq!(parse_reasoning_effort("low"), Ok(ReasoningEffort::Low));
+        assert_eq!(
+            parse_reasoning_effort("medium"),
+            Ok(ReasoningEffort::Medium)
+        );
+        assert_eq!(parse_reasoning_effort("high"), Ok(ReasoningEffort::High));
         assert_eq!(parse_reasoning_effort("xhigh"), Ok(ReasoningEffort::Xhigh));
         assert_eq!(parse_reasoning_summary("auto"), Ok(ReasoningSummary::Auto));
+        assert_eq!(
+            parse_reasoning_summary("concise"),
+            Ok(ReasoningSummary::Concise)
+        );
         assert_eq!(
             parse_reasoning_summary("detailed"),
             Ok(ReasoningSummary::Detailed)
@@ -849,6 +1154,7 @@ mod tests {
                 effort: Some(ReasoningEffort::High),
                 summary: Some(ReasoningSummary::Detailed),
             }),
+            web_search: None,
             followup_user_message: None,
             stateless_history: false,
             parallel_tool_calls: false,
@@ -883,6 +1189,7 @@ mod tests {
                 effort: Some(ReasoningEffort::Minimal),
                 summary: Some(ReasoningSummary::Detailed),
             }),
+            web_search: None,
             followup_user_message: None,
             stateless_history: false,
             parallel_tool_calls: false,
@@ -915,6 +1222,7 @@ mod tests {
                 effort: Some(ReasoningEffort::Xhigh),
                 summary: Some(ReasoningSummary::Detailed),
             }),
+            web_search: None,
             followup_user_message: None,
             stateless_history: true,
             parallel_tool_calls: false,
@@ -934,6 +1242,286 @@ mod tests {
     }
 
     #[test]
+    fn build_streaming_request_includes_canonical_web_search_for_openai() {
+        let config = OpenResponsesConfig {
+            provider_id: Some("openai".to_string()),
+            endpoint: "https://api.openai.com/v1/responses".to_string(),
+            api_key: None,
+            model: Some("gpt-5.4-nano".to_string()),
+            headers: Vec::new(),
+            tool_choice: ToolChoiceParam::auto(),
+            include: Vec::new(),
+            reasoning: None,
+            web_search: Some(OpenResponsesWebSearchConfig {
+                enabled: true,
+                search_context_size: Some(SearchContextSize::High),
+                external_web_access: Some(true),
+                user_location: Some(OpenResponsesApproximateLocation {
+                    country: Some("US".to_string()),
+                    region: Some("California".to_string()),
+                    city: Some("San Francisco".to_string()),
+                    timezone: Some("America/Los_Angeles".to_string()),
+                }),
+            }),
+            followup_user_message: None,
+            stateless_history: false,
+            parallel_tool_calls: false,
+        };
+        let payload = build_streaming_request(&config, "what happened today?");
+        let tools = payload
+            .body()
+            .get("tools")
+            .and_then(|value| value.as_array())
+            .expect("tools array");
+        let web_search = tools
+            .iter()
+            .find(|tool| tool.get("type").and_then(|value| value.as_str()) == Some("web_search"))
+            .expect("canonical web_search tool");
+        assert_eq!(
+            web_search
+                .get("search_context_size")
+                .and_then(|value| value.as_str()),
+            Some("high")
+        );
+        assert_eq!(
+            web_search
+                .get("external_web_access")
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            web_search
+                .get("user_location")
+                .and_then(|value| value.get("type"))
+                .and_then(|value| value.as_str()),
+            Some("approximate")
+        );
+        assert_eq!(
+            web_search
+                .get("user_location")
+                .and_then(|value| value.get("city"))
+                .and_then(|value| value.as_str()),
+            Some("San Francisco")
+        );
+    }
+
+    #[test]
+    fn build_streaming_request_does_not_enable_web_search_by_default() {
+        let config = OpenResponsesConfig {
+            provider_id: Some("openai".to_string()),
+            endpoint: "https://api.openai.com/v1/responses".to_string(),
+            api_key: None,
+            model: Some("gpt-5.4-nano".to_string()),
+            headers: Vec::new(),
+            tool_choice: ToolChoiceParam::auto(),
+            include: Vec::new(),
+            reasoning: None,
+            web_search: None,
+            followup_user_message: None,
+            stateless_history: false,
+            parallel_tool_calls: false,
+        };
+        let payload = build_streaming_request(&config, "plain run");
+        let tools = payload
+            .body()
+            .get("tools")
+            .and_then(|value| value.as_array())
+            .expect("tools array");
+        assert!(tools
+            .iter()
+            .all(|tool| tool.get("type").and_then(|value| value.as_str()) != Some("web_search")));
+    }
+
+    #[test]
+    fn build_streaming_request_omits_disabled_web_search_for_openai() {
+        let config = OpenResponsesConfig {
+            provider_id: Some("openai".to_string()),
+            endpoint: "https://api.openai.com/v1/responses".to_string(),
+            api_key: None,
+            model: Some("gpt-5.4-nano".to_string()),
+            headers: Vec::new(),
+            tool_choice: ToolChoiceParam::auto(),
+            include: Vec::new(),
+            reasoning: None,
+            web_search: Some(OpenResponsesWebSearchConfig::disabled()),
+            followup_user_message: None,
+            stateless_history: false,
+            parallel_tool_calls: false,
+        };
+        let payload = build_streaming_request(&config, "plain run");
+        let tools = payload
+            .body()
+            .get("tools")
+            .and_then(|value| value.as_array())
+            .expect("tools array");
+        assert!(tools
+            .iter()
+            .all(|tool| tool.get("type").and_then(|value| value.as_str()) != Some("web_search")));
+    }
+
+    #[test]
+    fn build_streaming_request_sends_minimal_web_search_tool_for_openai() {
+        let config = OpenResponsesConfig {
+            provider_id: Some("openai".to_string()),
+            endpoint: "https://api.openai.com/v1/responses".to_string(),
+            api_key: None,
+            model: Some("gpt-5.4-mini".to_string()),
+            headers: Vec::new(),
+            tool_choice: ToolChoiceParam::auto(),
+            include: Vec::new(),
+            reasoning: None,
+            web_search: Some(OpenResponsesWebSearchConfig::default()),
+            followup_user_message: None,
+            stateless_history: false,
+            parallel_tool_calls: false,
+        };
+        let payload = build_streaming_request(&config, "search");
+        let web_search = payload
+            .body()
+            .get("tools")
+            .and_then(|value| value.as_array())
+            .and_then(|tools| {
+                tools.iter().find(|tool| {
+                    tool.get("type").and_then(|value| value.as_str()) == Some("web_search")
+                })
+            })
+            .expect("web_search tool");
+
+        assert!(web_search.get("search_context_size").is_none());
+        assert!(web_search.get("external_web_access").is_none());
+        assert!(web_search.get("user_location").is_none());
+    }
+
+    #[test]
+    fn build_streaming_request_trims_partial_web_search_location() {
+        let config = OpenResponsesConfig {
+            provider_id: Some("openai".to_string()),
+            endpoint: "https://api.openai.com/v1/responses".to_string(),
+            api_key: None,
+            model: Some("gpt-5.4-mini".to_string()),
+            headers: Vec::new(),
+            tool_choice: ToolChoiceParam::auto(),
+            include: Vec::new(),
+            reasoning: None,
+            web_search: Some(OpenResponsesWebSearchConfig {
+                enabled: true,
+                search_context_size: None,
+                external_web_access: None,
+                user_location: Some(OpenResponsesApproximateLocation {
+                    country: Some(" GB ".to_string()),
+                    region: Some("   ".to_string()),
+                    city: Some(" London ".to_string()),
+                    timezone: None,
+                }),
+            }),
+            followup_user_message: None,
+            stateless_history: false,
+            parallel_tool_calls: false,
+        };
+        let payload = build_streaming_request(&config, "search");
+        let location = payload
+            .body()
+            .get("tools")
+            .and_then(|value| value.as_array())
+            .and_then(|tools| {
+                tools.iter().find(|tool| {
+                    tool.get("type").and_then(|value| value.as_str()) == Some("web_search")
+                })
+            })
+            .and_then(|tool| tool.get("user_location"))
+            .expect("user_location");
+
+        assert_eq!(
+            location.get("type").and_then(|value| value.as_str()),
+            Some("approximate")
+        );
+        assert_eq!(
+            location.get("country").and_then(|value| value.as_str()),
+            Some("GB")
+        );
+        assert_eq!(
+            location.get("city").and_then(|value| value.as_str()),
+            Some("London")
+        );
+        assert!(location.get("region").is_none());
+        assert!(location.get("timezone").is_none());
+    }
+
+    #[test]
+    fn build_streaming_request_omits_disabled_web_search_even_with_fields() {
+        let config = OpenResponsesConfig {
+            provider_id: Some("openai".to_string()),
+            endpoint: "https://api.openai.com/v1/responses".to_string(),
+            api_key: None,
+            model: Some("gpt-5.4-mini".to_string()),
+            headers: Vec::new(),
+            tool_choice: ToolChoiceParam::auto(),
+            include: Vec::new(),
+            reasoning: None,
+            web_search: Some(OpenResponsesWebSearchConfig {
+                enabled: false,
+                search_context_size: Some(SearchContextSize::High),
+                external_web_access: Some(false),
+                user_location: Some(OpenResponsesApproximateLocation {
+                    country: Some("US".to_string()),
+                    region: None,
+                    city: None,
+                    timezone: None,
+                }),
+            }),
+            followup_user_message: None,
+            stateless_history: false,
+            parallel_tool_calls: false,
+        };
+        let payload = build_streaming_request(&config, "plain run");
+        let tools = payload
+            .body()
+            .get("tools")
+            .and_then(|value| value.as_array())
+            .expect("tools array");
+        assert!(tools
+            .iter()
+            .all(|tool| tool.get("type").and_then(|value| value.as_str()) != Some("web_search")));
+    }
+
+    #[test]
+    fn build_streaming_request_omits_canonical_web_search_for_openrouter() {
+        let config = OpenResponsesConfig {
+            provider_id: Some("openrouter".to_string()),
+            endpoint: "https://openrouter.ai/api/v1/responses".to_string(),
+            api_key: None,
+            model: Some("google/gemma-4-26b-a4b-it".to_string()),
+            headers: Vec::new(),
+            tool_choice: ToolChoiceParam::auto(),
+            include: Vec::new(),
+            reasoning: None,
+            web_search: Some(OpenResponsesWebSearchConfig {
+                enabled: true,
+                search_context_size: Some(SearchContextSize::Medium),
+                external_web_access: Some(true),
+                user_location: Some(OpenResponsesApproximateLocation {
+                    country: Some("US".to_string()),
+                    region: None,
+                    city: None,
+                    timezone: None,
+                }),
+            }),
+            followup_user_message: None,
+            stateless_history: true,
+            parallel_tool_calls: false,
+        };
+        let payload = build_streaming_request(&config, "what happened today?");
+        let tools = payload
+            .body()
+            .get("tools")
+            .and_then(|value| value.as_array())
+            .expect("tools array");
+        assert!(tools
+            .iter()
+            .all(|tool| tool.get("type").and_then(|value| value.as_str()) != Some("web_search")));
+    }
+
+    #[test]
     fn builtin_function_tools_are_strict_false() {
         let tools = builtin_function_tools();
         let tool = tools
@@ -946,8 +1534,36 @@ mod tests {
     #[test]
     fn parse_openresponses_include_helpers_accept_canonical_values() {
         assert_eq!(
+            parse_openresponses_include("file_search_call.results"),
+            Ok(OpenResponsesInclude::FileSearchCallResults)
+        );
+        assert_eq!(
+            parse_openresponses_include("web_search_call.results"),
+            Ok(OpenResponsesInclude::WebSearchCallResults)
+        );
+        assert_eq!(
+            parse_openresponses_include("web_search_call.action.sources"),
+            Ok(OpenResponsesInclude::WebSearchCallActionSources)
+        );
+        assert_eq!(
+            parse_openresponses_include("message.input_image.image_url"),
+            Ok(OpenResponsesInclude::MessageInputImageImageUrl)
+        );
+        assert_eq!(
+            parse_openresponses_include("computer_call_output.output.image_url"),
+            Ok(OpenResponsesInclude::ComputerCallOutputOutputImageUrl)
+        );
+        assert_eq!(
+            parse_openresponses_include("code_interpreter_call.outputs"),
+            Ok(OpenResponsesInclude::CodeInterpreterCallOutputs)
+        );
+        assert_eq!(
             parse_openresponses_include("reasoning.encrypted_content"),
             Ok(OpenResponsesInclude::ReasoningEncryptedContent)
+        );
+        assert_eq!(
+            parse_openresponses_include("message.output_text.logprobs"),
+            Ok(OpenResponsesInclude::MessageOutputTextLogprobs)
         );
         assert_eq!(
             parse_openresponses_include_list(
@@ -967,6 +1583,159 @@ mod tests {
     }
 
     #[test]
+    fn parse_search_context_size_accepts_values_and_rejects_unknown() {
+        assert_eq!(parse_search_context_size("low"), Ok(SearchContextSize::Low));
+        assert_eq!(
+            parse_search_context_size("medium"),
+            Ok(SearchContextSize::Medium)
+        );
+        assert_eq!(
+            parse_search_context_size("high"),
+            Ok(SearchContextSize::High)
+        );
+        assert!(parse_search_context_size("large").is_err());
+    }
+
+    #[test]
+    fn openresponses_include_as_str_covers_all_values() {
+        assert_eq!(
+            OpenResponsesInclude::FileSearchCallResults.as_str(),
+            "file_search_call.results"
+        );
+        assert_eq!(
+            OpenResponsesInclude::WebSearchCallResults.as_str(),
+            "web_search_call.results"
+        );
+        assert_eq!(
+            OpenResponsesInclude::WebSearchCallActionSources.as_str(),
+            "web_search_call.action.sources"
+        );
+        assert_eq!(
+            OpenResponsesInclude::MessageInputImageImageUrl.as_str(),
+            "message.input_image.image_url"
+        );
+        assert_eq!(
+            OpenResponsesInclude::ComputerCallOutputOutputImageUrl.as_str(),
+            "computer_call_output.output.image_url"
+        );
+        assert_eq!(
+            OpenResponsesInclude::CodeInterpreterCallOutputs.as_str(),
+            "code_interpreter_call.outputs"
+        );
+        assert_eq!(
+            OpenResponsesInclude::ReasoningEncryptedContent.as_str(),
+            "reasoning.encrypted_content"
+        );
+        assert_eq!(
+            OpenResponsesInclude::MessageOutputTextLogprobs.as_str(),
+            "message.output_text.logprobs"
+        );
+    }
+
+    #[test]
+    fn web_search_deserialize_defaults_enabled_and_preserves_region_timezone() {
+        let web_search: OpenResponsesWebSearchConfig = serde_json::from_value(serde_json::json!({
+            "search_context_size": "medium",
+            "user_location": {
+                "region": " Ontario ",
+                "timezone": " America/Toronto "
+            }
+        }))
+        .expect("web search config");
+
+        assert!(web_search.enabled);
+        assert_eq!(
+            web_search.search_context_size,
+            Some(SearchContextSize::Medium)
+        );
+        assert_eq!(web_search.external_web_access, None);
+
+        let config = OpenResponsesConfig {
+            provider_id: Some("openai".to_string()),
+            endpoint: "https://api.openai.com/v1/responses".to_string(),
+            api_key: None,
+            model: Some("gpt-5.4-mini".to_string()),
+            headers: Vec::new(),
+            tool_choice: ToolChoiceParam::auto(),
+            include: Vec::new(),
+            reasoning: None,
+            web_search: Some(web_search),
+            followup_user_message: None,
+            stateless_history: false,
+            parallel_tool_calls: false,
+        };
+        let payload = build_streaming_request(&config, "search");
+        let location = payload
+            .body()
+            .get("tools")
+            .and_then(|value| value.as_array())
+            .and_then(|tools| {
+                tools.iter().find(|tool| {
+                    tool.get("type").and_then(|value| value.as_str()) == Some("web_search")
+                })
+            })
+            .and_then(|tool| tool.get("user_location"))
+            .expect("user_location");
+
+        assert_eq!(location.get("country"), None);
+        assert_eq!(
+            location.get("region").and_then(|value| value.as_str()),
+            Some("Ontario")
+        );
+        assert_eq!(location.get("city"), None);
+        assert_eq!(
+            location.get("timezone").and_then(|value| value.as_str()),
+            Some("America/Toronto")
+        );
+    }
+
+    #[test]
+    fn web_search_override_normalizes_trimmed_location_and_empty_disabled_config() {
+        assert_eq!(OpenResponsesWebSearchConfig::disabled().normalized(), None);
+        assert_eq!(
+            OpenResponsesApproximateLocation {
+                country: Some(" ".to_string()),
+                region: None,
+                city: Some("\t".to_string()),
+                timezone: None,
+            }
+            .normalized(),
+            None
+        );
+
+        let override_cfg = OpenResponsesWebSearchOverride {
+            enabled: Some(true),
+            search_context_size: Some(SearchContextSize::Low),
+            external_web_access: Some(false),
+            user_location: Some(OpenResponsesApproximateLocation {
+                country: Some(" GB ".to_string()),
+                region: Some(" England ".to_string()),
+                city: Some(" London ".to_string()),
+                timezone: Some(" Europe/London ".to_string()),
+            }),
+        };
+        assert!(!override_cfg.is_empty());
+
+        let cfg = override_cfg
+            .into_config()
+            .expect("non-empty web search config");
+        assert!(cfg.enabled);
+        assert_eq!(cfg.search_context_size, Some(SearchContextSize::Low));
+        assert_eq!(cfg.external_web_access, Some(false));
+        let location = cfg.user_location.expect("location");
+        assert_eq!(location.country.as_deref(), Some("GB"));
+        assert_eq!(location.region.as_deref(), Some("England"));
+        assert_eq!(location.city.as_deref(), Some("London"));
+        assert_eq!(location.timezone.as_deref(), Some("Europe/London"));
+
+        assert!(OpenResponsesWebSearchOverride::default().is_empty());
+        assert_eq!(
+            OpenResponsesWebSearchOverride::default().into_config(),
+            None
+        );
+    }
+
+    #[test]
     fn build_streaming_request_includes_effective_include_values() {
         let config = OpenResponsesConfig {
             provider_id: Some("openai".to_string()),
@@ -980,6 +1749,7 @@ mod tests {
                 OpenResponsesInclude::MessageOutputTextLogprobs,
             ],
             reasoning: None,
+            web_search: None,
             followup_user_message: None,
             stateless_history: false,
             parallel_tool_calls: false,

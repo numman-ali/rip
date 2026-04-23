@@ -66,10 +66,14 @@ OpenResponses overrides (`rip run` flags)
 - `--followup-user-message <text>` sets per-run `followup_user_message`.
 - `--reasoning-effort <none|minimal|low|medium|high|xhigh>` sets per-run `reasoning.effort`.
 - `--reasoning-summary <concise|detailed|auto>` sets per-run `reasoning.summary`.
+- `--web-search` / `--no-web-search` enables or disables canonical OpenResponses hosted `web_search` for the run.
+- `--web-search-context-size <low|medium|high>` sets canonical `web_search.search_context_size`.
+- `--web-search-external-web-access <true|false>` sets canonical `web_search.external_web_access`.
 - Flags work in both local mode and `--server <url>` mode (sent as per-message `openresponses` overrides).
 - Local-only compat: when `RIP_OPENRESPONSES_ENDPOINT` is set in the *client* environment, local runs forward the env OpenResponses settings as per-run overrides (posted to the local authority) so changing `RIP_OPENRESPONSES_MODEL`/flags does not require restarting the authority.
 Examples:
 - OpenAI: `OPENAI_API_KEY=... rip run "<task>" --provider openai --model gpt-5-nano-2025-08-07`
+- OpenAI web search: `OPENAI_API_KEY=... rip run "Find one current source and cite it." --provider openai --model gpt-5.4 --web-search --include web_search_call.action.sources`
 - OpenRouter: `OPENROUTER_API_KEY=... rip run "<task>" --provider openrouter --model openai/gpt-oss-20b --stateless-history`
 - Live sweep: `scripts/live-openresponses-sweep` (real APIs; runs a tool-sweep against OpenAI/OpenRouter).
 

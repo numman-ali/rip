@@ -54,6 +54,7 @@ pub(crate) async fn send_input(
     let openresponses_override = resolve_session_openresponses_override(
         state.engine.continuities().workspace_root(),
         openresponses.as_ref(),
+        state.engine.default_openresponses().as_ref(),
     );
 
     state

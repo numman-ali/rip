@@ -6,6 +6,7 @@ use serde_json::Value;
 
 use crate::provider_openresponses::{
     parse_openresponses_include_list, OpenResponsesInclude, OpenResponsesReasoningConfig,
+    OpenResponsesWebSearchConfig, OpenResponsesWebSearchOverride,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -139,6 +140,8 @@ pub struct OpenResponsesDefaults {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub followup_user_message: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub web_search: Option<OpenResponsesWebSearchConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<OpenResponsesReasoningConfig>,
 }
 
@@ -156,6 +159,8 @@ pub struct OpenResponsesDefaultsOverlay {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub followup_user_message: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub web_search: Option<OpenResponsesWebSearchOverride>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<OpenResponsesReasoningConfig>,
 }
 
@@ -167,6 +172,7 @@ pub struct OpenResponsesOverrideInput {
     pub parallel_tool_calls: Option<bool>,
     pub include: Option<Vec<OpenResponsesInclude>>,
     pub followup_user_message: Option<String>,
+    pub web_search: Option<OpenResponsesWebSearchOverride>,
     pub reasoning: Option<OpenResponsesReasoningConfig>,
 }
 
@@ -191,6 +197,11 @@ pub struct OpenResponsesResolvedConfig {
     pub include_source: Option<String>,
     pub followup_user_message: Option<String>,
     pub followup_user_message_source: Option<String>,
+    pub web_search: Option<OpenResponsesWebSearchConfig>,
+    pub web_search_enabled_source: Option<String>,
+    pub web_search_search_context_size_source: Option<String>,
+    pub web_search_external_web_access_source: Option<String>,
+    pub web_search_user_location_source: Option<String>,
     pub reasoning: Option<OpenResponsesReasoningConfig>,
     pub reasoning_effort_source: Option<String>,
     pub reasoning_summary_source: Option<String>,
@@ -428,6 +439,28 @@ pub fn resolve_openresponses_config(
         .unwrap_or_default();
     let mut include_source =
         (!include.is_empty()).then(|| "config:openresponses.include".to_string());
+    let config_web_search = config
+        .openresponses
+        .as_ref()
+        .and_then(|cfg| cfg.web_search.clone());
+    let mut web_search = config_web_search
+        .clone()
+        .and_then(OpenResponsesWebSearchConfig::normalized);
+    let mut web_search_enabled_source = config_web_search
+        .as_ref()
+        .map(|_| "config:openresponses.web_search.enabled".to_string());
+    let mut web_search_search_context_size_source = config_web_search
+        .as_ref()
+        .and_then(|cfg| cfg.search_context_size)
+        .map(|_| "config:openresponses.web_search.search_context_size".to_string());
+    let mut web_search_external_web_access_source = config_web_search
+        .as_ref()
+        .and_then(|cfg| cfg.external_web_access)
+        .map(|_| "config:openresponses.web_search.external_web_access".to_string());
+    let mut web_search_user_location_source = config_web_search
+        .as_ref()
+        .and_then(|cfg| cfg.user_location.as_ref())
+        .map(|_| "config:openresponses.web_search.user_location".to_string());
     let mut reasoning = config
         .openresponses
         .as_ref()
@@ -471,6 +504,31 @@ pub fn resolve_openresponses_config(
                 followup_user_message_source = Some(format!(
                     "config:provider.{provider_id}.openresponses.followup_user_message"
                 ));
+            }
+            if let Some(value) = overlay.web_search.as_ref() {
+                let web_search_cfg =
+                    web_search.get_or_insert_with(OpenResponsesWebSearchConfig::default);
+                value.apply_to(web_search_cfg);
+                if value.enabled.is_some() {
+                    web_search_enabled_source = Some(format!(
+                        "config:provider.{provider_id}.openresponses.web_search.enabled"
+                    ));
+                }
+                if value.search_context_size.is_some() {
+                    web_search_search_context_size_source = Some(format!(
+                        "config:provider.{provider_id}.openresponses.web_search.search_context_size"
+                    ));
+                }
+                if value.external_web_access.is_some() {
+                    web_search_external_web_access_source = Some(format!(
+                        "config:provider.{provider_id}.openresponses.web_search.external_web_access"
+                    ));
+                }
+                if value.user_location.is_some() {
+                    web_search_user_location_source = Some(format!(
+                        "config:provider.{provider_id}.openresponses.web_search.user_location"
+                    ));
+                }
             }
             if let Some(value) = overlay.reasoning.as_ref().and_then(|cfg| cfg.effort) {
                 let reasoning_cfg =
@@ -518,6 +576,31 @@ pub fn resolve_openresponses_config(
                 Some("env:RIP_OPENRESPONSES_FOLLOWUP_USER_MESSAGE".to_string());
         }
     }
+    if let Some(enabled) = parse_env_bool("RIP_OPENRESPONSES_WEB_SEARCH") {
+        let web_search_cfg = web_search.get_or_insert_with(OpenResponsesWebSearchConfig::default);
+        web_search_cfg.enabled = enabled;
+        web_search_enabled_source = Some("env:RIP_OPENRESPONSES_WEB_SEARCH".to_string());
+    }
+    if let Some(value) = env_var("RIP_OPENRESPONSES_WEB_SEARCH_CONTEXT_SIZE") {
+        match crate::provider_openresponses::parse_search_context_size(&value) {
+            Ok(search_context_size) => {
+                let web_search_cfg =
+                    web_search.get_or_insert_with(OpenResponsesWebSearchConfig::default);
+                web_search_cfg.search_context_size = Some(search_context_size);
+                web_search_search_context_size_source =
+                    Some("env:RIP_OPENRESPONSES_WEB_SEARCH_CONTEXT_SIZE".to_string());
+            }
+            Err(err) => eprintln!(
+                "invalid RIP_OPENRESPONSES_WEB_SEARCH_CONTEXT_SIZE={value:?}: {err}; ignoring"
+            ),
+        }
+    }
+    if let Some(enabled) = parse_env_bool("RIP_OPENRESPONSES_WEB_SEARCH_EXTERNAL_WEB_ACCESS") {
+        let web_search_cfg = web_search.get_or_insert_with(OpenResponsesWebSearchConfig::default);
+        web_search_cfg.external_web_access = Some(enabled);
+        web_search_external_web_access_source =
+            Some("env:RIP_OPENRESPONSES_WEB_SEARCH_EXTERNAL_WEB_ACCESS".to_string());
+    }
     if let Some(value) = env_var("RIP_OPENRESPONSES_REASONING_EFFORT") {
         match crate::provider_openresponses::parse_reasoning_effort(&value) {
             Ok(effort) => {
@@ -563,6 +646,24 @@ pub fn resolve_openresponses_config(
         defaults.followup_user_message = overrides.followup_user_message.clone();
         followup_user_message_source = Some("override:followup_user_message".to_string());
     }
+    if let Some(override_web_search) = overrides.web_search.as_ref() {
+        let web_search_cfg = web_search.get_or_insert_with(OpenResponsesWebSearchConfig::default);
+        override_web_search.apply_to(web_search_cfg);
+        if override_web_search.enabled.is_some() {
+            web_search_enabled_source = Some("override:web_search.enabled".to_string());
+        }
+        if override_web_search.search_context_size.is_some() {
+            web_search_search_context_size_source =
+                Some("override:web_search.search_context_size".to_string());
+        }
+        if override_web_search.external_web_access.is_some() {
+            web_search_external_web_access_source =
+                Some("override:web_search.external_web_access".to_string());
+        }
+        if override_web_search.user_location.is_some() {
+            web_search_user_location_source = Some("override:web_search.user_location".to_string());
+        }
+    }
     if let Some(override_reasoning) = overrides.reasoning.as_ref() {
         if let Some(value) = override_reasoning.effort {
             let reasoning_cfg = reasoning.get_or_insert_with(OpenResponsesReasoningConfig::default);
@@ -576,6 +677,7 @@ pub fn resolve_openresponses_config(
         }
     }
 
+    web_search = web_search.and_then(OpenResponsesWebSearchConfig::normalized);
     reasoning = reasoning.and_then(OpenResponsesReasoningConfig::normalized);
 
     let effective_route = match (provider_id.as_deref(), model.as_deref()) {
@@ -604,6 +706,11 @@ pub fn resolve_openresponses_config(
             include_source,
             followup_user_message: defaults.followup_user_message,
             followup_user_message_source,
+            web_search,
+            web_search_enabled_source,
+            web_search_search_context_size_source,
+            web_search_external_web_access_source,
+            web_search_user_location_source,
             reasoning,
             reasoning_effort_source,
             reasoning_summary_source,
@@ -906,6 +1013,7 @@ fn merge_json_value(target: &mut Value, overlay: &Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::provider_openresponses::{OpenResponsesApproximateLocation, SearchContextSize};
     use crate::{ReasoningEffort, ReasoningSummary};
     use std::fs;
 
@@ -951,6 +1059,14 @@ mod tests {
         assert_eq!(parsed.provider_id, "openrouter");
         assert_eq!(parsed.model_id, "openai/gpt-oss-20b");
         assert_eq!(parsed.variant.as_deref(), Some("fast"));
+    }
+
+    #[test]
+    fn parse_route_string_rejects_missing_route_parts() {
+        assert!(parse_route_string("   ").is_err());
+        assert!(parse_route_string("openai").is_err());
+        assert!(parse_route_string("/gpt-5.4-mini").is_err());
+        assert!(parse_route_string("openai/   ").is_err());
     }
 
     #[test]
@@ -1019,6 +1135,183 @@ mod tests {
             .headers
             .iter()
             .any(|(k, v)| k == "x-provider" && v == "openai"));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_openresponses_config_tracks_global_web_search_sources() {
+        let dir = std::env::temp_dir().join(format!(
+            "ripd-config-web-search-global-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".git")).expect("git dir");
+
+        fs::write(
+            dir.join("rip.jsonc"),
+            r#"
+            {
+              "provider": {
+                "openai": {
+                  "endpoint": "https://api.openai.com/v1/responses"
+                }
+              },
+              "model": "openai/gpt-5.4-mini",
+              "openresponses": {
+                "web_search": {
+                  "enabled": true,
+                  "search_context_size": "high",
+                  "external_web_access": false,
+                  "user_location": { "country": "US", "region": "WA" }
+                }
+              }
+            }
+            "#,
+        )
+        .expect("write config");
+
+        let (resolved, _loaded) =
+            resolve_openresponses_config(&dir, OpenResponsesOverrideInput::default());
+        let resolved = resolved.expect("resolved");
+        let web_search = resolved.web_search.expect("web search config");
+
+        assert!(web_search.enabled);
+        assert_eq!(
+            web_search.search_context_size,
+            Some(SearchContextSize::High)
+        );
+        assert_eq!(web_search.external_web_access, Some(false));
+        assert_eq!(
+            web_search
+                .user_location
+                .and_then(|location| location.region)
+                .as_deref(),
+            Some("WA")
+        );
+        assert_eq!(
+            resolved.web_search_enabled_source.as_deref(),
+            Some("config:openresponses.web_search.enabled")
+        );
+        assert_eq!(
+            resolved.web_search_search_context_size_source.as_deref(),
+            Some("config:openresponses.web_search.search_context_size")
+        );
+        assert_eq!(
+            resolved.web_search_external_web_access_source.as_deref(),
+            Some("config:openresponses.web_search.external_web_access")
+        );
+        assert_eq!(
+            resolved.web_search_user_location_source.as_deref(),
+            Some("config:openresponses.web_search.user_location")
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_openresponses_config_tracks_provider_web_search_sources() {
+        let dir = std::env::temp_dir().join(format!(
+            "ripd-config-web-search-provider-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".git")).expect("git dir");
+
+        fs::write(
+            dir.join("rip.jsonc"),
+            r#"
+            {
+              "provider": {
+                "openai": {
+                  "endpoint": "https://api.openai.com/v1/responses",
+                  "openresponses": {
+                    "web_search": {
+                      "enabled": true,
+                      "search_context_size": "low",
+                      "external_web_access": true,
+                      "user_location": { "city": "London" }
+                    }
+                  }
+                }
+              },
+              "model": "openai/gpt-5.4-mini"
+            }
+            "#,
+        )
+        .expect("write config");
+
+        let (resolved, _loaded) =
+            resolve_openresponses_config(&dir, OpenResponsesOverrideInput::default());
+        let resolved = resolved.expect("resolved");
+        let web_search = resolved.web_search.expect("web search config");
+
+        assert!(web_search.enabled);
+        assert_eq!(web_search.search_context_size, Some(SearchContextSize::Low));
+        assert_eq!(web_search.external_web_access, Some(true));
+        assert_eq!(
+            web_search
+                .user_location
+                .and_then(|location| location.city)
+                .as_deref(),
+            Some("London")
+        );
+        assert_eq!(
+            resolved.web_search_enabled_source.as_deref(),
+            Some("config:provider.openai.openresponses.web_search.enabled")
+        );
+        assert_eq!(
+            resolved.web_search_search_context_size_source.as_deref(),
+            Some("config:provider.openai.openresponses.web_search.search_context_size")
+        );
+        assert_eq!(
+            resolved.web_search_external_web_access_source.as_deref(),
+            Some("config:provider.openai.openresponses.web_search.external_web_access")
+        );
+        assert_eq!(
+            resolved.web_search_user_location_source.as_deref(),
+            Some("config:provider.openai.openresponses.web_search.user_location")
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_openresponses_config_drops_empty_disabled_web_search() {
+        let dir = std::env::temp_dir().join(format!(
+            "ripd-config-web-search-disabled-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".git")).expect("git dir");
+
+        fs::write(
+            dir.join("rip.jsonc"),
+            r#"
+            {
+              "provider": {
+                "openai": {
+                  "endpoint": "https://api.openai.com/v1/responses"
+                }
+              },
+              "model": "openai/gpt-5.4-mini",
+              "openresponses": {
+                "web_search": { "enabled": false }
+              }
+            }
+            "#,
+        )
+        .expect("write config");
+
+        let (resolved, _loaded) =
+            resolve_openresponses_config(&dir, OpenResponsesOverrideInput::default());
+        let resolved = resolved.expect("resolved");
+
+        assert_eq!(resolved.web_search, None);
+        assert_eq!(
+            resolved.web_search_enabled_source.as_deref(),
+            Some("config:openresponses.web_search.enabled")
+        );
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -1158,6 +1451,129 @@ mod tests {
         assert_eq!(
             resolved.include_source.as_deref(),
             Some("config:provider.openai.openresponses.include")
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_openresponses_config_layers_web_search_sources_and_overrides() {
+        let dir =
+            std::env::temp_dir().join(format!("ripd-config-web-search-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".git")).expect("git dir");
+
+        fs::write(
+            dir.join("rip.jsonc"),
+            r#"
+            {
+              "provider": {
+                "openai": {
+                  "endpoint": "https://api.openai.com/v1/responses",
+                  "openresponses": {
+                    "web_search": {
+                      "search_context_size": "high",
+                      "external_web_access": false,
+                      "user_location": { "country": "GB", "city": "London" }
+                    },
+                    "reasoning": { "summary": "detailed" }
+                  }
+                }
+              },
+              "model": "openai/gpt-5.4-nano",
+              "openresponses": {
+                "web_search": {
+                  "enabled": true,
+                  "search_context_size": "medium",
+                  "external_web_access": true,
+                  "user_location": { "country": "US" }
+                }
+              }
+            }
+            "#,
+        )
+        .expect("write config");
+
+        let (resolved, _loaded) = resolve_openresponses_config(
+            &dir,
+            OpenResponsesOverrideInput {
+                stateless_history: Some(true),
+                followup_user_message: Some("manual follow-up".to_string()),
+                web_search: Some(OpenResponsesWebSearchOverride {
+                    enabled: Some(false),
+                    search_context_size: Some(SearchContextSize::Low),
+                    external_web_access: Some(true),
+                    user_location: Some(OpenResponsesApproximateLocation {
+                        country: Some(" CA ".to_string()),
+                        region: Some(" Ontario ".to_string()),
+                        city: Some(" Toronto ".to_string()),
+                        timezone: Some(" America/Toronto ".to_string()),
+                    }),
+                }),
+                reasoning: Some(OpenResponsesReasoningConfig {
+                    effort: Some(ReasoningEffort::Low),
+                    summary: None,
+                }),
+                ..OpenResponsesOverrideInput::default()
+            },
+        );
+        let resolved = resolved.expect("resolved");
+
+        assert!(resolved.stateless_history);
+        assert_eq!(
+            resolved.stateless_history_source.as_deref(),
+            Some("override:stateless_history")
+        );
+        assert_eq!(
+            resolved.followup_user_message.as_deref(),
+            Some("manual follow-up")
+        );
+        assert_eq!(
+            resolved.followup_user_message_source.as_deref(),
+            Some("override:followup_user_message")
+        );
+
+        let web_search = resolved.web_search.expect("web search config");
+        assert!(!web_search.enabled);
+        assert_eq!(web_search.search_context_size, Some(SearchContextSize::Low));
+        assert_eq!(web_search.external_web_access, Some(true));
+        let location = web_search.user_location.expect("location");
+        assert_eq!(location.country.as_deref(), Some("CA"));
+        assert_eq!(location.region.as_deref(), Some("Ontario"));
+        assert_eq!(location.city.as_deref(), Some("Toronto"));
+        assert_eq!(location.timezone.as_deref(), Some("America/Toronto"));
+        assert_eq!(
+            resolved.web_search_enabled_source.as_deref(),
+            Some("override:web_search.enabled")
+        );
+        assert_eq!(
+            resolved.web_search_search_context_size_source.as_deref(),
+            Some("override:web_search.search_context_size")
+        );
+        assert_eq!(
+            resolved.web_search_external_web_access_source.as_deref(),
+            Some("override:web_search.external_web_access")
+        );
+        assert_eq!(
+            resolved.web_search_user_location_source.as_deref(),
+            Some("override:web_search.user_location")
+        );
+
+        assert_eq!(
+            resolved.reasoning.as_ref().and_then(|value| value.effort),
+            Some(ReasoningEffort::Low)
+        );
+        assert_eq!(
+            resolved.reasoning.as_ref().and_then(|value| value.summary),
+            Some(ReasoningSummary::Detailed)
+        );
+        assert_eq!(
+            resolved.reasoning_effort_source.as_deref(),
+            Some("override:reasoning.effort")
+        );
+        assert_eq!(
+            resolved.reasoning_summary_source.as_deref(),
+            Some("config:provider.openai.openresponses.reasoning.summary")
         );
 
         let _ = fs::remove_dir_all(&dir);

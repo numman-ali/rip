@@ -21,6 +21,7 @@ pub struct ValidationOptions {
     normalize_missing_response_user: bool,
     normalize_reasoning_text_events: bool,
     normalize_missing_reasoning_summary: bool,
+    normalize_response_web_search_tools: bool,
 }
 
 impl ValidationOptions {
@@ -57,6 +58,11 @@ impl ValidationOptions {
 
     pub fn with_missing_reasoning_summary(mut self) -> Self {
         self.normalize_missing_reasoning_summary = true;
+        self
+    }
+
+    pub fn with_response_web_search_tools(mut self) -> Self {
+        self.normalize_response_web_search_tools = true;
         self
     }
 }
@@ -112,6 +118,7 @@ impl ParsedEvent {
             || validation.normalize_missing_response_user
             || validation.normalize_reasoning_text_events
             || validation.normalize_missing_reasoning_summary
+            || validation.normalize_response_web_search_tools
         {
             normalize_event_for_validation(&data, validation)
         } else {
@@ -295,6 +302,9 @@ fn normalize_response_resource(response: &mut Value, validation: ValidationOptio
     if validation.normalize_missing_reasoning_summary {
         normalize_response_reasoning_metadata(obj);
     }
+    if validation.normalize_response_web_search_tools {
+        normalize_response_web_search_tools(obj);
+    }
     let Some(output) = obj.get_mut("output") else {
         return;
     };
@@ -303,6 +313,38 @@ fn normalize_response_resource(response: &mut Value, validation: ValidationOptio
     };
     for (idx, item) in items.iter_mut().enumerate() {
         normalize_output_item(item, Some(idx as u64));
+    }
+}
+
+fn normalize_response_web_search_tools(obj: &mut serde_json::Map<String, Value>) {
+    let Some(tools) = obj.get_mut("tools").and_then(Value::as_array_mut) else {
+        return;
+    };
+
+    for tool in tools {
+        let Some(tool_obj) = tool.as_object_mut() else {
+            continue;
+        };
+        let Some(tool_type) = tool_obj.get("type").and_then(Value::as_str) else {
+            continue;
+        };
+        if tool_type != "web_search" && tool_type != "web_search_2025_08_26" {
+            continue;
+        }
+
+        // The request schema already supports canonical `web_search`, but the current
+        // ResponseResource schema still validates echoed tools through the older preview tool.
+        // This is validation-only: provider_event data keeps the raw provider payload.
+        tool_obj.insert(
+            "type".to_string(),
+            Value::String("web_search_preview".to_string()),
+        );
+        tool_obj
+            .entry("user_location".to_string())
+            .or_insert(Value::Null);
+        tool_obj
+            .entry("search_context_size".to_string())
+            .or_insert_with(|| Value::String("medium".to_string()));
     }
 }
 
@@ -946,6 +988,82 @@ data: {\"type\":\"response.output_item.added\",\"sequence_number\":1,\"output_in
                 event.response_errors
             );
         }
+    }
+
+    #[test]
+    fn response_web_search_tool_normalization_is_validation_only() {
+        let value = serde_json::json!({
+            "type": "response.created",
+            "sequence_number": 1,
+            "response": {
+                "background": false,
+                "completed_at": null,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0,
+                "id": "resp_1",
+                "incomplete_details": null,
+                "instructions": null,
+                "max_output_tokens": null,
+                "max_tool_calls": 32,
+                "metadata": {},
+                "model": "gpt-5.4-mini",
+                "object": "response",
+                "output": [],
+                "parallel_tool_calls": false,
+                "presence_penalty": 0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "reasoning": { "effort": "none", "summary": null },
+                "safety_identifier": null,
+                "service_tier": "auto",
+                "status": "in_progress",
+                "store": true,
+                "temperature": 1,
+                "text": { "format": { "type": "text" }, "verbosity": "medium" },
+                "tool_choice": "auto",
+                "tools": [{
+                    "type": "web_search",
+                    "search_context_size": "low",
+                    "user_location": {
+                        "type": "approximate",
+                        "country": "US",
+                        "region": null,
+                        "city": null,
+                        "timezone": null
+                    }
+                }],
+                "top_logprobs": 0,
+                "top_p": 1,
+                "truncation": "disabled",
+                "usage": null,
+                "user": null
+            }
+        });
+        let mut decoder = SseDecoder::new_with_validation(
+            ValidationOptions::strict().with_response_web_search_tools(),
+        );
+        let raw = format!("event: response.created\ndata: {value}\n\n");
+        let events = decoder.push(&raw);
+
+        assert_eq!(events.len(), 1);
+        assert!(
+            events[0].response_errors.is_empty(),
+            "unexpected response errors: {:?}",
+            events[0].response_errors
+        );
+        assert_eq!(
+            events[0]
+                .data
+                .as_ref()
+                .and_then(|data| data.get("response"))
+                .and_then(|response| response.get("tools"))
+                .and_then(|tools| tools.as_array())
+                .and_then(|tools| tools.first())
+                .and_then(|tool| tool.get("type"))
+                .and_then(|value| value.as_str()),
+            Some("web_search")
+        );
     }
 
     #[test]

@@ -42,13 +42,15 @@ pub use local_authority::{
 };
 pub use openresponses_compat::{
     resolve_openresponses_compat_profile, CompatLevel, OpenResponsesIncludeSupport,
-    OpenResponsesReasoningSupport, ResolvedOpenResponsesCompatProfile,
-    ResolvedOpenResponsesInclude, ResolvedOpenResponsesReasoning,
+    OpenResponsesReasoningSupport, OpenResponsesWebSearchSupport,
+    ResolvedOpenResponsesCompatProfile, ResolvedOpenResponsesInclude,
+    ResolvedOpenResponsesReasoning, ResolvedOpenResponsesWebSearch,
 };
 pub use provider_openresponses::{
     parse_openresponses_include, parse_openresponses_include_list, parse_reasoning_effort,
-    parse_reasoning_summary, OpenResponsesInclude, OpenResponsesReasoningConfig, ReasoningEffort,
-    ReasoningSummary,
+    parse_reasoning_summary, parse_search_context_size, OpenResponsesApproximateLocation,
+    OpenResponsesInclude, OpenResponsesReasoningConfig, OpenResponsesWebSearchConfig,
+    OpenResponsesWebSearchOverride, ReasoningEffort, ReasoningSummary, SearchContextSize,
 };
 pub use runner::{SessionEngine, SessionHandle};
 

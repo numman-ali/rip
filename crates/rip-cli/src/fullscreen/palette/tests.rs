@@ -67,6 +67,15 @@ fn override_input_extracts_all_known_fields() {
             "effort": "high",
             "summary": "detailed"
         },
+        "web_search": {
+            "enabled": true,
+            "search_context_size": "high",
+            "external_web_access": true,
+            "user_location": {
+                "country": "US",
+                "city": "San Francisco"
+            }
+        },
         "unknown_field": 42,
     });
     let out = openresponses_override_input_from_json(Some(&value));
@@ -92,6 +101,23 @@ fn override_input_extracts_all_known_fields() {
     assert_eq!(
         out.reasoning.as_ref().and_then(|value| value.summary),
         Some(ripd::ReasoningSummary::Detailed)
+    );
+    assert_eq!(
+        out.web_search.as_ref().map(|value| value.enabled),
+        Some(Some(true))
+    );
+    assert_eq!(
+        out.web_search
+            .as_ref()
+            .and_then(|value| value.search_context_size),
+        Some(ripd::SearchContextSize::High)
+    );
+    assert_eq!(
+        out.web_search
+            .as_ref()
+            .and_then(|value| value.user_location.as_ref())
+            .and_then(|value| value.city.as_deref()),
+        Some("San Francisco")
     );
 }
 
@@ -568,6 +594,68 @@ fn open_options_palette_shows_effective_reasoning_and_route_support() {
         .as_deref()
         .unwrap_or("")
         .contains("route: unverified"));
+}
+
+#[test]
+fn open_options_palette_shows_web_search_state_and_route_support() {
+    let mut state = tui();
+    let overrides = json!({
+        "endpoint": "https://api.openai.com/v1/responses",
+        "model": "gpt-5.4-nano",
+        "web_search": {
+            "enabled": true,
+            "search_context_size": "high"
+        }
+    });
+
+    open_options_palette_with_overrides(&mut state, Some(&overrides), PaletteOrigin::TopCenter);
+
+    let overlay = state.palette_state_clone().expect("palette");
+    let entry = overlay
+        .entries
+        .iter()
+        .find(|entry| entry.value == "options.web_search.enabled")
+        .expect("web search entry");
+    assert_eq!(entry.chips, vec!["native"]);
+    assert!(entry
+        .subtitle
+        .as_deref()
+        .is_some_and(|text| text.contains("effective: on")));
+}
+
+#[test]
+fn apply_palette_selection_in_option_mode_toggles_web_search_override() {
+    let mut state = tui();
+    state.open_palette(
+        PaletteMode::Option,
+        PaletteOrigin::TopCenter,
+        vec![PaletteEntry {
+            value: "options.web_search.enabled".to_string(),
+            title: "Enable hosted web search".to_string(),
+            subtitle: None,
+            chips: vec!["native".to_string()],
+        }],
+        "no options".to_string(),
+        false,
+        String::new(),
+    );
+
+    let mut overrides = Some(json!({
+        "endpoint": "https://api.openai.com/v1/responses",
+        "model": "gpt-5.4-nano"
+    }));
+    let mut catalog = catalog_with_one_route();
+    let result = apply_palette_selection(&mut state, &mut overrides, &mut catalog);
+    assert_eq!(result, Ok(None));
+
+    assert_eq!(
+        overrides
+            .as_ref()
+            .and_then(|value| value.get("web_search"))
+            .and_then(|value| value.get("enabled"))
+            .and_then(Value::as_bool),
+        Some(true)
+    );
 }
 
 #[test]

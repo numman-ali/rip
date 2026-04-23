@@ -14,10 +14,11 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 use crate::openresponses_compat::{
     ConversationStrategy, OpenResponsesModelCompatProfile, OpenResponsesProviderCompatProfile,
     ResolvedOpenResponsesConversation, ResolvedOpenResponsesInclude,
-    ResolvedOpenResponsesReasoning, ValidationProfile,
+    ResolvedOpenResponsesReasoning, ResolvedOpenResponsesWebSearch, ValidationProfile,
 };
 use crate::provider_openresponses::{
     OpenResponsesConfig, OpenResponsesInclude, OpenResponsesReasoningConfig,
+    OpenResponsesWebSearchConfig, OpenResponsesWebSearchOverride,
 };
 use crate::runner::{SessionEngine, SessionHandle};
 use crate::tasks::TaskHandle;
@@ -90,6 +91,8 @@ pub(crate) struct ThreadOpenResponsesOverrides {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) followup_user_message: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) web_search: Option<OpenResponsesWebSearchOverride>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) reasoning: Option<OpenResponsesReasoningConfig>,
 }
 
@@ -102,6 +105,7 @@ impl ThreadOpenResponsesOverrides {
             parallel_tool_calls: self.parallel_tool_calls,
             include: self.include.clone(),
             followup_user_message: self.followup_user_message.clone(),
+            web_search: self.web_search.clone(),
             reasoning: self.reasoning.clone(),
         }
     }
@@ -231,6 +235,16 @@ pub(crate) struct ConfigDoctorOpenResponses {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) followup_user_message_source: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) web_search: Option<OpenResponsesWebSearchConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) web_search_enabled_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) web_search_search_context_size_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) web_search_external_web_access_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) web_search_user_location_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) reasoning: Option<OpenResponsesReasoningConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) reasoning_effort_source: Option<String>,
@@ -249,6 +263,7 @@ pub(crate) struct ConfigDoctorOpenResponsesCompat {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) model: Option<OpenResponsesModelCompatProfile>,
     pub(crate) include: ResolvedOpenResponsesInclude,
+    pub(crate) web_search: ResolvedOpenResponsesWebSearch,
     pub(crate) reasoning: ResolvedOpenResponsesReasoning,
 }
 
@@ -319,27 +334,108 @@ pub(crate) fn build_app_with_workspace_root_and_provider_and_task_policy(
 pub(crate) fn resolve_session_openresponses_override(
     workspace_root: &std::path::Path,
     openresponses: Option<&ThreadOpenResponsesOverrides>,
+    base_openresponses: Option<&OpenResponsesConfig>,
 ) -> Option<OpenResponsesConfig> {
-    let (resolved_openresponses, _loaded) = crate::config::resolve_openresponses_config(
-        workspace_root,
-        openresponses
-            .map(ThreadOpenResponsesOverrides::to_override_input)
-            .unwrap_or_default(),
-    );
+    let overrides = openresponses
+        .map(ThreadOpenResponsesOverrides::to_override_input)
+        .unwrap_or_default();
+    let (resolved_openresponses, _loaded) =
+        crate::config::resolve_openresponses_config(workspace_root, overrides.clone());
 
-    resolved_openresponses.map(|cfg| OpenResponsesConfig {
-        provider_id: cfg.provider_id,
-        endpoint: cfg.endpoint,
-        api_key: cfg.api_key,
-        model: cfg.model,
-        headers: cfg.headers,
-        tool_choice: ToolChoiceParam::auto(),
-        include: cfg.include,
-        reasoning: cfg.reasoning,
-        followup_user_message: cfg.followup_user_message,
-        stateless_history: cfg.stateless_history,
-        parallel_tool_calls: cfg.parallel_tool_calls,
-    })
+    if let Some(cfg) = resolved_openresponses {
+        return Some(OpenResponsesConfig {
+            provider_id: cfg.provider_id,
+            endpoint: cfg.endpoint,
+            api_key: cfg.api_key,
+            model: cfg.model,
+            headers: cfg.headers,
+            tool_choice: ToolChoiceParam::auto(),
+            include: cfg.include,
+            reasoning: cfg.reasoning,
+            web_search: cfg.web_search,
+            followup_user_message: cfg.followup_user_message,
+            stateless_history: cfg.stateless_history,
+            parallel_tool_calls: cfg.parallel_tool_calls,
+        });
+    }
+
+    if !openresponses_override_input_is_empty(&overrides) {
+        return base_openresponses.map(|base| apply_openresponses_override(base, &overrides));
+    }
+
+    None
+}
+
+fn openresponses_override_input_is_empty(
+    input: &crate::config::OpenResponsesOverrideInput,
+) -> bool {
+    input.endpoint.is_none()
+        && input.model.is_none()
+        && input.stateless_history.is_none()
+        && input.parallel_tool_calls.is_none()
+        && input.include.is_none()
+        && input.followup_user_message.is_none()
+        && input.web_search.is_none()
+        && input.reasoning.is_none()
+}
+
+fn apply_openresponses_override(
+    base: &OpenResponsesConfig,
+    overrides: &crate::config::OpenResponsesOverrideInput,
+) -> OpenResponsesConfig {
+    let mut cfg = base.clone();
+
+    if let Some(endpoint) = overrides.endpoint.as_deref() {
+        cfg.endpoint = endpoint.to_string();
+        cfg.provider_id = infer_provider_id_from_endpoint(endpoint);
+    }
+    if let Some(model) = overrides.model.as_deref() {
+        cfg.model = Some(model.to_string());
+    }
+    if let Some(stateless_history) = overrides.stateless_history {
+        cfg.stateless_history = stateless_history;
+    }
+    if let Some(parallel_tool_calls) = overrides.parallel_tool_calls {
+        cfg.parallel_tool_calls = parallel_tool_calls;
+    }
+    if let Some(include) = overrides.include.as_ref() {
+        cfg.include = include.clone();
+    }
+    if overrides.followup_user_message.is_some() {
+        cfg.followup_user_message = overrides.followup_user_message.clone();
+    }
+    if let Some(web_search) = overrides.web_search.as_ref() {
+        let target = cfg.web_search.get_or_insert_with(
+            crate::provider_openresponses::OpenResponsesWebSearchConfig::default,
+        );
+        web_search.apply_to(target);
+    }
+    if let Some(reasoning) = overrides.reasoning.as_ref() {
+        let target = cfg.reasoning.get_or_insert_with(
+            crate::provider_openresponses::OpenResponsesReasoningConfig::default,
+        );
+        if let Some(effort) = reasoning.effort {
+            target.effort = Some(effort);
+        }
+        if let Some(summary) = reasoning.summary {
+            target.summary = Some(summary);
+        }
+    }
+
+    cfg
+}
+
+fn infer_provider_id_from_endpoint(endpoint: &str) -> Option<String> {
+    let raw = endpoint.trim();
+    if raw.contains("api.openai.com") || raw.contains("openai.com") {
+        return Some("openai".to_string());
+    }
+    if crate::provider_openresponses::is_openrouter_responses_endpoint(raw)
+        || raw.contains("openrouter.ai")
+    {
+        return Some("openrouter".to_string());
+    }
+    None
 }
 
 pub(crate) fn build_openapi_router() -> (Router<AppState>, String) {

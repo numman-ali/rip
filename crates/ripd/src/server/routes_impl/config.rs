@@ -33,6 +33,7 @@ pub(crate) async fn config_doctor(State(state): State<AppState>) -> impl IntoRes
         );
         let conversation = compat.conversation(cfg.stateless_history);
         let include = compat.include(&cfg.include);
+        let web_search = compat.web_search(cfg.web_search.as_ref());
         let reasoning = cfg.reasoning.clone();
         ConfigDoctorOpenResponses {
             provider_id: cfg.provider_id,
@@ -58,6 +59,11 @@ pub(crate) async fn config_doctor(State(state): State<AppState>) -> impl IntoRes
             include_source: cfg.include_source,
             followup_user_message: cfg.followup_user_message,
             followup_user_message_source: cfg.followup_user_message_source,
+            web_search: cfg.web_search.clone(),
+            web_search_enabled_source: cfg.web_search_enabled_source,
+            web_search_search_context_size_source: cfg.web_search_search_context_size_source,
+            web_search_external_web_access_source: cfg.web_search_external_web_access_source,
+            web_search_user_location_source: cfg.web_search_user_location_source,
             reasoning: reasoning.clone(),
             reasoning_effort_source: cfg.reasoning_effort_source,
             reasoning_summary_source: cfg.reasoning_summary_source,
@@ -68,6 +74,7 @@ pub(crate) async fn config_doctor(State(state): State<AppState>) -> impl IntoRes
                 provider: *compat.provider,
                 model: compat.model.copied(),
                 include,
+                web_search,
                 reasoning: compat.reasoning(reasoning.as_ref()),
             }),
         }

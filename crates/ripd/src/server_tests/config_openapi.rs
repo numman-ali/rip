@@ -20,7 +20,17 @@ async fn config_doctor_serves_resolved_configuration() {
         r#"{
   "openresponses": {
     "reasoning": { "summary": "concise" },
-    "include": ["reasoning.encrypted_content"]
+    "include": ["reasoning.encrypted_content"],
+    "web_search": {
+      "enabled": true,
+      "search_context_size": "high",
+      "external_web_access": true,
+      "user_location": {
+        "country": "US",
+        "city": "San Francisco",
+        "timezone": "America/Los_Angeles"
+      }
+    }
   },
   "provider": {
     "openai": {
@@ -113,6 +123,21 @@ async fn config_doctor_serves_resolved_configuration() {
     assert_eq!(
         payload
             .get("openresponses")
+            .and_then(|value| value.get("web_search"))
+            .and_then(|value| value.get("enabled"))
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("web_search_search_context_size_source"))
+            .and_then(|value| value.as_str()),
+        Some("config:openresponses.web_search.search_context_size")
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
             .and_then(|value| value.get("compat"))
             .and_then(|value| value.get("provider"))
             .and_then(|value| value.get("provider_id"))
@@ -124,6 +149,16 @@ async fn config_doctor_serves_resolved_configuration() {
             .get("openresponses")
             .and_then(|value| value.get("compat"))
             .and_then(|value| value.get("include"))
+            .and_then(|value| value.get("support"))
+            .and_then(|value| value.get("request"))
+            .and_then(|value| value.as_str()),
+        Some("native")
+    );
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("compat"))
+            .and_then(|value| value.get("web_search"))
             .and_then(|value| value.get("support"))
             .and_then(|value| value.get("request"))
             .and_then(|value| value.as_str()),
@@ -154,6 +189,12 @@ async fn config_doctor_surfaces_openrouter_compat_profile() {
       "api_key": { "env": "OPENROUTER_API_KEY" },
       "openresponses": {
         "stateless_history": true,
+        "web_search": {
+          "enabled": true,
+          "search_context_size": "medium",
+          "external_web_access": true,
+          "user_location": { "country": "US" }
+        },
         "include": [
           "reasoning.encrypted_content",
           "message.output_text.logprobs",
@@ -286,6 +327,27 @@ async fn config_doctor_surfaces_openrouter_compat_profile() {
             warning
                 .as_str()
                 .is_some_and(|text| text.contains("message.output_text.logprobs"))
+        })));
+    assert_eq!(
+        payload
+            .get("openresponses")
+            .and_then(|value| value.get("compat"))
+            .and_then(|value| value.get("web_search"))
+            .and_then(|value| value.get("support"))
+            .and_then(|value| value.get("request"))
+            .and_then(|value| value.as_str()),
+        Some("unsupported")
+    );
+    assert!(payload
+        .get("openresponses")
+        .and_then(|value| value.get("compat"))
+        .and_then(|value| value.get("web_search"))
+        .and_then(|value| value.get("warnings"))
+        .and_then(|value| value.as_array())
+        .is_some_and(|warnings| warnings.iter().any(|warning| {
+            warning
+                .as_str()
+                .is_some_and(|text| text.contains("canonical web_search request surface"))
         })));
     assert_eq!(
         payload

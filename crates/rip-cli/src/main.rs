@@ -59,6 +59,14 @@ enum Commands {
         include: Vec<String>,
         #[arg(long)]
         followup_user_message: Option<String>,
+        #[arg(long, action = clap::ArgAction::SetTrue, conflicts_with = "no_web_search")]
+        web_search: bool,
+        #[arg(long = "no-web-search", action = clap::ArgAction::SetTrue, conflicts_with = "web_search")]
+        no_web_search: bool,
+        #[arg(long, value_enum)]
+        web_search_context_size: Option<SearchContextSizeArg>,
+        #[arg(long)]
+        web_search_external_web_access: Option<bool>,
         #[arg(long, value_enum)]
         reasoning_effort: Option<ReasoningEffortArg>,
         #[arg(long, value_enum)]
@@ -158,6 +166,23 @@ impl ReasoningSummaryArg {
             Self::Concise => "concise",
             Self::Detailed => "detailed",
             Self::Auto => "auto",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum SearchContextSizeArg {
+    Low,
+    Medium,
+    High,
+}
+
+impl SearchContextSizeArg {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
         }
     }
 }
@@ -292,6 +317,10 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             parallel_tool_calls,
             include,
             followup_user_message,
+            web_search,
+            no_web_search,
+            web_search_context_size,
+            web_search_external_web_access,
             reasoning_effort,
             reasoning_summary,
             headless,
@@ -303,6 +332,10 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                 || parallel_tool_calls
                 || !include.is_empty()
                 || followup_user_message.is_some()
+                || web_search
+                || no_web_search
+                || web_search_context_size.is_some()
+                || web_search_external_web_access.is_some()
                 || reasoning_effort.is_some()
                 || reasoning_summary.is_some();
             let openresponses_overrides = if has_openresponses_flags {
@@ -331,6 +364,13 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                         obj.insert("followup_user_message".to_string(), Value::String(message));
                     }
                 }
+                insert_web_search_overrides(
+                    &mut obj,
+                    web_search,
+                    no_web_search,
+                    web_search_context_size,
+                    web_search_external_web_access,
+                )?;
                 insert_reasoning_overrides(&mut obj, reasoning_effort, reasoning_summary);
                 Some(Value::Object(obj))
             } else if server.is_none() {
@@ -668,6 +708,7 @@ fn openresponses_overrides_from_env() -> Option<Value> {
             obj.insert("followup_user_message".to_string(), Value::String(trimmed));
         }
     }
+    insert_web_search_overrides_from_env(&mut obj);
 
     let mut reasoning = serde_json::Map::new();
     if let Ok(value) = std::env::var("RIP_OPENRESPONSES_REASONING_EFFORT") {
@@ -687,6 +728,78 @@ fn openresponses_overrides_from_env() -> Option<Value> {
     }
 
     Some(Value::Object(obj))
+}
+
+fn insert_web_search_overrides(
+    obj: &mut serde_json::Map<String, Value>,
+    web_search: bool,
+    no_web_search: bool,
+    web_search_context_size: Option<SearchContextSizeArg>,
+    web_search_external_web_access: Option<bool>,
+) -> anyhow::Result<()> {
+    if !web_search
+        && !no_web_search
+        && web_search_context_size.is_none()
+        && web_search_external_web_access.is_none()
+    {
+        return Ok(());
+    }
+
+    let mut web = serde_json::Map::new();
+    if web_search {
+        web.insert("enabled".to_string(), Value::Bool(true));
+    } else if no_web_search {
+        web.insert("enabled".to_string(), Value::Bool(false));
+    }
+    if let Some(value) = web_search_context_size {
+        web.insert(
+            "search_context_size".to_string(),
+            Value::String(value.as_str().to_string()),
+        );
+    }
+    if let Some(value) = web_search_external_web_access {
+        web.insert("external_web_access".to_string(), Value::Bool(value));
+    }
+    if !web.is_empty() {
+        obj.insert("web_search".to_string(), Value::Object(web));
+    }
+    Ok(())
+}
+
+fn insert_web_search_overrides_from_env(obj: &mut serde_json::Map<String, Value>) {
+    let mut web = serde_json::Map::new();
+    if let Some(enabled) = parse_env_bool("RIP_OPENRESPONSES_WEB_SEARCH") {
+        web.insert("enabled".to_string(), Value::Bool(enabled));
+    }
+    if let Ok(value) = std::env::var("RIP_OPENRESPONSES_WEB_SEARCH_CONTEXT_SIZE") {
+        let trimmed = value.trim().to_string();
+        if !trimmed.is_empty() {
+            match ripd::parse_search_context_size(&trimmed) {
+                Ok(parsed) => {
+                    web.insert(
+                        "search_context_size".to_string(),
+                        Value::String(
+                            match parsed {
+                                ripd::SearchContextSize::Low => "low",
+                                ripd::SearchContextSize::Medium => "medium",
+                                ripd::SearchContextSize::High => "high",
+                            }
+                            .to_string(),
+                        ),
+                    );
+                }
+                Err(err) => eprintln!(
+                    "invalid RIP_OPENRESPONSES_WEB_SEARCH_CONTEXT_SIZE={trimmed:?}: {err}; ignoring"
+                ),
+            }
+        }
+    }
+    if let Some(enabled) = parse_env_bool("RIP_OPENRESPONSES_WEB_SEARCH_EXTERNAL_WEB_ACCESS") {
+        web.insert("external_web_access".to_string(), Value::Bool(enabled));
+    }
+    if !web.is_empty() {
+        obj.insert("web_search".to_string(), Value::Object(web));
+    }
 }
 
 fn insert_reasoning_overrides(
