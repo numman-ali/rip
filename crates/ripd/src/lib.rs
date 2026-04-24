@@ -41,10 +41,10 @@ pub use local_authority::{
     PidLiveness,
 };
 pub use openresponses_compat::{
-    resolve_openresponses_compat_profile, CompatLevel, OpenResponsesIncludeSupport,
-    OpenResponsesReasoningSupport, OpenResponsesWebSearchSupport,
-    ResolvedOpenResponsesCompatProfile, ResolvedOpenResponsesInclude,
-    ResolvedOpenResponsesReasoning, ResolvedOpenResponsesWebSearch,
+    resolve_openresponses_compat_profile, CompatLevel, ConversationStrategy,
+    OpenResponsesIncludeSupport, OpenResponsesReasoningSupport, OpenResponsesWebSearchSupport,
+    ResolvedOpenResponsesCompatProfile, ResolvedOpenResponsesConversation,
+    ResolvedOpenResponsesInclude, ResolvedOpenResponsesReasoning, ResolvedOpenResponsesWebSearch,
 };
 pub use provider_openresponses::{
     parse_openresponses_include, parse_openresponses_include_list, parse_reasoning_effort,

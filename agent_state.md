@@ -1,12 +1,13 @@
 # Agent State (Working Log)
 
-Last updated: 2026-04-23
+Last updated: 2026-04-24
 
 How to use
 - Update this file whenever focus shifts, before ending a work session, and when blocked.
 - Keep it short and decision-focused; link to docs/roadmap/ADRs instead of duplicating.
 
 Current focus
+- OpenResponses provider/model health surfacing (2026-04-24): the fullscreen TUI now consumes the existing compatibility profile instead of inventing UI-side heuristics. The Models palette annotates configured routes with native/compat/stateless/reasoning/web/image health chips, and the Options palette includes a non-mutating "Active provider/model health" row that mirrors the same active-route posture operators can inspect via `rip config doctor` / SDK `configDoctor()`.
 - OpenResponses provider/request-family pass (2026-04-23): hosted `web_search` is now first-class through the compatibility layer, with OpenAI native canonical support and OpenRouter support through its documented provider extension (`openrouter:web_search`) rather than a silent canonical request. Fresh cmux proof shows both routes completing cleanly in the fullscreen TUI: OpenAI `gpt-5.4-nano` emitted canonical `web_search_call` items rendered as collapsible `web_search` cards with `web on` in the hero, and OpenRouter rendered its `openrouter:web_search` extension card without provider-error overlays.
 - Docs/positioning follow-up (2026-04-22): refresh the repo README so it reflects the current product shape rather than the January-era framing. The README now needs to describe RIP as a continuity runtime + control plane with local-first authority, active surface parity (TUI/CLI/server/SDK), continuity/task commands, and the OpenResponses compatibility layer, instead of reading like a lighter-weight concept page.
 - Continuity OS posture is locked: continuity log is truth; provider state is cache; sessions are runs/turns (not user-facing by default).

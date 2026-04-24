@@ -23,6 +23,8 @@ fn catalog_with_one_route() -> ModelsMode {
         model_id: "gpt-5-nano".to_string(),
         endpoint: "https://example.invalid/openresponses".to_string(),
         label: Some("gpt-5 nano".to_string()),
+        health_summary: None,
+        health_chips: Vec::new(),
         variants: 0,
         sources: vec!["catalog".to_string()],
     };
@@ -148,6 +150,35 @@ fn current_reasoning_helpers_fall_back_to_override_input_without_resolved_route(
         reasoning.effective.as_ref().and_then(|value| value.summary),
         Some(ripd::ReasoningSummary::Detailed)
     );
+}
+
+#[test]
+fn annotate_model_route_health_uses_provider_compat_profile() {
+    let mut routes = BTreeMap::<String, ModelRoute>::new();
+    upsert_model_route(
+        &mut routes,
+        "openrouter",
+        "google/gemma-4-26b-a4b-it",
+        "https://openrouter.ai/api/v1/responses",
+        Some("Gemma".to_string()),
+        0,
+        "catalog",
+    );
+
+    annotate_model_route_health(&mut routes);
+
+    let record = routes
+        .get("openrouter/google/gemma-4-26b-a4b-it")
+        .expect("annotated route");
+    assert!(record.health_chips.contains(&"compat".to_string()));
+    assert!(record.health_chips.contains(&"stateless".to_string()));
+    assert!(record.health_chips.contains(&"reasoning".to_string()));
+    assert!(record.health_chips.contains(&"web:compat".to_string()));
+    assert!(record
+        .health_summary
+        .as_deref()
+        .unwrap_or("")
+        .contains("OpenRouter Responses API Beta"));
 }
 
 #[test]
@@ -621,6 +652,68 @@ fn open_options_palette_shows_web_search_state_and_route_support() {
         .subtitle
         .as_deref()
         .is_some_and(|text| text.contains("effective: on")));
+}
+
+#[test]
+fn open_options_palette_shows_active_route_health() {
+    let mut state = tui();
+    let overrides = json!({
+        "endpoint": "https://openrouter.ai/api/v1/responses",
+        "model": "google/gemma-4-26b-a4b-it"
+    });
+
+    open_options_palette_with_overrides(&mut state, Some(&overrides), PaletteOrigin::TopCenter);
+
+    let overlay = state.palette_state_clone().expect("palette");
+    let entry = overlay
+        .entries
+        .iter()
+        .find(|entry| entry.value == "options.route-health")
+        .expect("route health entry");
+    assert_eq!(entry.title, "Active provider/model health");
+    assert!(entry.chips.contains(&"compat".to_string()));
+    assert!(entry.chips.contains(&"stateless".to_string()));
+    assert!(entry.chips.contains(&"reasoning".to_string()));
+    assert!(entry.chips.contains(&"web:compat".to_string()));
+    let subtitle = entry.subtitle.as_deref().unwrap_or("");
+    assert!(subtitle.contains("google/gemma-4-26b-a4b-it"));
+    assert!(subtitle.contains("OpenRouter Responses API Beta"));
+    assert!(subtitle.contains("stateless"));
+    assert!(subtitle.contains("reasoning minimal/low/medium/high"));
+}
+
+#[test]
+fn apply_palette_selection_in_option_mode_reports_route_health_without_mutating() {
+    let mut state = tui();
+    state.open_palette(
+        PaletteMode::Option,
+        PaletteOrigin::TopCenter,
+        vec![PaletteEntry {
+            value: "options.route-health".to_string(),
+            title: "Active provider/model health".to_string(),
+            subtitle: Some("openai/gpt-5.4-nano | OpenAI Responses API | stateful".to_string()),
+            chips: vec!["native".to_string(), "stateful".to_string()],
+        }],
+        "no options".to_string(),
+        false,
+        String::new(),
+    );
+    let mut overrides = Some(json!({
+        "endpoint": "https://api.openai.com/v1/responses",
+        "model": "gpt-5.4-nano"
+    }));
+    let before = overrides.clone();
+    let mut catalog = catalog_with_one_route();
+
+    let result = apply_palette_selection(&mut state, &mut overrides, &mut catalog);
+    assert_eq!(result, Ok(None));
+    assert_eq!(overrides, before);
+    assert!(state
+        .status_message
+        .as_deref()
+        .unwrap_or("")
+        .contains("OpenAI Responses API"));
+    assert_eq!(*state.overlay(), Overlay::None);
 }
 
 #[test]

@@ -117,13 +117,15 @@ Runtime ownership
   - `crates/ripd/src/session/openresponses.rs` resolves the compatibility profile from `{provider_id, endpoint, model}` and now derives both validation behavior and the effective follow-up strategy from that profile plus the explicit `stateless_history` request preference.
   - The resolved `provider_id` is the primary selector when RIP knows it from config/route resolution; endpoint heuristics are only a fallback for generic direct-provider wiring and env-only setups.
   - `GET /config/doctor` and `rip config doctor` now surface the resolved provider profile, a structured conversation object (`requested`, `effective`, `support`, `warnings`), the effective validation posture, any curated model overlay for the active route, and route-specific reasoning/include/web-search support objects with requested vs effective values plus downgrade/unverified warnings.
+  - The fullscreen TUI consumes the same resolved profile for operator-facing route health. The Models palette annotates each configured route with provider/model health chips, and the Options palette exposes a non-mutating active-route health row; neither surface owns provider quirks directly.
+  - The TypeScript SDK exposes the same diagnostics via `configDoctor()` on both exec and HTTP transports; SDK consumers should inspect that payload rather than reimplementing provider/model heuristics.
   - `crates/ripd/src/provider_openresponses.rs` now consumes the typed reasoning config surface (`reasoning.effort`, `reasoning.summary`) through the compatibility layer, so the emitted OpenResponses `reasoning` request object is the effective route-safe value rather than the raw requested value.
   - `crates/ripd/src/provider_openresponses.rs` also consumes the typed `web_search` config through the compatibility layer, so OpenAI/native routes receive schema-backed `tools: [{type:"web_search", ...}]` while OpenRouter receives its documented provider extension `tools: [{type:"openrouter:web_search", ...}]`.
   - When a run starts and RIP had to degrade a requested conversation, reasoning, include, or web-search setting, the session stream now emits a structured compat warning frame (`rip.compat.warning`) before the first provider request. Surfaces may render that as a runtime notice, but the warning source remains the provider-boundary compatibility layer.
 - This slice is intentionally modest in runtime effect:
   - current runtime selection is used for boundary validation behavior first
   - the wider request/tool/modality matrix is now versioned and inspectable, even where the runtime does not act on every field yet
-  - future slices can extend the same profile to drive request defaults, model-picker capability chips, and provider health reporting
+  - future slices can extend the same profile to drive request defaults, always-visible model/status chrome, and provider health reporting
 
 ## Provider profiles (seed set)
 

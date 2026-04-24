@@ -20,6 +20,8 @@ pub struct ModelRoute {
     pub model_id: String,
     pub endpoint: String,
     pub label: Option<String>,
+    pub health_summary: Option<String>,
+    pub health_chips: Vec<String>,
     pub variants: usize,
     pub sources: Vec<String>,
 }
@@ -129,6 +131,11 @@ impl PaletteSource for ModelsMode {
                 if current == Some(record.route.as_str()) {
                     chips.push("active".to_string());
                 }
+                for chip in &record.health_chips {
+                    if !chips.iter().any(|value| value == chip) {
+                        chips.push(chip.clone());
+                    }
+                }
                 for source in &record.sources {
                     if let Some(chip) = source_chip(source) {
                         if !chips.iter().any(|value| value == chip) {
@@ -142,7 +149,7 @@ impl PaletteSource for ModelsMode {
                 PaletteEntry {
                     value: record.route.clone(),
                     title: record.route,
-                    subtitle: record.label,
+                    subtitle: combine_subtitle(record.label, record.health_summary),
                     chips,
                 }
             })
@@ -205,6 +212,8 @@ pub fn upsert_model_route(
             model_id: model_id.to_string(),
             endpoint: endpoint.to_string(),
             label: None,
+            health_summary: None,
+            health_chips: Vec::new(),
             variants: 0,
             sources: Vec::new(),
         });
@@ -214,6 +223,18 @@ pub fn upsert_model_route(
     record.variants = record.variants.max(variants);
     if !record.sources.iter().any(|value| value == source) {
         record.sources.push(source.to_string());
+    }
+}
+
+pub fn set_model_route_health(
+    routes_by_value: &mut BTreeMap<String, ModelRoute>,
+    route: &str,
+    health_summary: Option<String>,
+    health_chips: Vec<String>,
+) {
+    if let Some(record) = routes_by_value.get_mut(route) {
+        record.health_summary = health_summary;
+        record.health_chips = health_chips;
     }
 }
 
@@ -257,6 +278,15 @@ fn source_chip(source: &str) -> Option<&'static str> {
     }
 }
 
+fn combine_subtitle(label: Option<String>, health_summary: Option<String>) -> Option<String> {
+    match (label, health_summary) {
+        (Some(label), Some(health)) => Some(format!("{label} | {health}")),
+        (Some(label), None) => Some(label),
+        (None, Some(health)) => Some(health),
+        (None, None) => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -287,6 +317,8 @@ mod tests {
             model_id: model_id.to_string(),
             endpoint: endpoint.to_string(),
             label: label.map(ToString::to_string),
+            health_summary: None,
+            health_chips: Vec::new(),
             variants: 0,
             sources: sources.iter().map(|s| s.to_string()).collect(),
         }
@@ -322,6 +354,40 @@ mod tests {
         assert!(entries[0].chips.contains(&"catalog".to_string()));
         assert!(entries[0].chips.contains(&"primary".to_string()));
         assert_eq!(entries[1].subtitle.as_deref(), Some("OpenAI"));
+    }
+
+    #[test]
+    fn entries_include_health_chips_and_summary() {
+        let mut record = route(
+            "openrouter",
+            "google/gemma-4-26b-a4b-it",
+            "https://openrouter.ai/api/v1/responses",
+            Some("Gemma"),
+            &["catalog"],
+        );
+        record.health_summary = Some(
+            "OpenRouter Responses API Beta | stateless | reasoning minimal/low/medium/high"
+                .to_string(),
+        );
+        record.health_chips = vec![
+            "compat".to_string(),
+            "stateless".to_string(),
+            "reasoning".to_string(),
+            "web:compat".to_string(),
+        ];
+
+        let mode = ModelsMode::new(vec![record], endpoints(), None, None, None);
+        let entry = mode.entries().remove(0);
+        assert_eq!(
+            entry.subtitle.as_deref(),
+            Some(
+                "Gemma | OpenRouter Responses API Beta | stateless | reasoning minimal/low/medium/high"
+            )
+        );
+        assert!(entry.chips.contains(&"compat".to_string()));
+        assert!(entry.chips.contains(&"stateless".to_string()));
+        assert!(entry.chips.contains(&"reasoning".to_string()));
+        assert!(entry.chips.contains(&"web:compat".to_string()));
     }
 
     #[test]

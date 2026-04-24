@@ -18,6 +18,9 @@ use rip_tui::{
 use serde_json::Value;
 
 use super::events::UiAction;
+use health::{annotate_model_route_health, build_route_health_option_entries, OPTION_ROUTE_HEALTH};
+
+mod health;
 
 const OPTION_INCLUDE_PREFIX: &str = "options.include.";
 const OPTION_WEB_SEARCH_ENABLED: &str = "options.web_search.enabled";
@@ -159,6 +162,8 @@ pub(super) fn load_model_palette_catalog(openresponses_overrides: Option<&Value>
             }
         }
     }
+
+    annotate_model_route_health(&mut routes_by_value);
 
     ModelsMode::new(
         routes_by_value.into_values().collect(),
@@ -360,7 +365,8 @@ pub(super) fn open_options_palette_with_overrides(
     let reasoning = resolve_runtime_reasoning_state(resolved.as_ref(), overrides);
     let include = resolve_runtime_include_state(resolved.as_ref(), overrides);
     let web_search = resolve_runtime_web_search_state(resolved.as_ref(), overrides);
-    let mut extra_entries = build_web_search_option_entries(&web_search);
+    let mut extra_entries = build_route_health_option_entries(resolved.as_ref(), overrides);
+    extra_entries.extend(build_web_search_option_entries(&web_search));
     extra_entries.extend(build_include_option_entries(&include));
     let mode = OptionsMode {
         current_theme: Some(state.theme.as_str()),
@@ -462,6 +468,17 @@ pub(super) fn apply_palette_selection(
                 return Err("palette: no entry selected".to_string());
             };
             if overlay.mode == PaletteMode::Option {
+                if value == OPTION_ROUTE_HEALTH {
+                    let summary = overlay
+                        .entries
+                        .iter()
+                        .find(|entry| entry.value == OPTION_ROUTE_HEALTH)
+                        .and_then(|entry| entry.subtitle.clone())
+                        .unwrap_or_else(|| "provider/model health unavailable".to_string());
+                    state.set_status_message(format!("active route health: {summary}"));
+                    state.close_overlay();
+                    return Ok(None);
+                }
                 if value == OPTION_WEB_SEARCH_ENABLED {
                     toggle_web_search_with_overrides(state, overrides, catalog);
                     state.close_overlay();
@@ -836,12 +853,7 @@ fn build_include_option_entries(include: &ripd::ResolvedOpenResponsesInclude) ->
 }
 
 fn web_search_support_label(value: ripd::CompatLevel) -> &'static str {
-    match value {
-        ripd::CompatLevel::Native => "native",
-        ripd::CompatLevel::Compat => "compat",
-        ripd::CompatLevel::Unsupported => "unsupported",
-        ripd::CompatLevel::Unknown => "unverified",
-    }
+    compat_level_label(value)
 }
 
 fn include_state_label(
@@ -910,6 +922,10 @@ fn include_support_chip(
 }
 
 fn include_support_label(value: ripd::CompatLevel) -> &'static str {
+    compat_level_label(value)
+}
+
+fn compat_level_label(value: ripd::CompatLevel) -> &'static str {
     match value {
         ripd::CompatLevel::Native => "native",
         ripd::CompatLevel::Compat => "compat",
